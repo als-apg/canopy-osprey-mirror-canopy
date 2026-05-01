@@ -1,12 +1,12 @@
 # Project Information
-site_name: eed-swapps-py-template
-site_url: https://slaclab.github.io/eed-swapps-py-template/
+site_name: Canopy
+site_url: https://slaclab.github.io/Canopy/
 site_author: SLAC National Accelerator Laboratory - EED / Software Applications Group
-site_description: Documentation for the eed-swapps-py-template Python project.
+site_description:  Canopy is a planned platform for control system displays, tools and applications.
 
 # Repository
-repo_name: slaclab/eed-swapps-py-template
-repo_url: https://github.com/slaclab/eed-swapps-py-template
+repo_name: slaclab/Canopy
+repo_url: https://github.com/slaclab/Canopy
 
 # Configuration
 theme:
@@ -59,7 +59,7 @@ plugins:
   - git-committers:
       exclude:
         - index.md
-      repository: slaclab/eed-swapps-py-template
+      repository: slaclab/Canopy
       branch: main
 
 # Additional Configuration
