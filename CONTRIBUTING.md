@@ -5,8 +5,8 @@
 Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
-git clone https://github.com/slaclab/eed-swapps-py-template
-cd eed-swapps-py-template
+git clone https://github.com/slaclab/Canopy
+cd Canopy
 ./scripts/setup_dev.sh
 ```
 
