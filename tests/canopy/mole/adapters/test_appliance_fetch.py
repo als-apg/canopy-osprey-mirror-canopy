@@ -89,9 +89,7 @@ async def test_fetch_window_empty_top_level_returns_empty(adapter, httpx_mock: H
 
 
 async def test_fetch_window_default_nanos_is_zero(adapter, httpx_mock: HTTPXMock):
-    httpx_mock.add_response(
-        json=[{"meta": {}, "data": [{"secs": 5, "val": 1.0, "severity": 0, "status": 0}]}]
-    )
+    httpx_mock.add_response(json=[{"meta": {}, "data": [{"secs": 5, "val": 1.0, "severity": 0, "status": 0}]}])
     samples = await adapter.fetch_window("PV:TEST", 0, 10_000_000_000)
     assert samples[0].ts_ns == 5_000_000_000
 
@@ -158,9 +156,7 @@ async def test_fetch_window_malformed_row_raises_bad_response(adapter, httpx_moc
 
 async def test_fetch_binned_not_yet_implemented(adapter):
     with pytest.raises(NotImplementedError):
-        await adapter.fetch_binned(
-            "PV:TEST", 0, 1, binning="auto", target_buckets=10, bin_size_ns=None
-        )
+        await adapter.fetch_binned("PV:TEST", 0, 1, binning="auto", target_buckets=10, bin_size_ns=None)
 
 
 async def test_metadata_not_yet_implemented(adapter):
@@ -186,9 +182,7 @@ async def test_health_success(adapter, httpx_mock: HTTPXMock):
 
 
 async def test_health_5xx_unhealthy(adapter, httpx_mock: HTTPXMock):
-    httpx_mock.add_response(
-        url=re.compile(r".*/mgmt/bpl/getApplianceInfo.*"), status_code=503
-    )
+    httpx_mock.add_response(url=re.compile(r".*/mgmt/bpl/getApplianceInfo.*"), status_code=503)
     h = await adapter.health()
     assert h.healthy is False
     assert "503" in (h.last_error or "")

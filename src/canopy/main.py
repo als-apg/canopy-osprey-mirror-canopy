@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from canopy.core.logging import configure_logging
 from canopy.core.errors import register_canopy_error_handler
 from canopy.mole.app import app as mole_app
-from canopy.mole.runtime import mark_started as mole_mark_started
+from canopy.mole.app import mole_lifespan
 
 try:
     __version__ = version("canopy")
@@ -22,12 +22,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Per-module startup hooks. Mounted sub-apps don't run their own lifespan
-    # automatically when behind app.mount(); the parent composes them here.
-    mole_mark_started()
-    logger.info("Starting Canopy API")
-    yield
-    logger.info("Canopy API shutdown complete")
+    """Compose per-module lifespans. Mounted sub-apps don't run their own."""
+    async with mole_lifespan():
+        logger.info("Starting Canopy API")
+        yield
+        logger.info("Canopy API shutdown complete")
 
 
 app = FastAPI(
