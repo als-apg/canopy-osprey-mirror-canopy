@@ -7,7 +7,9 @@ is private implementation. Each function is a thin facade over `ArchiverService`
 for `dependencies.py`. Tests can re-bind a fake service freely.
 """
 
-from canopy.contracts.sample import Sample
+from typing import Literal
+
+from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.services.archiver_service import ArchiverService
 
 _service: ArchiverService | None = None
@@ -46,3 +48,31 @@ async def fetch_window(
     """
     _, samples, _ = await get_service().fetch_window(pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points)
     return samples
+
+
+async def fetch_binned(
+    pv: str,
+    t0_ns: int,
+    t1_ns: int,
+    *,
+    binning: Literal["auto", "time"],
+    archiver: str | None = None,
+    target_buckets: int | None = None,
+    bin_size_ns: int | None = None,
+) -> list[BinnedPoint]:
+    """Fetch one PV's pre-binned statistics from one archiver.
+
+    See `ArchiverService.fetch_binned` for argument details. Raises
+    `BinningNotSupported` (501) when the adapter cannot honor the requested
+    mode.
+    """
+    _, points = await get_service().fetch_binned(
+        pv,
+        t0_ns,
+        t1_ns,
+        archiver=archiver,
+        binning=binning,
+        target_buckets=target_buckets,
+        bin_size_ns=bin_size_ns,
+    )
+    return points

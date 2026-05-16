@@ -98,14 +98,78 @@ def test_data_endpoint_from_after_to_400(mole_client):
     assert r.json()["code"] == "bad_request"
 
 
-def test_data_endpoint_binned_mode_not_yet_400(mole_client):
-    """Binned mode is rejected until Commit 6."""
+def test_data_endpoint_binning_auto_returns_buckets(mole_client):
     r = mole_client.get(
         "/mole/v1/data/PV:TEST",
-        params={"from": "0", "to": "10000000000", "binning": "auto", "maxPoints": 100},
+        params={"from": "0", "to": "10000000000", "binning": "auto", "maxPoints": 5},
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mode"] == "binned"
+    assert body["binning"] == "auto"
+    assert body["targetBuckets"] == 5
+    assert body["binSizeNs"] is None
+    assert isinstance(body["points"], list)
+    assert all("mean" in p and "stdDev" in p and "count" in p for p in body["points"])
+
+
+def test_data_endpoint_binning_auto_requires_max_points(mole_client):
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={"from": "0", "to": "10000000000", "binning": "auto"},
         headers=READ_HEADERS,
     )
     assert r.status_code == 400
+    assert r.json()["code"] == "bad_request"
+
+
+def test_data_endpoint_binning_time_returns_uniform_buckets(mole_client):
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={
+            "from": "0",
+            "to": "10000000000",
+            "binning": "time",
+            "binSize": "1000000000",  # 1 second in ns
+        },
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mode"] == "binned"
+    assert body["binning"] == "time"
+    assert body["binSizeNs"] == 1_000_000_000
+    assert body["targetBuckets"] is None
+
+
+def test_data_endpoint_binning_time_requires_bin_size(mole_client):
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={"from": "0", "to": "10000000000", "binning": "time"},
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 400
+
+
+def test_data_endpoint_binning_invalid_bin_size_400(mole_client):
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={"from": "0", "to": "10000000000", "binning": "time", "binSize": "not-a-number"},
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 400
+
+
+def test_data_endpoint_binning_unsupported_mode_400(mole_client):
+    """Pydantic Literal validation rejects unknown binning values."""
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={"from": "0", "to": "10000000000", "binning": "magical"},
+        headers=READ_HEADERS,
+    )
+    # FastAPI default 422 for query-param validation; not our 400.
+    assert r.status_code == 422
 
 
 def test_data_endpoint_no_auth_401(mole_client):

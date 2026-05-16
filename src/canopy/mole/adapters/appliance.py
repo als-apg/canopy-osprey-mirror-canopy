@@ -10,17 +10,19 @@ metadata, and search land in subsequent commits.
 """
 
 import time
+from typing import Literal
 from datetime import UTC, datetime
 
 import httpx
 
-from canopy.contracts.sample import Sample, BinnedPoint
+from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.config import ArchiverInstanceConfig
 from canopy.mole.adapters.base import (
     AdapterHealth,
     ArchiverTimeout,
     ArchiverBadResponse,
     ArchiverUnavailable,
+    BinningNotSupported,
     PVNotFoundInArchiver,
     normalize_severity,
     register_archiver_type,
@@ -103,11 +105,41 @@ class EpicsArchiverApplianceAdapter:
         t0_ns: int,
         t1_ns: int,
         *,
-        binning,
-        target_buckets,
-        bin_size_ns,
+        binning: Literal["auto", "time"],
+        target_buckets: int | None,
+        bin_size_ns: int | None,
     ) -> list[BinnedPoint]:
-        raise NotImplementedError("Filled in commit 6")
+        """Map intent verbs to the Appliance's `optimized_<N>(PV)` operator.
+
+        - ``binning="auto"``: ``N = target_buckets``.
+        - ``binning="time"``: ``N`` is computed so each bucket approximates
+          ``bin_size_ns``. The Appliance's optimized operator is adaptive,
+          so widths are approximate; per-bucket `bin_ns` is computed from
+          the gap between consecutive returned timestamps.
+        """
+        if binning == "auto":
+            if target_buckets is None or target_buckets < 1:
+                raise BinningNotSupported("binning='auto' requires target_buckets >= 1")
+            n = int(target_buckets)
+        elif binning == "time":
+            if bin_size_ns is None or bin_size_ns < 1:
+                raise BinningNotSupported("binning='time' requires bin_size_ns >= 1")
+            n = max((t1_ns - t0_ns) // bin_size_ns, 1)
+        else:
+            raise BinningNotSupported(f"Unsupported binning mode: {binning!r}")
+
+        operator_pv = f"optimized_{n}({pv})"
+        params = {
+            "pv": operator_pv,
+            "from": _ns_to_iso(t0_ns),
+            "to": _ns_to_iso(t1_ns),
+            "donotchunk": "true",
+        }
+        response = await self._safe_get("/retrieval/data/getData.json", params=params, pv=pv)
+        payload = self._parse_json(response)
+        if not isinstance(payload, list) or not payload:
+            return []
+        return self._parse_binned_block(payload[0])
 
     async def metadata(self, pv: str) -> PVMetadata:
         raise NotImplementedError("Filled in commit 7")
@@ -143,6 +175,53 @@ class EpicsArchiverApplianceAdapter:
             return response.json()
         except ValueError as exc:
             raise ArchiverBadResponse(f"Appliance '{self.name}' returned invalid JSON: {exc}") from exc
+
+    def _parse_binned_block(self, block: dict) -> list[BinnedPoint]:
+        rows = block.get("data")
+        if not isinstance(rows, list):
+            raise ArchiverBadResponse(f"Appliance '{self.name}': missing 'data' array in binned response")
+        points: list[BinnedPoint] = []
+        for i, row in enumerate(rows):
+            try:
+                secs = int(row["secs"])
+                nanos = int(row.get("nanos", 0))
+                val = row["val"]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ArchiverBadResponse(f"Appliance '{self.name}': malformed binned row: {exc}") from exc
+            ts_ns = secs * 1_000_000_000 + nanos
+            if not isinstance(val, list) or len(val) < 5:
+                raise ArchiverBadResponse(
+                    f"Appliance '{self.name}': expected 5-element [mean, std, min, max, count] in optimized response, "
+                    f"got {val!r}"
+                )
+            try:
+                mean, std, mn, mx, cnt = val[:5]
+            except (ValueError, TypeError) as exc:
+                raise ArchiverBadResponse(f"Appliance '{self.name}': cannot unpack binned value: {exc}") from exc
+            # bin_ns from the gap to the next bucket (last bucket gets 0).
+            if i + 1 < len(rows):
+                try:
+                    next_ts = int(rows[i + 1]["secs"]) * 1_000_000_000 + int(rows[i + 1].get("nanos", 0))
+                    bin_ns = max(next_ts - ts_ns, 1)
+                except (KeyError, TypeError, ValueError):
+                    bin_ns = 0
+            else:
+                bin_ns = 0
+            points.append(
+                BinnedPoint(
+                    ts_ns=ts_ns,
+                    bin_ns=bin_ns,
+                    mean=float(mean),
+                    std_dev=float(std),
+                    min=float(mn),
+                    max=float(mx),
+                    count=int(cnt),
+                    # The Appliance's optimized operator does not return per-bucket
+                    # severity — set NO_ALARM per design §12.1.
+                    severity=AlarmSeverity.NO_ALARM,
+                )
+            )
+        return points
 
     def _parse_raw_block(self, block: dict) -> list[Sample]:
         rows = block.get("data")

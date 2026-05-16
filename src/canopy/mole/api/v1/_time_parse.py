@@ -37,3 +37,18 @@ def parse_time(value: str | int | None) -> int | None:
 
 def now_ns() -> int:
     return time.time_ns()
+
+
+def parse_bin_size_to_ns(value: str) -> int:
+    """Parse a `binSize` query value into nanoseconds.
+
+    v1 accepts integer nanoseconds (as a string). ISO-8601 durations are not
+    supported yet — the frontend can compute ns. Raises `BadRequest` on malformed input.
+    """
+    try:
+        ns = int(value)
+    except (TypeError, ValueError) as exc:
+        raise BadRequest(f"Invalid binSize: {value!r}; expected nanoseconds as integer") from exc
+    if ns < 1:
+        raise BadRequest("binSize must be >= 1 ns")
+    return ns

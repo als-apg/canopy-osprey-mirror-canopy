@@ -4,9 +4,14 @@ from fastapi import Path, Query, Security, APIRouter
 
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access
-from canopy.mole.schemas.series import SampleDTO, ArchiverSeriesDTO
+from canopy.mole.schemas.series import (
+    SampleDTO,
+    BinnedPointDTO,
+    ArchiverSeriesDTO,
+    ArchiverBinnedSeriesDTO,
+)
 from canopy.mole.dependencies import ArchiverServiceDep
-from canopy.mole.api.v1._time_parse import now_ns, parse_time
+from canopy.mole.api.v1._time_parse import now_ns, parse_time, parse_bin_size_to_ns
 
 router = APIRouter(prefix="/data", tags=["Mole / Data"])
 
@@ -20,18 +25,17 @@ async def get_data(
     archiver: Annotated[str | None, Query(description="Instance name; default if omitted")] = None,
     binning: Annotated[Literal["auto", "time"] | None, Query(description="Switches to binned mode")] = None,
     max_points: Annotated[
-        int | None, Query(alias="maxPoints", ge=1, description="Decimation cap or bucket count")
+        int | None, Query(alias="maxPoints", ge=1, description="Decimation cap (raw) or bucket count (binning=auto)")
     ] = None,
-    bin_size: Annotated[str | None, Query(alias="binSize", description="Required when binning='time'")] = None,
-) -> ArchiverSeriesDTO:
+    bin_size: Annotated[
+        str | None, Query(alias="binSize", description="Required when binning='time'; nanoseconds as integer")
+    ] = None,
+) -> ArchiverSeriesDTO | ArchiverBinnedSeriesDTO:
     """Fetch one PV's time-window data.
 
-    Raw mode by default. Binned mode (`binning=auto|time`) lands in Commit 6.
+    Raw mode by default (returns `ArchiverSeriesDTO`). Binned mode when
+    `binning` is set (returns `ArchiverBinnedSeriesDTO`). Branch on `mode`.
     """
-    if binning is not None:
-        # Surface a clear 400 until binned mode is implemented in the next commit.
-        raise BadRequest("binned mode is not yet implemented (lands with binning support)")
-
     t0_ns = parse_time(from_)
     if t0_ns is None:
         raise BadRequest("`from` is required")
@@ -40,14 +44,47 @@ async def get_data(
     if t0_ns > t1_ns:
         raise BadRequest("`from` must be ≤ `to`")
 
-    archiver_name, samples, decimated = await service.fetch_window(
-        pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points
+    if binning is None:
+        archiver_name, samples, decimated = await service.fetch_window(
+            pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points
+        )
+        return ArchiverSeriesDTO(
+            pv=pv,
+            archiver=archiver_name,
+            from_ns=t0_ns,
+            to_ns=t1_ns,
+            decimated=decimated,
+            samples=[SampleDTO(**s.model_dump()) for s in samples],
+        )
+
+    # Binned mode.
+    target_buckets: int | None = None
+    bin_size_ns: int | None = None
+    if binning == "auto":
+        if max_points is None:
+            raise BadRequest("`binning='auto'` requires `maxPoints` (target bucket count)")
+        target_buckets = max_points
+    elif binning == "time":
+        if bin_size is None:
+            raise BadRequest("`binning='time'` requires `binSize`")
+        bin_size_ns = parse_bin_size_to_ns(bin_size)
+
+    archiver_name, points = await service.fetch_binned(
+        pv,
+        t0_ns,
+        t1_ns,
+        archiver=archiver,
+        binning=binning,
+        target_buckets=target_buckets,
+        bin_size_ns=bin_size_ns,
     )
-    return ArchiverSeriesDTO(
+    return ArchiverBinnedSeriesDTO(
         pv=pv,
         archiver=archiver_name,
         from_ns=t0_ns,
         to_ns=t1_ns,
-        decimated=decimated,
-        samples=[SampleDTO(**s.model_dump()) for s in samples],
+        binning=binning,
+        bin_size_ns=bin_size_ns,
+        target_buckets=target_buckets,
+        points=[BinnedPointDTO(**p.model_dump()) for p in points],
     )

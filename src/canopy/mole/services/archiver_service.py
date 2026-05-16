@@ -6,8 +6,9 @@ module-level singleton there. Tests can re-bind freely.
 """
 
 import logging
+from typing import Literal
 
-from canopy.contracts.sample import Sample
+from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.config import MoleConfig
 from canopy.mole.adapters.base import ArchiverAdapter
 from canopy.mole.adapters.registry import AdapterRegistry
@@ -53,3 +54,26 @@ class ArchiverService:
             decimated = True
 
         return adapter.name, samples, decimated
+
+    async def fetch_binned(
+        self,
+        pv: str,
+        t0_ns: int,
+        t1_ns: int,
+        *,
+        binning: Literal["auto", "time"],
+        archiver: str | None = None,
+        target_buckets: int | None = None,
+        bin_size_ns: int | None = None,
+    ) -> tuple[str, list[BinnedPoint]]:
+        """Binned read. Returns `(archiver_name, points)`."""
+        adapter = self._resolve(archiver)
+        points = await adapter.fetch_binned(
+            pv,
+            t0_ns=t0_ns,
+            t1_ns=t1_ns,
+            binning=binning,
+            target_buckets=target_buckets,
+            bin_size_ns=bin_size_ns,
+        )
+        return adapter.name, points

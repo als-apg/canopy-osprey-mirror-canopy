@@ -154,11 +154,6 @@ async def test_fetch_window_malformed_row_raises_bad_response(adapter, httpx_moc
 # --------------------------------------------------------------------------- #
 
 
-async def test_fetch_binned_not_yet_implemented(adapter):
-    with pytest.raises(NotImplementedError):
-        await adapter.fetch_binned("PV:TEST", 0, 1, binning="auto", target_buckets=10, bin_size_ns=None)
-
-
 async def test_metadata_not_yet_implemented(adapter):
     with pytest.raises(NotImplementedError):
         await adapter.metadata("PV:TEST")
