@@ -1,0 +1,58 @@
+import logging
+from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError, version
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from canopy.core.logging import configure_logging
+from canopy.core.errors import register_canopy_error_handler
+
+try:
+    __version__ = version("canopy")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
+
+
+configure_logging()
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting Canopy API")
+    yield
+    logger.info("Canopy API shutdown complete")
+
+
+app = FastAPI(
+    title="Canopy",
+    description="Control-system display platform — backend API",
+    version=__version__,
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+register_canopy_error_handler(app)
+
+
+@app.get("/health", tags=["meta"])
+async def health() -> dict[str, str]:
+    return {"status": "healthy"}
+
+
+@app.get("/", tags=["meta"])
+async def root() -> dict[str, str]:
+    return {
+        "name": "Canopy",
+        "version": __version__,
+        "docs": "/docs",
+        "health": "/health",
+    }
