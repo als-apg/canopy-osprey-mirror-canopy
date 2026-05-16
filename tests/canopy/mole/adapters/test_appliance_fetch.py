@@ -154,16 +154,6 @@ async def test_fetch_window_malformed_row_raises_bad_response(adapter, httpx_moc
 # --------------------------------------------------------------------------- #
 
 
-async def test_metadata_not_yet_implemented(adapter):
-    with pytest.raises(NotImplementedError):
-        await adapter.metadata("PV:TEST")
-
-
-async def test_search_not_yet_implemented(adapter):
-    with pytest.raises(NotImplementedError):
-        await adapter.search("PV.*", limit=10)
-
-
 async def test_health_success(adapter, httpx_mock: HTTPXMock):
     httpx_mock.add_response(
         url=re.compile(r".*/mgmt/bpl/getApplianceInfo.*"),

@@ -142,10 +142,58 @@ class EpicsArchiverApplianceAdapter:
         return self._parse_binned_block(payload[0])
 
     async def metadata(self, pv: str) -> PVMetadata:
-        raise NotImplementedError("Filled in commit 7")
+        """Pull `EGU` and `PREC` from the Appliance's `meta` block.
+
+        The Appliance carries metadata in every `getData.json` response. We
+        query a small recent window — the `meta` block is populated even when
+        the time range has no samples, so this works for newly-archived PVs.
+        Other metadata fields (description, alarm/display limits) are not
+        carried by the Appliance and stay `None` here; they belong to Hare /
+        EPICS Connector.
+        """
+        # 1-hour window ending at "now" — large enough to land within retention,
+        # small enough to keep the response trivial.
+        now = time.time_ns()
+        one_hour_ago = now - 3600 * 1_000_000_000
+        params = {
+            "pv": pv,
+            "from": _ns_to_iso(one_hour_ago),
+            "to": _ns_to_iso(now),
+            "donotchunk": "true",
+        }
+        response = await self._safe_get("/retrieval/data/getData.json", params=params, pv=pv)
+        payload = self._parse_json(response)
+        if not isinstance(payload, list) or not payload:
+            raise PVNotFoundInArchiver(f"No metadata for PV '{pv}' in archiver '{self.name}'")
+        meta = payload[0].get("meta") or {}
+        egu = meta.get("EGU")
+        prec_raw = meta.get("PREC")
+        try:
+            precision = int(prec_raw) if prec_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            precision = None
+        return PVMetadata(
+            pv=pv,
+            archiver=self.name,
+            units=egu,
+            precision=precision,
+        )
 
     async def search(self, pattern: str, *, limit: int) -> list[str]:
-        raise NotImplementedError("Filled in commit 7")
+        """`/retrieval/bpl/searchForPVsRegex` returns whitespace-separated PV names as plain text."""
+        try:
+            response = await self._client.get("/retrieval/bpl/searchForPVsRegex", params={"regex": pattern})
+        except httpx.TimeoutException as exc:
+            raise ArchiverTimeout(f"Appliance '{self.name}' search timed out: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise ArchiverUnavailable(f"Appliance '{self.name}' search unreachable: {exc}") from exc
+        if not response.is_success:
+            sc = response.status_code
+            if sc >= 500:
+                raise ArchiverUnavailable(f"Appliance '{self.name}' search returned HTTP {sc}")
+            raise ArchiverBadResponse(f"Appliance '{self.name}' search returned HTTP {sc}")
+        # Plain text, whitespace-separated; .split() collapses runs of whitespace.
+        return (response.text or "").split()[:limit]
 
     # --- internal helpers ------------------------------------------------- #
 

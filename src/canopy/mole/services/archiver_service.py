@@ -12,6 +12,7 @@ from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.config import MoleConfig
 from canopy.mole.adapters.base import ArchiverAdapter
 from canopy.mole.adapters.registry import AdapterRegistry
+from canopy.mole.schemas.pv import PVMetadata
 from canopy.mole.services.decimation import uniform_time_decimate
 
 logger = logging.getLogger(__name__)
@@ -77,3 +78,18 @@ class ArchiverService:
             bin_size_ns=bin_size_ns,
         )
         return adapter.name, points
+
+    async def metadata(self, pv: str, *, archiver: str | None = None) -> PVMetadata:
+        adapter = self._resolve(archiver)
+        return await adapter.metadata(pv)
+
+    async def search(
+        self,
+        pattern: str,
+        *,
+        archiver: str | None = None,
+        limit: int = 100,
+    ) -> tuple[str, list[str]]:
+        adapter = self._resolve(archiver)
+        pvs = await adapter.search(pattern, limit=limit)
+        return adapter.name, pvs

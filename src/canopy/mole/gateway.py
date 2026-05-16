@@ -10,6 +10,7 @@ for `dependencies.py`. Tests can re-bind a fake service freely.
 from typing import Literal
 
 from canopy.contracts.sample import Sample, BinnedPoint
+from canopy.mole.schemas.pv import PVMetadata
 from canopy.mole.services.archiver_service import ArchiverService
 
 _service: ArchiverService | None = None
@@ -76,3 +77,19 @@ async def fetch_binned(
         bin_size_ns=bin_size_ns,
     )
     return points
+
+
+async def metadata(pv: str, *, archiver: str | None = None) -> PVMetadata:
+    """Per-PV metadata as known to the archiver."""
+    return await get_service().metadata(pv, archiver=archiver)
+
+
+async def search(
+    pattern: str,
+    *,
+    archiver: str | None = None,
+    limit: int = 100,
+) -> list[str]:
+    """Pattern-search a single archiver's PV index. Returns names only."""
+    _, pvs = await get_service().search(pattern, archiver=archiver, limit=limit)
+    return pvs
