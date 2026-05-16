@@ -25,6 +25,14 @@ class ErrorCode(StrEnum):
     INSUFFICIENT_READ_ACCESS = auto()
     INSUFFICIENT_WRITE_ACCESS = auto()
 
+    # Mole
+    ARCHIVER_NOT_CONFIGURED = auto()
+    ARCHIVER_UNAVAILABLE = auto()
+    ARCHIVER_TIMEOUT = auto()
+    ARCHIVER_BAD_RESPONSE = auto()
+    PV_NOT_FOUND_IN_ARCHIVER = auto()
+    BINNING_NOT_SUPPORTED = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.
