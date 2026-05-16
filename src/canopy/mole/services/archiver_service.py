@@ -7,12 +7,19 @@ module-level singleton there. Tests can re-bind freely.
 
 import logging
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.config import MoleConfig
 from canopy.mole.adapters.base import ArchiverAdapter
 from canopy.mole.adapters.registry import AdapterRegistry
 from canopy.mole.schemas.pv import PVMetadata
+from canopy.mole.schemas.archiver import (
+    ArchiverInfoDTO,
+    ArchiverListDTO,
+    ArchiverHealthDTO,
+    HealthSummaryDTO,
+)
 from canopy.mole.services.decimation import uniform_time_decimate
 
 logger = logging.getLogger(__name__)
@@ -93,3 +100,57 @@ class ArchiverService:
         adapter = self._resolve(archiver)
         pvs = await adapter.search(pattern, limit=limit)
         return adapter.name, pvs
+
+    async def list_archivers(self) -> ArchiverListDTO:
+        """Return the configured archivers with current health.
+
+        Concurrent fan-out via the registry; a single archiver being down does
+        not fail the call (it surfaces in that archiver's health entry).
+        """
+        health_map = await self._registry.list_with_health()
+        archivers: list[ArchiverInfoDTO] = []
+        for name, adapter in self._registry.items():
+            cfg = self._config.archivers.get(name)
+            url = _redact_url(cfg.url) if cfg else ""
+            health = health_map.get(name)
+            archivers.append(
+                ArchiverInfoDTO(
+                    name=name,
+                    type_name=getattr(adapter, "type_name", "unknown"),
+                    url=url,
+                    healthy=health.healthy if health else False,
+                    latency_ms=health.latency_ms if health else None,
+                    last_error=health.last_error if health else None,
+                )
+            )
+        return ArchiverListDTO(default=self._registry.default_name, archivers=archivers)
+
+    async def health_summary(self) -> HealthSummaryDTO:
+        """Per-archiver rollup. See `HealthSummaryDTO.status` for semantics."""
+        health_map = await self._registry.list_with_health()
+        archivers = [
+            ArchiverHealthDTO(
+                name=name,
+                healthy=h.healthy,
+                latency_ms=h.latency_ms,
+                last_error=h.last_error,
+                last_check_ts_ns=h.last_check_ts_ns,
+            )
+            for name, h in health_map.items()
+        ]
+        if not archivers or all(a.healthy for a in archivers):
+            status: Literal["ok", "degraded", "down"] = "ok"
+        elif all(not a.healthy for a in archivers):
+            status = "down"
+        else:
+            status = "degraded"
+        return HealthSummaryDTO(status=status, archivers=archivers)
+
+
+def _redact_url(url: str) -> str:
+    """Strip embedded `user:password@` credentials from a URL."""
+    parts = urlsplit(url)
+    if "@" in parts.netloc:
+        _, _, host = parts.netloc.rpartition("@")
+        return urlunsplit(parts._replace(netloc=f"***@{host}"))
+    return url

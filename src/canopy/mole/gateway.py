@@ -11,6 +11,7 @@ from typing import Literal
 
 from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.schemas.pv import PVMetadata
+from canopy.mole.schemas.archiver import ArchiverListDTO
 from canopy.mole.services.archiver_service import ArchiverService
 
 _service: ArchiverService | None = None
@@ -93,3 +94,8 @@ async def search(
     """Pattern-search a single archiver's PV index. Returns names only."""
     _, pvs = await get_service().search(pattern, archiver=archiver, limit=limit)
     return pvs
+
+
+async def list_archivers() -> ArchiverListDTO:
+    """Return all configured archivers with current health."""
+    return await get_service().list_archivers()
