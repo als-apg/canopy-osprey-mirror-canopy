@@ -1,4 +1,4 @@
-"""Uniform-time downsampling — for plot density control, NOT statistical aggregation.
+"""Uniform-time downsampling: for plot density control, NOT statistical aggregation.
 
 Used as a fallback in `ArchiverService.fetch_window` when the adapter returned
 more samples than the caller asked for via `maxPoints`. For statistical

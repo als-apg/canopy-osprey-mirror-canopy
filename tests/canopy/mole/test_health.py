@@ -11,7 +11,7 @@ def test_watchdog_returns_heartbeat() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    # camelCase on the wire — verifies CanopyModel's alias generator is wired.
+    # camelCase on the wire: verifies CanopyModel's alias generator is wired.
     assert body["module"] == "mole"
     assert "version" in body
     assert "uptimeS" in body

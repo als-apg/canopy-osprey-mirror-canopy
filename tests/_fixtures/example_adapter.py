@@ -1,26 +1,26 @@
 """Minimal example `ArchiverAdapter` for the dotted-path loading test + docs.
 
 This is what an out-of-tree lab would write. It is *not* registered via the
-`@register_archiver_type` decorator — it is loaded via the `module:Class`
+`@register_archiver_type` decorator; it is loaded via the `module:Class`
 config form, demonstrating the no-registration path.
 """
 
 import time
 from dataclasses import dataclass
 
-from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.config import ArchiverInstanceConfig
+from canopy.mole.schemas.pv import PVMetadata
+from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.adapters.base import (
     AdapterHealth,
     BinningNotSupported,
     PVNotFoundInArchiver,
 )
-from canopy.mole.schemas.pv import PVMetadata
 
 
 @dataclass
 class ExampleAdapter:
-    """Static example — returns deterministic synthetic data.
+    """Static example: returns deterministic synthetic data.
 
     Real adapters implement the same interface against their own protocol
     (HTTP, gRPC, raw sockets, whatever).

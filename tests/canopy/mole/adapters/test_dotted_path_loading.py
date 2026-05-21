@@ -4,11 +4,9 @@ and the loaded adapter passes the parameterized contract suite."""
 import pytest
 
 from canopy.mole.config import MoleConfig, ArchiverInstanceConfig
-from canopy.mole.adapters.registry import build_registry
-
-from tests._fixtures.example_adapter import ExampleAdapter
 from tests.canopy.mole.adapters import contract
-
+from canopy.mole.adapters.registry import build_registry
+from tests._fixtures.example_adapter import ExampleAdapter
 
 _DOTTED_PATH = "tests._fixtures.example_adapter:ExampleAdapter"
 

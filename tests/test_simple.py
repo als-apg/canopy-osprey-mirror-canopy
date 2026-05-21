@@ -1,4 +1,4 @@
-"""Smoke tests for the Canopy package — boots, imports, basic endpoints."""
+"""Smoke tests for the Canopy package: boots, imports, basic endpoints."""
 
 from fastapi.testclient import TestClient
 

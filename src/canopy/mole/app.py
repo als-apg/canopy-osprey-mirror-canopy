@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from canopy.core.errors import register_canopy_error_handler
 from canopy.mole import gateway
+from canopy.core.errors import register_canopy_error_handler
 from canopy.mole.config import get_mole_config
 from canopy.mole.runtime import mark_started
 from canopy.mole.api.v1.router import router as v1_router

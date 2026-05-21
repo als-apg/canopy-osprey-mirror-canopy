@@ -8,7 +8,6 @@ suites.
 import pytest
 
 from canopy.mole.adapters.base import PVNotFoundInArchiver
-
 from tests.canopy.mole.adapters import contract
 from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
 

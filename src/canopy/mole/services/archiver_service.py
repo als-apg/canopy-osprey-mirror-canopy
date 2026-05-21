@@ -1,4 +1,4 @@
-"""ArchiverService — selects adapter, dispatches, normalizes errors, decimates fallback.
+"""ArchiverService: selects adapter, dispatches, normalizes errors, decimates fallback.
 
 Lifecycle: one instance per `canopy-api` process. Constructed in
 `canopy.mole.app.mole_lifespan`; injected into `canopy.mole.gateway` via the
@@ -9,17 +9,17 @@ import logging
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.config import MoleConfig
-from canopy.mole.adapters.base import ArchiverAdapter
-from canopy.mole.adapters.registry import AdapterRegistry
 from canopy.mole.schemas.pv import PVMetadata
+from canopy.contracts.sample import Sample, BinnedPoint
+from canopy.mole.adapters.base import ArchiverAdapter
 from canopy.mole.schemas.archiver import (
     ArchiverInfoDTO,
     ArchiverListDTO,
-    ArchiverHealthDTO,
     HealthSummaryDTO,
+    ArchiverHealthDTO,
 )
+from canopy.mole.adapters.registry import AdapterRegistry
 from canopy.mole.services.decimation import uniform_time_decimate
 
 logger = logging.getLogger(__name__)

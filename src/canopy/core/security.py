@@ -1,17 +1,17 @@
-from typing import Annotated, Protocol
+from typing import Protocol, Annotated
 from dataclasses import dataclass
 
 from fastapi import Security, WebSocket, status
 from fastapi.security import APIKeyHeader
 from fastapi.exceptions import WebSocketException
 
+from canopy.core.config import get_settings
 from canopy.core.errors import (
     ErrorCode,
     InvalidAPIKey,
     InsufficientReadAccess,
     InsufficientWriteAccess,
 )
-from canopy.core.config import get_settings
 
 
 @dataclass(frozen=True)
@@ -107,8 +107,7 @@ def require_write_access(key: APIKeyDep) -> APIKey:
     return key
 
 
-# WebSocket variants — raise WebSocketException because handshake errors must
-# close the connection, not return JSON.
+# WebSocket variants raise WebSocketException because handshake errors must close the connection, not return JSON.
 
 
 async def ws_get_api_key(websocket: WebSocket) -> APIKey:

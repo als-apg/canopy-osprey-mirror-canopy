@@ -11,14 +11,14 @@ one mapping (per §12.1 of `Mole-Module-Architecture.md`).
 
 from typing import Literal, Protocol, runtime_checkable
 
-from canopy.contracts.base import CanopyModel
-from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
-from canopy.core.errors import CanopyError, ErrorCode
+from canopy.core.errors import ErrorCode, CanopyError
 from canopy.mole.config import ArchiverInstanceConfig
+from canopy.contracts.base import CanopyModel
 from canopy.mole.schemas.pv import PVMetadata
+from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 
 # --------------------------------------------------------------------------- #
-# Domain exceptions — services raise these; the per-module handler maps them
+# Domain exceptions, services raise these; the per-module handler maps them
 # to {"code": <slug>, "detail": ...} JSON.
 # --------------------------------------------------------------------------- #
 
@@ -153,7 +153,7 @@ class ArchiverAdapter(Protocol):
 
 
 # --------------------------------------------------------------------------- #
-# Type registration — short-name → class. Out-of-tree adapters can skip this
+# Type registration: short-name → class. Out-of-tree adapters can skip this
 # and use the `module:Class` dotted-path form in config instead.
 # --------------------------------------------------------------------------- #
 

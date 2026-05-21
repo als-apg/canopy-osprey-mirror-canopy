@@ -3,11 +3,11 @@ import time
 from fastapi import Security, APIRouter
 
 from canopy import __version__
-from canopy.core.security import require_read_access
 from canopy.mole.runtime import uptime_s
+from canopy.core.security import require_read_access
+from canopy.mole.dependencies import ArchiverServiceDep
 from canopy.mole.schemas.health import HeartbeatDTO
 from canopy.mole.schemas.archiver import HealthSummaryDTO
-from canopy.mole.dependencies import ArchiverServiceDep
 
 router = APIRouter(prefix="/health", tags=["Mole / Health"])
 

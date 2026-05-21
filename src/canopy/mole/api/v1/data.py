@@ -1,16 +1,16 @@
-from typing import Annotated, Literal
+from typing import Literal, Annotated
 
 from fastapi import Path, Query, Security, APIRouter
 
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access
+from canopy.mole.dependencies import ArchiverServiceDep
 from canopy.mole.schemas.series import (
     SampleDTO,
     BinnedPointDTO,
     ArchiverSeriesDTO,
     ArchiverBinnedSeriesDTO,
 )
-from canopy.mole.dependencies import ArchiverServiceDep
 from canopy.mole.api.v1._time_parse import now_ns, parse_time, parse_bin_size_to_ns
 
 router = APIRouter(prefix="/data", tags=["Mole / Data"])

@@ -5,10 +5,10 @@ from importlib.metadata import PackageNotFoundError, version
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from canopy.core.logging import configure_logging
-from canopy.core.errors import register_canopy_error_handler
 from canopy.mole.app import app as mole_app
 from canopy.mole.app import mole_lifespan
+from canopy.core.errors import register_canopy_error_handler
+from canopy.core.logging import configure_logging
 
 try:
     __version__ = version("canopy")

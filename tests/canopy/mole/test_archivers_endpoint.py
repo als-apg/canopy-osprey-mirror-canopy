@@ -1,7 +1,7 @@
 """Integration tests for `GET /mole/v1/archivers` and `GET /mole/v1/health/summary`."""
 
-from canopy.mole.config import ArchiverInstanceConfig
 from tests.conftest import READ_HEADERS
+from canopy.mole.config import ArchiverInstanceConfig
 from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
 
 

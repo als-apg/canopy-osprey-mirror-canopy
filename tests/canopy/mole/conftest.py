@@ -8,9 +8,8 @@ from canopy.mole.app import app as mole_app
 from canopy.mole.config import MoleConfig
 from canopy.mole.dependencies import get_archiver_service
 from canopy.mole.adapters.registry import AdapterRegistry
-from canopy.mole.services.archiver_service import ArchiverService
-
 from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
+from canopy.mole.services.archiver_service import ArchiverService
 
 
 @pytest.fixture

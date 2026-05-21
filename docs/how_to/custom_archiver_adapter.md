@@ -1,23 +1,23 @@
 # Custom archiver adapter
 
-Mole supports archivers other than the EPICS Archiver Appliance. Other labs (or test environments) implement the `ArchiverAdapter` Protocol and load it via Mole's config — no fork of Canopy required.
+Mole supports archivers other than the EPICS Archiver Appliance. Other labs (or test environments) implement the `ArchiverAdapter` Protocol and load it via Mole's config; no fork of Canopy required.
 
 ## 1. Implement the Protocol
 
 The contract lives in `canopy.mole.adapters.base.ArchiverAdapter`. Implement these seven methods:
 
-- `from_config(name, cfg) -> "YourAdapter"` — classmethod that builds an instance from validated config.
-- `fetch_window(pv, t0_ns, t1_ns, *, max_points=None) -> list[Sample]` — raw samples in the window.
-- `fetch_binned(pv, t0_ns, t1_ns, *, binning, target_buckets, bin_size_ns) -> list[BinnedPoint]` — statistical buckets in `auto` or `time` mode.
-- `metadata(pv) -> PVMetadata` — per-PV metadata your archiver carries.
-- `search(pattern, *, limit) -> list[str]` — pattern-based PV name search.
-- `health() -> AdapterHealth` — reachability probe (≤2 s).
-- `close()` — drain any client connections.
+- `from_config(name, cfg) -> "YourAdapter"`: classmethod that builds an instance from validated config.
+- `fetch_window(pv, t0_ns, t1_ns, *, max_points=None) -> list[Sample]`: raw samples in the window.
+- `fetch_binned(pv, t0_ns, t1_ns, *, binning, target_buckets, bin_size_ns) -> list[BinnedPoint]`: statistical buckets in `auto` or `time` mode.
+- `metadata(pv) -> PVMetadata`: per-process variable metadata your archiver carries.
+- `search(pattern, *, limit) -> list[str]`: pattern-based process variable name search.
+- `health() -> AdapterHealth`: reachability probe (≤2 s).
+- `close()`: drain any client connections.
 
 Plus two attributes:
 
-- `name: str` — set from the config key (in `from_config`).
-- `type_name: str` — class attribute identifying the adapter type.
+- `name: str`: set from the config key (in `from_config`).
+- `type_name: str`: class attribute identifying the adapter type.
 
 ### Severity normalization
 

@@ -15,8 +15,9 @@ from datetime import UTC, datetime
 
 import httpx
 
-from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.config import ArchiverInstanceConfig
+from canopy.mole.schemas.pv import PVMetadata
+from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.adapters.base import (
     AdapterHealth,
     ArchiverTimeout,
@@ -27,7 +28,6 @@ from canopy.mole.adapters.base import (
     normalize_severity,
     register_archiver_type,
 )
-from canopy.mole.schemas.pv import PVMetadata
 
 
 def _ns_to_iso(ts_ns: int) -> str:
@@ -151,8 +151,7 @@ class EpicsArchiverApplianceAdapter:
         carried by the Appliance and stay `None` here; they belong to Hare /
         EPICS Connector.
         """
-        # 1-hour window ending at "now" — large enough to land within retention,
-        # small enough to keep the response trivial.
+        # 1-hour window ending at "now". large enough to land within retention, small enough to keep the response trivial.
         now = time.time_ns()
         one_hour_ago = now - 3600 * 1_000_000_000
         params = {
@@ -265,7 +264,7 @@ class EpicsArchiverApplianceAdapter:
                     max=float(mx),
                     count=int(cnt),
                     # The Appliance's optimized operator does not return per-bucket
-                    # severity — set NO_ALARM per design §12.1.
+                    # severity: set NO_ALARM
                     severity=AlarmSeverity.NO_ALARM,
                 )
             )

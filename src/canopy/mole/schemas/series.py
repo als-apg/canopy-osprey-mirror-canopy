@@ -26,7 +26,7 @@ class ArchiverSeriesDTO(CanopyModel):
     mode: Literal["raw"] = "raw"
     pv: str
     archiver: str
-    # `from` is a Python keyword — alias the wire name explicitly.
+    # `from` is a Python keyword, alias the wire name explicitly.
     from_ns: int = Field(alias="from")
     to_ns: int = Field(alias="to")
     decimated: bool

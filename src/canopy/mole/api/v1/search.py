@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import Query, Security, APIRouter
 
 from canopy.core.security import require_read_access
-from canopy.mole.schemas.search import SearchResultsDTO
 from canopy.mole.dependencies import ArchiverServiceDep
+from canopy.mole.schemas.search import SearchResultsDTO
 
 router = APIRouter(prefix="/search", tags=["Mole / Search"])
 

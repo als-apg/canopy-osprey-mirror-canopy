@@ -1,4 +1,4 @@
-"""EpicsArchiverApplianceAdapter — `fetch_binned` (auto + time)."""
+"""EpicsArchiverApplianceAdapter: `fetch_binned` (auto + time)."""
 
 import pytest
 from pytest_httpx import HTTPXMock

@@ -1,14 +1,14 @@
-"""ArchiverService unit tests — focus on the service-layer logic
+"""ArchiverService unit tests: focus on the service-layer logic
 (dispatch and decimation fallback) independent of any HTTP routing."""
 
-from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.mole.config import MoleConfig
+from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.mole.adapters.registry import AdapterRegistry
 from canopy.mole.services.archiver_service import ArchiverService
 
 
 class _IgnoreMaxAdapter:
-    """Returns a fixed N samples regardless of max_points hint — exercises decimation."""
+    """Returns a fixed N samples regardless of max_points hint, exercises decimation."""
 
     name = "raw"
     type_name = "raw"

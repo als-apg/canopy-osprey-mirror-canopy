@@ -4,15 +4,15 @@ import re
 import time
 from dataclasses import field, dataclass
 
-from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.config import ArchiverInstanceConfig
+from canopy.mole.schemas.pv import PVMetadata
+from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.adapters.base import (
     AdapterHealth,
     BinningNotSupported,
     PVNotFoundInArchiver,
     register_archiver_type,
 )
-from canopy.mole.schemas.pv import PVMetadata
 
 
 @register_archiver_type("fake")

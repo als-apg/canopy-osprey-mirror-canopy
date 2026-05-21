@@ -1,13 +1,12 @@
-"""Gateway facade behavior — bind/unbind, fetch_window delegation."""
+"""Gateway facade behavior: bind/unbind, fetch_window delegation."""
 
 import pytest
 
 from canopy.mole import gateway
 from canopy.mole.config import MoleConfig
 from canopy.mole.adapters.registry import AdapterRegistry
-from canopy.mole.services.archiver_service import ArchiverService
-
 from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
+from canopy.mole.services.archiver_service import ArchiverService
 
 
 def test_get_service_unbound_raises():

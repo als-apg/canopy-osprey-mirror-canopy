@@ -9,8 +9,8 @@ for `dependencies.py`. Tests can re-bind a fake service freely.
 
 from typing import Literal
 
-from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.schemas.pv import PVMetadata
+from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.schemas.archiver import ArchiverListDTO
 from canopy.mole.services.archiver_service import ArchiverService
 
@@ -30,7 +30,7 @@ def get_service() -> ArchiverService:
 
 
 # --------------------------------------------------------------------------- #
-# Public facade — one function per service method. Other modules import these.
+# Public facade: one function per service method. Other modules import these.
 # --------------------------------------------------------------------------- #
 
 

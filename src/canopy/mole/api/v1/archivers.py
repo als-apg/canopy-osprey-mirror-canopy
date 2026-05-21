@@ -1,8 +1,8 @@
 from fastapi import Security, APIRouter
 
 from canopy.core.security import require_read_access
-from canopy.mole.schemas.archiver import ArchiverListDTO
 from canopy.mole.dependencies import ArchiverServiceDep
+from canopy.mole.schemas.archiver import ArchiverListDTO
 
 router = APIRouter(prefix="/archivers", tags=["Mole / Archivers"])
 
