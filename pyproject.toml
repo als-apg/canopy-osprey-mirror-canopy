@@ -13,6 +13,13 @@ dependencies = [
     "p4p>=4.1",
 ]
 
+[project.optional-dependencies]
+# SLAC built-in directory adapter for Raccoon. The `meme` package is the SLAC
+# EPICS v4 Directory Service Python wrapper; install it from the SLAC package
+# index. Other deployments configure a different adapter via the `module:Class`
+# dotted-path form in `CANOPY_RACCOON__DIRECTORY__TYPE` and skip this extra.
+meme = ["meme"]
+
 [dependency-groups]
 dev = [
     "pre-commit",
