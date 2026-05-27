@@ -10,8 +10,8 @@ call itself.
 """
 
 import asyncio
-from typing import Hashable, TypeVar
-from collections.abc import Awaitable, Callable
+from typing import TypeVar
+from collections.abc import Hashable, Awaitable, Callable
 
 T = TypeVar("T")
 

@@ -18,7 +18,5 @@ async def list_elements(
     sort_by: Annotated[str | None, Query(alias="sortBy")] = None,
     element_type: Annotated[str | None, Query(alias="elementType")] = None,
 ) -> NameListResultDTO:
-    names = await service.list(
-        NameKind.ELEMENT, pattern, tag=tag, sort_by=sort_by, element_type=element_type
-    )
+    names = await service.list(NameKind.ELEMENT, pattern, tag=tag, sort_by=sort_by, element_type=element_type)
     return NameListResultDTO(names=names)

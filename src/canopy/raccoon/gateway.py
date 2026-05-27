@@ -45,9 +45,7 @@ async def list_pvs(
     element_type: str | None = None,
 ) -> list[str]:
     """Resolve a pattern to a list of PV names. See spec §9 for cache semantics."""
-    return await get_service().list(
-        NameKind.PV, pattern, tag=tag, sort_by=sort_by, element_type=element_type
-    )
+    return await get_service().list(NameKind.PV, pattern, tag=tag, sort_by=sort_by, element_type=element_type)
 
 
 async def list_devices(
@@ -57,9 +55,7 @@ async def list_devices(
     sort_by: str | None = None,
     element_type: str | None = None,
 ) -> list[str]:
-    return await get_service().list(
-        NameKind.DEVICE, pattern, tag=tag, sort_by=sort_by, element_type=element_type
-    )
+    return await get_service().list(NameKind.DEVICE, pattern, tag=tag, sort_by=sort_by, element_type=element_type)
 
 
 async def list_elements(
@@ -69,9 +65,7 @@ async def list_elements(
     sort_by: str | None = None,
     element_type: str | None = None,
 ) -> list[str]:
-    return await get_service().list(
-        NameKind.ELEMENT, pattern, tag=tag, sort_by=sort_by, element_type=element_type
-    )
+    return await get_service().list(NameKind.ELEMENT, pattern, tag=tag, sort_by=sort_by, element_type=element_type)
 
 
 # --------------------------------------------------------------------------- #

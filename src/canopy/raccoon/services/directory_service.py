@@ -99,7 +99,7 @@ class DirectoryService:
                 else:
                     coro = adapter.list_elements(pattern, tag=tag, sort_by=sort_by, element_type=element_type)
                 names = await asyncio.wait_for(coro, timeout=self._timeout_s)
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 raise DirectoryTimeout(f"Directory call exceeded {self._timeout_s}s") from exc
 
             self._pattern_cache.set(key, names)
@@ -174,7 +174,7 @@ class DirectoryService:
         else:
             try:
                 health = await asyncio.wait_for(adapter.health(), timeout=self._timeout_s)
-            except (DirectoryUnavailable, asyncio.TimeoutError) as exc:
+            except (TimeoutError, DirectoryUnavailable) as exc:
                 health = AdapterHealth(
                     healthy=False,
                     last_error=str(exc),

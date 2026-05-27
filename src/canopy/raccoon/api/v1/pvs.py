@@ -27,9 +27,7 @@ async def list_pvs(
     ] = None,
 ) -> NameListResultDTO:
     """Resolve a pattern to a list of PV names. Cached per `(pattern, tag, sortBy, elementType)`."""
-    names = await service.list(
-        NameKind.PV, pattern, tag=tag, sort_by=sort_by, element_type=element_type
-    )
+    names = await service.list(NameKind.PV, pattern, tag=tag, sort_by=sort_by, element_type=element_type)
     return NameListResultDTO(names=names)
 
 
