@@ -25,7 +25,7 @@ class MoleConfig(BaseSettings):
 
         CANOPY_MOLE__DEFAULT_ARCHIVER=slac
         CANOPY_MOLE__ARCHIVERS__SLAC__TYPE=epics_archiver_appliance
-        CANOPY_MOLE__ARCHIVERS__SLAC__URL=https://lcls-archapp.slac.stanford.edu/retrieval
+        CANOPY_MOLE__ARCHIVERS__SLAC__URL=https://lcls-archapp.slac.stanford.edu
         CANOPY_MOLE__ARCHIVERS__SLAC__TIMEOUT_S=15.0
     """
 
