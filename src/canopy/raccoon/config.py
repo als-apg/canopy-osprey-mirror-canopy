@@ -15,7 +15,6 @@ class CacheConfig(BaseModel):
     negative_ttl_s: float = 60.0
     max_pattern_entries: int = 10000
     max_exists_entries: int = 100000
-    batch_chunk_size: int = 1000
 
 
 class DirectoryInstanceConfig(BaseModel):
@@ -28,6 +27,7 @@ class DirectoryInstanceConfig(BaseModel):
 
     type: str
     timeout_s: float = 5.0
+    batch_concurrency: int = 64
     extras: dict = {}
     cache: CacheConfig = CacheConfig()
 
