@@ -39,6 +39,12 @@ class ErrorCode(StrEnum):
     PV_WRITE_FAILED = auto()
     EPICS_BACKEND_UNAVAILABLE = auto()
 
+    # Raccoon
+    DIRECTORY_UNAVAILABLE = auto()
+    DIRECTORY_TIMEOUT = auto()
+    INVALID_QUERY = auto()
+    ADAPTER_MISCONFIGURED = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.
