@@ -10,7 +10,7 @@ class SampleDTO(CanopyModel):
     """One stored sample. `source` is always `"archive"` from Mole."""
 
     ts_ns: int
-    value: float | int | bool | str | None
+    value: float | int | bool | str | bytes | None
     severity: AlarmSeverity
     source: Literal["archive"] = "archive"
 

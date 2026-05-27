@@ -40,7 +40,8 @@ async def get_data(
     if t0_ns is None:
         raise BadRequest("`from` is required")
     t1_ns = parse_time(to) if to else now_ns()
-    assert t1_ns is not None
+    if t1_ns is None:
+        raise BadRequest("`to` is invalid")
     if t0_ns > t1_ns:
         raise BadRequest("`from` must be ≤ `to`")
 
