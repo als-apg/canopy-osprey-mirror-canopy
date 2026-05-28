@@ -51,7 +51,9 @@ async def evaluate_waveform_formula(
         raise FormulaInputMissing(f"PVs not available: {missing}")
 
     if len(lengths) > 1:
-        raise FormulaDimensionMismatch(f"Waveform inputs have mismatched lengths: {sorted(lengths)}")
+        raise FormulaDimensionMismatch(
+            f"Waveform inputs have mismatched lengths: {sorted(lengths)}"
+        )
 
     timeout_s = config.eval_timeout_ms / 1000.0
     result_array = await evaluate_array(parsed, variables, timeout_s)

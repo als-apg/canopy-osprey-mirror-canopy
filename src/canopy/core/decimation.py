@@ -1,5 +1,6 @@
-"""Uniform-time downsampling: for plot density control, NOT statistical aggregation.
+"""Re-export from canopy.core.decimation for backwards compatibility."""
 
+<<<<<<<< HEAD:src/canopy/core/decimation.py
 Shared utility used by Mole (fallback when adapters return too many samples)
 and Fox (post-evaluation decimation of formula curves).
 """
@@ -55,3 +56,6 @@ def _nearest_index(samples: list[Sample], target_ns: int) -> int:
     if abs(before.ts_ns - target_ns) <= abs(after.ts_ns - target_ns):
         return pos - 1
     return pos
+========
+from canopy.core.decimation import uniform_time_decimate  # noqa: F401
+>>>>>>>> 5fffb49 (Add Fox init):src/canopy/mole/services/decimation.py
