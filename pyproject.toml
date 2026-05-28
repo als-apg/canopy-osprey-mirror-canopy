@@ -11,6 +11,9 @@ dependencies = [
     "httpx>=0.27",
     "aioca>=1.7",
     "p4p>=4.1",
+    "numpy>=1.26",
+    "numexpr>=2.8",
+    "asteval>=1.0",
 ]
 
 [dependency-groups]
