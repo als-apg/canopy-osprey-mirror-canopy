@@ -20,7 +20,7 @@ from canopy.mole.schemas.archiver import (
     ArchiverHealthDTO,
 )
 from canopy.mole.adapters.registry import AdapterRegistry
-from canopy.mole.services.decimation import uniform_time_decimate
+from canopy.core.decimation import uniform_time_decimate
 
 logger = logging.getLogger(__name__)
 
