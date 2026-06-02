@@ -7,13 +7,13 @@ module-level singleton there. Tests can re-bind freely.
 
 import logging
 
-from canopy.fox.config import FoxConfig
 from canopy.fox.ports import DataSource
+from canopy.fox.config import FoxConfig
 from canopy.fox.errors import FormulaCircularReference
-from canopy.fox.services.parser import Parser
 from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
-from canopy.fox.services.scalar_evaluator import evaluate_scalar_formula
+from canopy.fox.services.parser import Parser
 from canopy.fox.services.curve_evaluator import evaluate_curve_formula
+from canopy.fox.services.scalar_evaluator import evaluate_scalar_formula
 from canopy.fox.services.waveform_evaluator import evaluate_waveform_formula
 
 logger = logging.getLogger(__name__)

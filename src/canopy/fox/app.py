@@ -4,10 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from canopy.fox import gateway
-from canopy.fox.ports import NullDataSource
+from canopy.vole import gateway as vole_gateway
 from canopy.fox.config import get_fox_config
 from canopy.core.errors import register_canopy_error_handler
 from canopy.fox.runtime import mark_started
+from canopy.vole.adapter import VoleDataSource
 from canopy.fox.api.v1.router import router as v1_router
 from canopy.fox.services.parser import Parser
 from canopy.fox.services.formula_service import FormulaService
@@ -23,7 +24,7 @@ async def fox_lifespan():
     don't run their own lifespan automatically behind ``app.mount()``.
     """
     config = get_fox_config()
-    data_source = NullDataSource()
+    data_source = VoleDataSource(vole_gateway.get_service())
     parser = Parser(max_expression_len=config.max_expression_len)
     service = FormulaService(data_source, parser, config)
     gateway.bind(service)

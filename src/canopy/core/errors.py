@@ -54,6 +54,10 @@ class ErrorCode(StrEnum):
     FORMULA_EVAL_TIMEOUT = auto()
     FORMULA_CIRCULAR_REFERENCE = auto()
 
+    # Vole
+    PV_NOT_BUFFERED = auto()
+    BUFFER_AT_CAPACITY = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.
