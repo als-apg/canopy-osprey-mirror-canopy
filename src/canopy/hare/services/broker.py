@@ -1,0 +1,246 @@
+"""PVBroker — the in-process live-PV broker.
+
+Owns the connector, the subscription registry, a latest-value cache, and three
+background loops (consume / flush / heartbeat). Monitors are started and stopped
+on demand: the first subscriber to a PV starts an EPICS monitor, the last to
+leave stops it. Updates are buffered and flushed as diffs every
+``ws_batch_interval_ms`` to the clients subscribed to each PV.
+"""
+
+import time
+import asyncio
+import logging
+from typing import Protocol, runtime_checkable
+from collections import defaultdict
+from collections.abc import Iterable
+
+from canopy.epics.base import PVConnector, Subscription
+from canopy.hare.config import HareConfig
+from canopy.contracts.pv import PVValue
+from canopy.hare.services.subscriptions import SubscriptionRegistry
+
+logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ClientChannel(Protocol):
+    """What the broker needs from a connected client (FastAPI WebSocket fits)."""
+
+    async def send_json(self, data) -> None: ...
+    async def close(self) -> None: ...
+
+
+class PVBroker:
+    def __init__(self, connector: PVConnector, config: HareConfig) -> None:
+        self._connector = connector
+        self._config = config
+        self._registry = SubscriptionRegistry()
+        self._channels: dict[str, ClientChannel] = {}
+        self._monitors: dict[str, Subscription] = {}
+        self._latest: dict[str, PVValue] = {}
+        self._buffer: dict[str, PVValue] = {}
+        self._buffer_lock = asyncio.Lock()
+        self._queue: asyncio.Queue[PVValue] = asyncio.Queue()
+        self._running = False
+        self._tasks: list[asyncio.Task] = []
+
+    @property
+    def registry(self) -> SubscriptionRegistry:
+        return self._registry
+
+    # --- lifecycle ------------------------------------------------------- #
+
+    async def start(self) -> None:
+        if self._running:
+            return
+        await self._connector.start()
+        self._running = True
+        self._tasks = [
+            asyncio.create_task(self._consume_loop()),
+            asyncio.create_task(self._flush_loop()),
+            asyncio.create_task(self._heartbeat_loop()),
+        ]
+        logger.info(
+            "PVBroker started (backend=%s, batch=%dms)",
+            getattr(self._connector, "backend_name", "?"),
+            self._config.ws_batch_interval_ms,
+        )
+
+    async def stop(self) -> None:
+        self._running = False
+        for task in self._tasks:
+            task.cancel()
+        for task in self._tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._tasks = []
+        for pv, sub in list(self._monitors.items()):
+            try:
+                await sub.close()
+            except Exception:
+                logger.exception("error closing monitor for %s", pv)
+        self._monitors.clear()
+        for client_id in list(self._channels):
+            channel = self._channels.pop(client_id, None)
+            if channel is not None:
+                try:
+                    await channel.close()
+                except Exception:
+                    pass
+        await self._connector.close()
+        logger.info("PVBroker stopped")
+
+    # --- client lifecycle ------------------------------------------------ #
+
+    def add_client(self, client_id: str, channel: ClientChannel) -> None:
+        self._channels[client_id] = channel
+        self._registry.add_client(client_id)
+
+    async def remove_client(self, client_id: str) -> None:
+        deactivated = self._registry.remove_client(client_id)
+        await self._stop_monitors(deactivated)
+        self._channels.pop(client_id, None)
+
+    async def subscribe(self, client_id: str, pvs: list[str]) -> None:
+        if not pvs:
+            return
+        newly = self._registry.subscribe(client_id, pvs)
+        await self._start_monitors(newly)
+        # Seed latest for newly-activated PVs so the subscriber gets an
+        # immediate value rather than waiting for the first monitor tick.
+        for pv in newly:
+            if pv not in self._latest:
+                try:
+                    self._latest[pv] = await self._connector.get(pv)
+                except Exception as exc:
+                    logger.debug("initial get failed for %s: %s", pv, exc)
+        initial = {pv: self._latest[pv] for pv in pvs if pv in self._latest}
+        if initial:
+            await self._send(
+                client_id,
+                {
+                    "type": "initial",
+                    "data": {pv: val.model_dump(by_alias=True) for pv, val in initial.items()},
+                    "count": len(initial),
+                },
+            )
+
+    async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
+        if not pvs:
+            return
+        deactivated = self._registry.unsubscribe(client_id, pvs)
+        await self._stop_monitors(deactivated)
+
+    # --- monitor lifecycle ----------------------------------------------- #
+
+    async def _start_monitors(self, pvs: Iterable[str]) -> None:
+        for pv in pvs:
+            if pv in self._monitors:
+                continue
+            try:
+                self._monitors[pv] = await self._connector.subscribe(pv, self._on_event)
+            except Exception as exc:
+                logger.error("failed to start monitor for %s: %s", pv, exc)
+
+    async def _stop_monitors(self, pvs: Iterable[str]) -> None:
+        for pv in pvs:
+            sub = self._monitors.pop(pv, None)
+            if sub is not None:
+                try:
+                    await sub.close()
+                except Exception:
+                    logger.exception("error closing monitor for %s", pv)
+            self._latest.pop(pv, None)
+
+    # --- event ingestion ------------------------------------------------- #
+
+    def _on_event(self, value: PVValue) -> None:
+        """Connector callback. Non-blocking; must run on the event loop thread."""
+        try:
+            self._queue.put_nowait(value)
+        except asyncio.QueueFull:
+            logger.warning("broker queue full; dropping update for %s", value.pv)
+
+    async def _consume_loop(self) -> None:
+        while self._running:
+            value = await self._queue.get()
+            await self._ingest(value)
+            await self._drain_nowait()
+
+    async def _drain_nowait(self) -> None:
+        """Process all currently-queued events without blocking. Drives `_consume_loop`; also called directly by tests."""
+        while True:
+            try:
+                value = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            await self._ingest(value)
+
+    async def _ingest(self, value: PVValue) -> None:
+        self._latest[value.pv] = value
+        async with self._buffer_lock:
+            self._buffer[value.pv] = value
+
+    async def _flush_loop(self) -> None:
+        interval = self._config.ws_batch_interval_ms / 1000.0
+        while self._running:
+            await asyncio.sleep(interval)
+            await self._flush()
+
+    async def _flush(self) -> None:
+        async with self._buffer_lock:
+            if not self._buffer:
+                return
+            updates = self._buffer
+            self._buffer = {}
+        per_client: dict[str, dict[str, dict]] = defaultdict(dict)
+        for pv, value in updates.items():
+            payload = value.model_dump(by_alias=True)
+            for client_id in self._registry.subscribers(pv):
+                per_client[client_id][pv] = payload
+        for client_id, data in per_client.items():
+            frame = {"type": "diff", "data": data, "count": len(data), "timestamp": time.time()}
+            await self._send(client_id, frame)
+
+    async def _heartbeat_loop(self) -> None:
+        while self._running:
+            await asyncio.sleep(self._config.heartbeat_interval_s)
+            message = {
+                "type": "heartbeat",
+                "timestamp": time.time(),
+                "backend": getattr(self._connector, "backend_name", None),
+            }
+            for client_id in list(self._channels):
+                await self._send(client_id, message)
+
+    async def _send(self, client_id: str, message: dict) -> None:
+        channel = self._channels.get(client_id)
+        if channel is None:
+            return
+        try:
+            await channel.send_json(message)
+        except Exception as exc:
+            logger.debug("send to %s failed: %s; dropping client", client_id, exc)
+            self._channels.pop(client_id, None)
+            deactivated = self._registry.remove_client(client_id)
+            await self._stop_monitors(deactivated)
+
+    # --- reads / introspection ------------------------------------------ #
+
+    async def get_value(self, pv: str) -> PVValue:
+        """Current value: cached if actively monitored, else a one-shot read."""
+        cached = self._latest.get(pv)
+        if cached is not None:
+            return cached
+        return await self._connector.get(pv)
+
+    def status(self) -> dict:
+        return {
+            "running": self._running,
+            "backend": getattr(self._connector, "backend_name", None),
+            "clients": len(self._channels),
+            "active_monitors": len(self._monitors),
+            **self._registry.stats(),
+        }

@@ -9,6 +9,8 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.4",
     "httpx>=0.27",
+    "aioca>=1.7",
+    "p4p>=4.1",
 ]
 
 [dependency-groups]
