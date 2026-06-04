@@ -15,11 +15,7 @@ from dataclasses import dataclass
 from aioca import FORMAT_TIME, CANothing, caget, camonitor
 from p4p.client.asyncio import Context as P4PContext
 
-from canopy.epics.base import (
-    Subscription,
-    EventCallback,
-    normalize_severity,
-)
+from canopy.epics.base import Subscription, EventCallback, normalize_severity
 from canopy.contracts.pv import PVValue
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name
