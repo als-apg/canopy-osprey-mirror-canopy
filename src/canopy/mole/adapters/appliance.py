@@ -236,15 +236,25 @@ class EpicsArchiverApplianceAdapter:
             except (KeyError, TypeError, ValueError) as exc:
                 raise ArchiverBadResponse(f"Appliance '{self.name}': malformed binned row: {exc}") from exc
             ts_ns = secs * 1_000_000_000 + nanos
-            if not isinstance(val, list) or len(val) < 5:
+            if isinstance(val, (int, float)):
+                # Appliance fallback: when the requested window has too few samples
+                # to bin, optimized_<N> returns the raw sample value as a scalar.
+                # Promote to a degenerate single-sample bin so callers see a
+                # uniform BinnedPoint stream.
+                v = float(val)
+                mean = mn = mx = v
+                std = 0.0
+                cnt = 1
+            elif isinstance(val, list) and len(val) >= 5:
+                try:
+                    mean, std, mn, mx, cnt = val[:5]
+                except (ValueError, TypeError) as exc:
+                    raise ArchiverBadResponse(f"Appliance '{self.name}': cannot unpack binned value: {exc}") from exc
+            else:
                 raise ArchiverBadResponse(
-                    f"Appliance '{self.name}': expected 5-element [mean, std, min, max, count] in optimized response, "
-                    f"got {val!r}"
+                    f"Appliance '{self.name}': expected scalar or 5-element [mean, std, min, max, count] in optimized "
+                    f"response, got {val!r}"
                 )
-            try:
-                mean, std, mn, mx, cnt = val[:5]
-            except (ValueError, TypeError) as exc:
-                raise ArchiverBadResponse(f"Appliance '{self.name}': cannot unpack binned value: {exc}") from exc
             # bin_ns from the gap to the next bucket (last bucket gets 0).
             if i + 1 < len(rows):
                 try:
