@@ -117,9 +117,33 @@ async def test_fetch_binned_short_val_raises_bad_response(adapter, httpx_mock: H
         await adapter.fetch_binned("PV:TEST", 0, 10, binning="auto", target_buckets=2, bin_size_ns=None)
 
 
-async def test_fetch_binned_scalar_val_raises_bad_response(adapter, httpx_mock: HTTPXMock):
-    """If the response gives a scalar instead of the 5-array, it's not optimized output."""
-    httpx_mock.add_response(json=_optimized_response([{"secs": 0, "nanos": 0, "val": 1.0, "severity": 0, "status": 0}]))
+async def test_fetch_binned_scalar_val_promotes_to_degenerate_bin(adapter, httpx_mock: HTTPXMock):
+    """When optimized_N falls back to a scalar val (too few samples to bin), produce a 1-count bin."""
+    httpx_mock.add_response(
+        json=_optimized_response(
+            [
+                {"secs": 0, "nanos": 0, "val": 3.7841796875e-09, "severity": 0, "status": 0},
+                {"secs": 5, "nanos": 0, "val": [2.0, 0.2, 1.5, 2.5, 200], "severity": 0, "status": 0},
+            ]
+        )
+    )
+    points = await adapter.fetch_binned(
+        "PV:TEST", 0, 10_000_000_000, binning="auto", target_buckets=2, bin_size_ns=None
+    )
+    assert len(points) == 2
+    p = points[0]
+    assert p.mean == 3.7841796875e-09
+    assert p.std_dev == 0.0
+    assert p.min == 3.7841796875e-09
+    assert p.max == 3.7841796875e-09
+    assert p.count == 1
+
+
+async def test_fetch_binned_unparseable_val_raises_bad_response(adapter, httpx_mock: HTTPXMock):
+    """Anything that's neither a number nor a 5-element list is a real protocol error."""
+    httpx_mock.add_response(
+        json=_optimized_response([{"secs": 0, "nanos": 0, "val": "oops", "severity": 0, "status": 0}])
+    )
     with pytest.raises(ArchiverBadResponse):
         await adapter.fetch_binned("PV:TEST", 0, 10, binning="auto", target_buckets=2, bin_size_ns=None)
 
