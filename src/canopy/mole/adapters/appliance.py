@@ -236,7 +236,7 @@ class EpicsArchiverApplianceAdapter:
             except (KeyError, TypeError, ValueError) as exc:
                 raise ArchiverBadResponse(f"Appliance '{self.name}': malformed binned row: {exc}") from exc
             ts_ns = secs * 1_000_000_000 + nanos
-            if isinstance(val, (int, float)):
+            if isinstance(val, int | float):
                 # Appliance fallback: when the requested window has too few samples
                 # to bin, optimized_<N> returns the raw sample value as a scalar.
                 # Promote to a degenerate single-sample bin so callers see a
