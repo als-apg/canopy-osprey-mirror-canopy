@@ -3,7 +3,7 @@
 import os
 
 # Seed an API-key registry before canopy.main imports cache settings.
-os.environ.setdefault("CANOPY_API_KEYS", "test-read:read,test-write:read+write")
+os.environ["CANOPY_API_KEYS"] = "test-read:read,test-write:read+write"
 
 
 READ_HEADERS = {"X-API-Key": "test-read"}
