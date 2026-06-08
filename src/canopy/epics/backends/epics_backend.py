@@ -132,16 +132,26 @@ class EpicsConnector:
 
     def _subscribe_pva(self, pv: str, stripped: str, on_event: EventCallback) -> Subscription:
         ctx = self._get_pva_context()
-        loop = self._loop or asyncio.get_event_loop()
 
-        def callback(value):
+        # p4p's asyncio Context requires a coroutine callback and invokes it on the
+        # loop thread, so on_event can be called directly without marshaling.
+        connected_once = False
+
+        async def callback(value):
+            nonlocal connected_once
             if isinstance(value, Exception):
+                # p4p reports the initial not-yet-connected state before the first
+                # value. Suppress that so a live PV doesn't flicker disconnected on
+                # subscribe. Only report drops once we've actually connected.
+                if not connected_once:
+                    return
                 pvvalue = self._disconnected(pv, str(value))
             else:
+                connected_once = True
                 pvvalue = self._pva_to_pvvalue(pv, value)
-            loop.call_soon_threadsafe(on_event, pvvalue)
+            on_event(pvvalue)
 
-        monitor = ctx.monitor(stripped, callback)
+        monitor = ctx.monitor(stripped, callback, notify_disconnect=True)
         return _PvaSubscription(monitor)
 
     # --- conversions ----------------------------------------------------- #
@@ -173,7 +183,7 @@ class EpicsConnector:
                 units = value.get("display.units")
                 secs = value.get("timeStamp.secondsPastEpoch")
                 nanos = value.get("timeStamp.nanoseconds") or 0
-                if secs is not None:
+                if secs:
                     ts_ns = int(secs) * 1_000_000_000 + int(nanos)
         except Exception:
             pass
