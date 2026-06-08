@@ -2,8 +2,8 @@ from fastapi import Security, APIRouter
 
 from canopy.core.security import require_read_access
 from canopy.fox.dependencies import FormulaServiceDep
-from canopy.fox.schemas.formula import FormulaValidationDTO
 from canopy.contracts.formula import FormulaSpec
+from canopy.fox.schemas.formula import FormulaValidationDTO
 
 router = APIRouter(tags=["Fox / Validate"])
 

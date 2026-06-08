@@ -4,13 +4,13 @@ Reads the latest sample for each binding via the data source, evaluates the
 expression as a scalar, and returns a ``ScalarResult``.
 """
 
-from canopy.fox.config import FoxConfig
 from canopy.fox.ports import DataSource
+from canopy.fox.config import FoxConfig
 from canopy.fox.errors import FormulaInputMissing
-from canopy.fox.services.parser import ParsedFormula
-from canopy.fox.services.evaluator import evaluate_scalar, worst_severity
-from canopy.contracts.formula import FormulaSpec, ScalarResult
 from canopy.contracts.sample import AlarmSeverity
+from canopy.contracts.formula import FormulaSpec, ScalarResult
+from canopy.fox.services.parser import ParsedFormula
+from canopy.fox.services.evaluator import worst_severity, evaluate_scalar
 
 
 async def evaluate_scalar_formula(
@@ -31,7 +31,7 @@ async def evaluate_scalar_formula(
         if sample is None:
             missing.append(pv)
             continue
-        if isinstance(sample.value, (float, int, bool)):
+        if isinstance(sample.value, float | int | bool):
             variables[f"__v{parsed.tokens.index(token)}"] = sample.value
         else:
             variables[f"__v{parsed.tokens.index(token)}"] = float(sample.value) if sample.value is not None else 0.0

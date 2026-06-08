@@ -8,13 +8,13 @@ from fastapi.testclient import TestClient
 
 from canopy.main import app as parent_app
 from canopy.fox.app import app as fox_app
-from canopy.fox.config import FoxConfig
 from canopy.fox.ports import AlignedWindow
-from canopy.fox.services.parser import Parser
-from canopy.fox.dependencies import get_formula_service
-from canopy.fox.services.formula_service import FormulaService
+from canopy.fox.config import FoxConfig
 from canopy.contracts.sample import Sample, AlarmSeverity
-from canopy.contracts.formula import AlignmentMode, IndexMode
+from canopy.fox.dependencies import get_formula_service
+from canopy.contracts.formula import IndexMode, AlignmentMode
+from canopy.fox.services.parser import Parser
+from canopy.fox.services.formula_service import FormulaService
 
 
 @dataclass
@@ -52,7 +52,9 @@ def fake_data_source():
         latest={
             "PV:A": Sample(ts_ns=1000, value=5.0, severity=AlarmSeverity.NO_ALARM, source="archive"),
             "PV:B": Sample(ts_ns=2000, value=3.0, severity=AlarmSeverity.MINOR, source="archive"),
-            "PV:WF": Sample(ts_ns=3000, value=bytes([1, 2, 3, 4, 5]), severity=AlarmSeverity.NO_ALARM, source="archive"),
+            "PV:WF": Sample(
+                ts_ns=3000, value=bytes([1, 2, 3, 4, 5]), severity=AlarmSeverity.NO_ALARM, source="archive"
+            ),
         }
     )
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from canopy.contracts.sample import Sample
-from canopy.contracts.formula import AlignmentMode, IndexMode
+from canopy.contracts.formula import IndexMode, AlignmentMode
 
 
 @dataclass(frozen=True)

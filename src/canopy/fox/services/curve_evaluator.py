@@ -6,13 +6,13 @@ element-wise over the aligned arrays, and optionally decimates the output.
 
 import numpy as np
 
-from canopy.fox.config import FoxConfig
 from canopy.fox.ports import DataSource
+from canopy.fox.config import FoxConfig
+from canopy.core.decimation import uniform_time_decimate
+from canopy.contracts.sample import Sample, AlarmSeverity
+from canopy.contracts.formula import CurveResult, FormulaSpec
 from canopy.fox.services.parser import ParsedFormula
 from canopy.fox.services.evaluator import evaluate_array, worst_severity_arrays
-from canopy.contracts.formula import FormulaSpec, CurveResult
-from canopy.contracts.sample import AlarmSeverity, Sample
-from canopy.core.decimation import uniform_time_decimate
 
 
 async def evaluate_curve_formula(
@@ -51,7 +51,9 @@ async def evaluate_curve_formula(
         else:
             values.append(float(v))
 
-    sev_arrays = [window.severities[spec.bindings[tok]] for tok in parsed.tokens if spec.bindings[tok] in window.severities]
+    sev_arrays = [
+        window.severities[spec.bindings[tok]] for tok in parsed.tokens if spec.bindings[tok] in window.severities
+    ]
     severity = worst_severity_arrays(sev_arrays) if sev_arrays else [AlarmSeverity.NO_ALARM] * len(ts_list)
 
     inputs = {tok: spec.bindings[tok] for tok in parsed.tokens}
@@ -59,10 +61,7 @@ async def evaluate_curve_formula(
     decimated = False
     max_points = spec.max_points or config.max_output_points
     if len(ts_list) > max_points:
-        samples = [
-            Sample(ts_ns=t, value=v, severity=s, source="archive")
-            for t, v, s in zip(ts_list, values, severity)
-        ]
+        samples = [Sample(ts_ns=t, value=v, severity=s, source="archive") for t, v, s in zip(ts_list, values, severity)]
         samples = uniform_time_decimate(samples, max_points)
         ts_list = [s.ts_ns for s in samples]
         values = [s.value for s in samples]

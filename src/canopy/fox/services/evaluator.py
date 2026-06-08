@@ -11,10 +11,10 @@ import numpy as np
 import numexpr as ne
 from asteval import Interpreter
 
+from canopy.fox.errors import FormulaTypeError, FormulaEvalTimeout
 from canopy.contracts.sample import AlarmSeverity
-from canopy.fox.errors import FormulaEvalTimeout, FormulaTypeError
 from canopy.fox.services.parser import ParsedFormula
-from canopy.fox.language.namespace import build_eval_namespace, NUMEXPR_NAME_MAP
+from canopy.fox.language.namespace import NUMEXPR_NAME_MAP, build_eval_namespace
 
 _SEVERITY_ORDER = [AlarmSeverity.NO_ALARM, AlarmSeverity.MINOR, AlarmSeverity.MAJOR, AlarmSeverity.INVALID]
 
@@ -91,6 +91,7 @@ async def evaluate_array(
     timeout_s: float,
 ) -> np.ndarray:
     """Dispatch array evaluation: numexpr if compatible, else asteval."""
+
     def compute():
         if parsed.is_numexpr_compatible:
             return _evaluate_array_numexpr(parsed, variables)

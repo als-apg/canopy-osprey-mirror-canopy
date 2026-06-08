@@ -61,8 +61,21 @@ SAFE_CONSTANTS: dict[str, object] = {
 
 # Functions that numexpr supports natively (used to detect fast-path compatibility)
 NUMEXPR_FUNCS: set[str] = {
-    "sin", "cos", "tan", "arcsin", "arccos", "arctan", "arctan2",
-    "sinh", "cosh", "tanh", "exp", "log", "log10", "sqrt", "abs",
+    "sin",
+    "cos",
+    "tan",
+    "arcsin",
+    "arccos",
+    "arctan",
+    "arctan2",
+    "sinh",
+    "cosh",
+    "tanh",
+    "exp",
+    "log",
+    "log10",
+    "sqrt",
+    "abs",
     "where",
 }
 

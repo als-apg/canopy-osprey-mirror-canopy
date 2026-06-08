@@ -4,12 +4,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from canopy.fox import gateway
-from canopy.fox.config import get_fox_config
-from canopy.fox.runtime import mark_started
 from canopy.fox.ports import NullDataSource
-from canopy.fox.services.parser import Parser
-from canopy.fox.api.v1.router import router as v1_router
+from canopy.fox.config import get_fox_config
 from canopy.core.errors import register_canopy_error_handler
+from canopy.fox.runtime import mark_started
+from canopy.fox.api.v1.router import router as v1_router
+from canopy.fox.services.parser import Parser
 from canopy.fox.services.formula_service import FormulaService
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,9 @@ async def fox_lifespan():
     service = FormulaService(data_source, parser, config)
     gateway.bind(service)
     mark_started()
-    logger.info("Fox started: eval_timeout=%dms, max_output_points=%d", config.eval_timeout_ms, config.max_output_points)
+    logger.info(
+        "Fox started: eval_timeout=%dms, max_output_points=%d", config.eval_timeout_ms, config.max_output_points
+    )
     try:
         yield
     finally:

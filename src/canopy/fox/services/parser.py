@@ -11,12 +11,17 @@ Steps:
 
 import re
 import ast
-from dataclasses import dataclass
 from functools import lru_cache
+from dataclasses import dataclass
 
 from canopy.fox.errors import FormulaParseError, FormulaUnsafeError
 from canopy.fox.language.grammar import check_ast_safety
-from canopy.fox.language.namespace import SAFE_FUNCS, SAFE_CONSTANTS, NUMEXPR_FUNCS, NUMEXPR_NAME_MAP
+from canopy.fox.language.namespace import (
+    SAFE_FUNCS,
+    NUMEXPR_FUNCS,
+    SAFE_CONSTANTS,
+    NUMEXPR_NAME_MAP,
+)
 
 _TOKEN_RE = re.compile(r"\{([^{}]+)\}")
 _NESTED_BRACE_RE = re.compile(r"\{[^}]*\{")

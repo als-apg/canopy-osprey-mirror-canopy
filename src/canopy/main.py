@@ -5,12 +5,12 @@ from importlib.metadata import PackageNotFoundError, version
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from canopy.fox.app import app as fox_app
+from canopy.fox.app import fox_lifespan
 from canopy.hare.app import app as hare_app
 from canopy.hare.app import hare_lifespan
 from canopy.mole.app import app as mole_app
 from canopy.mole.app import mole_lifespan
-from canopy.fox.app import app as fox_app
-from canopy.fox.app import fox_lifespan
 from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Compose per-module lifespans. Mounted sub-apps don't run their own."""
     async with mole_lifespan(), hare_lifespan(), raccoon_lifespan(), fox_lifespan():
-
         logger.info("Starting Canopy API")
         yield
         logger.info("Canopy API shutdown complete")

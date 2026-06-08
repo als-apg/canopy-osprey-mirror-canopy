@@ -10,6 +10,7 @@ from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from canopy.mole.config import MoleConfig
+from canopy.core.decimation import uniform_time_decimate
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.adapters.base import ArchiverAdapter
@@ -20,7 +21,6 @@ from canopy.mole.schemas.archiver import (
     ArchiverHealthDTO,
 )
 from canopy.mole.adapters.registry import AdapterRegistry
-from canopy.core.decimation import uniform_time_decimate
 
 logger = logging.getLogger(__name__)
 

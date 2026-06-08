@@ -1,14 +1,14 @@
 """Evaluator unit tests."""
 
-import pytest
 import numpy as np
+import pytest
 
 from canopy.contracts.sample import AlarmSeverity
 from canopy.fox.services.parser import Parser
 from canopy.fox.services.evaluator import (
     evaluate_array,
-    evaluate_scalar,
     worst_severity,
+    evaluate_scalar,
     worst_severity_arrays,
 )
 
