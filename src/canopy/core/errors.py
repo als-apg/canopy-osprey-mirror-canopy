@@ -33,6 +33,12 @@ class ErrorCode(StrEnum):
     PV_NOT_FOUND_IN_ARCHIVER = auto()
     BINNING_NOT_SUPPORTED = auto()
 
+    # EPICS connector / Hare
+    PV_CONNECTION_FAILED = auto()
+    PV_READ_TIMEOUT = auto()
+    PV_WRITE_FAILED = auto()
+    EPICS_BACKEND_UNAVAILABLE = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.

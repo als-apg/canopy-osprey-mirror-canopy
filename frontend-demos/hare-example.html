@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Canopy · Hare live-PV POC</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; max-width: 960px; }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  .sub { color: #888; margin: 0 0 1rem; }
+  fieldset { border: 1px solid #ccc; border-radius: 8px; margin: 0 0 1rem; padding: .75rem 1rem; }
+  legend { padding: 0 .4rem; color: #888; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  label { display: inline-flex; flex-direction: column; font-size: .75rem; color: #888; gap: .15rem; margin-right: .75rem; }
+  input { font: inherit; padding: .35rem .5rem; border: 1px solid #bbb; border-radius: 6px; min-width: 14rem; }
+  button { font: inherit; padding: .4rem .8rem; border: 1px solid #888; border-radius: 6px; background: #f3f3f3; cursor: pointer; }
+  button:hover { background: #e8e8e8; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .5rem; }
+  .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; background: #bbb; vertical-align: middle; margin-right: .4rem; }
+  .dot.on { background: #2e9e44; } .dot.off { background: #c0392b; }
+  table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ddd; font-variant-numeric: tabular-nums; }
+  th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #888; }
+  td.value { font-weight: 600; }
+  tr.disconnected { opacity: .5; }
+  .sev { display: inline-block; padding: .05rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 600; color: #fff; }
+  .sev-NO_ALARM { background: #2e9e44; } .sev-MINOR { background: #d39e00; }
+  .sev-MAJOR { background: #c0392b; } .sev-INVALID { background: #7d3c98; }
+  #log { height: 9rem; overflow: auto; background: #11151c; color: #c8d3e0; border-radius: 8px;
+         padding: .5rem .75rem; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  .muted { color: #888; }
+</style>
+</head>
+<body>
+  <h1>Canopy · Hare <span class="muted">live-PV proof of concept</span></h1>
+  <p class="sub">Connects to Hare's WebSocket, subscribes to PVs, and shows live diff-streamed values.
+     Start the backend with <code>CANOPY_API_KEYS="dev:read+write" uv run uvicorn canopy.main:app</code> and open this file.</p>
+
+  <fieldset>
+    <legend>Connection</legend>
+    <div class="row">
+      <label>WebSocket URL
+        <input id="url" value="ws://localhost:8000/hare/v1/ws/pvs" size="40" />
+      </label>
+      <label>API key
+        <input id="key" value="dev" style="min-width:8rem" />
+      </label>
+      <button id="connectBtn">Connect</button>
+      <span style="margin-left:.5rem"><span id="dot" class="dot"></span><span id="status">disconnected</span></span>
+      <span class="muted" id="meta"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Subscribe</legend>
+    <div class="row">
+      <label style="flex:1">PV names (comma or space separated)
+        <input id="pvs" value="SIM:TEMP, SIM:PRESSURE, SIM:FLOW, SIM:LEVEL" style="width:100%" />
+      </label>
+      <button id="subBtn" disabled>Subscribe</button>
+      <button id="clearBtn" disabled>Unsubscribe all</button>
+      <button id="pingBtn" disabled>Ping</button>
+    </div>
+  </fieldset>
+
+  <table>
+    <thead><tr><th>PV</th><th>Value</th><th>Severity</th><th>Conn</th><th>Units</th><th>Updated</th></tr></thead>
+    <tbody id="tbody"><tr><td colspan="6" class="muted">No data yet — connect and subscribe.</td></tr></tbody>
+  </table>
+
+  <h2 style="font-size:.8rem;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:1.25rem 0 .35rem">Frame log</h2>
+  <div id="log"></div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let ws = null;
+  let subscribed = new Set();
+  const state = {};  // pv -> latest value object
+
+  function log(line) {
+    const el = $("log");
+    const ts = new Date().toLocaleTimeString();
+    el.textContent = `[${ts}] ${line}\n` + el.textContent;
+    if (el.textContent.length > 8000) el.textContent = el.textContent.slice(0, 8000);
+  }
+
+  function fmtValue(v) {
+    if (v === null || v === undefined) return "—";
+    if (Array.isArray(v)) {
+      const head = v.slice(0, 4).map((x) => (typeof x === "number" ? (+x).toFixed(2) : x)).join(", ");
+      return `[${v.length}] ${head}${v.length > 4 ? ", …" : ""}`;
+    }
+    if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(4);
+    return String(v);
+  }
+
+  function fmtTs(ns) {
+    if (!ns) return "—";
+    const ms = ns / 1e6;
+    const d = new Date(ms);
+    return d.toLocaleTimeString() + "." + String(Math.floor(ms % 1000)).padStart(3, "0");
+  }
+
+  function render() {
+    const tbody = $("tbody");
+    const pvs = Object.keys(state).sort();
+    if (!pvs.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">No data yet — connect and subscribe.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = "";
+    for (const pv of pvs) {
+      const d = state[pv];
+      const tr = document.createElement("tr");
+      if (d.connected === false) tr.className = "disconnected";
+      const sev = d.severity || "INVALID";
+      tr.innerHTML =
+        `<td>${pv}</td>` +
+        `<td class="value">${fmtValue(d.value)}</td>` +
+        `<td><span class="sev sev-${sev}">${sev}</span></td>` +
+        `<td>${d.connected === false ? "✕" : "✓"}</td>` +
+        `<td class="muted">${d.units || ""}</td>` +
+        `<td class="muted">${fmtTs(d.tsNs)}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function applyData(data) {
+    for (const pv of Object.keys(data || {})) state[pv] = data[pv];
+    render();
+  }
+
+  function setConnected(on) {
+    $("dot").className = "dot " + (on ? "on" : "off");
+    $("status").textContent = on ? "connected" : "disconnected";
+    $("connectBtn").textContent = on ? "Disconnect" : "Connect";
+    for (const id of ["subBtn", "clearBtn", "pingBtn"]) $(id).disabled = !on;
+  }
+
+  function connect() {
+    const url = $("url").value.trim() + "?api_key=" + encodeURIComponent($("key").value.trim());
+    log("connecting to " + url);
+    ws = new WebSocket(url);
+    ws.onopen = () => { setConnected(true); log("open"); };
+    ws.onclose = (e) => { setConnected(false); ws = null; log(`closed (code ${e.code}${e.reason ? ", " + e.reason : ""})`); };
+    ws.onerror = () => log("socket error (check backend / api key)");
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      switch (m.type) {
+        case "initial": applyData(m.data); log(`initial: ${m.count} PV(s)`); break;
+        case "diff":
+          applyData(m.data);
+          break;
+        case "heartbeat": $("meta").textContent = `backend: ${m.backend} · heartbeat ${new Date().toLocaleTimeString()}`; break;
+        case "pong": log("pong"); break;
+        case "error": log("error: " + m.message); break;
+        default: log(m.type + ": " + ev.data);
+      }
+    };
+  }
+
+  function parsePvs() {
+    return $("pvs").value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  $("connectBtn").onclick = () => { if (ws) ws.close(); else connect(); };
+  $("subBtn").onclick = () => {
+    const pvNames = parsePvs();
+    if (!pvNames.length || !ws) return;
+    pvNames.forEach((p) => subscribed.add(p));
+    ws.send(JSON.stringify({ type: "subscribe", pvNames }));
+    log("subscribe: " + pvNames.join(", "));
+  };
+  $("clearBtn").onclick = () => {
+    if (!ws || !subscribed.size) return;
+    const pvNames = [...subscribed];
+    ws.send(JSON.stringify({ type: "unsubscribe", pvNames }));
+    subscribed.clear();
+    for (const k of Object.keys(state)) delete state[k];
+    render();
+    log("unsubscribed all");
+  };
+  $("pingBtn").onclick = () => ws && ws.send(JSON.stringify({ type: "ping" }));
+
+  setConnected(false);
+})();
+</script>
+</body>
+</html>
