@@ -6,17 +6,28 @@ is private implementation.
 
 from __future__ import annotations
 
+import logging
+
 from canopy.contracts.sample import Sample
 from canopy.vole.schemas.buffer import VoleStatsDTO
 from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.alignment_service import AlignedResult
+from canopy.vole.services.hare_ingest import HareIngestService
+
+logger = logging.getLogger(__name__)
 
 _service: BufferService | None = None
+_ingest: HareIngestService | None = None
 
 
 def bind(service: BufferService | None) -> None:
     global _service
     _service = service
+
+
+def bind_ingest(ingest: HareIngestService | None) -> None:
+    global _ingest
+    _ingest = ingest
 
 
 def get_service() -> BufferService:
@@ -83,7 +94,25 @@ async def stats() -> VoleStatsDTO:
     return await get_service().stats()
 
 
-# --- deferred (Wren not implemented) ------------------------------------ #
+# --- live subscription (Hare integration) -------------------------------- #
+
+
+async def subscribe_live(pvs: list[str]) -> None:
+    """Subscribe Vole to live updates from Hare for these PVs."""
+    if _ingest is None:
+        logger.debug("subscribe_live called but Hare ingest not available")
+        return
+    await _ingest.subscribe(pvs)
+
+
+async def unsubscribe_live(pvs: list[str]) -> None:
+    """Unsubscribe from live updates for these PVs."""
+    if _ingest is None:
+        return
+    await _ingest.unsubscribe(pvs)
+
+
+# --- deferred (live tailing not implemented) ----------------------------- #
 
 
 async def subscribe_window(pv: str, lookback_ns: int):  # noqa: ANN201

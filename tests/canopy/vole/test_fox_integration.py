@@ -12,7 +12,7 @@ from canopy.vole.config import VoleConfig
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.fox.dependencies import get_formula_service
-from canopy.vole.buffer.clock import FakeClock
+from canopy.core.clock import FakeClock
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.dependencies import get_buffer_service
 from canopy.fox.services.parser import Parser

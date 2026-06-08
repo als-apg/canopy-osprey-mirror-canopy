@@ -31,6 +31,21 @@ async def vole_lifespan():
     eviction = EvictionService(store, config)
     service = BufferService(store, alignment, eviction, clock, config)
     gateway.bind(service)
+
+    # Wire live data ingestion from Hare (optional — degrades gracefully)
+    ingest = None
+    try:
+        from canopy.hare import gateway as hare_gateway
+        from canopy.vole.services.hare_ingest import HareIngestService
+
+        broker = hare_gateway.get_broker()
+        ingest = HareIngestService(service, broker)
+        await ingest.start()
+        gateway.bind_ingest(ingest)
+        logger.info("Vole connected to Hare for live data ingestion")
+    except (ImportError, RuntimeError):
+        logger.info("Hare not available; Vole will only accept seed() data")
+
     mark_started()
     logger.info(
         "Vole started: max_age=%dns, max_points=%d, global_bytes_max=%d",
@@ -41,6 +56,9 @@ async def vole_lifespan():
     try:
         yield
     finally:
+        if ingest:
+            await ingest.stop()
+            gateway.bind_ingest(None)
         gateway.bind(None)
         logger.info("Vole shutdown complete")
 
