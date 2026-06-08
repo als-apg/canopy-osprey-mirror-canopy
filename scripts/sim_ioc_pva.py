@@ -63,9 +63,11 @@ if __name__ == "__main__":
     print("PVA IOC running. PVs: TEST:COUNTER, TEST:SINE, TEST:CONST")
     print("Press Ctrl+C to stop.")
 
-    with Server(providers=[{"TEST:COUNTER": pvs["TEST:COUNTER"],
-                            "TEST:SINE": pvs["TEST:SINE"],
-                            "TEST:CONST": pvs["TEST:CONST"]}]):
+    with Server(
+        providers=[
+            {"TEST:COUNTER": pvs["TEST:COUNTER"], "TEST:SINE": pvs["TEST:SINE"], "TEST:CONST": pvs["TEST:CONST"]}
+        ]
+    ):
         try:
             while True:
                 time.sleep(1.0)
