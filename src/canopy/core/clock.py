@@ -6,8 +6,8 @@ class Clock(Protocol):
     def now_ns(self) -> int: ...
 
 
-class WallClock:
-    """Production clock: UTC nanoseconds from time.time_ns()."""
+class SystemClock:
+    """System clock: UTC nanoseconds from time.time_ns()."""
 
     def now_ns(self) -> int:
         return time.time_ns()

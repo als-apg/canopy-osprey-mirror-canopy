@@ -10,7 +10,7 @@ from canopy.vole.errors import PVNotBuffered, BufferAtCapacity
 from canopy.core.decimation import uniform_time_decimate
 from canopy.contracts.sample import Sample
 from canopy.vole.buffer.ring import StoredSample
-from canopy.vole.buffer.clock import Clock
+from canopy.core.clock import Clock
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.schemas.buffer import PerPVInfoDTO, VoleStatsDTO
 from canopy.vole.services.eviction_service import EvictionService

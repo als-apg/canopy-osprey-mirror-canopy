@@ -7,7 +7,7 @@ from canopy.vole import gateway
 from canopy.core.errors import register_canopy_error_handler
 from canopy.vole.config import get_vole_config
 from canopy.vole.runtime import mark_started
-from canopy.vole.buffer.clock import WallClock
+from canopy.core.clock import SystemClock
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.api.v1.router import router as v1_router
 from canopy.vole.services.buffer_service import BufferService
@@ -25,7 +25,7 @@ async def vole_lifespan():
     don't run their own lifespan automatically behind ``app.mount()``.
     """
     config = get_vole_config()
-    clock = WallClock()
+    clock = SystemClock()
     store = PVStore(config)
     alignment = AlignmentService()
     eviction = EvictionService(store, config)
