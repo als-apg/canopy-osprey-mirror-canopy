@@ -40,6 +40,10 @@ class WidgetService:
     def index(self) -> WidgetIndex:
         return self._index
 
+    @property
+    def config(self) -> BeaverConfig:
+        return self._config
+
     async def get(self, widget_id: str) -> WidgetDTO:
         widget = self._index.by_id.get(widget_id)
         if widget is None:

@@ -81,7 +81,12 @@ def tmp_catalog(tmp_path: Path, fixture_widgets) -> Path:
     widgets_dir.mkdir()
     for w in fixture_widgets:
         (widgets_dir / f"{w['id']}.json").write_text(json.dumps(w), encoding="utf-8")
-    (tmp_path / "icons").mkdir()
+    icons_dir = tmp_path / "icons"
+    icons_dir.mkdir()
+    (icons_dir / "test.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>',
+        encoding="utf-8",
+    )
     (tmp_path / "legacy-screens").mkdir()
     return tmp_path
 
