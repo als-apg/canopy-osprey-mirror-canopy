@@ -2,14 +2,23 @@
 
 Fox imports this class; it is constructed in fox_lifespan() and injected
 into FormulaService. Fox never imports canopy.vole.gateway directly.
+
+When a PV is not yet buffered, the adapter auto-provisions it: fetches
+historical data from Mole and subscribes to live updates via Hare.
 """
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable, Awaitable
+
 from canopy.fox.ports import AlignedWindow
+from canopy.vole.errors import PVNotBuffered
 from canopy.contracts.sample import Sample
 from canopy.contracts.formula import IndexMode, AlignmentMode
 from canopy.vole.services.buffer_service import BufferService
+
+logger = logging.getLogger(__name__)
 
 _ALIGN_MAP: dict[AlignmentMode, str] = {
     "last": "last",
@@ -23,12 +32,27 @@ _INDEX_MAP: dict[IndexMode, str] = {
     "first_input": "first_input",
 }
 
+FetchWindowFn = Callable[[str, int, int], Awaitable[list[Sample]]]
+SubscribeLiveFn = Callable[[list[str]], Awaitable[None]]
+
 
 class VoleDataSource:
-    """Implements Fox's DataSource protocol by delegating to BufferService."""
+    """Implements Fox's DataSource protocol by delegating to BufferService.
 
-    def __init__(self, buffer_service: BufferService) -> None:
+    On first access to an unknown PV, provisions it by seeding from Mole
+    and subscribing to Hare for live updates.
+    """
+
+    def __init__(
+        self,
+        buffer_service: BufferService,
+        fetch_window: FetchWindowFn | None = None,
+        subscribe_live: SubscribeLiveFn | None = None,
+    ) -> None:
         self._buffer = buffer_service
+        self._fetch_window = fetch_window
+        self._subscribe_live = subscribe_live
+        self._provisioned: set[str] = set()
 
     async def read_aligned(
         self,
@@ -43,14 +67,17 @@ class VoleDataSource:
         vole_align = _ALIGN_MAP[align]
         vole_index = _INDEX_MAP[index]
 
-        result = await self._buffer.read_aligned(
-            pvs,
-            t0_ns,
-            t1_ns,
-            align=vole_align,
-            index=vole_index,
-            grid_dt_ns=grid_dt_ns,
-        )
+        try:
+            result = await self._buffer.read_aligned(
+                pvs, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
+            )
+        except PVNotBuffered as exc:
+            if not self._can_provision():
+                raise
+            await self._provision(exc.pvs, t0_ns, t1_ns)
+            result = await self._buffer.read_aligned(
+                pvs, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
+            )
 
         return AlignedWindow(
             ts_ns=result.ts_ns,
@@ -59,4 +86,34 @@ class VoleDataSource:
         )
 
     async def read_latest(self, pv: str) -> Sample | None:
-        return await self._buffer.read_latest(pv)
+        sample = await self._buffer.read_latest(pv)
+        if sample is None and pv not in self._provisioned and self._can_provision():
+            await self._provision([pv], 0, 0)
+            sample = await self._buffer.read_latest(pv)
+        return sample
+
+    def _can_provision(self) -> bool:
+        return self._fetch_window is not None and self._subscribe_live is not None
+
+    async def _provision(self, pvs: list[str], t0_ns: int, t1_ns: int) -> None:
+        """Seed missing PVs from Mole and subscribe to Hare live updates."""
+        assert self._fetch_window is not None
+        assert self._subscribe_live is not None
+
+        to_provision = [pv for pv in pvs if pv not in self._provisioned]
+        if not to_provision:
+            return
+
+        for pv in to_provision:
+            try:
+                samples = await self._fetch_window(pv, t0_ns, t1_ns)
+                if samples:
+                    await self._buffer.seed(pv, samples)
+                    logger.info("Auto-provisioned PV %s: seeded %d samples from Mole", pv, len(samples))
+                else:
+                    logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
+            except Exception:
+                logger.warning("Failed to seed PV %s from Mole", pv, exc_info=True)
+
+        await self._subscribe_live(to_provision)
+        self._provisioned.update(to_provision)

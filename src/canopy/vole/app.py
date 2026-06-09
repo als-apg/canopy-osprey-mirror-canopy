@@ -3,13 +3,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from canopy.hare import gateway as hare_gateway
 from canopy.vole import gateway
+from canopy.core.clock import SystemClock
 from canopy.core.errors import register_canopy_error_handler
 from canopy.vole.config import get_vole_config
 from canopy.vole.runtime import mark_started
-from canopy.core.clock import SystemClock
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.api.v1.router import router as v1_router
+from canopy.vole.services.hare_ingest import HareIngestService
 from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.eviction_service import EvictionService
 from canopy.vole.services.alignment_service import AlignmentService
@@ -32,19 +34,11 @@ async def vole_lifespan():
     service = BufferService(store, alignment, eviction, clock, config)
     gateway.bind(service)
 
-    # Wire live data ingestion from Hare (optional — degrades gracefully)
-    ingest = None
-    try:
-        from canopy.hare import gateway as hare_gateway
-        from canopy.vole.services.hare_ingest import HareIngestService
-
-        broker = hare_gateway.get_broker()
-        ingest = HareIngestService(service, broker)
-        await ingest.start()
-        gateway.bind_ingest(ingest)
-        logger.info("Vole connected to Hare for live data ingestion")
-    except (ImportError, RuntimeError):
-        logger.info("Hare not available; Vole will only accept seed() data")
+    broker = hare_gateway.get_broker()
+    ingest = HareIngestService(service, broker)
+    await ingest.start()
+    gateway.bind_ingest(ingest)
+    logger.info("Vole connected to Hare for live data ingestion")
 
     mark_started()
     logger.info(
@@ -56,9 +50,8 @@ async def vole_lifespan():
     try:
         yield
     finally:
-        if ingest:
-            await ingest.stop()
-            gateway.bind_ingest(None)
+        await ingest.stop()
+        gateway.bind_ingest(None)
         gateway.bind(None)
         logger.info("Vole shutdown complete")
 

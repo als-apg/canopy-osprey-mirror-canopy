@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
+from canopy.core.clock import Clock
 from canopy.vole.config import VoleConfig
 from canopy.vole.errors import PVNotBuffered, BufferAtCapacity
 from canopy.core.decimation import uniform_time_decimate
 from canopy.contracts.sample import Sample
 from canopy.vole.buffer.ring import StoredSample
-from canopy.core.clock import Clock
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.schemas.buffer import PerPVInfoDTO, VoleStatsDTO
 from canopy.vole.services.eviction_service import EvictionService
@@ -95,7 +95,7 @@ class BufferService:
         """Single-PV window read with optional decimation."""
         ring = self._store.get(pv)
         if ring is None:
-            raise PVNotBuffered(f"PV not buffered: {pv}")
+            raise PVNotBuffered(f"PV not buffered: {pv}", pvs=[pv])
 
         t1_ns = self._resolve_t1(t1_ns)
         now = self._clock.now_ns()
@@ -136,7 +136,7 @@ class BufferService:
         """Multi-PV aligned read."""
         missing = [pv for pv in pvs if not self._store.contains(pv)]
         if missing:
-            raise PVNotBuffered(f"PVs not buffered: {missing}")
+            raise PVNotBuffered(f"PVs not buffered: {missing}", pvs=missing)
 
         t1_ns = self._resolve_t1(t1_ns)
         now = self._clock.now_ns()

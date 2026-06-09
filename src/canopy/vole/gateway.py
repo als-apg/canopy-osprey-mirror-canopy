@@ -6,15 +6,11 @@ is private implementation.
 
 from __future__ import annotations
 
-import logging
-
 from canopy.contracts.sample import Sample
 from canopy.vole.schemas.buffer import VoleStatsDTO
+from canopy.vole.services.hare_ingest import HareIngestService
 from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.alignment_service import AlignedResult
-from canopy.vole.services.hare_ingest import HareIngestService
-
-logger = logging.getLogger(__name__)
 
 _service: BufferService | None = None
 _ingest: HareIngestService | None = None
@@ -100,15 +96,14 @@ async def stats() -> VoleStatsDTO:
 async def subscribe_live(pvs: list[str]) -> None:
     """Subscribe Vole to live updates from Hare for these PVs."""
     if _ingest is None:
-        logger.debug("subscribe_live called but Hare ingest not available")
-        return
+        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
     await _ingest.subscribe(pvs)
 
 
 async def unsubscribe_live(pvs: list[str]) -> None:
     """Unsubscribe from live updates for these PVs."""
     if _ingest is None:
-        return
+        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
     await _ingest.unsubscribe(pvs)
 
 
