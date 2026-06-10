@@ -48,6 +48,13 @@ class ExampleAdapter:
             for i in range(n)
         ]
 
+    async def fetch_last_before(self, pv, ts_ns):
+        if pv != "PV:EXAMPLE":
+            raise PVNotFoundInArchiver(f"PV '{pv}' unknown to example adapter")
+        if ts_ns <= 0:
+            return None
+        return Sample(ts_ns=ts_ns - 1, value=-1.0, severity=AlarmSeverity.NO_ALARM, source="archive")
+
     async def fetch_binned(self, pv, t0_ns, t1_ns, *, binning, target_buckets, bin_size_ns):
         if pv != "PV:EXAMPLE":
             raise PVNotFoundInArchiver(f"PV '{pv}' unknown to example adapter")

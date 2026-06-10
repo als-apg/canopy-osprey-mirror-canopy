@@ -4,10 +4,11 @@ Mole supports archivers other than the EPICS Archiver Appliance. Other labs (or 
 
 ## 1. Implement the Protocol
 
-The contract lives in `canopy.mole.adapters.base.ArchiverAdapter`. Implement these seven methods:
+The contract lives in `canopy.mole.adapters.base.ArchiverAdapter`. Implement these eight methods:
 
 - `from_config(name, cfg) -> "YourAdapter"`: classmethod that builds an instance from validated config.
 - `fetch_window(pv, t0_ns, t1_ns, *, max_points=None) -> list[Sample]`: raw samples in the window.
+- `fetch_last_before(pv, ts_ns) -> Sample | None`: most recent stored sample at or before `ts_ns` (backs `includeLastBefore`); raise `LastBeforeNotSupported` if your archiver cannot answer point-in-time lookups.
 - `fetch_binned(pv, t0_ns, t1_ns, *, binning, target_buckets, bin_size_ns) -> list[BinnedPoint]`: statistical buckets in `auto` or `time` mode.
 - `metadata(pv) -> PVMetadata`: per-process variable metadata your archiver carries.
 - `search(pattern, *, limit) -> list[str]`: pattern-based process variable name search.
@@ -34,6 +35,7 @@ Raise the typed domain exceptions from `canopy.mole.adapters.base`:
 | `ArchiverTimeout`         | 504         | Subclass of `ArchiverUnavailable`; your client timed out.|
 | `ArchiverBadResponse`     | 502         | Archiver returned malformed / unparseable response.      |
 | `BinningNotSupported`     | 501         | Your archiver cannot honor the requested binning mode.   |
+| `LastBeforeNotSupported`  | 501         | Your archiver cannot answer point-in-time lookups.       |
 
 The Mole exception handler maps each to the right HTTP status with the right slug in the `{"code", "detail"}` envelope.
 

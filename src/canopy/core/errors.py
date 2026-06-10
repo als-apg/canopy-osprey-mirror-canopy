@@ -32,6 +32,7 @@ class ErrorCode(StrEnum):
     ARCHIVER_BAD_RESPONSE = auto()
     PV_NOT_FOUND_IN_ARCHIVER = auto()
     BINNING_NOT_SUPPORTED = auto()
+    LAST_BEFORE_NOT_SUPPORTED = auto()
 
     # EPICS connector / Hare
     PV_CONNECTION_FAILED = auto()

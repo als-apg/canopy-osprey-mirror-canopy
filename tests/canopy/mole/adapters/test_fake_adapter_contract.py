@@ -32,6 +32,10 @@ async def test_fetch_window_invariants(adapter):
     await contract.assert_fetch_window_invariants(adapter, pv="PV:TEST", t0_ns=0, t1_ns=10_000_000_000)
 
 
+async def test_fetch_last_before_invariants(adapter):
+    await contract.assert_fetch_last_before(adapter, pv="PV:TEST", ts_ns=10_000_000_000)
+
+
 async def test_fetch_binned_auto_invariants(adapter):
     await contract.assert_fetch_binned_auto(adapter, pv="PV:TEST", t0_ns=0, t1_ns=10_000_000_000, target_buckets=5)
 

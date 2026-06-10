@@ -86,7 +86,13 @@ class EpicsArchiverApplianceAdapter:
         *,
         max_points: int | None = None,  # ignored in raw mode; service decimates if needed
     ) -> list[Sample]:
-        """Raw `getData.json` query — one PV, time-window. Returns stored samples."""
+        """Raw `getData.json` query — one PV, time-window. Returns stored samples.
+
+        The Appliance may include the last sample before the window start in
+        raw responses; we filter to `[t0_ns, t1_ns]` so the contract is
+        deterministic across Appliance versions. Callers that want the prior
+        sample use `fetch_last_before`.
+        """
         params = {
             "pv": pv,
             "from": _ns_to_iso(t0_ns),
@@ -97,7 +103,31 @@ class EpicsArchiverApplianceAdapter:
         payload = self._parse_json(response)
         if not isinstance(payload, list) or not payload:
             return []
-        return self._parse_raw_block(payload[0])
+        samples = self._parse_raw_block(payload[0])
+        return [s for s in samples if t0_ns <= s.ts_ns <= t1_ns]
+
+    async def fetch_last_before(self, pv: str, ts_ns: int) -> Sample | None:
+        """Most recent stored sample at or before `ts_ns`, or `None`.
+
+        A zero-width `getData.json` query (`from == to`) makes the Appliance
+        return the last known sample at or before that instant. `_ns_to_iso`
+        floors to millisecond precision, so a sample landing within the final
+        millisecond before `ts_ns` may be missed — negligible for archive
+        lookback.
+        """
+        at = _ns_to_iso(ts_ns)
+        params = {
+            "pv": pv,
+            "from": at,
+            "to": at,
+            "donotchunk": "true",
+        }
+        response = await self._safe_get("/retrieval/data/getData.json", params=params, pv=pv)
+        payload = self._parse_json(response)
+        if not isinstance(payload, list) or not payload:
+            return None
+        candidates = [s for s in self._parse_raw_block(payload[0]) if s.ts_ns <= ts_ns]
+        return candidates[-1] if candidates else None
 
     async def fetch_binned(
         self,
