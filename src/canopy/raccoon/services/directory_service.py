@@ -26,7 +26,6 @@ from canopy.raccoon.adapters.base import (
     AdapterHealth,
     InvalidQuery,
     DirectoryTimeout,
-    DirectoryUnavailable,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +114,12 @@ class DirectoryService:
         return await self._flight.run(key, factory)
 
     async def exists(self, pv: str) -> bool:
+        """Single-PV existence check, served from the name cache when possible.
+
+        Literal lookups deliberately bypass the pattern cache: routing them
+        through `list()` would create one pattern-cache entry per PV name, and
+        a large `validate` storm would evict every genuine pattern query.
+        """
         if _has_pattern_metachars(pv):
             raise InvalidQuery(f"PV name contains pattern metacharacters: {pv!r}")
 
@@ -122,10 +127,26 @@ class DirectoryService:
         if cached is not None:
             return cached
 
-        names = await self.list(NameKind.PV, pv)
-        known = pv in names
-        self._name_cache.set(pv, known)
-        return known
+        async def factory() -> bool:
+            # Re-check after acquiring the flight slot; a coalesced caller may
+            # have populated the name cache while we waited.
+            cached_again = self._name_cache.get(pv)
+            if cached_again is not None:
+                return cached_again
+
+            adapter = self._registry.require()
+            try:
+                names = await asyncio.wait_for(
+                    adapter.list_pvs(pv, tag=None, sort_by=None, element_type=None),
+                    timeout=self._timeout_s,
+                )
+            except TimeoutError as exc:
+                raise DirectoryTimeout(f"Directory call exceeded {self._timeout_s}s") from exc
+            known = pv in names
+            self._name_cache.set(pv, known)
+            return known
+
+        return await self._flight.run(("exists", pv), factory)
 
     async def validate(self, pvs: list[str]) -> ValidateResultDTO:
         for pv in pvs:
@@ -136,10 +157,12 @@ class DirectoryService:
         # match by index against the response lists.
         cached_results: dict[str, bool] = {}
         to_query: list[str] = []
+        queued: set[str] = set()
         for pv in pvs:
             hit = self._name_cache.get(pv)
             if hit is None:
-                if pv not in cached_results:
+                if pv not in queued:
+                    queued.add(pv)
                     to_query.append(pv)
             else:
                 cached_results[pv] = hit
@@ -174,7 +197,9 @@ class DirectoryService:
         else:
             try:
                 health = await asyncio.wait_for(adapter.health(), timeout=self._timeout_s)
-            except (TimeoutError, DirectoryUnavailable) as exc:
+            except Exception as exc:
+                # A probe failure of any kind degrades the summary to
+                # unhealthy; it must never turn the stats endpoint into a 500.
                 health = AdapterHealth(
                     healthy=False,
                     last_error=str(exc),

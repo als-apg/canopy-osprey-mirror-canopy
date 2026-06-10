@@ -130,3 +130,65 @@ async def test_stats_reports_adapter_and_caches(directory_service, fake_adapter)
     assert stats.adapter_health.healthy is True
     assert stats.pattern_cache.size == 1
     assert stats.pattern_cache.hits >= 1
+
+
+@pytest.mark.asyncio
+async def test_exists_does_not_populate_pattern_cache(directory_service, fake_adapter) -> None:
+    """Literal lookups must not occupy pattern-cache slots: a 10k-PV validate
+    storm would otherwise evict every genuine pattern query."""
+    fake_adapter.pvs = {"A:1", "B:1"}
+
+    await directory_service.exists("A:1")
+    await directory_service.exists("B:1")
+    await directory_service.exists("MISSING:1")
+
+    assert directory_service._pattern_cache.size() == 0
+    assert directory_service._name_cache.size() == 3
+
+
+@pytest.mark.asyncio
+async def test_concurrent_exists_coalesce_to_one_upstream(make_directory_service, fake_adapter) -> None:
+    fake_adapter.pvs = {"X:1"}
+    fake_adapter.delay_s = 0.05
+    service = make_directory_service(fake_adapter)
+
+    results = await asyncio.gather(*(service.exists("X:1") for _ in range(20)))
+
+    assert all(r is True for r in results)
+    assert sum(1 for c in fake_adapter.calls if c[0] == "list_pvs") == 1
+
+
+@pytest.mark.asyncio
+async def test_exists_timeout_translates_to_directory_timeout(make_directory_service, fake_adapter) -> None:
+    fake_adapter.delay_s = 0.5
+    service = make_directory_service(fake_adapter, timeout_s=0.05)
+
+    with pytest.raises(DirectoryTimeout):
+        await service.exists("X:1")
+
+
+@pytest.mark.asyncio
+async def test_validate_duplicate_uncached_pvs_issue_one_upstream_call(directory_service, fake_adapter) -> None:
+    fake_adapter.pvs = {"A:1"}
+
+    result = await directory_service.validate(["A:1", "A:1", "B:1", "B:1"])
+
+    assert result.known == ["A:1", "A:1"]
+    assert result.unknown == ["B:1", "B:1"]
+    assert sum(1 for c in fake_adapter.calls if c == ("list_pvs", "A:1")) == 1
+    assert sum(1 for c in fake_adapter.calls if c == ("list_pvs", "B:1")) == 1
+
+
+@pytest.mark.asyncio
+async def test_stats_survives_health_probe_raising(directory_service, fake_adapter) -> None:
+    """An adapter whose health() raises must degrade the summary, not 500 it."""
+
+    async def exploding_health():
+        raise RuntimeError("probe blew up")
+
+    fake_adapter.health = exploding_health
+
+    stats = await directory_service.stats()
+
+    assert stats.adapter_health.healthy is False
+    assert "probe blew up" in (stats.adapter_health.last_error or "")

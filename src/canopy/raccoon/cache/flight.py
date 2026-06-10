@@ -37,7 +37,7 @@ class SingleFlight:
                 fut: asyncio.Future = existing
                 owns = False
             else:
-                fut = asyncio.get_event_loop().create_future()
+                fut = asyncio.get_running_loop().create_future()
                 self._inflight[key] = fut
                 owns = True
 
