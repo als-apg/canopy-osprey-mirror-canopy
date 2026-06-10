@@ -6,9 +6,7 @@ via ``canopy.beaver.gateway.bind(service)`` or via FastAPI's
 ``dependency_overrides`` on the mounted sub-app.
 """
 
-from typing import Any
-
-import jsonschema
+from typing import Any, get_args
 
 from canopy.beaver.config import BeaverConfig
 from canopy.beaver.errors import WidgetNotFound, QtClassNotMapped
@@ -16,6 +14,7 @@ from canopy.beaver.catalog.index import WidgetIndex
 from canopy.beaver.schemas.widget import (
     WidgetDTO,
     CategoryDTO,
+    WidgetCategory,
     WidgetSummaryDTO,
     ValidateResultDTO,
     ValidationErrorDTO,
@@ -74,18 +73,23 @@ class WidgetService:
         ]
 
     async def categories(self) -> list[CategoryDTO]:
+        """All declared categories, in declaration order, including empty ones.
+
+        Empty categories (count 0) are included so the Screen Builder palette
+        keeps stable section scaffolding as widget sets grow.
+        """
         return [
             CategoryDTO(
                 id=cat,
                 display_name=_CATEGORY_LABELS.get(cat, cat.title()),
-                count=len(widgets),
+                count=len(self._index.by_category.get(cat, [])),
             )
-            for cat, widgets in sorted(self._index.by_category.items())
+            for cat in get_args(WidgetCategory)
         ]
 
     async def validate_props(self, widget_id: str, props: dict[str, Any]) -> ValidateResultDTO:
-        widget = await self.get(widget_id)
-        validator = jsonschema.Draft7Validator(widget.prop_schema)
+        await self.get(widget_id)  # 404 on unknown id
+        validator = self._index.validators[widget_id]
         errors = sorted(validator.iter_errors(props), key=lambda e: list(e.absolute_path))
         if not errors:
             return ValidateResultDTO(valid=True)

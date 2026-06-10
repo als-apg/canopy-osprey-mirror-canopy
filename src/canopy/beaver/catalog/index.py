@@ -6,6 +6,8 @@ Three lookup tables built by :class:`FileCatalogLoader` and bound on the
 
 from dataclasses import dataclass
 
+from jsonschema import Draft7Validator
+
 from canopy.beaver.schemas.widget import WidgetDTO
 
 
@@ -14,6 +16,9 @@ class WidgetIndex:
     by_id: dict[str, WidgetDTO]
     by_qt_class: dict[str, WidgetDTO]
     by_category: dict[str, list[WidgetDTO]]
+    # Per-widget validator compiled once at load time; prop schemas are
+    # immutable post-load, so validate_props never recompiles per request.
+    validators: dict[str, Draft7Validator]
     registry_version: str
 
     @property

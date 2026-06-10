@@ -1,8 +1,12 @@
 """FileCatalogLoader — read ``widgets/*.json`` and build a :class:`WidgetIndex`.
 
 Synchronous; called once at startup. Fails loud on any malformed file or
-collision (duplicate id, duplicate ``qt_mapping.class``); a half-loaded
-registry is worse than no registry.
+collision (duplicate id, duplicate ``qt_mapping.class``, invalid
+``propSchema``, dangling inspector field, missing palette icon); a
+half-loaded registry is worse than no registry. A *missing* widgets dir is
+the one tolerated case: Beaver serves an empty catalog rather than failing
+the whole composed app's startup, mirroring how Mole and Raccoon degrade
+when unconfigured.
 """
 
 import json
@@ -11,7 +15,7 @@ import logging
 from collections import defaultdict
 
 from pydantic import ValidationError
-from jsonschema import Draft7Validator
+from jsonschema import SchemaError, Draft7Validator
 
 from canopy.beaver.config import BeaverConfig
 from canopy.beaver.errors import CatalogMisconfigured
@@ -30,11 +34,23 @@ class FileCatalogLoader:
     def load(self) -> WidgetIndex:
         widgets_dir = self._config.widgets_dir
         if not widgets_dir.is_dir():
-            raise CatalogMisconfigured(f"widgets_dir does not exist: {widgets_dir}")
+            logger.warning(
+                "Beaver widgets_dir does not exist: %s — serving an empty catalog. "
+                "Set CANOPY_BEAVER__WIDGETS_DIR to the registry data location.",
+                widgets_dir,
+            )
+            return WidgetIndex(
+                by_id={},
+                by_qt_class={},
+                by_category={},
+                validators={},
+                registry_version=_hash_pairs([]),
+            )
 
         by_id: dict[str, WidgetDTO] = {}
         by_qt_class: dict[str, WidgetDTO] = {}
         by_category: dict[str, list[WidgetDTO]] = defaultdict(list)
+        validators: dict[str, Draft7Validator] = {}
         first_seen_id: dict[str, str] = {}
         first_seen_qt: dict[str, str] = {}
 
@@ -57,6 +73,32 @@ class FileCatalogLoader:
                 widget = WidgetDTO.model_validate(raw)
             except ValidationError as exc:
                 raise CatalogMisconfigured(f"{path} fails type validation: {exc}") from exc
+
+            # propSchema must itself be a valid JSON Schema. Without this, a
+            # typo'd schema loads fine and explodes as a 500 on the first
+            # /validate call against the widget.
+            try:
+                Draft7Validator.check_schema(widget.prop_schema)
+            except SchemaError as exc:
+                raise CatalogMisconfigured(f"{path}: propSchema is not a valid JSON Schema: {exc.message}") from exc
+            validators[widget.id] = Draft7Validator(widget.prop_schema)
+
+            # Referential integrity author mistakes the meta-schema can't see:
+            # an inspector field with no backing prop silently breaks the
+            # inspector form; a missing icon 404s in the palette.
+            prop_names = set((widget.prop_schema.get("properties") or {}).keys())
+            for group in widget.inspector_schema.groups:
+                for field in group.fields:
+                    if field not in prop_names:
+                        raise CatalogMisconfigured(
+                            f"{path}: inspectorSchema field {field!r} (group {group.name!r}) "
+                            f"is not in propSchema.properties"
+                        )
+            icon_path = self._config.icons_dir / widget.palette_icon
+            if not icon_path.is_file():
+                raise CatalogMisconfigured(
+                    f"{path}: paletteIcon {widget.palette_icon!r} not found in {self._config.icons_dir}"
+                )
 
             if widget.id in by_id:
                 raise CatalogMisconfigured(
@@ -83,6 +125,7 @@ class FileCatalogLoader:
             by_id=by_id,
             by_qt_class=by_qt_class,
             by_category=dict(by_category),
+            validators=validators,
             registry_version=registry_version,
         )
 

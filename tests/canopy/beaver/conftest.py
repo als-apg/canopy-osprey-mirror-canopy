@@ -83,10 +83,14 @@ def tmp_catalog(tmp_path: Path, fixture_widgets) -> Path:
         (widgets_dir / f"{w['id']}.json").write_text(json.dumps(w), encoding="utf-8")
     icons_dir = tmp_path / "icons"
     icons_dir.mkdir()
-    (icons_dir / "test.svg").write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>',
-        encoding="utf-8",
-    )
+    # One standalone icon for the icons-endpoint tests, plus the palette icon
+    # of every fixture widget (the loader verifies paletteIcon files exist).
+    icon_names = ["test.svg"] + [w["paletteIcon"] for w in fixture_widgets]
+    for name in icon_names:
+        (icons_dir / name).write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>',
+            encoding="utf-8",
+        )
     legacy_dir = tmp_path / "legacy-screens"
     legacy_dir.mkdir()
     (legacy_dir / "vacuum.ui").write_text(

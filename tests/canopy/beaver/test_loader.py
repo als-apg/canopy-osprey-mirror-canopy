@@ -38,10 +38,14 @@ def test_load_groups_by_category(tmp_catalog):
     assert {"indicators", "controls"} <= set(index.by_category)
 
 
-def test_load_rejects_unknown_widgets_dir(tmp_path):
+def test_load_missing_widgets_dir_serves_empty_catalog(tmp_path):
+    """A missing data dir must not fail the composed app's startup —
+    Beaver degrades to an empty catalog like Mole/Raccoon do when unconfigured."""
     cfg = _config_for(tmp_path / "missing")
-    with pytest.raises(CatalogMisconfigured, match="widgets_dir does not exist"):
-        FileCatalogLoader(cfg).load()
+    index = FileCatalogLoader(cfg).load()
+    assert index.widget_count == 0
+    assert index.by_category == {}
+    assert index.registry_version  # still a stable hash
 
 
 def test_load_rejects_malformed_json(tmp_catalog):
@@ -82,3 +86,45 @@ def test_registry_version_is_deterministic(tmp_catalog):
     a = FileCatalogLoader(cfg).load()
     b = FileCatalogLoader(cfg).load()
     assert a.registry_version == b.registry_version
+
+
+def test_load_rejects_invalid_prop_schema(tmp_catalog, fixture_widgets):
+    """A propSchema that is not itself a valid JSON Schema fails at startup,
+    not as a 500 on the first /validate call."""
+    bad = dict(fixture_widgets[0])
+    bad["id"] = "bad-schema"
+    bad["qtMapping"] = {"class": "PyDMBadSchema"}
+    bad["propSchema"] = {"type": "object", "required": "pv"}  # required must be an array
+    bad["inspectorSchema"] = {"groups": []}
+    (tmp_catalog / "widgets" / "bad-schema.json").write_text(json.dumps(bad), encoding="utf-8")
+    cfg = _config_for(tmp_catalog / "widgets")
+    with pytest.raises(CatalogMisconfigured, match="not a valid JSON Schema"):
+        FileCatalogLoader(cfg).load()
+
+
+def test_load_rejects_inspector_field_without_backing_prop(tmp_catalog, fixture_widgets):
+    bad = dict(fixture_widgets[0])
+    bad["id"] = "dangling-field"
+    bad["qtMapping"] = {"class": "PyDMDangling"}
+    bad["inspectorSchema"] = {"groups": [{"name": "PV", "fields": ["pv", "ghost"]}]}
+    (tmp_catalog / "widgets" / "dangling.json").write_text(json.dumps(bad), encoding="utf-8")
+    cfg = _config_for(tmp_catalog / "widgets")
+    with pytest.raises(CatalogMisconfigured, match="inspectorSchema field 'ghost'"):
+        FileCatalogLoader(cfg).load()
+
+
+def test_load_rejects_missing_palette_icon(tmp_catalog, fixture_widgets):
+    bad = dict(fixture_widgets[0])
+    bad["id"] = "iconless"
+    bad["qtMapping"] = {"class": "PyDMIconless"}
+    bad["paletteIcon"] = "ghost.svg"
+    (tmp_catalog / "widgets" / "iconless.json").write_text(json.dumps(bad), encoding="utf-8")
+    cfg = _config_for(tmp_catalog / "widgets")
+    with pytest.raises(CatalogMisconfigured, match="paletteIcon 'ghost.svg' not found"):
+        FileCatalogLoader(cfg).load()
+
+
+def test_load_precompiles_prop_validators(tmp_catalog, fixture_widgets):
+    cfg = _config_for(tmp_catalog / "widgets")
+    index = FileCatalogLoader(cfg).load()
+    assert set(index.validators) == {w["id"] for w in fixture_widgets}
