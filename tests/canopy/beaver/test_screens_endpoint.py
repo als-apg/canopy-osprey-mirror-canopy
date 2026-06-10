@@ -1,5 +1,7 @@
 """HTTP layer: /beaver/v1/screens (legacy .ui/.py serving)."""
 
+import pytest
+
 from tests.conftest import READ_HEADERS
 
 
@@ -57,7 +59,10 @@ def test_symlink_escape_404(beaver_client, tmp_catalog):
     """
     (tmp_catalog / "secret.ui").write_text("<ui/>", encoding="utf-8")
     link = tmp_catalog / "legacy-screens" / "escape.ui"
-    link.symlink_to(tmp_catalog / "secret.ui")
+    try:
+        link.symlink_to(tmp_catalog / "secret.ui")
+    except OSError:
+        pytest.skip("symlink creation requires privilege on this platform (Windows without Developer Mode)")
     resp = beaver_client.get("/beaver/v1/screens/escape.ui", headers=READ_HEADERS)
     assert resp.status_code == 404
     assert resp.json()["code"] == "legacy_screen_not_found"

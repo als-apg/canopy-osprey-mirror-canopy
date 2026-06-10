@@ -54,7 +54,11 @@ def test_categories(beaver_client):
     assert resp.status_code == 200
     body = resp.json()
     counts = {c["id"]: c["count"] for c in body["categories"]}
-    assert counts == {"indicators": 1, "controls": 1}
+    assert counts["indicators"] == 1
+    assert counts["controls"] == 1
+    # Empty categories are present with zero counts for palette scaffolding.
+    assert counts["plots"] == 0
+    assert len(body["categories"]) == 6
 
 
 def test_widgets_require_auth(beaver_client):

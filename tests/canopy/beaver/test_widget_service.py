@@ -35,10 +35,20 @@ async def test_list_summaries_filtered_by_category(beaver_service):
     assert [s.id for s in indicators] == ["pv-label"]
 
 
-async def test_categories_returns_counts(beaver_service):
+async def test_categories_returns_all_declared_with_counts(beaver_service):
+    """Every declared category appears (empty ones with count 0), in
+    declaration order, so the palette keeps stable section scaffolding."""
     cats = await beaver_service.categories()
+    assert [c.id for c in cats] == ["indicators", "controls", "containers", "plots", "decorations", "legacy"]
     counts = {c.id: c.count for c in cats}
-    assert counts == {"indicators": 1, "controls": 1}
+    assert counts == {
+        "indicators": 1,
+        "controls": 1,
+        "containers": 0,
+        "plots": 0,
+        "decorations": 0,
+        "legacy": 0,
+    }
 
 
 async def test_validate_props_pass(beaver_service):

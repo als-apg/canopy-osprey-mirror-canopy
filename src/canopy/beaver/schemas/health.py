@@ -13,7 +13,12 @@ class HeartbeatDTO(CanopyModel):
 
 
 class HealthSummaryDTO(CanopyModel):
-    """Catalog rollup returned by ``/health/summary``."""
+    """Catalog rollup returned by ``/health/summary``.
+
+    ``degraded`` means the catalog is empty — the loader tolerates a missing
+    ``widgets_dir`` (serving no widgets) rather than failing the composed
+    app's startup, and this is where that state surfaces.
+    """
 
     status: Literal["ok", "degraded"]
     widget_count: int

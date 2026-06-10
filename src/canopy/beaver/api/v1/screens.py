@@ -10,17 +10,17 @@ Beaver does not parse these files; it serves bytes. Two endpoints:
   suffix.
 """
 
-from pathlib import Path
 from typing import Annotated
+from pathlib import Path
 
 from fastapi import Path as PathParam
-from fastapi import APIRouter, Security
+from fastapi import Security, APIRouter
 from fastapi.responses import FileResponse
 
-from canopy.beaver.dependencies import WidgetServiceDep
 from canopy.beaver.errors import LegacyScreenNotFound
-from canopy.beaver.schemas.legacy import LegacyScreenListDTO, LegacyScreenSummaryDTO
 from canopy.core.security import require_read_access
+from canopy.beaver.dependencies import WidgetServiceDep
+from canopy.beaver.schemas.legacy import LegacyScreenListDTO, LegacyScreenSummaryDTO
 
 router = APIRouter(prefix="/screens", tags=["Beaver / Screens"])
 
@@ -31,7 +31,9 @@ _CONTENT_TYPES = {
 
 
 @router.get("", dependencies=[Security(require_read_access)])
-async def list_legacy_screens(service: WidgetServiceDep) -> LegacyScreenListDTO:
+def list_legacy_screens(service: WidgetServiceDep) -> LegacyScreenListDTO:
+    # Sync handler on purpose: rglob/stat block, and legacy screen trees live
+    # on NFS in practice. Starlette runs `def` routes in its threadpool.
     base = service.config.legacy_screens_dir
     if not base.is_dir():
         return LegacyScreenListDTO(screens=[], total=0)
@@ -51,7 +53,7 @@ async def list_legacy_screens(service: WidgetServiceDep) -> LegacyScreenListDTO:
 
 
 @router.get("/{file_path:path}", dependencies=[Security(require_read_access)])
-async def get_legacy_screen(
+def get_legacy_screen(
     file_path: Annotated[str, PathParam(description="Relative path under legacy_screens_dir")],
     service: WidgetServiceDep,
 ) -> FileResponse:

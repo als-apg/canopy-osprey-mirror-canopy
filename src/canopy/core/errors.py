@@ -67,7 +67,6 @@ class ErrorCode(StrEnum):
     QT_CLASS_NOT_MAPPED = auto()
     ICON_NOT_FOUND = auto()
     LEGACY_SCREEN_NOT_FOUND = auto()
-    PROPS_INVALID = auto()
     CATALOG_MISCONFIGURED = auto()
 
 

@@ -32,11 +32,6 @@ class LegacyScreenNotFound(BeaverError):
     error_code = ErrorCode.LEGACY_SCREEN_NOT_FOUND
 
 
-class PropsInvalid(BeaverError):
-    status_code = 400
-    error_code = ErrorCode.PROPS_INVALID
-
-
 class CatalogMisconfigured(BeaverError):
     status_code = 500
     error_code = ErrorCode.CATALOG_MISCONFIGURED

@@ -8,12 +8,12 @@ the SVG with a long Cache-Control max-age suitable for an immutable asset.
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Security
+from fastapi import Path, Security, APIRouter
 from fastapi.responses import FileResponse
 
-from canopy.beaver.dependencies import WidgetServiceDep
 from canopy.beaver.errors import IconNotFound
 from canopy.core.security import require_read_access
+from canopy.beaver.dependencies import WidgetServiceDep
 
 router = APIRouter(prefix="/icons", tags=["Beaver / Icons"])
 
@@ -23,10 +23,11 @@ _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 @router.get("/{filename}", dependencies=[Security(require_read_access)])
-async def get_icon(
+def get_icon(
     filename: Annotated[str, Path(description="SVG icon filename")],
     service: WidgetServiceDep,
 ) -> FileResponse:
+    # Sync handler: is_file() touches the filesystem; Starlette threadpools `def` routes.
     if not _SAFE_NAME.match(filename):
         raise IconNotFound(f"Invalid icon filename: {filename!r}")
     config = service.config

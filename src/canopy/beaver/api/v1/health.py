@@ -27,7 +27,7 @@ async def summary(service: WidgetServiceDep) -> HealthSummaryDTO:
     """Catalog rollup: widget count, category count, registry version."""
     index = service.index
     return HealthSummaryDTO(
-        status="ok",
+        status="ok" if index.widget_count > 0 else "degraded",
         widget_count=index.widget_count,
         category_count=index.category_count,
         registry_version=index.registry_version,
