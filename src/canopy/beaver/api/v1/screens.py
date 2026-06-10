@@ -1,0 +1,73 @@
+"""Legacy ``.ui`` / ``.py`` serving for the PyQt compatibility bridge.
+
+Beaver does not parse these files; it serves bytes. Two endpoints:
+
+- ``GET /beaver/v1/screens`` lists every ``.ui`` / ``.py`` file under
+  ``BeaverConfig.legacy_screens_dir`` with size and modification time.
+- ``GET /beaver/v1/screens/{file_path:path}`` returns the file with the
+  appropriate ``Content-Type``. ``file_path`` is resolved against the base
+  and rejected if it escapes (symlink or ``..``) or has an unrecognized
+  suffix.
+"""
+
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import Path as PathParam
+from fastapi import APIRouter, Security
+from fastapi.responses import FileResponse
+
+from canopy.beaver.dependencies import WidgetServiceDep
+from canopy.beaver.errors import LegacyScreenNotFound
+from canopy.beaver.schemas.legacy import LegacyScreenListDTO, LegacyScreenSummaryDTO
+from canopy.core.security import require_read_access
+
+router = APIRouter(prefix="/screens", tags=["Beaver / Screens"])
+
+_CONTENT_TYPES = {
+    ".ui": "application/xml",
+    ".py": "text/x-python",
+}
+
+
+@router.get("", dependencies=[Security(require_read_access)])
+async def list_legacy_screens(service: WidgetServiceDep) -> LegacyScreenListDTO:
+    base = service.config.legacy_screens_dir
+    if not base.is_dir():
+        return LegacyScreenListDTO(screens=[], total=0)
+    summaries: list[LegacyScreenSummaryDTO] = []
+    for path in sorted(base.rglob("*")):
+        if not path.is_file() or path.suffix not in _CONTENT_TYPES:
+            continue
+        stat = path.stat()
+        summaries.append(
+            LegacyScreenSummaryDTO(
+                path=path.relative_to(base).as_posix(),
+                size_bytes=stat.st_size,
+                modified_ts_ns=stat.st_mtime_ns,
+            )
+        )
+    return LegacyScreenListDTO(screens=summaries, total=len(summaries))
+
+
+@router.get("/{file_path:path}", dependencies=[Security(require_read_access)])
+async def get_legacy_screen(
+    file_path: Annotated[str, PathParam(description="Relative path under legacy_screens_dir")],
+    service: WidgetServiceDep,
+) -> FileResponse:
+    base = service.config.legacy_screens_dir
+    resolved = (base / file_path).resolve()
+    base_resolved = base.resolve()
+    if not _is_within(resolved, base_resolved) or not resolved.is_file():
+        raise LegacyScreenNotFound(f"Legacy screen not found: {file_path}")
+    if resolved.suffix not in _CONTENT_TYPES:
+        raise LegacyScreenNotFound(f"Legacy screen not found: {file_path}")
+    return FileResponse(resolved, media_type=_CONTENT_TYPES[resolved.suffix])
+
+
+def _is_within(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False

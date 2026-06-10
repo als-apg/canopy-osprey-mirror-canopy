@@ -87,7 +87,17 @@ def tmp_catalog(tmp_path: Path, fixture_widgets) -> Path:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>',
         encoding="utf-8",
     )
-    (tmp_path / "legacy-screens").mkdir()
+    legacy_dir = tmp_path / "legacy-screens"
+    legacy_dir.mkdir()
+    (legacy_dir / "vacuum.ui").write_text(
+        "<?xml version='1.0'?><ui version='4.0'><class>Vacuum</class></ui>",
+        encoding="utf-8",
+    )
+    (legacy_dir / "loader.py").write_text("# pydm loader stub\n", encoding="utf-8")
+    (legacy_dir / "readme.md").write_text("ignored by suffix filter", encoding="utf-8")
+    nested = legacy_dir / "lcls" / "ll1"
+    nested.mkdir(parents=True)
+    (nested / "main.ui").write_text("<ui version='4.0'/>", encoding="utf-8")
     return tmp_path
 
 
