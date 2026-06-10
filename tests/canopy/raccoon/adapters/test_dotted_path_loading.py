@@ -73,3 +73,22 @@ async def test_dotted_path_adapter_serves_gateway_calls() -> None:
     finally:
         gateway.bind(None)
         await registry.close()
+
+
+@pytest.mark.asyncio
+async def test_dotted_path_adapter_passes_contract_suite() -> None:
+    """The example adapter conforms to the behavioral contract — the same
+    sequence an out-of-tree lab runs against their own adapter."""
+    from tests.canopy.raccoon.adapters import contract
+
+    registry = build_registry(_config_with_type(_DOTTED_PATH))
+    adapter = registry.require()
+    try:
+        await contract.assert_identity_attributes(adapter)
+        await contract.assert_health(adapter)
+        await contract.assert_list_pvs_invariants(adapter, pattern="anything")
+        await contract.assert_list_devices_invariants(adapter, pattern="anything")
+        await contract.assert_list_elements_invariants(adapter, pattern="anything")
+        await contract.assert_close_idempotent(adapter)
+    finally:
+        await registry.close()

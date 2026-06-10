@@ -88,5 +88,6 @@ nav:
   - How To:
     - how_to/index.md
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
+    - Custom directory adapter: how_to/custom_directory_adapter.md
   - API Reference:
     - api_reference/index.md
