@@ -1,9 +1,7 @@
 """Tests for HareIngestService using a fake broker."""
 
-import pytest
-
 from canopy.contracts.sample import AlarmSeverity
-from canopy.vole.services.hare_ingest import HareIngestService, VoleChannel, _strip_protocol_prefix
+from canopy.vole.services.hare_ingest import HareIngestService, _strip_protocol_prefix
 
 
 class FakeBroker:
@@ -87,19 +85,21 @@ class TestDiffHandling:
         await ingest.start()
 
         channel = broker.clients[HareIngestService.CLIENT_ID]
-        await channel.send_json({
-            "type": "diff",
-            "data": {
-                "ca://PV:TEMP": {
-                    "pv": "ca://PV:TEMP",
-                    "value": 25.5,
-                    "severity": "NO_ALARM",
-                    "tsNs": 1000000000000,
-                    "connected": True,
+        await channel.send_json(
+            {
+                "type": "diff",
+                "data": {
+                    "ca://PV:TEMP": {
+                        "pv": "ca://PV:TEMP",
+                        "value": 25.5,
+                        "severity": "NO_ALARM",
+                        "tsNs": 1000000000000,
+                        "connected": True,
+                    },
                 },
-            },
-            "count": 1,
-        })
+                "count": 1,
+            }
+        )
 
         latest = await test_service.read_latest("PV:TEMP")
         assert latest is not None
@@ -116,19 +116,21 @@ class TestDiffHandling:
         await ingest.start()
 
         channel = broker.clients[HareIngestService.CLIENT_ID]
-        await channel.send_json({
-            "type": "initial",
-            "data": {
-                "pva://QUAD:BDES": {
-                    "pv": "pva://QUAD:BDES",
-                    "value": 3.14,
-                    "severity": "MINOR",
-                    "tsNs": 2000000000000,
-                    "connected": True,
+        await channel.send_json(
+            {
+                "type": "initial",
+                "data": {
+                    "pva://QUAD:BDES": {
+                        "pv": "pva://QUAD:BDES",
+                        "value": 3.14,
+                        "severity": "MINOR",
+                        "tsNs": 2000000000000,
+                        "connected": True,
+                    },
                 },
-            },
-            "count": 1,
-        })
+                "count": 1,
+            }
+        )
 
         latest = await test_service.read_latest("QUAD:BDES")
         assert latest is not None
@@ -143,11 +145,13 @@ class TestDiffHandling:
         await ingest.start()
 
         channel = broker.clients[HareIngestService.CLIENT_ID]
-        await channel.send_json({
-            "type": "heartbeat",
-            "timestamp": 1234567890,
-            "backend": "simulation",
-        })
+        await channel.send_json(
+            {
+                "type": "heartbeat",
+                "timestamp": 1234567890,
+                "backend": "simulation",
+            }
+        )
         # No crash, no data appended
         stats = await test_service.stats()
         assert stats.ring_count == 0
@@ -160,20 +164,22 @@ class TestDiffHandling:
         await ingest.start()
 
         channel = broker.clients[HareIngestService.CLIENT_ID]
-        await channel.send_json({
-            "type": "diff",
-            "data": {
-                "ca://PV:OFFLINE": {
-                    "pv": "ca://PV:OFFLINE",
-                    "value": None,
-                    "severity": "INVALID",
-                    "tsNs": 1000000000000,
-                    "connected": False,
-                    "error": "Disconnected",
+        await channel.send_json(
+            {
+                "type": "diff",
+                "data": {
+                    "ca://PV:OFFLINE": {
+                        "pv": "ca://PV:OFFLINE",
+                        "value": None,
+                        "severity": "INVALID",
+                        "tsNs": 1000000000000,
+                        "connected": False,
+                        "error": "Disconnected",
+                    },
                 },
-            },
-            "count": 1,
-        })
+                "count": 1,
+            }
+        )
 
         latest = await test_service.read_latest("PV:OFFLINE")
         assert latest is None
@@ -189,14 +195,16 @@ class TestDiffHandling:
         ts = 990_000_000_000
 
         channel = broker.clients[HareIngestService.CLIENT_ID]
-        await channel.send_json({
-            "type": "diff",
-            "data": {
-                "PV:A": {"pv": "PV:A", "value": 1.0, "severity": "NO_ALARM", "tsNs": ts, "connected": True},
-                "PV:B": {"pv": "PV:B", "value": 2.0, "severity": "MAJOR", "tsNs": ts + 100, "connected": True},
-            },
-            "count": 2,
-        })
+        await channel.send_json(
+            {
+                "type": "diff",
+                "data": {
+                    "PV:A": {"pv": "PV:A", "value": 1.0, "severity": "NO_ALARM", "tsNs": ts, "connected": True},
+                    "PV:B": {"pv": "PV:B", "value": 2.0, "severity": "MAJOR", "tsNs": ts + 100, "connected": True},
+                },
+                "count": 2,
+            }
+        )
 
         a = await test_service.read_latest("PV:A")
         b = await test_service.read_latest("PV:B")

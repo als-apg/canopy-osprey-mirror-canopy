@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 
 from canopy.main import app as parent_app
 from canopy.vole.app import app as vole_app
-from canopy.vole.config import VoleConfig
 from canopy.core.clock import FakeClock
+from canopy.vole.config import VoleConfig
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.dependencies import get_buffer_service
 from canopy.vole.services.buffer_service import BufferService

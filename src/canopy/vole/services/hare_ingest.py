@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from canopy.contracts.sample import AlarmSeverity, Sample
+from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.vole.services.buffer_service import BufferService
 
 logger = logging.getLogger(__name__)

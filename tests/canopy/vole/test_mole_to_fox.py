@@ -10,26 +10,26 @@ from fastapi.testclient import TestClient
 
 from canopy.main import app as parent_app
 from canopy.fox.app import app as fox_app
-from canopy.fox.config import FoxConfig
-from canopy.fox.dependencies import get_formula_service
-from canopy.fox.services.formula_service import FormulaService
-from canopy.fox.services.parser import Parser
+from tests.conftest import READ_HEADERS
 from canopy.mole.app import app as mole_app
-from canopy.mole.adapters.registry import AdapterRegistry
-from canopy.mole.config import MoleConfig
-from canopy.mole.dependencies import get_archiver_service
-from canopy.mole.services.archiver_service import ArchiverService
-from canopy.vole.adapter import VoleDataSource
 from canopy.vole.app import app as vole_app
 from canopy.core.clock import FakeClock
-from canopy.vole.buffer.store import PVStore
+from canopy.fox.config import FoxConfig
+from canopy.mole.config import MoleConfig
 from canopy.vole.config import VoleConfig
+from canopy.vole.adapter import VoleDataSource
+from canopy.fox.dependencies import get_formula_service
+from canopy.mole.dependencies import get_archiver_service
+from canopy.vole.buffer.store import PVStore
 from canopy.vole.dependencies import get_buffer_service
-from canopy.vole.services.alignment_service import AlignmentService
-from canopy.vole.services.buffer_service import BufferService
-from canopy.vole.services.eviction_service import EvictionService
+from canopy.fox.services.parser import Parser
+from canopy.mole.adapters.registry import AdapterRegistry
 from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
-from tests.conftest import READ_HEADERS
+from canopy.fox.services.formula_service import FormulaService
+from canopy.vole.services.buffer_service import BufferService
+from canopy.mole.services.archiver_service import ArchiverService
+from canopy.vole.services.eviction_service import EvictionService
+from canopy.vole.services.alignment_service import AlignmentService
 
 
 @pytest.fixture

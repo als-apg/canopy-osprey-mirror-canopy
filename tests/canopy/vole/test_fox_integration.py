@@ -7,12 +7,12 @@ from canopy.main import app as parent_app
 from canopy.fox.app import app as fox_app
 from tests.conftest import READ_HEADERS
 from canopy.vole.app import app as vole_app
+from canopy.core.clock import FakeClock
 from canopy.fox.config import FoxConfig
 from canopy.vole.config import VoleConfig
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.fox.dependencies import get_formula_service
-from canopy.core.clock import FakeClock
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.dependencies import get_buffer_service
 from canopy.fox.services.parser import Parser
