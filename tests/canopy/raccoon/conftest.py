@@ -70,14 +70,17 @@ def raccoon_client(directory_service: DirectoryService):
 
     Mounted sub-apps maintain their own `dependency_overrides`, so we override
     on `raccoon_app` (not the parent). We also `bind()` the same service so
-    `gateway.list_pvs(...)`-style direct calls work in tests.
+    `gateway.list_pvs(...)`-style direct calls work in tests — and that bind
+    must happen *after* entering the TestClient context, because the parent
+    app's lifespan binds its own (env-configured) service on startup and
+    would clobber an earlier one.
     """
     from canopy.raccoon.dependencies import get_directory_service
 
     raccoon_app.dependency_overrides[get_directory_service] = lambda: directory_service
-    gateway.bind(directory_service)
     try:
         with TestClient(parent_app) as client:
+            gateway.bind(directory_service)
             yield client
     finally:
         raccoon_app.dependency_overrides.pop(get_directory_service, None)

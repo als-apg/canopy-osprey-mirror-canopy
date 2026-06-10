@@ -74,6 +74,16 @@ def test_validate_endpoint_handles_large_input(raccoon_client, fake_adapter):
     assert len(body["unknown"]) == 2500
 
 
+def test_validate_endpoint_rejects_oversized_batch_422(raccoon_client):
+    payload = [f"PV:{i}" for i in range(10_001)]
+    r = raccoon_client.post(
+        "/raccoon/v1/pvs/validate",
+        json={"pvs": payload},
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 422
+
+
 def test_validate_endpoint_pattern_metachar_rejected(raccoon_client):
     r = raccoon_client.post(
         "/raccoon/v1/pvs/validate",

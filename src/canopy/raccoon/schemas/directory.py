@@ -4,21 +4,10 @@ All inherit `CanopyModel`, which renders snake_case attributes as camelCase on
 the wire and accepts either form on input. No per-field aliases needed.
 """
 
+from pydantic import Field
+
 from canopy.contracts.base import CanopyModel
 from canopy.raccoon.adapters.base import AdapterHealth
-
-
-class ListQueryDTO(CanopyModel):
-    """Query parameters shared by `/pvs`, `/devices`, `/elements`.
-
-    `pattern` is required and is passed through to the upstream verbatim. The
-    optional knobs are also opaque; Raccoon does not validate their values.
-    """
-
-    pattern: str
-    tag: str | None = None
-    sort_by: str | None = None
-    element_type: str | None = None
 
 
 class NameListResultDTO(CanopyModel):
@@ -31,7 +20,14 @@ class ExistsResultDTO(CanopyModel):
 
 
 class ValidateRequestDTO(CanopyModel):
-    pvs: list[str]
+    """Batch existence-check request.
+
+    Capped at 10k names — sized for the reconnect-storm use case (spec §5)
+    while keeping a single request's memory and fan-out bounded. Larger sets
+    should be chunked by the caller.
+    """
+
+    pvs: list[str] = Field(max_length=10_000)
 
 
 class ValidateResultDTO(CanopyModel):
