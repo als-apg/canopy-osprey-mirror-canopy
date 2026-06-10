@@ -1,10 +1,18 @@
 """SLAC built-in adapter: wraps the synchronous `meme.names` Python client.
 
-`meme` is the SLAC EPICS v4 Directory Service Python wrapper. It exposes
-synchronous list functions (`list_pvs`, `list_devices`, `list_elements`).
-Each call is dispatched to a thread via `asyncio.to_thread` so the FastAPI
-event loop stays responsive; the per-call timeout is enforced by the service
-layer above us via `asyncio.wait_for`.
+`meme` is the SLAC EPICS v4 Directory Service Python wrapper. It is
+distributed through SLAC's package source — the unrelated `meme` project on
+PyPI is NOT it, so Canopy does not declare it as an installable extra; deploys
+that use this adapter install SLAC's `meme` alongside Canopy themselves.
+
+`meme.names` exposes synchronous list functions (`list_pvs`, `list_devices`,
+`list_elements`). Each call is dispatched to an adapter-owned bounded thread
+pool so the FastAPI event loop stays responsive; the per-call timeout is
+enforced by the service layer above us via `asyncio.wait_for`. The pool is
+deliberately separate from asyncio's default `to_thread` executor: a timed-out
+call's thread keeps running until the upstream returns, so a hung directory
+service can only saturate this adapter's own workers, not the process-wide
+pool the rest of Canopy shares.
 
 The `meme` import is lazy: this module imports cleanly without `meme`
 installed, so tests can patch `meme.names` (or pass a stub directly into the
@@ -14,8 +22,10 @@ constructor) without needing the real package on disk.
 import time
 import asyncio
 import logging
+import functools
 from typing import Any
 from importlib import import_module
+from concurrent.futures import ThreadPoolExecutor
 
 from canopy.raccoon.config import DirectoryInstanceConfig
 from canopy.raccoon.adapters.base import (
@@ -29,6 +39,12 @@ from canopy.raccoon.adapters.base import (
 
 logger = logging.getLogger(__name__)
 
+# Upper bound on concurrent in-flight `meme.names` calls. Hung upstream calls
+# pin their worker thread until the upstream returns, so this is also the
+# blast-radius cap for a wedged directory service. Override via the config
+# `extras` block: `CANOPY_RACCOON__DIRECTORY__EXTRAS__MAX_WORKERS=8`.
+DEFAULT_MAX_WORKERS = 16
+
 
 @register_directory_type("meme")
 class MemeDirectoryAdapter:
@@ -37,8 +53,9 @@ class MemeDirectoryAdapter:
     name: str = "meme"
     type_name: str = "meme"
 
-    def __init__(self, names_module: Any | None = None) -> None:
+    def __init__(self, names_module: Any | None = None, *, max_workers: int = DEFAULT_MAX_WORKERS) -> None:
         self._names = names_module
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="meme-directory")
 
     @classmethod
     def from_config(cls, cfg: DirectoryInstanceConfig) -> "MemeDirectoryAdapter":
@@ -46,10 +63,17 @@ class MemeDirectoryAdapter:
             names_module = import_module("meme.names")
         except ImportError as exc:
             raise AdapterMisconfigured(
-                "The 'meme' package is not installed. Install Canopy's optional 'meme' "
-                "dependency group, or configure a different DirectoryAdapter."
+                "The 'meme' package (SLAC's EPICS v4 Directory Service wrapper) is not "
+                "installed. It is distributed through SLAC's package source — the 'meme' "
+                "project on PyPI is an unrelated package. Install SLAC's wrapper alongside "
+                "Canopy, or configure a different DirectoryAdapter via the 'module:Class' "
+                "form of CANOPY_RACCOON__DIRECTORY__TYPE."
             ) from exc
-        return cls(names_module=names_module)
+        try:
+            max_workers = int(cfg.extras.get("max_workers", DEFAULT_MAX_WORKERS))
+        except (TypeError, ValueError) as exc:
+            raise AdapterMisconfigured(f"extras.max_workers must be an integer: {exc}") from exc
+        return cls(names_module=names_module, max_workers=max_workers)
 
     # ------------------------------------------------------------------ #
     # Internal call dispatch
@@ -59,8 +83,9 @@ class MemeDirectoryAdapter:
         if self._names is None:
             raise AdapterMisconfigured("MemeDirectoryAdapter has no `meme.names` module bound")
         fn = getattr(self._names, fn_name)
+        loop = asyncio.get_running_loop()
         try:
-            return await asyncio.to_thread(fn, pattern, **kwargs)
+            return await loop.run_in_executor(self._executor, functools.partial(fn, pattern, **kwargs))
         except TimeoutError as exc:
             raise DirectoryTimeout(f"meme.{fn_name} timed out: {exc}") from exc
         except (ConnectionError, OSError) as exc:
@@ -153,5 +178,10 @@ class MemeDirectoryAdapter:
             )
 
     async def close(self) -> None:
-        """No-op: `meme.names` keeps no per-instance resources to release."""
-        return
+        """Release the adapter-owned worker pool.
+
+        Queued-but-unstarted calls are cancelled; threads stuck in a hung
+        upstream call are abandoned rather than waited on, so shutdown does
+        not block behind a wedged directory service.
+        """
+        self._executor.shutdown(wait=False, cancel_futures=True)

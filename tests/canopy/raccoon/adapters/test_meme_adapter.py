@@ -163,5 +163,57 @@ async def test_health_returns_unhealthy_on_error(adapter, fake_names) -> None:
 
 
 @pytest.mark.asyncio
-async def test_close_is_no_op(adapter) -> None:
+async def test_close_is_idempotent(adapter) -> None:
     await adapter.close()
+    await adapter.close()  # second call must not raise
+
+
+@pytest.mark.asyncio
+async def test_calls_run_on_adapter_owned_executor(fake_names) -> None:
+    """Dispatch goes to the adapter's own bounded pool, not asyncio's shared
+    `to_thread` executor — a hung directory service must not starve the rest
+    of the process of worker threads."""
+    import threading
+
+    seen_threads: list[str] = []
+
+    def recording_list_pvs(pattern, **kw):
+        seen_threads.append(threading.current_thread().name)
+        return []
+
+    fake_names.list_pvs = recording_list_pvs  # type: ignore[assignment]
+    adapter = MemeDirectoryAdapter(names_module=fake_names)
+    try:
+        await adapter.list_pvs("X")
+    finally:
+        await adapter.close()
+
+    assert seen_threads and seen_threads[0].startswith("meme-directory")
+
+
+@pytest.mark.asyncio
+async def test_from_config_reads_max_workers_from_extras(monkeypatch) -> None:
+    """`from_config` resolves a stubbed `meme.names` and honors extras.max_workers."""
+    import sys
+    import types
+
+    stub_pkg = types.ModuleType("meme")
+    stub_names = types.ModuleType("meme.names")
+    monkeypatch.setitem(sys.modules, "meme", stub_pkg)
+    monkeypatch.setitem(sys.modules, "meme.names", stub_names)
+
+    from canopy.raccoon.config import DirectoryInstanceConfig
+
+    adapter = MemeDirectoryAdapter.from_config(DirectoryInstanceConfig(type="meme", extras={"max_workers": 4}))
+    try:
+        assert adapter._names is stub_names
+        assert adapter._executor._max_workers == 4
+    finally:
+        await adapter.close()
+
+
+@pytest.mark.asyncio
+async def test_close_shuts_down_executor(fake_names) -> None:
+    adapter = MemeDirectoryAdapter(names_module=fake_names)
+    await adapter.close()
+    assert adapter._executor._shutdown is True
