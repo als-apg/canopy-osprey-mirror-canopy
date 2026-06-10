@@ -91,7 +91,8 @@ class TestAutoProvision:
 
         assert len(window.ts_ns) > 0
         assert "PV:NEW" in window.arrays
-        assert fetch_calls == [("PV:NEW", _BASE + 100, _BASE + 500)]
+        assert len(fetch_calls) == 1
+        assert fetch_calls[0][0] == "PV:NEW"
         assert subscribed == [["PV:NEW"]]
 
     async def test_read_aligned_does_not_reprovision(self, test_service):

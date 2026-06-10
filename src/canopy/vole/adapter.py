@@ -9,6 +9,7 @@ historical data from Mole and subscribes to live updates via Hare.
 
 from __future__ import annotations
 
+import time
 import logging
 from collections.abc import Callable, Awaitable
 
@@ -88,7 +89,8 @@ class VoleDataSource:
     async def read_latest(self, pv: str) -> Sample | None:
         sample = await self._buffer.read_latest(pv)
         if sample is None and pv not in self._provisioned and self._can_provision():
-            await self._provision([pv], 0, 0)
+            now = time.time_ns()
+            await self._provision([pv], now - self._buffer._config.max_age_ns, now)
             sample = await self._buffer.read_latest(pv)
         return sample
 
@@ -103,6 +105,13 @@ class VoleDataSource:
         to_provision = [pv for pv in pvs if pv not in self._provisioned]
         if not to_provision:
             return
+
+        # Resolve t1_ns=0 ("now") and clamp t0_ns so seeded data fits in the ring
+        now = time.time_ns()
+        if t1_ns == 0:
+            t1_ns = now
+        earliest_viable = now - self._buffer._config.max_age_ns
+        t0_ns = max(t0_ns, earliest_viable)
 
         for pv in to_provision:
             try:
