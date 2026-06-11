@@ -36,6 +36,10 @@ class BufferService:
         self._clock = clock
         self._config = config
 
+    @property
+    def max_age_ns(self) -> int:
+        return self._config.max_age_ns
+
     # --- writes ---------------------------------------------------------- #
 
     async def append(self, pv: str, sample: Sample) -> None:
@@ -75,7 +79,12 @@ class BufferService:
         now = self._clock.now_ns()
 
         async with self._store.lock_for(pv):
-            return ring.seed(stored_samples, now)
+            count = ring.seed(stored_samples, now)
+
+        if self._eviction.under_pressure():
+            await self._eviction.evict_lru()
+
+        return count
 
     async def drop(self, pv: str) -> None:
         """Remove a PV's ring entirely. Idempotent."""

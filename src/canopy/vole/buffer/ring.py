@@ -140,8 +140,9 @@ class PerPVRing:
             self._max_points = max_points
 
     def _enforce_retention(self, now_ns: int) -> None:
-        while len(self._samples) > self._max_points:
-            self._samples.pop(0)
+        if len(self._samples) > self._max_points:
+            excess = len(self._samples) - self._max_points
+            del self._samples[:excess]
 
         if self._max_age_ns > 0 and self._samples:
             cutoff = now_ns - self._max_age_ns

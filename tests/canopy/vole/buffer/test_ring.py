@@ -68,6 +68,14 @@ class TestSeed:
         ring = PerPVRing(max_age_ns=1_000_000, max_points=100)
         assert ring.seed([], now_ns=100) == 0
 
+    def test_seed_enforces_max_points(self):
+        ring = PerPVRing(max_age_ns=1_000_000, max_points=5)
+        samples = [_sample(i * 10, source="archive") for i in range(20)]
+        ring.seed(samples, now_ns=200)
+        assert ring.count == 5
+        assert ring.earliest.ts_ns == 150
+        assert ring.latest.ts_ns == 190
+
 
 class TestSlice:
     def test_slice_returns_range(self):

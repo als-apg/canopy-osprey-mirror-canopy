@@ -73,7 +73,7 @@ class TestVoleDataSource:
 class TestAutoProvision:
     """Tests for auto-provisioning missing PVs from Mole."""
 
-    async def test_read_aligned_provisions_missing_pv(self, test_service):
+    async def test_read_aligned_provisions_missing_pv(self, test_service, fake_clock):
         """A read for an unknown PV triggers Mole fetch, seed, subscribe, and succeeds."""
         samples = _make_samples()
         fetch_calls: list[tuple[str, int, int]] = []
@@ -86,7 +86,7 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live)
+        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
         window = await adapter.read_aligned(["PV:NEW"], _BASE + 100, _BASE + 500, align="last", index="union")
 
         assert len(window.ts_ns) > 0
@@ -95,7 +95,7 @@ class TestAutoProvision:
         assert fetch_calls[0][0] == "PV:NEW"
         assert subscribed == [["PV:NEW"]]
 
-    async def test_read_aligned_does_not_reprovision(self, test_service):
+    async def test_read_aligned_does_not_reprovision(self, test_service, fake_clock):
         """Second read for the same PV skips Mole fetch."""
         samples = _make_samples()
         fetch_count = 0
@@ -108,13 +108,13 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             pass
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live)
+        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
         await adapter.read_aligned(["PV:X"], _BASE + 100, _BASE + 500, align="last", index="union")
         await adapter.read_aligned(["PV:X"], _BASE + 100, _BASE + 500, align="last", index="union")
 
         assert fetch_count == 1
 
-    async def test_read_aligned_provisions_only_missing_pvs(self, test_service):
+    async def test_read_aligned_provisions_only_missing_pvs(self, test_service, fake_clock):
         """Only PVs not already buffered are provisioned."""
         await test_service.seed("PV:EXISTS", _make_samples())
 
@@ -127,7 +127,7 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             pass
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live)
+        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
         window = await adapter.read_aligned(
             ["PV:EXISTS", "PV:MISSING"], _BASE + 100, _BASE + 500, align="last", index="union"
         )
@@ -136,8 +136,8 @@ class TestAutoProvision:
         assert "PV:MISSING" in window.arrays
         assert fetched_pvs == ["PV:MISSING"]
 
-    async def test_read_aligned_mole_error_propagates(self, test_service):
-        """If Mole fetch raises, the PV still gets subscribed but the retry raises PVNotBuffered."""
+    async def test_read_aligned_mole_error_not_provisioned(self, test_service, fake_clock):
+        """If Mole fetch raises, the PV is NOT marked provisioned and NOT subscribed."""
 
         async def failing_fetch(pv, t0, t1):
             raise RuntimeError("archiver down")
@@ -147,15 +147,15 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, failing_fetch, fake_subscribe_live)
+        adapter = VoleDataSource(test_service, failing_fetch, fake_subscribe_live, clock=fake_clock)
 
         with pytest.raises(PVNotBuffered):
             await adapter.read_aligned(["PV:FAIL"], _BASE + 100, _BASE + 500, align="last", index="union")
 
-        # Subscribe was still called even though seed failed
-        assert subscribed == [["PV:FAIL"]]
+        # Subscribe was NOT called because the fetch failed
+        assert subscribed == []
 
-    async def test_read_latest_provisions_missing_pv(self, test_service):
+    async def test_read_latest_provisions_missing_pv(self, test_service, fake_clock):
         """read_latest for an unknown PV triggers provisioning."""
         sample = Sample(ts_ns=_BASE + 500, value=99.0, severity=AlarmSeverity.NO_ALARM, source="archive")
         subscribed: list[list[str]] = []
@@ -166,7 +166,7 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live)
+        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
         result = await adapter.read_latest("PV:LAZY")
 
         assert result is not None

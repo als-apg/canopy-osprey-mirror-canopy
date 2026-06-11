@@ -14,6 +14,7 @@ import logging
 from collections.abc import Callable, Awaitable
 
 from canopy.fox.ports import AlignedWindow
+from canopy.core.clock import Clock
 from canopy.vole.errors import PVNotBuffered
 from canopy.contracts.sample import Sample
 from canopy.contracts.formula import IndexMode, AlignmentMode
@@ -49,10 +50,12 @@ class VoleDataSource:
         buffer_service: BufferService,
         fetch_window: FetchWindowFn | None = None,
         subscribe_live: SubscribeLiveFn | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._buffer = buffer_service
         self._fetch_window = fetch_window
         self._subscribe_live = subscribe_live
+        self._clock = clock
         self._provisioned: set[str] = set()
 
     async def read_aligned(
@@ -89,10 +92,15 @@ class VoleDataSource:
     async def read_latest(self, pv: str) -> Sample | None:
         sample = await self._buffer.read_latest(pv)
         if sample is None and pv not in self._provisioned and self._can_provision():
-            now = time.time_ns()
-            await self._provision([pv], now - self._buffer._config.max_age_ns, now)
+            now = self._now_ns()
+            await self._provision([pv], now - self._buffer.max_age_ns, now)
             sample = await self._buffer.read_latest(pv)
         return sample
+
+    def _now_ns(self) -> int:
+        if self._clock is not None:
+            return self._clock.now_ns()
+        return time.time_ns()
 
     def _can_provision(self) -> bool:
         return self._fetch_window is not None and self._subscribe_live is not None
@@ -106,13 +114,13 @@ class VoleDataSource:
         if not to_provision:
             return
 
-        # Resolve t1_ns=0 ("now") and clamp t0_ns so seeded data fits in the ring
-        now = time.time_ns()
+        now = self._now_ns()
         if t1_ns == 0:
             t1_ns = now
-        earliest_viable = now - self._buffer._config.max_age_ns
+        earliest_viable = now - self._buffer.max_age_ns
         t0_ns = max(t0_ns, earliest_viable)
 
+        succeeded: list[str] = []
         for pv in to_provision:
             try:
                 samples = await self._fetch_window(pv, t0_ns, t1_ns)
@@ -121,8 +129,10 @@ class VoleDataSource:
                     logger.info("Auto-provisioned PV %s: seeded %d samples from Mole", pv, len(samples))
                 else:
                     logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
+                succeeded.append(pv)
             except Exception:
                 logger.warning("Failed to seed PV %s from Mole", pv, exc_info=True)
 
-        await self._subscribe_live(to_provision)
-        self._provisioned.update(to_provision)
+        if succeeded:
+            await self._subscribe_live(succeeded)
+            self._provisioned.update(succeeded)

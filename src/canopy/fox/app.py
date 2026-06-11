@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from canopy.fox import gateway
 from canopy.mole import gateway as mole_gateway
 from canopy.vole import gateway as vole_gateway
+from canopy.core.clock import SystemClock
 from canopy.fox.config import get_fox_config
 from canopy.core.errors import register_canopy_error_handler
 from canopy.fox.runtime import mark_started
@@ -29,6 +30,7 @@ async def fox_lifespan():
         vole_gateway.get_service(),
         fetch_window=mole_gateway.fetch_window,
         subscribe_live=vole_gateway.subscribe_live,
+        clock=SystemClock(),
     )
     parser = Parser(max_expression_len=config.max_expression_len)
     service = FormulaService(data_source, parser, config)
