@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import Field, BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +28,7 @@ class DirectoryInstanceConfig(BaseModel):
     type: str
     timeout_s: float = 5.0
     batch_concurrency: int = 64
-    extras: dict = {}
+    extras: dict = Field(default_factory=dict)
     cache: CacheConfig = CacheConfig()
 
 

@@ -29,11 +29,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 from canopy.raccoon.config import DirectoryInstanceConfig
 from canopy.raccoon.adapters.base import (
-    AdapterHealth,
+    DEFAULT_PATTERN_METACHARS,
     InvalidQuery,
+    AdapterHealth,
     DirectoryTimeout,
-    DirectoryUnavailable,
     AdapterMisconfigured,
+    DirectoryUnavailable,
     register_directory_type,
 )
 
@@ -52,6 +53,7 @@ class MemeDirectoryAdapter:
 
     name: str = "meme"
     type_name: str = "meme"
+    pattern_metachars = DEFAULT_PATTERN_METACHARS
 
     def __init__(self, names_module: Any | None = None, *, max_workers: int = DEFAULT_MAX_WORKERS) -> None:
         self._names = names_module
@@ -114,7 +116,7 @@ class MemeDirectoryAdapter:
         if tag is not None:
             kwargs["tag"] = tag
         if sort_by is not None:
-            kwargs["sort"] = sort_by
+            kwargs["sort_by"] = sort_by
         if element_type is not None:
             kwargs["element_type"] = element_type
         return await self._call("list_pvs", pattern, **kwargs)
@@ -131,7 +133,7 @@ class MemeDirectoryAdapter:
         if tag is not None:
             kwargs["tag"] = tag
         if sort_by is not None:
-            kwargs["sort"] = sort_by
+            kwargs["sort_by"] = sort_by
         if element_type is not None:
             kwargs["element_type"] = element_type
         return await self._call("list_devices", pattern, **kwargs)
@@ -148,7 +150,7 @@ class MemeDirectoryAdapter:
         if tag is not None:
             kwargs["tag"] = tag
         if sort_by is not None:
-            kwargs["sort"] = sort_by
+            kwargs["sort_by"] = sort_by
         if element_type is not None:
             kwargs["element_type"] = element_type
         return await self._call("list_elements", pattern, **kwargs)

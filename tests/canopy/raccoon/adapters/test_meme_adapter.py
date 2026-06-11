@@ -4,12 +4,12 @@ import asyncio
 
 import pytest
 
-from canopy.raccoon.adapters.meme import MemeDirectoryAdapter
 from canopy.raccoon.adapters.base import (
     InvalidQuery,
     DirectoryTimeout,
     DirectoryUnavailable,
 )
+from canopy.raccoon.adapters.meme import MemeDirectoryAdapter
 
 
 class FakeNamesModule:
@@ -60,7 +60,7 @@ async def test_list_pvs_passes_kwargs_in_meme_form(adapter, fake_names) -> None:
     out = await adapter.list_pvs("A%", tag="L1", sort_by="name", element_type="QUAD")
 
     assert out == ["A:1", "A:2"]
-    assert fake_names.list_pvs_calls == [(("A%",), {"tag": "L1", "sort": "name", "element_type": "QUAD"})]
+    assert fake_names.list_pvs_calls == [(("A%",), {"tag": "L1", "sort_by": "name", "element_type": "QUAD"})]
 
 
 @pytest.mark.asyncio

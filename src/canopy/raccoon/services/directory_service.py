@@ -12,31 +12,24 @@ import asyncio
 import logging
 
 from canopy.raccoon.config import RaccoonConfig
-from canopy.raccoon.cache.flight import SingleFlight
 from canopy.raccoon.cache.keys import CacheKey, NameKind
+from canopy.raccoon.cache.flight import SingleFlight
+from canopy.raccoon.adapters.base import (
+    DEFAULT_PATTERN_METACHARS,
+    InvalidQuery,
+    AdapterHealth,
+    DirectoryTimeout,
+)
 from canopy.raccoon.cache.name_cache import PVNameCache
-from canopy.raccoon.cache.pattern_cache import PatternCache
 from canopy.raccoon.adapters.registry import DirectoryRegistry
 from canopy.raccoon.schemas.directory import (
     CacheStatsDTO,
     RaccoonStatsDTO,
     ValidateResultDTO,
 )
-from canopy.raccoon.adapters.base import (
-    AdapterHealth,
-    InvalidQuery,
-    DirectoryTimeout,
-)
+from canopy.raccoon.cache.pattern_cache import PatternCache
 
 logger = logging.getLogger(__name__)
-
-# Characters that, in any input to `exists`/`validate`, indicate the caller
-# meant a pattern. Use `list_pvs` for those paths.
-_PATTERN_METACHARS = frozenset("%*?(|[")
-
-
-def _has_pattern_metachars(s: str) -> bool:
-    return any(c in _PATTERN_METACHARS for c in s)
 
 
 class DirectoryService:
@@ -113,6 +106,14 @@ class DirectoryService:
 
         return await self._flight.run(key, factory)
 
+    def _adapter_metachars(self) -> frozenset[str]:
+        """Pattern metacharacters declared by the bound adapter.
+
+        Adapters may override the default set to match their upstream's pattern
+        grammar; we fall back to `DEFAULT_PATTERN_METACHARS` if they don't.
+        """
+        return getattr(self._registry.require(), "pattern_metachars", DEFAULT_PATTERN_METACHARS)
+
     async def exists(self, pv: str) -> bool:
         """Single-PV existence check, served from the name cache when possible.
 
@@ -120,7 +121,7 @@ class DirectoryService:
         through `list()` would create one pattern-cache entry per PV name, and
         a large `validate` storm would evict every genuine pattern query.
         """
-        if _has_pattern_metachars(pv):
+        if any(c in self._adapter_metachars() for c in pv):
             raise InvalidQuery(f"PV name contains pattern metacharacters: {pv!r}")
 
         cached = self._name_cache.get(pv)
@@ -149,8 +150,9 @@ class DirectoryService:
         return await self._flight.run(("exists", pv), factory)
 
     async def validate(self, pvs: list[str]) -> ValidateResultDTO:
+        metachars = self._adapter_metachars()
         for pv in pvs:
-            if _has_pattern_metachars(pv):
+            if any(c in metachars for c in pv):
                 raise InvalidQuery(f"PV name contains pattern metacharacters: {pv!r}")
 
         # Partition by cache. Hold the original input order so callers can

@@ -5,13 +5,13 @@ from fastapi import FastAPI
 
 from canopy.raccoon import gateway
 from canopy.core.errors import register_canopy_error_handler
-from canopy.raccoon.config import get_raccoon_config
+from canopy.raccoon.config import CacheConfig, get_raccoon_config
 from canopy.raccoon.runtime import mark_started
-from canopy.raccoon.api.v1.router import router as v1_router
 from canopy.raccoon.cache.flight import SingleFlight
+from canopy.raccoon.api.v1.router import router as v1_router
 from canopy.raccoon.cache.name_cache import PVNameCache
-from canopy.raccoon.cache.pattern_cache import PatternCache
 from canopy.raccoon.adapters.registry import build_registry
+from canopy.raccoon.cache.pattern_cache import PatternCache
 from canopy.raccoon.services.directory_service import DirectoryService
 
 logger = logging.getLogger(__name__)
@@ -27,15 +27,15 @@ async def raccoon_lifespan():
     config = get_raccoon_config()
     registry = build_registry(config)
 
-    cache_cfg = config.directory.cache if config.directory else None
+    cache_cfg = config.directory.cache if config.directory else CacheConfig()
     pattern_cache = PatternCache(
-        max_entries=cache_cfg.max_pattern_entries if cache_cfg else 10000,
-        ttl_s=cache_cfg.pattern_ttl_s if cache_cfg else 300.0,
+        max_entries=cache_cfg.max_pattern_entries,
+        ttl_s=cache_cfg.pattern_ttl_s,
     )
     name_cache = PVNameCache(
-        max_entries=cache_cfg.max_exists_entries if cache_cfg else 100000,
-        positive_ttl_s=cache_cfg.exists_ttl_s if cache_cfg else 1800.0,
-        negative_ttl_s=cache_cfg.negative_ttl_s if cache_cfg else 60.0,
+        max_entries=cache_cfg.max_exists_entries,
+        positive_ttl_s=cache_cfg.exists_ttl_s,
+        negative_ttl_s=cache_cfg.negative_ttl_s,
     )
     flight = SingleFlight()
 

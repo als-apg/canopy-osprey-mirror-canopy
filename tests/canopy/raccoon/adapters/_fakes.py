@@ -11,8 +11,9 @@ import asyncio
 
 from canopy.raccoon.config import DirectoryInstanceConfig
 from canopy.raccoon.adapters.base import (
-    AdapterHealth,
+    DEFAULT_PATTERN_METACHARS,
     InvalidQuery,
+    AdapterHealth,
     DirectoryUnavailable,
     register_directory_type,
 )
@@ -28,6 +29,7 @@ class FakeDirectoryAdapter:
 
     name: str = "fake"
     type_name: str = "fake"
+    pattern_metachars = DEFAULT_PATTERN_METACHARS
 
     def __init__(self, name: str = "fake") -> None:
         self.name = name

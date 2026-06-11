@@ -6,7 +6,7 @@ name; the `module:Class` dotted-path form in config is resolved at registry-buil
 time without needing prior registration.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 from canopy.core.errors import ErrorCode, CanopyError
 from canopy.contracts.base import CanopyModel
@@ -54,6 +54,17 @@ class AdapterHealth(CanopyModel):
     last_check_ts_ns: int
 
 
+# Default pattern-metachar set used by the service when an adapter does not
+# declare its own. Sourced from the union of metacharacters across plausible
+# upstream backends:
+#   %       Oracle SQL LIKE wildcard (SLAC's meme directory is Oracle-backed)
+#   *, ?    glob wildcards
+#   (, |, [ regex grouping / alternation / character class
+# None of these are valid in EPICS PV names, so flagging them as "you meant a
+# pattern" is safe for any EPICS-backed adapter.
+DEFAULT_PATTERN_METACHARS: frozenset[str] = frozenset("%*?(|[")
+
+
 # --------------------------------------------------------------------------- #
 # Adapter Protocol
 # --------------------------------------------------------------------------- #
@@ -71,6 +82,13 @@ class DirectoryAdapter(Protocol):
 
     name: str
     type_name: str
+
+    # Characters that, in input to `exists`/`validate`, indicate the caller meant
+    # a pattern. The service rejects such inputs with `InvalidQuery` and points
+    # callers at `list_pvs`. Adapters may override to match their upstream's
+    # pattern grammar; `DEFAULT_PATTERN_METACHARS` covers SQL `%`, glob `* ?`,
+    # and regex `( | [`, which suits any EPICS-backed directory.
+    pattern_metachars: ClassVar[frozenset[str]]
 
     @classmethod
     def from_config(cls, cfg: DirectoryInstanceConfig) -> "DirectoryAdapter":
