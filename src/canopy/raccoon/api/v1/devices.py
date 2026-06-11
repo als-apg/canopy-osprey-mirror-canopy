@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import Query, Security, APIRouter
 
-from canopy.raccoon.cache.keys import NameKind
 from canopy.core.security import require_read_access
+from canopy.raccoon.cache.keys import NameKind
 from canopy.raccoon.dependencies import DirectoryServiceDep
 from canopy.raccoon.schemas.directory import NameListResultDTO
 

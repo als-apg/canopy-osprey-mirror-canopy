@@ -6,8 +6,8 @@ adapter type stays pluggable: a `module:Class` dotted path in config loads any
 out-of-tree adapter that has been pip-installed alongside Canopy.
 """
 
-import importlib
 import logging
+import importlib
 
 from canopy.raccoon.config import RaccoonConfig
 from canopy.raccoon.adapters.base import (

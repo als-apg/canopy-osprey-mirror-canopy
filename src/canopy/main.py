@@ -9,9 +9,9 @@ from canopy.hare.app import app as hare_app
 from canopy.hare.app import hare_lifespan
 from canopy.mole.app import app as mole_app
 from canopy.mole.app import mole_lifespan
+from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
-from canopy.core.errors import register_canopy_error_handler
 from canopy.core.logging import configure_logging
 
 try:

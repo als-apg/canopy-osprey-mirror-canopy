@@ -1,9 +1,6 @@
 """Adapter type registration: short-name lookup and the unknown-name path."""
 
-from canopy.raccoon.adapters.base import (
-    register_directory_type,
-    get_registered_type,
-)
+from canopy.raccoon.adapters.base import get_registered_type, register_directory_type
 
 
 def test_register_directory_type_stores_class() -> None:

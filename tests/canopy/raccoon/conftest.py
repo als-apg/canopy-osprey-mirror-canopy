@@ -11,13 +11,13 @@ from fastapi.testclient import TestClient
 from canopy.main import app as parent_app
 from canopy.raccoon import gateway
 from canopy.raccoon.app import app as raccoon_app
-from canopy.raccoon.config import RaccoonConfig, CacheConfig, DirectoryInstanceConfig
+from canopy.raccoon.config import CacheConfig, RaccoonConfig, DirectoryInstanceConfig
 from canopy.raccoon.cache.flight import SingleFlight
 from canopy.raccoon.cache.name_cache import PVNameCache
-from canopy.raccoon.cache.pattern_cache import PatternCache
 from canopy.raccoon.adapters.registry import DirectoryRegistry
-from canopy.raccoon.services.directory_service import DirectoryService
+from canopy.raccoon.cache.pattern_cache import PatternCache
 from tests.canopy.raccoon.adapters._fakes import FakeDirectoryAdapter
+from canopy.raccoon.services.directory_service import DirectoryService
 
 
 def _build_service(

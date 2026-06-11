@@ -5,7 +5,11 @@ import asyncio
 import pytest
 
 from canopy.raccoon.cache.keys import NameKind
-from canopy.raccoon.adapters.base import InvalidQuery, DirectoryTimeout, DirectoryUnavailable
+from canopy.raccoon.adapters.base import (
+    InvalidQuery,
+    DirectoryTimeout,
+    DirectoryUnavailable,
+)
 
 
 @pytest.mark.asyncio

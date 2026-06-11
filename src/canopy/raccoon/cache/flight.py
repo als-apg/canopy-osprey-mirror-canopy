@@ -11,7 +11,7 @@ call itself.
 
 import asyncio
 from typing import TypeVar
-from collections.abc import Hashable, Awaitable, Callable
+from collections.abc import Callable, Hashable, Awaitable
 
 T = TypeVar("T")
 

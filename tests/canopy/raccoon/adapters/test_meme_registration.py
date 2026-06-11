@@ -1,7 +1,7 @@
 """`meme` short-name resolves to MemeDirectoryAdapter via the registry."""
 
-from canopy.raccoon.adapters.meme import MemeDirectoryAdapter
 from canopy.raccoon.adapters.base import get_registered_type
+from canopy.raccoon.adapters.meme import MemeDirectoryAdapter
 
 
 def test_meme_short_name_registered_at_package_import() -> None:

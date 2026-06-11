@@ -9,14 +9,14 @@ gateway calls.
 import pytest
 
 from canopy.raccoon import gateway
+from canopy.raccoon.config import CacheConfig, RaccoonConfig, DirectoryInstanceConfig
 from canopy.raccoon.cache.flight import SingleFlight
-from canopy.raccoon.cache.name_cache import PVNameCache
-from canopy.raccoon.cache.pattern_cache import PatternCache
 from canopy.raccoon.adapters.base import AdapterMisconfigured
+from canopy.raccoon.cache.name_cache import PVNameCache
 from canopy.raccoon.adapters.registry import build_registry
-from canopy.raccoon.services.directory_service import DirectoryService
-from canopy.raccoon.config import RaccoonConfig, CacheConfig, DirectoryInstanceConfig
+from canopy.raccoon.cache.pattern_cache import PatternCache
 from tests._fixtures.raccoon_example_adapter import ExampleDirectoryAdapter
+from canopy.raccoon.services.directory_service import DirectoryService
 
 _DOTTED_PATH = "tests._fixtures.raccoon_example_adapter:ExampleDirectoryAdapter"
 

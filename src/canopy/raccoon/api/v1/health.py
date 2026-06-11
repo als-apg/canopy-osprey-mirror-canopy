@@ -3,8 +3,8 @@ import time
 from fastapi import Security, APIRouter
 
 from canopy import __version__
-from canopy.raccoon.runtime import uptime_s
 from canopy.core.security import require_read_access
+from canopy.raccoon.runtime import uptime_s
 from canopy.raccoon.dependencies import DirectoryServiceDep
 from canopy.raccoon.schemas.health import HeartbeatDTO
 from canopy.raccoon.schemas.directory import RaccoonStatsDTO
