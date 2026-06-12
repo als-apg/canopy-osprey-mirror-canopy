@@ -10,6 +10,8 @@ from canopy.hare.app import hare_lifespan
 from canopy.mole.app import app as mole_app
 from canopy.mole.app import mole_lifespan
 from canopy.core.errors import register_canopy_error_handler
+from canopy.raccoon.app import app as raccoon_app
+from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
 
 try:
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Compose per-module lifespans. Mounted sub-apps don't run their own."""
-    async with mole_lifespan(), hare_lifespan():
+    async with mole_lifespan(), hare_lifespan(), raccoon_lifespan():
         logger.info("Starting Canopy API")
         yield
         logger.info("Canopy API shutdown complete")
@@ -50,6 +52,7 @@ register_canopy_error_handler(app)
 
 app.mount("/mole", mole_app)
 app.mount("/hare", hare_app)
+app.mount("/raccoon", raccoon_app)
 
 
 @app.get("/health", tags=["meta"])
