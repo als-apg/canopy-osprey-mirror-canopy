@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 from collections.abc import Callable
 
 from canopy.core.errors import ErrorCode, CanopyError
-from canopy.contracts.pv import PVValue
+from canopy.contracts.pv import PVMeta, PVValue
 from canopy.contracts.sample import AlarmSeverity
 
 # --------------------------------------------------------------------------- #
@@ -107,4 +107,10 @@ class PVConnector(Protocol):
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:
         """Start monitoring `pv`; `on_event` fires on connect and each update."""
+        ...
+
+    async def describe(self, pv: str) -> PVMeta:
+        """Static per-channel metadata (value kind, units, precision, enum
+        choices, display/control limits). Read once per active PV by the broker
+        and served by the `describe` endpoint."""
         ...

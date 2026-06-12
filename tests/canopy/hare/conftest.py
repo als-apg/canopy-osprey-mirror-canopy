@@ -12,7 +12,7 @@ import pytest
 
 from canopy.epics.base import Subscription, EventCallback
 from canopy.hare.config import HareConfig
-from canopy.contracts.pv import PVValue
+from canopy.contracts.pv import PVMeta, PVValue, ValueKind
 from canopy.contracts.sample import AlarmSeverity
 from canopy.hare.services.broker import PVBroker
 
@@ -46,6 +46,9 @@ class FakeConnector:
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
         return PVValue(pv=pv, value=0.0, severity=AlarmSeverity.NO_ALARM, ts_ns=1, connected=True)
+
+    async def describe(self, pv: str) -> PVMeta:
+        return PVMeta(pv=pv, value_kind=ValueKind.SCALAR, units="mm", precision=3)
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:
         self.callbacks[pv] = on_event

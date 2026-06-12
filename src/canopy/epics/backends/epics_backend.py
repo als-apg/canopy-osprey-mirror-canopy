@@ -4,6 +4,11 @@ Channel Access via ``aioca``, PV Access via ``p4p``, routed by ``ca://`` /
 ``pva://`` prefix (unprefixed -> CA, with optional PVA fallback). Monitor callbacks
 from the EPICS libraries are marshaled onto the asyncio loop via ``call_soon_threadsafe``
 before reaching the broker, so a high update rate never spawns per-update tasks.
+
+Each value is classified into a `ValueKind` by its declared EPICS type — the PV
+Access Normative-Type id (``value.getID()``) or the Channel Access DBR type — so a
+client can distinguish scalar / string / enum / waveform without inspecting the
+payload.
 """
 
 import math
@@ -12,15 +17,28 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from aioca import FORMAT_TIME, CANothing, caget, camonitor
+from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, cainfo, camonitor
 from p4p.client.asyncio import Context as P4PContext
 
 from canopy.epics.base import Subscription, EventCallback, normalize_severity
-from canopy.contracts.pv import PVValue
+from canopy.contracts.pv import PVMeta, PVValue, ValueKind
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name
 
 logger = logging.getLogger(__name__)
+
+# EPICS DBF/DBR field-type codes (aioca exposes them via the augmented value's
+# datatype): STRING=0, ENUM=3, CHAR=4.
+_DBR_STRING = 0
+_DBR_ENUM = 3
+_DBR_CHAR = 4
+
+# PV Access Normative-Type short names
+_PVA_KINDS = {
+    "NTScalar": ValueKind.SCALAR,
+    "NTScalarArray": ValueKind.WAVEFORM,
+    "NTEnum": ValueKind.ENUM,
+}
 
 
 def _sanitize(value):
@@ -40,6 +58,53 @@ def _to_py(value):
     return value
 
 
+def _finite(value) -> float | None:
+    """A finite float, else None (drops NaN/Inf limits)."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _decode_char_array(values) -> str:
+    """Decode a CA DBR_CHAR waveform as the EPICS long-string idiom: the bytes up
+    to the first NUL."""
+    if isinstance(values, bytes | bytearray):
+        raw = bytes(values)
+    elif isinstance(values, list):
+        raw = bytes(int(v) & 0xFF for v in values if v is not None)
+    else:
+        return str(values)
+    return raw.split(b"\x00", 1)[0].decode("latin-1", errors="replace")
+
+
+def _pva_get(value, field):
+    """``value.get(field)`` that returns None for a missing/odd field."""
+    try:
+        return value.get(field)
+    except Exception:
+        return None
+
+
+def _pva_kind_and_id(value) -> tuple[ValueKind, str]:
+    """Classify a p4p Value by its Normative-Type id. Unknown-but-recognized NT
+    types (NTNDArray/NTTable/...) -> UNSUPPORTED; an id-less plain structure is
+    treated as a scalar and refined later by its Python value type."""
+    try:
+        type_id = value.getID() or ""
+    except Exception:
+        type_id = ""
+    short = type_id.split("/")[-1].split(":")[0] if type_id else ""
+    if short in _PVA_KINDS:
+        return _PVA_KINDS[short], type_id
+    if short == "":
+        return ValueKind.SCALAR, type_id
+    return ValueKind.UNSUPPORTED, type_id
+
+
 class EpicsConnector:
     backend_name = "epics"
 
@@ -48,10 +113,14 @@ class EpicsConnector:
         ca_timeout_s: float = 5.0,
         pva_timeout_s: float = 5.0,
         unprefixed_pva_fallback: bool = False,
+        char_array_as_string: bool = True,
+        max_array_elements: int = 100_000,
     ) -> None:
         self._ca_timeout = ca_timeout_s
         self._pva_timeout = pva_timeout_s
         self._fallback = unprefixed_pva_fallback
+        self._char_array_as_string = char_array_as_string
+        self._max_array_elements = max_array_elements
         self._loop: asyncio.AbstractEventLoop | None = None
         self._pva_context = None
 
@@ -61,6 +130,8 @@ class EpicsConnector:
             ca_timeout_s=cfg.ca_timeout_s,
             pva_timeout_s=cfg.pva_timeout_s,
             unprefixed_pva_fallback=cfg.unprefixed_pva_fallback,
+            char_array_as_string=cfg.char_array_as_string,
+            max_array_elements=cfg.max_array_elements,
         )
 
     async def start(self) -> None:
@@ -109,6 +180,81 @@ class EpicsConnector:
             return self._disconnected(pv, str(exc))
         return self._pva_to_pvvalue(pv, value)
 
+    # --- metadata (describe) --------------------------------------------- #
+
+    async def describe(self, pv: str) -> PVMeta:
+        protocol, stripped = parse_pv_name(pv)
+        if protocol == "pva":
+            return await self._describe_pva(pv, stripped)
+        return await self._describe_ca(pv, stripped)
+
+    async def _describe_ca(self, pv: str, stripped: str) -> PVMeta:
+        try:
+            aug = await caget(stripped, format=FORMAT_CTRL, timeout=self._ca_timeout, throw=False)
+        except Exception:
+            return PVMeta(pv=pv)
+        if not getattr(aug, "ok", True):
+            return PVMeta(pv=pv)
+        precision = getattr(aug, "precision", None)
+        meta = PVMeta(
+            pv=pv,
+            value_kind=self._ca_kind(aug),
+            units=(getattr(aug, "units", None) or None),
+            precision=int(precision) if precision is not None else None,
+            display_low=_finite(getattr(aug, "lower_disp_limit", None)),
+            display_high=_finite(getattr(aug, "upper_disp_limit", None)),
+            control_low=_finite(getattr(aug, "lower_ctrl_limit", None)),
+            control_high=_finite(getattr(aug, "upper_ctrl_limit", None)),
+        )
+        enums = getattr(aug, "enums", None)
+        if enums is not None and len(enums) > 0:
+            meta.enum_choices = [str(e) for e in enums]
+        try:
+            info = await cainfo(stripped, timeout=self._ca_timeout)
+            meta.writable = bool(getattr(info, "write", None))
+        except Exception:
+            pass
+        return meta
+
+    async def _describe_pva(self, pv: str, stripped: str) -> PVMeta:
+        try:
+            ctx = self._get_pva_context()
+            value = await asyncio.wait_for(ctx.get(stripped), timeout=self._pva_timeout)
+        except Exception:
+            return PVMeta(pv=pv)
+        kind, _ = _pva_kind_and_id(value)
+        precision = _pva_get(value, "display.precision")
+        meta = PVMeta(
+            pv=pv,
+            value_kind=kind,
+            units=(_pva_get(value, "display.units") or None),
+            precision=int(precision) if precision is not None else None,
+            description=(_pva_get(value, "display.description") or None),
+            display_low=_finite(_pva_get(value, "display.limitLow")),
+            display_high=_finite(_pva_get(value, "display.limitHigh")),
+            control_low=_finite(_pva_get(value, "control.limitLow")),
+            control_high=_finite(_pva_get(value, "control.limitHigh")),
+            form=self._pva_form(value),
+        )
+        if kind is ValueKind.ENUM:
+            choices = _pva_get(value, "value.choices")
+            if choices:
+                meta.enum_choices = [str(c) for c in choices]
+        elif kind is ValueKind.SCALAR and isinstance(_to_py(_pva_get(value, "value")), str):
+            meta.value_kind = ValueKind.STRING
+        return meta
+
+    @staticmethod
+    def _pva_form(value) -> str | None:
+        choices = _pva_get(value, "display.form.choices")
+        idx = _pva_get(value, "display.form.index")
+        try:
+            if choices and idx is not None:
+                return str(choices[int(idx)])
+        except (IndexError, TypeError, ValueError):
+            pass
+        return None
+
     # --- monitors -------------------------------------------------------- #
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:
@@ -156,46 +302,92 @@ class EpicsConnector:
 
     # --- conversions ----------------------------------------------------- #
 
+    def _ca_kind(self, aug) -> ValueKind:
+        dt = getattr(aug, "datatype", None)
+        count = getattr(aug, "element_count", None) or 1
+        enums = getattr(aug, "enums", None)
+        if dt == _DBR_ENUM or (enums is not None and len(enums) > 0):
+            return ValueKind.ENUM
+        if dt == _DBR_STRING:
+            return ValueKind.WAVEFORM if count > 1 else ValueKind.STRING
+        if dt == _DBR_CHAR and count > 1:
+            return ValueKind.STRING if self._char_array_as_string else ValueKind.WAVEFORM
+        if count > 1:
+            return ValueKind.WAVEFORM
+        return ValueKind.SCALAR
+
+    def _truncate(self, values: list) -> tuple[list, str | None]:
+        if len(values) > self._max_array_elements:
+            n = len(values)
+            return (
+                values[: self._max_array_elements],
+                f"array truncated to {self._max_array_elements} of {n} elements",
+            )
+        return values, None
+
     def _ca_to_pvvalue(self, pv: str, aug) -> PVValue:
         if not getattr(aug, "ok", True):
             return self._disconnected(pv, f"CA read failed: {getattr(aug, 'errorcode', 'unknown')}")
         raw_ts = getattr(aug, "timestamp", None)
         ts_ns = int(float(raw_ts) * 1_000_000_000) if raw_ts else time.time_ns()
+        kind = self._ca_kind(aug)
+        py = _to_py(aug)
+        error = None
+        if kind is ValueKind.ENUM:
+            try:
+                value = int(py)
+            except (TypeError, ValueError):
+                value = py
+        elif kind is ValueKind.STRING:
+            value = _decode_char_array(py) if isinstance(py, list) else py
+        elif kind is ValueKind.WAVEFORM and isinstance(py, list):
+            py, error = self._truncate(py)
+            value = _sanitize(py)
+        else:
+            value = _sanitize(py)
         return PVValue(
             pv=pv,
-            value=_sanitize(_to_py(aug)),
+            value=value,
+            value_kind=kind,
             severity=normalize_severity(getattr(aug, "severity", None)),
             ts_ns=ts_ns,
             connected=True,
-            units=getattr(aug, "units", None),
-            precision=getattr(aug, "precision", None),
+            error=error,
         )
 
     def _pva_to_pvvalue(self, pv: str, value) -> PVValue:
-        raw = None
-        severity = None
-        units = None
         ts_ns = time.time_ns()
-        try:
-            if hasattr(value, "get"):
-                raw = value.get("value")
-                severity = value.get("alarm.severity")
-                units = value.get("display.units")
-                secs = value.get("timeStamp.secondsPastEpoch")
-                nanos = value.get("timeStamp.nanoseconds") or 0
-                if secs:
-                    ts_ns = int(secs) * 1_000_000_000 + int(nanos)
-        except Exception:
-            pass
-        if raw is None:
-            raw = value
+        severity = _pva_get(value, "alarm.severity")
+        secs = _pva_get(value, "timeStamp.secondsPastEpoch")
+        nanos = _pva_get(value, "timeStamp.nanoseconds") or 0
+        if secs:
+            ts_ns = int(secs) * 1_000_000_000 + int(nanos)
+
+        kind, type_id = _pva_kind_and_id(value)
+        error = None
+        if kind is ValueKind.UNSUPPORTED:
+            raw = None
+            error = f"unsupported PV type: {type_id or 'unknown'}"
+        elif kind is ValueKind.ENUM:
+            idx = _pva_get(value, "value.index")
+            raw = int(idx) if idx is not None else None
+        else:
+            raw = _to_py(_pva_get(value, "value"))
+            if isinstance(raw, list):
+                raw, error = self._truncate(raw)
+                kind = ValueKind.WAVEFORM
+            elif isinstance(raw, str):
+                kind = ValueKind.STRING
+            raw = _sanitize(raw)
+
         return PVValue(
             pv=pv,
-            value=_sanitize(_to_py(raw)),
+            value=raw,
+            value_kind=kind,
             severity=normalize_severity(severity),
             ts_ns=ts_ns,
             connected=True,
-            units=units or None,
+            error=error,
         )
 
     def _disconnected(self, pv: str, error: str) -> PVValue:

@@ -108,6 +108,9 @@
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       switch (m.type) {
         case "initial":
+          applyMeta(m.meta);
+          applyData(m.data);
+          break;
         case "diff":
           applyData(m.data);
           break;
@@ -119,6 +122,14 @@
           break;
       }
     };
+  }
+
+  function applyMeta(meta) {
+    if (!meta) return;
+    for (const pv of Object.keys(meta)) {
+      const s = series.get(pv);
+      if (s) s.meta = meta[pv];  // static metadata (units, valueKind, ...) from the initial frame
+    }
   }
 
   function applyData(data) {
@@ -209,7 +220,7 @@
         `<span class="swatch" style="background:${s.color}"></span>` +
         `<span class="name">${pv}</span>` +
         `<span class="val">${d ? fmtNum(toNumber(d.value)) : "—"}</span>` +
-        `<span class="muted">${(d && d.units) || ""}</span>` +
+        `<span class="muted">${(s.meta && s.meta.units) || ""}</span>` +
         `<span class="sev sev-${sev}">${d ? sev : "—"}</span>` +
         `<span class="muted">${d ? fmtTs(d.tsNs) : "—"}</span>`;
       box.appendChild(row);

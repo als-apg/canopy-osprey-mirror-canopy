@@ -1,7 +1,12 @@
-"""caproto soft IOC for verifying Hare's EPICS connector backend.
+"""caproto soft IOC for verifying Hare's EPICS connector backend (Channel Access).
 
-Hosts a few CA PVs under the ``TEST:`` prefix and updates twice a second so camonitor has
-something to stream.
+Hosts CA PVs of every value kind under the ``TEST:`` prefix and updates them so
+camonitor has something to stream:
+
+    TEST:COUNTER     scalar int (increments)        TEST:ENUM       enum (cycles)
+    TEST:SINE        scalar double (sine)           TEST:WAVEFORM   double waveform
+    TEST:CONST       scalar double (constant)       TEST:STRING     string
+                                                     TEST:LONGSTRING DBR_CHAR string
 
 Run (loopback only)::
 
@@ -12,13 +17,39 @@ Run (loopback only)::
 import math
 import time
 
+from caproto import ChannelType
 from caproto.server import PVGroup, run, pvproperty
+
+_STATES = ["OFF", "LOW", "HIGH", "FAULT"]
+_WF_LEN = 32
 
 
 class CanopyTestIOC(PVGroup):
     counter = pvproperty(value=0, name="COUNTER", doc="Increments every 0.5s")
-    sine = pvproperty(value=0.0, name="SINE", doc="Sine wave, updates every 0.5s")
-    const = pvproperty(value=42.0, name="CONST", doc="Constant value")
+    sine = pvproperty(value=0.0, name="SINE", units="V", precision=3, doc="Sine wave")
+    const = pvproperty(value=42.0, name="CONST", units="mm", precision=2, doc="Constant value")
+    state = pvproperty(
+        value="OFF",
+        name="ENUM",
+        enum_strings=_STATES,
+        dtype=ChannelType.ENUM,
+        doc="Enum cycling once a second",
+    )
+    waveform = pvproperty(
+        value=[0.0] * _WF_LEN,
+        name="WAVEFORM",
+        units="counts",
+        precision=2,
+        doc="Animated sine waveform",
+    )
+    message = pvproperty(value="idle", name="STRING", dtype=ChannelType.STRING, doc="A string PV")
+    longstring = pvproperty(
+        value="canopy-long-string",
+        name="LONGSTRING",
+        dtype=ChannelType.CHAR,
+        max_length=64,
+        doc="DBR_CHAR long-string idiom",
+    )
 
     @counter.scan(period=0.5)
     async def counter(self, instance, async_lib):
@@ -27,6 +58,15 @@ class CanopyTestIOC(PVGroup):
     @sine.scan(period=0.5)
     async def sine(self, instance, async_lib):
         await instance.write(round(math.sin(time.time()), 4))
+
+    @state.scan(period=1.0)
+    async def state(self, instance, async_lib):
+        await instance.write(_STATES[int(time.time()) % len(_STATES)])
+
+    @waveform.scan(period=0.5)
+    async def waveform(self, instance, async_lib):
+        t = time.time()
+        await instance.write([round(math.sin(t + i * 2 * math.pi / _WF_LEN), 4) for i in range(_WF_LEN)])
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ from collections.abc import Iterable
 
 from canopy.epics.base import PVConnector, Subscription
 from canopy.hare.config import HareConfig
-from canopy.contracts.pv import PVValue
+from canopy.contracts.pv import PVMeta, PVValue
 from canopy.hare.services.subscriptions import SubscriptionRegistry
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ class PVBroker:
         self._channels: dict[str, ClientChannel] = {}
         self._monitors: dict[str, Subscription] = {}
         self._latest: dict[str, PVValue] = {}
+        self._meta: dict[str, PVMeta] = {}
         self._buffer: dict[str, PVValue] = {}
         self._buffer_lock = asyncio.Lock()
         self._queue: asyncio.Queue[PVValue] = asyncio.Queue()
@@ -108,21 +109,29 @@ class PVBroker:
             return
         newly = self._registry.subscribe(client_id, pvs)
         await self._start_monitors(newly)
-        # Seed latest for newly-activated PVs so the subscriber gets an
-        # immediate value rather than waiting for the first monitor tick.
+        # Seed latest value + static metadata for newly-activated PVs so the
+        # subscriber gets an immediate value (and describe info) rather than
+        # waiting for the first monitor tick.
         for pv in newly:
             if pv not in self._latest:
                 try:
                     self._latest[pv] = await self._connector.get(pv)
                 except Exception as exc:
                     logger.debug("initial get failed for %s: %s", pv, exc)
+            if pv not in self._meta:
+                try:
+                    self._meta[pv] = await self._connector.describe(pv)
+                except Exception as exc:
+                    logger.debug("describe failed for %s: %s", pv, exc)
         initial = {pv: self._latest[pv] for pv in pvs if pv in self._latest}
-        if initial:
+        meta = {pv: self._meta[pv] for pv in pvs if pv in self._meta}
+        if initial or meta:
             await self._send(
                 client_id,
                 {
                     "type": "initial",
                     "data": {pv: val.model_dump(by_alias=True) for pv, val in initial.items()},
+                    "meta": {pv: m.model_dump(by_alias=True) for pv, m in meta.items()},
                     "count": len(initial),
                 },
             )
@@ -153,6 +162,7 @@ class PVBroker:
                 except Exception:
                     logger.exception("error closing monitor for %s", pv)
             self._latest.pop(pv, None)
+            self._meta.pop(pv, None)
 
     # --- event ingestion ------------------------------------------------- #
 
@@ -235,6 +245,13 @@ class PVBroker:
         if cached is not None:
             return cached
         return await self._connector.get(pv)
+
+    async def get_describe(self, pv: str) -> PVMeta:
+        """Static metadata: cached if actively monitored, else a one-shot describe."""
+        cached = self._meta.get(pv)
+        if cached is not None:
+            return cached
+        return await self._connector.describe(pv)
 
     def status(self) -> dict:
         return {
