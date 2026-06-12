@@ -11,6 +11,7 @@ from canopy.vole.config import get_vole_config
 from canopy.vole.runtime import mark_started
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.api.v1.router import router as v1_router
+from canopy.vole.services.notifier import ChangeNotifier
 from canopy.vole.services.hare_ingest import HareIngestService
 from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.eviction_service import EvictionService
@@ -31,8 +32,10 @@ async def vole_lifespan():
     store = PVStore(config)
     alignment = AlignmentService()
     eviction = EvictionService(store, config)
-    service = BufferService(store, alignment, eviction, clock, config)
+    notifier = ChangeNotifier()
+    service = BufferService(store, alignment, eviction, clock, config, notifier=notifier)
     gateway.bind(service)
+    gateway.bind_notifier(notifier)
 
     broker = hare_gateway.get_broker()
     ingest = HareIngestService(service, broker)
@@ -52,6 +55,7 @@ async def vole_lifespan():
     finally:
         await ingest.stop()
         gateway.bind_ingest(None)
+        gateway.bind_notifier(None)
         gateway.bind(None)
         logger.info("Vole shutdown complete")
 

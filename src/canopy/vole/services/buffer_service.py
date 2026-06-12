@@ -13,6 +13,7 @@ from canopy.contracts.sample import Sample
 from canopy.vole.buffer.ring import StoredSample
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.schemas.buffer import PerPVInfoDTO, VoleStatsDTO
+from canopy.vole.services.notifier import ChangeNotifier
 from canopy.vole.services.eviction_service import EvictionService
 from canopy.vole.services.alignment_service import AlignedResult, AlignmentService
 
@@ -29,12 +30,14 @@ class BufferService:
         eviction: EvictionService,
         clock: Clock,
         config: VoleConfig,
+        notifier: ChangeNotifier | None = None,
     ) -> None:
         self._store = store
         self._alignment = alignment
         self._eviction = eviction
         self._clock = clock
         self._config = config
+        self._notifier = notifier
 
     @property
     def max_age_ns(self) -> int:
@@ -55,6 +58,9 @@ class BufferService:
 
         async with self._store.lock_for(pv):
             ring.append(stored, now)
+
+        if self._notifier is not None:
+            self._notifier.notify(pv)
 
     async def seed(
         self,

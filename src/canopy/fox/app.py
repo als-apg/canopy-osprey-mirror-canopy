@@ -14,6 +14,7 @@ from canopy.vole.adapter import VoleDataSource
 from canopy.fox.api.v1.router import router as v1_router
 from canopy.fox.services.parser import Parser
 from canopy.fox.services.formula_service import FormulaService
+from canopy.fox.services.subscription_manager import SubscriptionManager
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,14 @@ async def fox_lifespan():
     parser = Parser(max_expression_len=config.max_expression_len)
     service = FormulaService(data_source, parser, config)
     gateway.bind(service)
+
+    sub_manager = SubscriptionManager(
+        formula_service=service,
+        on_change_fn=vole_gateway.on_change,
+        subscribe_live_fn=vole_gateway.subscribe_live,
+    )
+    gateway.bind_subscription_manager(sub_manager)
+
     mark_started()
     logger.info(
         "Fox started: eval_timeout=%dms, max_output_points=%d", config.eval_timeout_ms, config.max_output_points
@@ -42,6 +51,8 @@ async def fox_lifespan():
     try:
         yield
     finally:
+        await sub_manager.shutdown()
+        gateway.bind_subscription_manager(None)
         gateway.bind(None)
         logger.info("Fox shutdown complete")
 

@@ -136,8 +136,8 @@ class TestAutoProvision:
         assert "PV:MISSING" in window.arrays
         assert fetched_pvs == ["PV:MISSING"]
 
-    async def test_read_aligned_mole_error_not_provisioned(self, test_service, fake_clock):
-        """If Mole fetch raises, the PV is NOT marked provisioned and NOT subscribed."""
+    async def test_read_aligned_mole_error_still_subscribes_live(self, test_service, fake_clock):
+        """If Mole fetch raises, the PV is still subscribed to live updates."""
 
         async def failing_fetch(pv, t0, t1):
             raise RuntimeError("archiver down")
@@ -152,8 +152,7 @@ class TestAutoProvision:
         with pytest.raises(PVNotBuffered):
             await adapter.read_aligned(["PV:FAIL"], _BASE + 100, _BASE + 500, align="last", index="union")
 
-        # Subscribe was NOT called because the fetch failed
-        assert subscribed == []
+        assert subscribed == [["PV:FAIL"]]
 
     async def test_read_latest_provisions_missing_pv(self, test_service, fake_clock):
         """read_latest for an unknown PV triggers provisioning."""

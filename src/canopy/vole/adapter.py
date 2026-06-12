@@ -19,6 +19,7 @@ from canopy.core.clock import Clock
 from canopy.vole.errors import PVNotBuffered
 from canopy.contracts.sample import Sample
 from canopy.contracts.formula import IndexMode, AlignmentMode
+from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.services.buffer_service import BufferService
 
 logger = logging.getLogger(__name__)
@@ -72,31 +73,40 @@ class VoleDataSource:
     ) -> AlignedWindow:
         vole_align = _ALIGN_MAP[align]
         vole_index = _INDEX_MAP[index]
+        canonical = [strip_protocol_prefix(pv) for pv in pvs]
+
+        canon_to_orig = dict(zip(canonical, pvs))
 
         try:
             result = await self._buffer.read_aligned(
-                pvs, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
+                canonical, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
             )
         except PVNotBuffered as exc:
             if not self._can_provision():
                 raise
-            await self._provision(exc.pvs, t0_ns, t1_ns)
+            missing_orig = [canon_to_orig.get(p, p) for p in exc.pvs]
+            await self._provision(missing_orig, t0_ns, t1_ns)
             result = await self._buffer.read_aligned(
-                pvs, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
+                canonical, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
             )
+
+        # Re-key arrays from canonical names back to the original PV names Fox expects
+        arrays = {canon_to_orig.get(k, k): v for k, v in result.arrays.items()}
+        severities = {canon_to_orig.get(k, k): v for k, v in result.severities.items()}
 
         return AlignedWindow(
             ts_ns=result.ts_ns,
-            arrays=result.arrays,
-            severities=result.severities,
+            arrays=arrays,
+            severities=severities,
         )
 
     async def read_latest(self, pv: str) -> Sample | None:
-        sample = await self._buffer.read_latest(pv)
+        canonical = strip_protocol_prefix(pv)
+        sample = await self._buffer.read_latest(canonical)
         if sample is None and pv not in self._provisioned and self._can_provision():
             now = self._now_ns()
             await self._provision([pv], now - self._buffer.max_age_ns, now)
-            sample = await self._buffer.read_latest(pv)
+            sample = await self._buffer.read_latest(canonical)
         return sample
 
     def _now_ns(self) -> int:
@@ -127,7 +137,6 @@ class VoleDataSource:
         earliest_viable = now - self._buffer.max_age_ns
         t0_ns = max(t0_ns, earliest_viable)
 
-        succeeded: list[str] = []
         for pv in to_provision:
             async with self._lock_for(pv):
                 if pv in self._provisioned:
@@ -140,10 +149,8 @@ class VoleDataSource:
                     else:
                         await self._buffer.seed(pv, [])
                         logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
-                    succeeded.append(pv)
                 except Exception:
-                    logger.warning("Failed to seed PV %s from Mole", pv, exc_info=True)
+                    logger.info("PV %s not in archiver, subscribing to live only", pv)
 
-        if succeeded:
-            await self._subscribe_live(succeeded)
-            self._provisioned.update(succeeded)
+        await self._subscribe_live(to_provision)
+        self._provisioned.update(to_provision)
