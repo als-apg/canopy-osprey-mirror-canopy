@@ -1,6 +1,6 @@
 """Wire-contract checks for the live-PV types (camelCase aliasing + valueKind)."""
 
-from canopy.contracts.pv import PVMeta, PVValue, TableValue, ValueKind
+from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue
 from canopy.contracts.sample import AlarmSeverity
 
 

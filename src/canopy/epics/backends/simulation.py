@@ -21,7 +21,7 @@ import asyncio
 from dataclasses import dataclass
 
 from canopy.epics.base import Subscription, EventCallback
-from canopy.contracts.pv import PVMeta, PVValue, TableValue, ValueKind
+from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue
 from canopy.contracts.sample import AlarmSeverity
 
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
