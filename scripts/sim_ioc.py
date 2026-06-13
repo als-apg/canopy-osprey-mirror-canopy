@@ -26,7 +26,19 @@ _WF_LEN = 32
 
 class CanopyTestIOC(PVGroup):
     counter = pvproperty(value=0, name="COUNTER", doc="Increments every 0.5s")
-    sine = pvproperty(value=0.0, name="SINE", units="V", precision=3, doc="Sine wave")
+    sine = pvproperty(
+        value=0.0,
+        name="SINE",
+        units="V",
+        precision=3,
+        lower_warning_limit=-7.0,
+        upper_warning_limit=7.0,
+        lower_alarm_limit=-9.0,
+        upper_alarm_limit=9.0,
+        lower_disp_limit=-10.0,
+        upper_disp_limit=10.0,
+        doc="Sine wave with warning/alarm limits",
+    )
     const = pvproperty(value=42.0, name="CONST", units="mm", precision=2, doc="Constant value")
     state = pvproperty(
         value="OFF",

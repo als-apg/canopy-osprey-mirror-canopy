@@ -25,22 +25,38 @@ from canopy.contracts.sample import AlarmSeverity
 class ValueKind(StrEnum):
     """How to interpret a `PVValue.value`.
 
-    `IMAGE` is reserved for NTNDArray, which will travel as a dedicated binary
-    frame rather than JSON. `UNSUPPORTED` covers any recognized-but-not-
-    yet-rendered Normative Type (NTTable, NTMatrix, ...).
+    `TABLE` carries a `TableValue` (PV Access NTTable). `IMAGE` is reserved for
+    NTNDArray, which will travel as a dedicated binary frame rather than JSON.
+    `UNSUPPORTED` covers any recognized-but-not-yet-rendered Normative Type
+    (NTMatrix, NTHistogram, NTNameValue, ...).
     """
 
     SCALAR = "scalar"
     STRING = "string"
     ENUM = "enum"
     WAVEFORM = "waveform"
+    TABLE = "table"
     IMAGE = "image"
     UNSUPPORTED = "unsupported"
 
 
-# A live value is a scalar, a string, an enum index, or a 1-D waveform (list).
-# `None` when disconnected. Images never travel as a `PVValue` (see ValueKind.IMAGE).
-PVValueType = float | int | bool | str | list | None
+class TableValue(CanopyModel):
+    """A tabular value (PV Access NTTable), carried inline on a `PVValue` whose
+    `valueKind` is `table`.
+
+    Column-major and self-describing: `columns[i]` holds the cells of the column
+    headed by `labels[i]`, and every column has the same length (the row count).
+    Labels travel with the value (as Phoebus VTable does) because they are part of
+    the NTTable structure itself, not separate per-channel display metadata.
+    """
+
+    labels: list[str]
+    columns: list[list]
+
+
+# A live value is a scalar, a string, an enum index, a 1-D waveform (list), or a
+# `TableValue`. `None` when disconnected. Images never travel as a `PVValue`.
+PVValueType = float | int | bool | str | list | TableValue | None
 
 
 class PVValue(CanopyModel):
@@ -75,6 +91,11 @@ class PVMeta(CanopyModel):
     display_high: float | None = None
     control_low: float | None = None
     control_high: float | None = None
+    # Warning/alarm thresholds
+    warning_low: float | None = None
+    warning_high: float | None = None
+    alarm_low: float | None = None
+    alarm_high: float | None = None
     writable: bool | None = None
     # Display format hint (e.g. "Decimal", "Hex"), from PVA display.form.
     form: str | None = None

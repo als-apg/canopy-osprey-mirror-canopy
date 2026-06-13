@@ -21,7 +21,7 @@ from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, cainfo, camonitor
 from p4p.client.asyncio import Context as P4PContext
 
 from canopy.epics.base import Subscription, EventCallback, normalize_severity
-from canopy.contracts.pv import PVMeta, PVValue, ValueKind
+from canopy.contracts.pv import PVMeta, PVValue, TableValue, ValueKind
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name
 
@@ -38,6 +38,7 @@ _PVA_KINDS = {
     "NTScalar": ValueKind.SCALAR,
     "NTScalarArray": ValueKind.WAVEFORM,
     "NTEnum": ValueKind.ENUM,
+    "NTTable": ValueKind.TABLE,
 }
 
 
@@ -91,7 +92,7 @@ def _pva_get(value, field):
 
 def _pva_kind_and_id(value) -> tuple[ValueKind, str]:
     """Classify a p4p Value by its Normative-Type id. Unknown-but-recognized NT
-    types (NTNDArray/NTTable/...) -> UNSUPPORTED; an id-less plain structure is
+    types (NTNDArray/NTMatrix/...) -> UNSUPPORTED; an id-less plain structure is
     treated as a scalar and refined later by its Python value type."""
     try:
         type_id = value.getID() or ""
@@ -205,6 +206,10 @@ class EpicsConnector:
             display_high=_finite(getattr(aug, "upper_disp_limit", None)),
             control_low=_finite(getattr(aug, "lower_ctrl_limit", None)),
             control_high=_finite(getattr(aug, "upper_ctrl_limit", None)),
+            warning_low=_finite(getattr(aug, "lower_warning_limit", None)),
+            warning_high=_finite(getattr(aug, "upper_warning_limit", None)),
+            alarm_low=_finite(getattr(aug, "lower_alarm_limit", None)),
+            alarm_high=_finite(getattr(aug, "upper_alarm_limit", None)),
         )
         enums = getattr(aug, "enums", None)
         if enums is not None and len(enums) > 0:
@@ -234,6 +239,10 @@ class EpicsConnector:
             display_high=_finite(_pva_get(value, "display.limitHigh")),
             control_low=_finite(_pva_get(value, "control.limitLow")),
             control_high=_finite(_pva_get(value, "control.limitHigh")),
+            warning_low=_finite(_pva_get(value, "valueAlarm.lowWarningLimit")),
+            warning_high=_finite(_pva_get(value, "valueAlarm.highWarningLimit")),
+            alarm_low=_finite(_pva_get(value, "valueAlarm.lowAlarmLimit")),
+            alarm_high=_finite(_pva_get(value, "valueAlarm.highAlarmLimit")),
             form=self._pva_form(value),
         )
         if kind is ValueKind.ENUM:
@@ -371,6 +380,8 @@ class EpicsConnector:
         elif kind is ValueKind.ENUM:
             idx = _pva_get(value, "value.index")
             raw = int(idx) if idx is not None else None
+        elif kind is ValueKind.TABLE:
+            raw, error = self._pva_table(value)
         else:
             raw = _to_py(_pva_get(value, "value"))
             if isinstance(raw, list):
@@ -389,6 +400,30 @@ class EpicsConnector:
             connected=True,
             error=error,
         )
+
+    def _pva_table(self, value) -> tuple[TableValue, str | None]:
+        """Extract an NTTable into a column-major TableValue. Columns are read
+        from the value sub-structure in declared order. The headers parallel them,
+        falling back to the column field names when absent."""
+        labels = [str(x) for x in (_pva_get(value, "labels") or [])]
+        try:
+            col_map = value.todict("value") or {}
+        except Exception:
+            col_map = {}
+        if not labels:
+            labels = list(col_map.keys())
+        error = None
+        columns: list[list] = []
+        for col in col_map.values():
+            col = _to_py(col)
+            if isinstance(col, list):
+                col, err = self._truncate(col)
+                error = error or err
+                col = _sanitize(col)
+            else:
+                col = [col]
+            columns.append(col)
+        return TableValue(labels=labels, columns=columns), error
 
     def _disconnected(self, pv: str, error: str) -> PVValue:
         return PVValue(

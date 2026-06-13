@@ -56,7 +56,7 @@
     <legend>Subscribe</legend>
     <div class="row">
       <label style="flex:1">PV names (comma or space separated)
-        <input id="pvs" value="SIM:TEMP, SIM:STATE:ENUM, SIM:TRACE:WAVEFORM, SIM:MSG:STR" style="width:100%" />
+        <input id="pvs" value="SIM:TEMP, SIM:STATE:ENUM, SIM:TRACE:WAVEFORM, SIM:MSG:STR, SIM:DATA:TABLE" style="width:100%" />
       </label>
       <button id="subBtn" disabled>Subscribe</button>
       <button id="clearBtn" disabled>Unsubscribe all</button>
@@ -97,6 +97,18 @@
       .join("");
   }
 
+  function fmtTable(t) {
+    const cell = (x) => `<td style="padding:0 6px;border:1px solid #ddd">${x}</td>`;
+    const rows = t.columns.length ? t.columns[0].length : 0;
+    const shown = Math.min(rows, 5);
+    let html = `<table style="border-collapse:collapse;font-size:11px"><tr>` +
+      t.labels.map((l) => `<th style="padding:0 6px;border:1px solid #ddd">${l}</th>`).join("") + `</tr>`;
+    for (let r = 0; r < shown; r++) html += `<tr>${t.columns.map((c) => cell(c[r])).join("")}</tr>`;
+    html += `</table>`;
+    if (rows > shown) html += `<span class="muted">… +${rows - shown} rows</span>`;
+    return html;
+  }
+
   function fmtValue(pv, d) {
     const v = d.value;
     if (v === null || v === undefined) return "—";
@@ -106,6 +118,7 @@
       const label = choices && choices[v] !== undefined ? choices[v] : v;
       return `${label} (${v})`;
     }
+    if (kind === "table" && v && Array.isArray(v.columns)) return fmtTable(v);
     if (Array.isArray(v)) return `[${v.length}] ${sparkline(v)}`;
     if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(4);
     return String(v);

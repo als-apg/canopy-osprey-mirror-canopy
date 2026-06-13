@@ -7,6 +7,7 @@ exercised end to end:
 - ``:ENUM``               -> an enum cycling through fixed choices
 - ``:WAVEFORM`` / ``:WF`` -> a numeric waveform (animated sine across the array)
 - ``:STR``                -> a string value
+- ``:TABLE``              -> a small NTTable-style table (index/value/status columns)
 - anything else           -> a scalar
 
 Each PV's phase is a stable function of its name, so values are deterministic per
@@ -20,7 +21,7 @@ import asyncio
 from dataclasses import dataclass
 
 from canopy.epics.base import Subscription, EventCallback
-from canopy.contracts.pv import PVMeta, PVValue, ValueKind
+from canopy.contracts.pv import PVMeta, PVValue, TableValue, ValueKind
 from canopy.contracts.sample import AlarmSeverity
 
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
@@ -74,6 +75,8 @@ class SimulationConnector:
             return ValueKind.WAVEFORM
         if pv.endswith(":STR"):
             return ValueKind.STRING
+        if pv.endswith(":TABLE"):
+            return ValueKind.TABLE
         return ValueKind.SCALAR
 
     @staticmethod
@@ -111,6 +114,14 @@ class SimulationConnector:
                 severity=AlarmSeverity.NO_ALARM,
                 ts_ns=now,
             )
+        if kind is ValueKind.TABLE:
+            n = 4
+            base = self._sine(pv)
+            rows = list(range(1, n + 1))
+            vals = [round(base + i, 3) for i in range(n)]
+            status = [_ENUM_CHOICES[(i + int(time.monotonic())) % len(_ENUM_CHOICES)] for i in range(n)]
+            table = TableValue(labels=["Index", "Value", "Status"], columns=[rows, vals, status])
+            return PVValue(pv=pv, value=table, value_kind=kind, severity=AlarmSeverity.NO_ALARM, ts_ns=now)
         v = self._sine(pv)
         return PVValue(pv=pv, value=v, value_kind=kind, severity=self._severity_for(abs(v)), ts_ns=now)
 
@@ -125,6 +136,8 @@ class SimulationConnector:
             return PVMeta(pv=pv, value_kind=kind, units=self._units, display_low=-10.0, display_high=10.0)
         if kind is ValueKind.STRING:
             return PVMeta(pv=pv, value_kind=kind, writable=True)
+        if kind is ValueKind.TABLE:
+            return PVMeta(pv=pv, value_kind=kind)
         return PVMeta(
             pv=pv,
             value_kind=kind,
@@ -134,6 +147,10 @@ class SimulationConnector:
             display_high=10.0,
             control_low=-10.0,
             control_high=10.0,
+            warning_low=-7.0,
+            warning_high=7.0,
+            alarm_low=-9.0,
+            alarm_high=9.0,
             writable=True,
         )
 

@@ -4,8 +4,9 @@ Hosts PVA PVs of every value kind under the ``TEST:`` prefix and updates them so
 pvmonitor has something to stream:
 
     TEST:COUNTER   NTScalar int (increments)     TEST:ENUM      NTEnum (cycles)
-    TEST:SINE      NTScalar double (sine)        TEST:WAVEFORM  NTScalarArray double
-    TEST:CONST     NTScalar double (constant)    TEST:IMAGE     NTNDArray (8x8 image)
+    TEST:SINE      NTScalar double (sine,         TEST:WAVEFORM  NTScalarArray double
+                   with valueAlarm limits)        TEST:IMAGE     NTNDArray (8x8 image)
+    TEST:CONST     NTScalar double (constant)     TEST:TABLE     NTTable (idx/name/val)
 
 Run::
 
@@ -17,22 +18,45 @@ import time
 import threading
 
 import numpy as np
-from p4p.nt import NTEnum, NTScalar, NTNDArray
+from p4p.nt import NTEnum, NTTable, NTScalar, NTNDArray
 from p4p.server import Server
 from p4p.server.thread import SharedPV
 
 _STATES = ["OFF", "LOW", "HIGH", "FAULT"]
 _WF_LEN = 32
 
+# An NTScalar that also publishes warning/alarm thresholds, so `describe` exposes
+# valueAlarm limits (PyDM uses these for alarm-range coloring).
+_SINE_NT = NTScalar("d", valueAlarm=True, display=True)
+_SINE_INIT = _SINE_NT.wrap(
+    {
+        "value": 0.0,
+        "valueAlarm": {
+            "lowWarningLimit": -7.0,
+            "highWarningLimit": 7.0,
+            "lowAlarmLimit": -9.0,
+            "highAlarmLimit": 9.0,
+        },
+        "display": {"units": "V", "limitLow": -10.0, "limitHigh": 10.0},
+    }
+)
+
+_TABLE_NT = NTTable(columns=[("idx", "i"), ("name", "s"), ("val", "d")])
+
+
+def _table_rows(count: int):
+    return [{"idx": i, "name": f"row{i}", "val": round(math.sin(count + i), 3)} for i in range(1, 5)]
+
 
 def make_pvs():
     pvs = {
         "TEST:COUNTER": SharedPV(nt=NTScalar("i"), initial=0),
-        "TEST:SINE": SharedPV(nt=NTScalar("d"), initial=0.0),
+        "TEST:SINE": SharedPV(nt=_SINE_NT, initial=_SINE_INIT),
         "TEST:CONST": SharedPV(nt=NTScalar("d"), initial=42.0),
         "TEST:ENUM": SharedPV(nt=NTEnum(), initial={"index": 0, "choices": _STATES}),
         "TEST:WAVEFORM": SharedPV(nt=NTScalar("ad"), initial=[0.0] * _WF_LEN),
         "TEST:IMAGE": SharedPV(nt=NTNDArray(), initial=np.zeros((8, 8), dtype=np.uint8)),
+        "TEST:TABLE": SharedPV(nt=_TABLE_NT, initial=_table_rows(0)),
     }
 
     # Accept writes (echo) so the PVs are not read-only.
@@ -56,6 +80,7 @@ def updater(pvs, stop_event: threading.Event):
         pvs["TEST:ENUM"].post({"index": count % len(_STATES), "choices": _STATES})
         pvs["TEST:WAVEFORM"].post([round(math.sin(t + i * 2 * math.pi / _WF_LEN), 4) for i in range(_WF_LEN)])
         pvs["TEST:IMAGE"].post((np.random.default_rng(count).integers(0, 255, size=(8, 8))).astype(np.uint8))
+        pvs["TEST:TABLE"].post(_table_rows(count))
         stop_event.wait(0.5)
 
 

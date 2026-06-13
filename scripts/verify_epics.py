@@ -52,14 +52,19 @@ async def _probe(broker: PVBroker, pv: str):
     meta = await broker.get_describe(pv)
     if meta.enum_choices:
         extra = f" choices={meta.enum_choices}"
+    elif meta.warning_low is not None or meta.alarm_high is not None:
+        extra = f" warn=[{meta.warning_low}, {meta.warning_high}] alarm=[{meta.alarm_low}, {meta.alarm_high}]"
     elif meta.units:
         extra = f" units={meta.units!r}"
     else:
         extra = ""
-    print(
-        f"  {pv:<26} connected={str(value.connected):<5} "
-        f"kind={value.value_kind.value:<11} value={_abbrev(value.value)}{extra}"
-    )
+    if value.value_kind.value == "table" and value.value is not None:
+        t = value.value
+        rows = len(t.columns[0]) if t.columns else 0
+        shown = f"table {len(t.columns)}x{rows} labels={t.labels}"
+    else:
+        shown = f"value={_abbrev(value.value)}"
+    print(f"  {pv:<26} connected={str(value.connected):<5} kind={value.value_kind.value:<11} {shown}{extra}")
     return value
 
 
@@ -72,11 +77,11 @@ async def main() -> int:
 
     print("Channel Access (TEST: via sim_ioc.py):")
     const = await _probe(broker, "TEST:CONST")
-    for pv in ("TEST:ENUM", "TEST:WAVEFORM", "TEST:STRING", "TEST:LONGSTRING"):
+    for pv in ("TEST:SINE", "TEST:ENUM", "TEST:WAVEFORM", "TEST:STRING", "TEST:LONGSTRING"):
         await _probe(broker, pv)
 
     print("PV Access (pva://TEST: via sim_ioc_pva.py):")
-    for pv in ("pva://TEST:CONST", "pva://TEST:ENUM", "pva://TEST:WAVEFORM"):
+    for pv in ("pva://TEST:SINE", "pva://TEST:ENUM", "pva://TEST:WAVEFORM", "pva://TEST:TABLE"):
         await _probe(broker, pv)
     image = await _probe(broker, "pva://TEST:IMAGE")
 

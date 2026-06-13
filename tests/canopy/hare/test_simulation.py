@@ -56,3 +56,22 @@ async def test_string_value():
     value = await conn.get("SIM:MSG:STR")
     assert value.value_kind is ValueKind.STRING
     assert isinstance(value.value, str)
+
+
+async def test_table_value_and_describe():
+    conn = SimulationConnector.from_config(EpicsConfig())
+    value = await conn.get("SIM:DATA:TABLE")
+    assert value.value_kind is ValueKind.TABLE
+    table = value.value
+    assert table.labels == ["Index", "Value", "Status"]
+    assert len(table.columns) == 3
+    assert all(len(col) == len(table.columns[0]) for col in table.columns)
+    meta = await conn.describe("SIM:DATA:TABLE")
+    assert meta.value_kind is ValueKind.TABLE
+
+
+async def test_scalar_describe_has_value_alarm_limits():
+    conn = SimulationConnector.from_config(EpicsConfig())
+    meta = await conn.describe("SIM:X")
+    assert meta.warning_low == -7.0 and meta.warning_high == 7.0
+    assert meta.alarm_low == -9.0 and meta.alarm_high == 9.0
