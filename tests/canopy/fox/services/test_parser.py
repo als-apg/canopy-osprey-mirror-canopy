@@ -39,6 +39,18 @@ class TestValidExpressions:
         result = parser.parse("mean({a})", {"a": "PV:A"})
         assert result.is_numexpr_compatible is False
 
+    def test_bool_op_not_numexpr_compatible(self, parser):
+        result = parser.parse("{a} and {b}", {"a": "PV:A", "b": "PV:B"})
+        assert result.is_numexpr_compatible is False
+
+    def test_not_op_not_numexpr_compatible(self, parser):
+        result = parser.parse("not {a}", {"a": "PV:A"})
+        assert result.is_numexpr_compatible is False
+
+    def test_floordiv_not_numexpr_compatible(self, parser):
+        result = parser.parse("{a} // {b}", {"a": "PV:A", "b": "PV:B"})
+        assert result.is_numexpr_compatible is False
+
     def test_duplicate_token(self, parser):
         result = parser.parse("{a} + {a}", {"a": "PV:A"})
         assert result.tokens == ["a"]
@@ -95,3 +107,7 @@ class TestUnsafeExpressions:
     def test_dunder_attribute(self, parser):
         with pytest.raises(FormulaUnsafeError):
             parser.parse("{a}.__class__", {"a": "PV:A"})
+
+    def test_dunder_on_allowed_prefix(self, parser):
+        with pytest.raises(FormulaUnsafeError, match="Dunder"):
+            parser.parse("np.__class__({a})", {"a": "PV:A"})

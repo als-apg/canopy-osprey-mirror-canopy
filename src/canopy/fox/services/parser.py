@@ -134,6 +134,10 @@ def _check_numexpr_compatible(tree: ast.AST) -> bool:
             ne_name = NUMEXPR_NAME_MAP.get(func_name, func_name)
             if ne_name not in NUMEXPR_FUNCS:
                 return False
-        if isinstance(node, ast.IfExp):
+        if isinstance(node, ast.IfExp | ast.BoolOp):
+            return False
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return False
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.FloorDiv):
             return False
     return True

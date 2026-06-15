@@ -57,7 +57,10 @@ def check_ast_safety(tree: ast.AST) -> list[str]:
     for node in ast.walk(tree):
         node_type = type(node)
         if node_type == ast.Attribute:
-            # Only allow attribute access on known safe objects (np, math)
+            attr_name = node.attr
+            if attr_name.startswith("__") and attr_name.endswith("__"):
+                violations.append(f"Dunder attribute access not allowed: {attr_name}")
+                continue
             if isinstance(node.value, ast.Name) and node.value.id in ("np", "math"):
                 continue
             violations.append(f"Attribute access not allowed: {ast.dump(node)}")

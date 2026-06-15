@@ -38,8 +38,8 @@ SAFE_FUNCS: dict[str, object] = {
     # Reductions
     "mean": np.mean,
     "sum": np.sum,
-    "min": np.minimum,
-    "max": np.maximum,
+    "min": np.min,
+    "max": np.max,
     "std": np.std,
     "var": np.var,
     "ptp": np.ptp,

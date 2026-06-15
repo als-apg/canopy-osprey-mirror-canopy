@@ -8,6 +8,7 @@ import numpy as np
 
 from canopy.fox.ports import DataSource
 from canopy.fox.config import FoxConfig
+from canopy.fox.errors import FormulaDimensionMismatch
 from canopy.core.decimation import uniform_time_decimate
 from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.contracts.formula import CurveResult, FormulaSpec
@@ -42,6 +43,13 @@ async def evaluate_curve_formula(
 
     timeout_s = config.eval_timeout_ms / 1000.0
     result_array = await evaluate_array(parsed, variables, timeout_s)
+
+    n_points = len(window.ts_ns)
+    if result_array.ndim == 0 or result_array.shape[0] != n_points:
+        raise FormulaDimensionMismatch(
+            f"Expression produced shape {result_array.shape} but expected ({n_points},); "
+            "reduction functions like mean() are not supported for curve formulas"
+        )
 
     ts_list = window.ts_ns.tolist()
     values: list[float | None] = []
