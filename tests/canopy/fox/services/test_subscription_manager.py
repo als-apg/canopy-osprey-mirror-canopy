@@ -68,9 +68,9 @@ def _scalar_spec() -> FormulaSpec:
     )
 
 
-def _curve_spec() -> FormulaSpec:
+def _timeseries_spec() -> FormulaSpec:
     return FormulaSpec(
-        kind="curve",
+        kind="timeseries",
         expression="{a} + {b}",
         bindings={"a": "PV:A", "b": "PV:B"},
     )
@@ -108,7 +108,7 @@ class TestSubscriptionManager:
     async def test_coalescing_rapid_notifications(self, manager, notifier):
         messages, send_fn = _make_collector()
 
-        await manager.add_subscription("client-1", "sub-1", _curve_spec(), 1000, 0, send_fn)
+        await manager.add_subscription("client-1", "sub-1", _timeseries_spec(), 1000, 0, send_fn)
         await asyncio.sleep(0.05)
         initial_count = len(messages)
 
@@ -141,7 +141,7 @@ class TestSubscriptionManager:
         messages_2, send_fn_2 = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
-        await manager.add_subscription("client-1", "sub-2", _curve_spec(), 1000, 5000, send_fn_2)
+        await manager.add_subscription("client-1", "sub-2", _timeseries_spec(), 1000, 5000, send_fn_2)
         await asyncio.sleep(0.05)
 
         await manager.remove_client("client-1")
@@ -180,7 +180,7 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await manager.add_subscription("client-2", "sub-2", _curve_spec(), 1000, 5000, send_fn)
+        await manager.add_subscription("client-2", "sub-2", _timeseries_spec(), 1000, 5000, send_fn)
         await asyncio.sleep(0.05)
 
         await manager.shutdown()
@@ -192,11 +192,11 @@ class TestSubscriptionManager:
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
         await asyncio.sleep(0.05)
 
-        await manager.add_subscription("client-1", "sub-1", _curve_spec(), 1000, 0, send_fn)
+        await manager.add_subscription("client-1", "sub-1", _timeseries_spec(), 1000, 0, send_fn)
         await asyncio.sleep(0.05)
 
         subs = manager._client_subs.get("client-1", {})
         assert "sub-1" in subs
-        assert subs["sub-1"].spec.kind == "curve"
+        assert subs["sub-1"].spec.kind == "timeseries"
 
         await manager.shutdown()

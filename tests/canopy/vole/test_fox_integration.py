@@ -52,7 +52,7 @@ def integrated_client():
 
 
 class TestFoxVoleIntegration:
-    async def test_curve_formula_with_seeded_data(self, integrated_client):
+    async def test_timeseries_formula_with_seeded_data(self, integrated_client):
         client, buffer_service = integrated_client
 
         samples_a = [
@@ -70,7 +70,7 @@ class TestFoxVoleIntegration:
             "/fox/v1/evaluate",
             json={
                 "spec": {
-                    "kind": "curve",
+                    "kind": "timeseries",
                     "expression": "{a} + {b}",
                     "bindings": {"a": "PV:A", "b": "PV:B"},
                     "align": "last",
@@ -83,11 +83,11 @@ class TestFoxVoleIntegration:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["kind"] == "curve"
-        curve = data["curve"]
-        assert len(curve["tsNs"]) == 5
+        assert data["kind"] == "timeseries"
+        timeseries = data["timeseries"]
+        assert len(timeseries["tsNs"]) == 5
         # a + b: [1+2, 2+4, 3+6, 4+8, 5+10] = [3, 6, 9, 12, 15]
-        assert curve["values"] == [3.0, 6.0, 9.0, 12.0, 15.0]
+        assert timeseries["values"] == [3.0, 6.0, 9.0, 12.0, 15.0]
 
     async def test_scalar_formula_with_seeded_data(self, integrated_client):
         client, buffer_service = integrated_client

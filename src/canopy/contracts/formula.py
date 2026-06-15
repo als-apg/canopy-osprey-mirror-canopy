@@ -9,7 +9,7 @@ from typing import Literal
 from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
 
-FormulaKind = Literal["scalar", "curve", "waveform"]
+FormulaKind = Literal["scalar", "timeseries", "waveform"]
 AlignmentMode = Literal["last", "interpolate"]
 IndexMode = Literal["union", "intersection", "grid", "first_input"]
 
@@ -36,7 +36,7 @@ class ScalarResult(CanopyModel):
     inputs_used: dict[str, int]
 
 
-class CurveResult(CanopyModel):
+class TimeseriesResult(CanopyModel):
     ts_ns: list[int]
     values: list[float | None]
     severity: list[AlarmSeverity]
@@ -55,7 +55,7 @@ class FormulaResult(CanopyModel):
 
     kind: FormulaKind
     scalar: ScalarResult | None = None
-    curve: CurveResult | None = None
+    timeseries: TimeseriesResult | None = None
     waveform: WaveformResult | None = None
 
 

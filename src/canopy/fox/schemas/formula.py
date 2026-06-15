@@ -22,7 +22,7 @@ class ScalarResultDTO(CanopyModel):
     inputs_used: dict[str, int]
 
 
-class CurveResultDTO(CanopyModel):
+class TimeseriesResultDTO(CanopyModel):
     ts_ns: list[int]
     values: list[float | None]
     severity: list[AlarmSeverity]
@@ -41,7 +41,7 @@ class FormulaResultDTO(CanopyModel):
 
     kind: FormulaKind
     scalar: ScalarResultDTO | None = None
-    curve: CurveResultDTO | None = None
+    timeseries: TimeseriesResultDTO | None = None
     waveform: WaveformResultDTO | None = None
 
 

@@ -11,7 +11,7 @@ router = APIRouter(tags=["Fox / Evaluate"])
 async def evaluate(body: EvaluateRequestDTO, service: FormulaServiceDep) -> FormulaResultDTO:
     """Evaluate a formula over a time window.
 
-    Returns a discriminated union by ``kind`` (scalar / curve / waveform).
+    Returns a discriminated union by ``kind`` (scalar / timeseries / waveform).
     """
     result = await service.evaluate(body.spec, t0_ns=body.t0_ns, t1_ns=body.t1_ns)
     return FormulaResultDTO(**result.model_dump())

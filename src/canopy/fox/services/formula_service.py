@@ -12,9 +12,9 @@ from canopy.fox.config import FoxConfig
 from canopy.fox.errors import FormulaCircularReference
 from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
 from canopy.fox.services.parser import Parser
-from canopy.fox.services.curve_evaluator import evaluate_curve_formula
 from canopy.fox.services.scalar_evaluator import evaluate_scalar_formula
 from canopy.fox.services.waveform_evaluator import evaluate_waveform_formula
+from canopy.fox.services.timeseries_evaluator import evaluate_timeseries_formula
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,9 @@ class FormulaService:
             case "scalar":
                 result = await evaluate_scalar_formula(spec, parsed, self._data_source, self._config)
                 return FormulaResult(kind="scalar", scalar=result)
-            case "curve":
-                result = await evaluate_curve_formula(spec, parsed, self._data_source, t0_ns, t1_ns, self._config)
-                return FormulaResult(kind="curve", curve=result)
+            case "timeseries":
+                result = await evaluate_timeseries_formula(spec, parsed, self._data_source, t0_ns, t1_ns, self._config)
+                return FormulaResult(kind="timeseries", timeseries=result)
             case "waveform":
                 result = await evaluate_waveform_formula(spec, parsed, self._data_source, self._config)
                 return FormulaResult(kind="waveform", waveform=result)

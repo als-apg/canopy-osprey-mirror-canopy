@@ -101,7 +101,7 @@ class TestMoleToVoleToFox:
             "/fox/v1/evaluate",
             json={
                 "spec": {
-                    "kind": "curve",
+                    "kind": "timeseries",
                     "expression": "{curr} + {energy}",
                     "bindings": {"curr": "BEAM:CURR", "energy": "BEAM:ENERGY"},
                     "align": "last",
@@ -114,12 +114,12 @@ class TestMoleToVoleToFox:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["kind"] == "curve"
+        assert data["kind"] == "timeseries"
 
-        curve = data["curve"]
-        assert len(curve["tsNs"]) > 0
-        assert len(curve["values"]) == len(curve["tsNs"])
-        assert all(v is not None for v in curve["values"])
+        timeseries = data["timeseries"]
+        assert len(timeseries["tsNs"]) > 0
+        assert len(timeseries["values"]) == len(timeseries["tsNs"])
+        assert all(v is not None for v in timeseries["values"])
 
     async def test_scalar_formula_after_seed(self, full_pipeline):
         """Scalar eval uses read_latest, which returns the last seeded sample."""
