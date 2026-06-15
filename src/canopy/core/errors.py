@@ -45,6 +45,15 @@ class ErrorCode(StrEnum):
     INVALID_QUERY = auto()
     ADAPTER_MISCONFIGURED = auto()
 
+    # Fox
+    FORMULA_PARSE_ERROR = auto()
+    FORMULA_UNSAFE = auto()
+    FORMULA_INPUT_MISSING = auto()
+    FORMULA_TYPE_ERROR = auto()
+    FORMULA_DIMENSION_MISMATCH = auto()
+    FORMULA_EVAL_TIMEOUT = auto()
+    FORMULA_CIRCULAR_REFERENCE = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.

@@ -3,8 +3,8 @@
 from hypothesis import given
 from hypothesis import strategies as st
 
+from canopy.core.decimation import uniform_time_decimate
 from canopy.contracts.sample import Sample, AlarmSeverity
-from canopy.mole.services.decimation import uniform_time_decimate
 
 
 def _sample(ts: int, val: float = 0.0) -> Sample:

@@ -1,8 +1,7 @@
 """Uniform-time downsampling: for plot density control, NOT statistical aggregation.
 
-Used as a fallback in `ArchiverService.fetch_window` when the adapter returned
-more samples than the caller asked for via `maxPoints`. For statistical
-aggregation, use binned mode (`fetch_binned`).
+Shared utility used by Mole (fallback when adapters return too many samples)
+and Fox (post-evaluation decimation of formula curves).
 """
 
 import bisect
