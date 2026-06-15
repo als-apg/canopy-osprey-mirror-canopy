@@ -31,7 +31,15 @@ async def vole_lifespan():
     clock = SystemClock()
     store = PVStore(config)
     alignment = AlignmentService()
-    eviction = EvictionService(store, config)
+
+    ingest: HareIngestService | None = None
+
+    async def _on_evict(pvs: list[str]) -> None:
+        nonlocal ingest
+        if ingest is not None:
+            await ingest.unsubscribe(pvs)
+
+    eviction = EvictionService(store, config, on_evict=_on_evict)
     notifier = ChangeNotifier()
     service = BufferService(store, alignment, eviction, clock, config, notifier=notifier)
     gateway.bind(service)
