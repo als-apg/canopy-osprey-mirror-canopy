@@ -36,7 +36,7 @@ _INDEX_MAP: dict[IndexMode, str] = {
     "first_input": "first_input",
 }
 
-FetchWindowFn = Callable[[str, int, int], Awaitable[list[Sample]]]
+FetchWindowFn = Callable[..., Awaitable[list[Sample]]]
 SubscribeLiveFn = Callable[[list[str]], Awaitable[None]]
 
 
@@ -140,7 +140,7 @@ class VoleDataSource:
                 if pv in self._provisioned:
                     continue
                 try:
-                    samples = await self._fetch_window(pv, t0_ns, t1_ns)
+                    samples = await self._fetch_window(pv, t0_ns, t1_ns, max_points=self._buffer.max_points)
                     if samples:
                         await self._buffer.seed(pv, samples)
                         logger.info("Auto-provisioned PV %s: seeded %d samples from Mole", pv, len(samples))

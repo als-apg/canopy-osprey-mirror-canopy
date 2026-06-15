@@ -79,7 +79,7 @@ class TestAutoProvision:
         fetch_calls: list[tuple[str, int, int]] = []
         subscribed: list[list[str]] = []
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             fetch_calls.append((pv, t0, t1))
             return samples
 
@@ -100,7 +100,7 @@ class TestAutoProvision:
         samples = _make_samples()
         fetch_count = 0
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             nonlocal fetch_count
             fetch_count += 1
             return samples
@@ -120,7 +120,7 @@ class TestAutoProvision:
 
         fetched_pvs: list[str] = []
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             fetched_pvs.append(pv)
             return _make_samples()
 
@@ -139,7 +139,7 @@ class TestAutoProvision:
     async def test_read_aligned_mole_error_still_subscribes_live(self, test_service, fake_clock):
         """If Mole fetch raises, the PV is still subscribed to live updates."""
 
-        async def failing_fetch(pv, t0, t1):
+        async def failing_fetch(pv, t0, t1, **kwargs):
             raise RuntimeError("archiver down")
 
         subscribed: list[list[str]] = []
@@ -159,7 +159,7 @@ class TestAutoProvision:
         sample = Sample(ts_ns=_BASE + 500, value=99.0, severity=AlarmSeverity.NO_ALARM, source="archive")
         subscribed: list[list[str]] = []
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             return [sample]
 
         async def fake_subscribe_live(pvs):
