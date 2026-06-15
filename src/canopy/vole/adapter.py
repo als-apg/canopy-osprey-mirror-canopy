@@ -142,8 +142,8 @@ class VoleDataSource:
                 try:
                     samples = await self._fetch_window(pv, t0_ns, t1_ns, max_points=self._buffer.max_points)
                     if samples:
-                        await self._buffer.seed(pv, samples)
-                        logger.info("Auto-provisioned PV %s: seeded %d samples from Mole", pv, len(samples))
+                        stored = await self._buffer.seed(pv, samples)
+                        logger.info("Auto-provisioned PV %s: seeded %d/%d samples from Mole", pv, stored, len(samples))
                     else:
                         await self._buffer.seed(pv, [])
                         logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
