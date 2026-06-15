@@ -105,7 +105,7 @@ class VoleDataSource:
         sample = await self._buffer.read_latest(canonical)
         if sample is None and pv not in self._provisioned and self._can_provision():
             now = self._now_ns()
-            await self._provision([pv], now - self._buffer.max_age_ns, now)
+            await self._provision([pv], 0, now)
             sample = await self._buffer.read_latest(canonical)
         return sample
 
@@ -134,8 +134,6 @@ class VoleDataSource:
         now = self._now_ns()
         if t1_ns == 0:
             t1_ns = now
-        earliest_viable = now - self._buffer.max_age_ns
-        t0_ns = max(t0_ns, earliest_viable)
 
         for pv in to_provision:
             async with self._lock_for(pv):

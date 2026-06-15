@@ -58,10 +58,9 @@ async def seed(
     pv: str,
     samples: list[Sample],
     *,
-    max_age_ns: int | None = None,
     max_points: int | None = None,
 ) -> int:
-    return await get_service().seed(pv, samples, max_age_ns=max_age_ns, max_points=max_points)
+    return await get_service().seed(pv, samples, max_points=max_points)
 
 
 async def drop(pv: str) -> None:

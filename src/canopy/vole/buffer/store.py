@@ -21,12 +21,10 @@ class PVStore:
         self,
         pv: str,
         *,
-        max_age_ns: int | None = None,
         max_points: int | None = None,
     ) -> PerPVRing:
         if pv not in self._rings:
             self._rings[pv] = PerPVRing(
-                max_age_ns=max_age_ns or self._config.max_age_ns,
                 max_points=max_points or self._config.max_points,
             )
             self._locks[pv] = asyncio.Lock()

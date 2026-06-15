@@ -40,8 +40,8 @@ class BufferService:
         self._notifier = notifier
 
     @property
-    def max_age_ns(self) -> int:
-        return self._config.max_age_ns
+    def max_points(self) -> int:
+        return self._config.max_points
 
     # --- writes ---------------------------------------------------------- #
 
@@ -67,15 +67,14 @@ class BufferService:
         pv: str,
         samples: list[Sample],
         *,
-        max_age_ns: int | None = None,
         max_points: int | None = None,
     ) -> int:
         """Bulk insert historical samples; returns count actually stored."""
-        ring = self._store.get_or_create(pv, max_age_ns=max_age_ns, max_points=max_points)
+        ring = self._store.get_or_create(pv, max_points=max_points)
         if not samples:
             return 0
-        if max_age_ns is not None or max_points is not None:
-            ring.update_ceilings(max_age_ns=max_age_ns, max_points=max_points)
+        if max_points is not None:
+            ring.update_ceilings(max_points=max_points)
 
         stored_samples = sorted(
             [self._sample_to_stored(s, source_override="archive") for s in samples],

@@ -7,7 +7,7 @@ from canopy.vole.errors import PVNotBuffered
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
 
-# FakeClock starts at 1_000_000_000_000, max_age_ns=60_000_000_000
+# FakeClock starts at 1_000_000_000_000, max_points=1000
 _BASE = 1_000_000_000_000 - 50_000_000_000
 
 

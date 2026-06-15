@@ -48,7 +48,7 @@ def full_pipeline():
     mole_service = ArchiverService(registry, mole_config)
 
     # Vole: in-memory buffer
-    vole_config = VoleConfig(max_age_ns=3_600_000_000_000, max_points=100_000, global_bytes_max=10_000_000)
+    vole_config = VoleConfig(max_points=100_000, global_bytes_max=10_000_000)
     clock = FakeClock(start_ns=2_000_000_000_000)
     store = PVStore(vole_config)
     alignment = AlignmentService()

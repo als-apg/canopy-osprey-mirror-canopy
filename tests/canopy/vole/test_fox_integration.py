@@ -21,14 +21,13 @@ from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.eviction_service import EvictionService
 from canopy.vole.services.alignment_service import AlignmentService
 
-# Clock at 1_000_000_000_000, max_age=60s → samples must be within 60s of clock
 _BASE = 1_000_000_000_000 - 10_000_000_000  # 10s before clock start
 
 
 @pytest.fixture
 def integrated_client():
     """Client with real Vole -> Fox wiring (no fakes)."""
-    config = VoleConfig(max_age_ns=60_000_000_000, max_points=10000, global_bytes_max=10_000_000)
+    config = VoleConfig(max_points=10000, global_bytes_max=10_000_000)
     clock = FakeClock(start_ns=1_000_000_000_000)
     store = PVStore(config)
     alignment = AlignmentService()

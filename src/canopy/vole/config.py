@@ -15,8 +15,7 @@ class VoleConfig(BaseSettings):
         extra="ignore",
     )
 
-    max_age_ns: int = 3_600_000_000_000
-    max_points: int = 1_000_000
+    max_points: int = 500_000
     global_bytes_max: int = 4_294_967_296
     default_align: str = "last"
     default_index: str = "union"

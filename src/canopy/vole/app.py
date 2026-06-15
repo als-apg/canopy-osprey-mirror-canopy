@@ -53,8 +53,7 @@ async def vole_lifespan():
 
     mark_started()
     logger.info(
-        "Vole started: max_age=%dns, max_points=%d, global_bytes_max=%d",
-        config.max_age_ns,
+        "Vole started: max_points=%d, global_bytes_max=%d",
         config.max_points,
         config.global_bytes_max,
     )

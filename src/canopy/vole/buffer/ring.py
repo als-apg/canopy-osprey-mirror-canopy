@@ -24,16 +24,11 @@ class PerPVRing:
     FIFO eviction enforced on every mutation when ceilings are exceeded.
     """
 
-    def __init__(self, *, max_age_ns: int, max_points: int) -> None:
+    def __init__(self, *, max_points: int) -> None:
         self._samples: list[StoredSample] = []
-        self._max_age_ns = max_age_ns
         self._max_points = max_points
         self._last_access_ns: int = 0
         self._dropped_out_of_order: int = 0
-
-    @property
-    def max_age_ns(self) -> int:
-        return self._max_age_ns
 
     @property
     def max_points(self) -> int:
@@ -73,7 +68,7 @@ class PerPVRing:
             return False
         self._samples.append(sample)
         self._last_access_ns = now_ns
-        self._enforce_retention(now_ns)
+        self._enforce_retention()
         return True
 
     def seed(self, samples: list[StoredSample], now_ns: int) -> int:
@@ -111,7 +106,7 @@ class PerPVRing:
         self._samples = deduped
 
         self._last_access_ns = now_ns
-        self._enforce_retention(now_ns)
+        self._enforce_retention()
         return len(to_insert)
 
     def slice(self, t0_ns: int, t1_ns: int) -> list[StoredSample]:
@@ -134,19 +129,11 @@ class PerPVRing:
     def clear(self) -> None:
         self._samples.clear()
 
-    def update_ceilings(self, *, max_age_ns: int | None = None, max_points: int | None = None) -> None:
-        if max_age_ns is not None:
-            self._max_age_ns = max_age_ns
+    def update_ceilings(self, *, max_points: int | None = None) -> None:
         if max_points is not None:
             self._max_points = max_points
 
-    def _enforce_retention(self, now_ns: int) -> None:
+    def _enforce_retention(self) -> None:
         if len(self._samples) > self._max_points:
             excess = len(self._samples) - self._max_points
             del self._samples[:excess]
-
-        if self._max_age_ns > 0 and self._samples:
-            cutoff = now_ns - self._max_age_ns
-            idx = bisect.bisect_left(self._samples, cutoff, key=lambda s: s.ts_ns)
-            if idx > 0:
-                del self._samples[:idx]
