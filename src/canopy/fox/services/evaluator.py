@@ -90,7 +90,12 @@ async def evaluate_array(
     variables: dict[str, np.ndarray],
     timeout_s: float,
 ) -> np.ndarray:
-    """Dispatch array evaluation: numexpr if compatible, else asteval."""
+    """Dispatch array evaluation: numexpr if compatible, else asteval.
+
+    Timeout is best-effort: ``to_thread`` workers cannot be interrupted, so a
+    timed-out computation continues in the background until it completes
+    naturally. The real resource bound is expression length + input size.
+    """
 
     def compute():
         if parsed.is_numexpr_compatible:
@@ -108,7 +113,12 @@ async def evaluate_scalar(
     variables: dict[str, float | int | bool],
     timeout_s: float,
 ) -> float | int | bool:
-    """Evaluate a scalar expression using asteval with timeout."""
+    """Evaluate a scalar expression using asteval with timeout.
+
+    Timeout is best-effort: ``to_thread`` workers cannot be interrupted, so a
+    timed-out computation continues in the background until it completes
+    naturally. The real resource bound is expression length + input size.
+    """
 
     def compute():
         return _evaluate_scalar_asteval(parsed, variables)

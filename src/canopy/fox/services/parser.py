@@ -40,8 +40,15 @@ class ParsedFormula:
 class Parser:
     """Stateless expression parser with LRU caching."""
 
+    def __init__(self, max_expression_len: int = 2048) -> None:
+        self._max_expression_len = max_expression_len
+
     def parse(self, expression: str, bindings: dict[str, str]) -> ParsedFormula:
         """Parse and validate an expression against its bindings."""
+        if len(expression) > self._max_expression_len:
+            raise FormulaParseError(
+                f"Expression exceeds maximum length ({len(expression)} > {self._max_expression_len})"
+            )
         return _cached_parse(expression, frozenset(bindings.keys()))
 
     def extract_tokens(self, expression: str) -> list[str]:

@@ -24,7 +24,7 @@ async def fox_lifespan():
     """
     config = get_fox_config()
     data_source = NullDataSource()
-    parser = Parser()
+    parser = Parser(max_expression_len=config.max_expression_len)
     service = FormulaService(data_source, parser, config)
     gateway.bind(service)
     mark_started()

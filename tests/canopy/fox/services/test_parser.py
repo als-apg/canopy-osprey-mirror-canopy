@@ -45,6 +45,11 @@ class TestValidExpressions:
 
 
 class TestParseErrors:
+    def test_expression_exceeds_max_length(self):
+        short_parser = Parser(max_expression_len=20)
+        with pytest.raises(FormulaParseError, match="exceeds maximum length"):
+            short_parser.parse("{a} + " * 10, {"a": "PV:A"})
+
     def test_empty_expression(self, parser):
         with pytest.raises(FormulaParseError, match="empty"):
             parser.parse("", {"a": "PV:A"})

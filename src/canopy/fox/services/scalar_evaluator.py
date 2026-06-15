@@ -25,16 +25,16 @@ async def evaluate_scalar_formula(
     inputs_used: dict[str, int] = {}
     missing: list[str] = []
 
-    for token in parsed.tokens:
+    for idx, token in enumerate(parsed.tokens):
         pv = spec.bindings[token]
         sample = await data_source.read_latest(pv)
         if sample is None:
             missing.append(pv)
             continue
         if isinstance(sample.value, float | int | bool):
-            variables[f"__v{parsed.tokens.index(token)}"] = sample.value
+            variables[f"__v{idx}"] = sample.value
         else:
-            variables[f"__v{parsed.tokens.index(token)}"] = float(sample.value) if sample.value is not None else 0.0
+            variables[f"__v{idx}"] = float(sample.value) if sample.value is not None else 0.0
         severities.append(sample.severity)
         inputs_used[pv] = sample.ts_ns
 
