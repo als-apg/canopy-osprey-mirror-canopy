@@ -200,3 +200,25 @@ class TestSubscriptionManager:
         assert subs["sub-1"].spec.kind == "timeseries"
 
         await manager.shutdown()
+
+    async def test_poll_mode_fires_on_interval(self, manager, notifier):
+        messages, send_fn = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn, interval_ms=50)
+        await asyncio.sleep(0.18)
+
+        results = [m for m in messages if m["type"] == "result"]
+        assert len(results) >= 3
+
+        await manager.shutdown()
+
+    async def test_poll_mode_no_change_notifications(self, manager, notifier):
+        messages, send_fn = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn, interval_ms=500)
+        await asyncio.sleep(0.02)
+
+        sub = manager._client_subs["client-1"]["sub-1"]
+        assert sub.unsub_fns == []
+
+        await manager.shutdown()

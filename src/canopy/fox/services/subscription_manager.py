@@ -32,6 +32,7 @@ class _FormulaSubscription:
     spec: FormulaSpec
     t0_ns: int
     t1_ns: int
+    interval_ms: int = 0
     dirty: asyncio.Event = field(default_factory=asyncio.Event)
     task: asyncio.Task | None = None
     unsub_fns: list[Callable[[], None]] = field(default_factory=list)
@@ -59,11 +60,16 @@ class SubscriptionManager:
         t0_ns: int,
         t1_ns: int,
         send_fn: SendFn,
+        *,
+        interval_ms: int = 0,
     ) -> None:
         """Register a formula subscription and start its eval loop.
 
         If t1_ns is non-zero (fixed historical window), evaluates once and
         sends the result without opening a live subscription.
+
+        If interval_ms > 0, uses poll mode (timer-based) instead of push mode
+        (Vole change notifications).
         """
         if t1_ns != 0:
             await self._one_shot(sub_id, spec, t0_ns, t1_ns, send_fn)
@@ -76,20 +82,22 @@ class SubscriptionManager:
             if client_id not in self._client_subs:
                 self._client_subs[client_id] = {}
 
-        sub = _FormulaSubscription(sub_id=sub_id, spec=spec, t0_ns=t0_ns, t1_ns=t1_ns)
+        sub = _FormulaSubscription(sub_id=sub_id, spec=spec, t0_ns=t0_ns, t1_ns=t1_ns, interval_ms=interval_ms)
 
-        pvs = list(spec.bindings.values())
-        canonical_pvs = [strip_protocol_prefix(pv) for pv in pvs]
-        for pv in canonical_pvs:
-            unsub_fn = self._on_change(pv, self._make_notify_callback(sub))
-            sub.unsub_fns.append(unsub_fn)
+        if interval_ms > 0:
+            sub.task = asyncio.create_task(self._poll_loop(sub, send_fn))
+        else:
+            pvs = list(spec.bindings.values())
+            canonical_pvs = [strip_protocol_prefix(pv) for pv in pvs]
+            for pv in canonical_pvs:
+                unsub_fn = self._on_change(pv, self._make_notify_callback(sub))
+                sub.unsub_fns.append(unsub_fn)
+            await self._subscribe_live(pvs)
+            sub.dirty.set()
+            sub.task = asyncio.create_task(self._eval_loop(sub, send_fn))
 
-        await self._subscribe_live(pvs)
-
-        sub.dirty.set()
-        sub.task = asyncio.create_task(self._eval_loop(sub, send_fn))
         self._client_subs[client_id][sub_id] = sub
-        logger.debug("Client %s subscribed: %s (PVs: %s)", client_id, sub_id, pvs)
+        logger.debug("Client %s subscribed: %s (interval=%dms)", client_id, sub_id, interval_ms)
 
     async def _one_shot(self, sub_id: str, spec: FormulaSpec, t0_ns: int, t1_ns: int, send_fn: SendFn) -> None:
         """Evaluate a fixed time window once and send the result."""
@@ -201,5 +209,45 @@ class SubscriptionManager:
                             "message": str(exc),
                         }
                     )
+        except asyncio.CancelledError:
+            pass
+
+    async def _poll_loop(self, sub: _FormulaSubscription, send_fn: SendFn) -> None:
+        interval_s = sub.interval_ms / 1000.0
+
+        try:
+            while True:
+                try:
+                    result = await self._formula_service.evaluate(sub.spec, t0_ns=sub.t0_ns, t1_ns=sub.t1_ns)
+                    await send_fn(
+                        {
+                            "type": "result",
+                            "id": sub.sub_id,
+                            "data": result.model_dump(by_alias=True),
+                        }
+                    )
+                except CanopyError as exc:
+                    if exc.error_code not in _RETRIABLE_CODES:
+                        await send_fn(
+                            {
+                                "type": "error",
+                                "id": sub.sub_id,
+                                "code": exc.error_code.value,
+                                "message": exc.detail,
+                            }
+                        )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning("Poll loop error for sub %s: %s", sub.sub_id, exc, exc_info=True)
+                    await send_fn(
+                        {
+                            "type": "error",
+                            "id": sub.sub_id,
+                            "code": ErrorCode.UNHANDLED_EXCEPTION.value,
+                            "message": str(exc),
+                        }
+                    )
+                await asyncio.sleep(interval_s)
         except asyncio.CancelledError:
             pass

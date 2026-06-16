@@ -50,6 +50,7 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                 spec_raw = message.get("spec")
                 t0_ns = message.get("t0Ns", 0)
                 t1_ns = message.get("t1Ns", 0)
+                interval_ms = message.get("intervalMs", 0)
 
                 if not spec_raw:
                     await websocket.send_json(
@@ -75,7 +76,7 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
 
                 sub_id = uuid.uuid4().hex
                 await websocket.send_json({"type": "subscribed", "id": sub_id})
-                await manager.add_subscription(client_id, sub_id, spec, t0_ns, t1_ns, send_fn)
+                await manager.add_subscription(client_id, sub_id, spec, t0_ns, t1_ns, send_fn, interval_ms=interval_ms)
 
             elif mtype == "unsubscribe":
                 sub_id = message.get("id", "")
