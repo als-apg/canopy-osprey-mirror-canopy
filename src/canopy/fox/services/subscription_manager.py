@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 SendFn = Callable[[dict], Awaitable[None]]
 OnChangeFn = Callable[[str, Callable[[str], Awaitable[None]]], Callable[[], None]]
-SubscribeLiveFn = Callable[[list[str]], Awaitable[None]]
+SubscribeFn = Callable[[list[str]], Awaitable[None]]
 
 
 @dataclass
@@ -45,11 +45,13 @@ class SubscriptionManager:
         self,
         formula_service: FormulaService,
         on_change_fn: OnChangeFn,
-        subscribe_live_fn: SubscribeLiveFn,
+        subscribe_live_fn: SubscribeFn,
+        subscribe_latest_fn: SubscribeFn | None = None,
     ) -> None:
         self._formula_service = formula_service
         self._on_change = on_change_fn
         self._subscribe_live = subscribe_live_fn
+        self._subscribe_latest = subscribe_latest_fn or subscribe_live_fn
         self._client_subs: dict[str, dict[str, _FormulaSubscription]] = {}
 
     async def add_subscription(
@@ -84,15 +86,20 @@ class SubscriptionManager:
 
         sub = _FormulaSubscription(sub_id=sub_id, spec=spec, t0_ns=t0_ns, t1_ns=t1_ns, interval_ms=interval_ms)
 
+        pvs = list(spec.bindings.values())
+
         if interval_ms > 0:
             sub.task = asyncio.create_task(self._poll_loop(sub, send_fn))
         else:
-            pvs = list(spec.bindings.values())
             canonical_pvs = [strip_protocol_prefix(pv) for pv in pvs]
             for pv in canonical_pvs:
                 unsub_fn = self._on_change(pv, self._make_notify_callback(sub))
                 sub.unsub_fns.append(unsub_fn)
-            await self._subscribe_live(pvs)
+
+            if t0_ns == 0:
+                await self._subscribe_latest(pvs)
+            else:
+                await self._subscribe_live(pvs)
             sub.dirty.set()
             sub.task = asyncio.create_task(self._eval_loop(sub, send_fn))
 

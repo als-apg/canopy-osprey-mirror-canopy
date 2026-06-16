@@ -114,6 +114,20 @@ async def subscribe_live(pvs: list[str]) -> None:
     await _ingest.subscribe(pvs)
 
 
+async def subscribe_latest(pvs: list[str]) -> None:
+    """Subscribe to live updates with a size-1 ring per PV (latest value only).
+
+    Used by scalar formula subscriptions that only need read_latest —
+    avoids accumulating a full ring buffer per PV.
+    """
+    if _ingest is None:
+        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
+    service = get_service()
+    for pv in pvs:
+        await service.seed(pv, [], max_points=1)
+    await _ingest.subscribe(pvs)
+
+
 async def unsubscribe_live(pvs: list[str]) -> None:
     """Unsubscribe from live updates for these PVs."""
     if _ingest is None:
