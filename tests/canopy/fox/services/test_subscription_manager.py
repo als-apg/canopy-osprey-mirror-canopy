@@ -197,7 +197,9 @@ class TestSubscriptionManager:
 
         subs = manager._client_subs.get("client-1", {})
         assert "sub-1" in subs
-        assert subs["sub-1"].spec.kind == "timeseries"
+        key = subs["sub-1"]
+        shared = manager._shared_evals[key]
+        assert shared.spec.kind == "timeseries"
 
         await manager.shutdown()
 
@@ -218,7 +220,57 @@ class TestSubscriptionManager:
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn, interval_ms=500)
         await asyncio.sleep(0.02)
 
-        sub = manager._client_subs["client-1"]["sub-1"]
-        assert sub.unsub_fns == []
+        key = manager._client_subs["client-1"]["sub-1"]
+        shared = manager._shared_evals[key]
+        assert shared.unsub_fns == []
+
+        await manager.shutdown()
+
+    async def test_deduplication_shares_eval(self, manager, notifier):
+        messages_1, send_fn_1 = _make_collector()
+        messages_2, send_fn_2 = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
+        await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2)
+
+        assert len(manager._shared_evals) == 1
+
+        await manager.shutdown()
+
+    async def test_deduplication_fan_out(self, manager, notifier):
+        messages_1, send_fn_1 = _make_collector()
+        messages_2, send_fn_2 = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
+        await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2)
+        await asyncio.sleep(0.05)
+
+        results_1 = [m for m in messages_1 if m["type"] == "result"]
+        results_2 = [m for m in messages_2 if m["type"] == "result"]
+        assert len(results_1) >= 1
+        assert len(results_2) >= 1
+        assert results_1[0]["id"] == "sub-1"
+        assert results_2[0]["id"] == "sub-2"
+
+        await manager.shutdown()
+
+    async def test_last_listener_removed_tears_down_shared(self, manager, notifier):
+        messages, send_fn = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
+        await asyncio.sleep(0.05)
+        assert len(manager._shared_evals) == 1
+
+        await manager.remove_subscription("client-1", "sub-1")
+        assert len(manager._shared_evals) == 0
+
+    async def test_different_params_not_deduplicated(self, manager, notifier):
+        messages_1, send_fn_1 = _make_collector()
+        messages_2, send_fn_2 = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
+        await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2, interval_ms=100)
+
+        assert len(manager._shared_evals) == 2
 
         await manager.shutdown()
