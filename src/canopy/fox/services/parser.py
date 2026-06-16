@@ -26,6 +26,12 @@ from canopy.fox.language.namespace import (
 _TOKEN_RE = re.compile(r"\{([^{}]+)\}")
 _NESTED_BRACE_RE = re.compile(r"\{[^}]*\{")
 
+_BOOL_REPLACEMENTS = [
+    (re.compile(r"&&"), " and "),
+    (re.compile(r"\|\|"), " or "),
+    (re.compile(r"!(?!=)"), "not "),
+]
+
 
 @dataclass(frozen=True)
 class ParsedFormula:
@@ -81,6 +87,9 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         token_to_placeholder[tok] = f"__v{i}"
 
     placeholder_expr = _TOKEN_RE.sub(lambda m: token_to_placeholder[m.group(1)], expression)
+
+    for pattern, replacement in _BOOL_REPLACEMENTS:
+        placeholder_expr = pattern.sub(replacement, placeholder_expr)
 
     try:
         tree = ast.parse(placeholder_expr, mode="eval")

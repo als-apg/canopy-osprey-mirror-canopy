@@ -17,7 +17,7 @@ class EvaluateRequestDTO(CanopyModel):
 
 class ScalarResultDTO(CanopyModel):
     ts_ns: int
-    value: float | int | bool
+    value: float | int | bool | str
     severity: AlarmSeverity
     inputs_used: dict[str, int]
 

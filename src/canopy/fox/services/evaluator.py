@@ -71,7 +71,9 @@ def _evaluate_array_asteval(parsed: ParsedFormula, variables: dict[str, np.ndarr
     return np.asarray(result, dtype=np.float64)
 
 
-def _evaluate_scalar_asteval(parsed: ParsedFormula, variables: dict[str, float | int | bool]) -> float | int | bool:
+def _evaluate_scalar_asteval(
+    parsed: ParsedFormula, variables: dict[str, float | int | bool | str]
+) -> float | int | bool | str:
     """Evaluate a scalar expression using asteval."""
     interp = Interpreter(usersyms=build_eval_namespace())
     for name, val in variables.items():
@@ -110,15 +112,10 @@ async def evaluate_array(
 
 async def evaluate_scalar(
     parsed: ParsedFormula,
-    variables: dict[str, float | int | bool],
+    variables: dict[str, float | int | bool | str],
     timeout_s: float,
-) -> float | int | bool:
-    """Evaluate a scalar expression using asteval with timeout.
-
-    Timeout is best-effort: ``to_thread`` workers cannot be interrupted, so a
-    timed-out computation continues in the background until it completes
-    naturally. The real resource bound is expression length + input size.
-    """
+) -> float | int | bool | str:
+    """Evaluate a scalar expression using asteval with timeout."""
 
     def compute():
         return _evaluate_scalar_asteval(parsed, variables)

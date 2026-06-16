@@ -20,7 +20,7 @@ async def evaluate_scalar_formula(
     config: FoxConfig,
 ) -> ScalarResult:
     """Evaluate a scalar formula against latest values from the data source."""
-    variables: dict[str, float | int | bool] = {}
+    variables: dict[str, float | int | bool | str] = {}
     severities: list[AlarmSeverity] = []
     inputs_used: dict[str, int] = {}
     missing: list[str] = []
@@ -31,7 +31,7 @@ async def evaluate_scalar_formula(
         if sample is None:
             missing.append(pv)
             continue
-        if isinstance(sample.value, float | int | bool):
+        if isinstance(sample.value, float | int | bool | str):
             variables[f"__v{idx}"] = sample.value
         else:
             variables[f"__v{idx}"] = float(sample.value) if sample.value is not None else 0.0
