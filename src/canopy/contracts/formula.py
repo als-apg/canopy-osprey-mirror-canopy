@@ -10,6 +10,7 @@ from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
 
 FormulaKind = Literal["scalar", "timeseries", "waveform"]
+FormulaMode = Literal["raw", "binned"]
 AlignmentMode = Literal["last", "interpolate"]
 IndexMode = Literal["union", "intersection", "grid", "first_input"]
 
@@ -23,6 +24,7 @@ class FormulaSpec(CanopyModel):
     kind: FormulaKind
     expression: str
     bindings: dict[str, str]
+    mode: FormulaMode = "raw"
     align: AlignmentMode = "last"
     index: IndexMode = "union"
     grid_dt_ns: int | None = None

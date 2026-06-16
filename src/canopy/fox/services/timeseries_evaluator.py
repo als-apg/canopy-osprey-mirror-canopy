@@ -26,15 +26,19 @@ async def evaluate_timeseries_formula(
 ) -> TimeseriesResult:
     """Evaluate a timeseries formula over [t0_ns, t1_ns] using aligned windows."""
     pvs = [spec.bindings[tok] for tok in parsed.tokens]
+    max_points = spec.max_points or config.max_output_points
 
-    window = await data_source.read_aligned(
-        pvs,
-        t0_ns,
-        t1_ns,
-        align=spec.align,
-        index=spec.index,
-        grid_dt_ns=spec.grid_dt_ns,
-    )
+    if spec.mode == "binned":
+        window = await data_source.read_binned(pvs, t0_ns, t1_ns, target_buckets=max_points)
+    else:
+        window = await data_source.read_aligned(
+            pvs,
+            t0_ns,
+            t1_ns,
+            align=spec.align,
+            index=spec.index,
+            grid_dt_ns=spec.grid_dt_ns,
+        )
 
     variables: dict[str, np.ndarray] = {}
     for i, token in enumerate(parsed.tokens):
@@ -67,7 +71,6 @@ async def evaluate_timeseries_formula(
     inputs = {tok: spec.bindings[tok] for tok in parsed.tokens}
 
     decimated = False
-    max_points = spec.max_points or config.max_output_points
     if len(ts_list) > max_points:
         samples = [Sample(ts_ns=t, value=v, severity=s, source="archive") for t, v, s in zip(ts_list, values, severity)]
         samples = uniform_time_decimate(samples, max_points)

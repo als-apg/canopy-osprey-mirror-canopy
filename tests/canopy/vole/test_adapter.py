@@ -86,7 +86,9 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         window = await adapter.read_aligned(["PV:NEW"], _BASE + 100, _BASE + 500, align="last", index="union")
 
         assert len(window.ts_ns) > 0
@@ -108,7 +110,9 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             pass
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         await adapter.read_aligned(["PV:X"], _BASE + 100, _BASE + 500, align="last", index="union")
         await adapter.read_aligned(["PV:X"], _BASE + 100, _BASE + 500, align="last", index="union")
 
@@ -127,7 +131,9 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             pass
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         window = await adapter.read_aligned(
             ["PV:EXISTS", "PV:MISSING"], _BASE + 100, _BASE + 500, align="last", index="union"
         )
@@ -147,7 +153,9 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, failing_fetch, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=failing_fetch, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
 
         with pytest.raises(PVNotBuffered):
             await adapter.read_aligned(["PV:FAIL"], _BASE + 100, _BASE + 500, align="last", index="union")
@@ -165,7 +173,9 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         result = await adapter.read_latest("PV:LAZY")
 
         assert result is not None

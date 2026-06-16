@@ -30,6 +30,7 @@ async def fox_lifespan():
     data_source = VoleDataSource(
         vole_gateway.get_service(),
         fetch_window=mole_gateway.fetch_window,
+        fetch_binned=mole_gateway.fetch_binned,
         subscribe_live=vole_gateway.subscribe_live,
         clock=SystemClock(),
     )

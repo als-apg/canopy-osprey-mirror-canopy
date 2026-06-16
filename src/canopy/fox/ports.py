@@ -43,6 +43,15 @@ class DataSource(Protocol):
         grid_dt_ns: int | None = None,
     ) -> AlignedWindow: ...
 
+    async def read_binned(
+        self,
+        pvs: list[str],
+        t0_ns: int,
+        t1_ns: int,
+        *,
+        target_buckets: int | None = None,
+    ) -> AlignedWindow: ...
+
     async def read_latest(self, pv: str) -> Sample | None: ...
 
 
@@ -58,6 +67,18 @@ class NullDataSource:
         align: AlignmentMode,
         index: IndexMode,
         grid_dt_ns: int | None = None,
+    ) -> AlignedWindow:
+        from canopy.fox.errors import FormulaInputMissing
+
+        raise FormulaInputMissing(f"Data source not available; PVs requested: {pvs}")
+
+    async def read_binned(
+        self,
+        pvs: list[str],
+        t0_ns: int,
+        t1_ns: int,
+        *,
+        target_buckets: int | None = None,
     ) -> AlignedWindow:
         from canopy.fox.errors import FormulaInputMissing
 

@@ -49,6 +49,31 @@ def test_evaluate_timeseries(fox_client):
     assert timeseries["decimated"] is False
 
 
+def test_evaluate_timeseries_binned(fox_client):
+    response = fox_client.post(
+        "/fox/v1/evaluate",
+        json={
+            "spec": {
+                "kind": "timeseries",
+                "mode": "binned",
+                "expression": "{a} + {b}",
+                "bindings": {"a": "PV:A", "b": "PV:B"},
+                "maxPoints": 5,
+            },
+            "t0Ns": 0,
+            "t1Ns": 10_000_000_000,
+        },
+        headers=READ_HEADERS,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "timeseries"
+    timeseries = body["timeseries"]
+    assert len(timeseries["tsNs"]) == 5
+    assert len(timeseries["values"]) == 5
+    assert timeseries["values"][0] == 3.0
+
+
 def test_evaluate_requires_auth(fox_client):
     response = fox_client.post(
         "/fox/v1/evaluate",
