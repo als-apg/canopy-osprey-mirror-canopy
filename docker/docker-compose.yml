@@ -1,0 +1,51 @@
+name: canopy
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: canopy-api
+    command: uv run uvicorn canopy.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CANOPY_EPICS__BACKEND: simulation
+      CANOPY_DEBUG: "true"
+      CANOPY_API_KEYS: "dev:read+write"
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    volumes:
+      - ../src:/app/src
+      - ../tests:/app/tests
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Uncomment when a worker process is added to the project:
+  # worker:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile.dev
+  #   container_name: canopy-worker
+  #   command: <worker-command-here>
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     CANOPY_EPICS__BACKEND: simulation
+  #     CANOPY_DEBUG: "true"
+  #     CANOPY_API_KEYS: "dev:read+write"
+  #   volumes:
+  #     - ../src:/app/src
+  #   restart: unless-stopped
