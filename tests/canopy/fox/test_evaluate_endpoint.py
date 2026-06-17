@@ -74,6 +74,28 @@ def test_evaluate_timeseries_binned(fox_client):
     assert timeseries["values"][0] == 3.0
 
 
+def test_evaluate_timeseries_relative_t0(fox_client):
+    response = fox_client.post(
+        "/fox/v1/evaluate",
+        json={
+            "spec": {
+                "kind": "timeseries",
+                "expression": "{a} + {b}",
+                "bindings": {"a": "PV:A", "b": "PV:B"},
+            },
+            "t0Ns": -5_000_000_000,
+            "t1Ns": 10_000_000_000,
+        },
+        headers=READ_HEADERS,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "timeseries"
+    timeseries = body["timeseries"]
+    assert timeseries["tsNs"][0] == 5_000_000_000
+    assert timeseries["tsNs"][-1] == 10_000_000_000
+
+
 def test_evaluate_requires_auth(fox_client):
     response = fox_client.post(
         "/fox/v1/evaluate",

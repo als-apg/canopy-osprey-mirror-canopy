@@ -5,6 +5,7 @@ Lifecycle: one instance per ``canopy-api`` process. Constructed in
 module-level singleton there. Tests can re-bind freely.
 """
 
+import time
 import logging
 
 from canopy.fox.ports import DataSource
@@ -28,6 +29,11 @@ class FormulaService:
         self._config = config
 
     async def evaluate(self, spec: FormulaSpec, *, t0_ns: int, t1_ns: int) -> FormulaResult:
+        if t1_ns == 0:
+            t1_ns = time.time_ns()
+        if t0_ns < 0:
+            t0_ns = t1_ns + t0_ns
+
         self._reject_fox_refs(spec)
         parsed = self._parser.parse(spec.expression, spec.bindings)
 
