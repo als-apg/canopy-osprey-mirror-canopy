@@ -11,9 +11,9 @@ services:
       - path: .env
         required: false
     environment:
-      CANOPY_EPICS__BACKEND: simulation
-      CANOPY_DEBUG: "true"
-      CANOPY_API_KEYS: "dev:read+write"
+      CANOPY_EPICS__BACKEND: ${CANOPY_EPICS__BACKEND:-simulation}
+      CANOPY_DEBUG: ${CANOPY_DEBUG:-true}
+      CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
     ports:
       - "${API_HOST_PORT:-8000}:8000"
     volumes:
