@@ -146,6 +146,56 @@ class SubscriptionManager:
                 {"type": "error", "id": sub_id, "code": ErrorCode.UNHANDLED_EXCEPTION.value, "message": str(exc)}
             )
 
+    async def update_subscription(
+        self,
+        client_id: str,
+        sub_id: str,
+        send_fn: SendFn,
+        *,
+        spec: FormulaSpec | None = None,
+        t0_ns: int | None = None,
+        interval_ms: int | None = None,
+    ) -> bool:
+        """Update a subscription's parameters.
+
+        Detaches the listener from its current SharedEval and moves it to a new
+        one with the updated params. Other listeners on the old SharedEval are
+        unaffected. Returns False only if the subscription doesn't exist.
+        """
+        subs = self._client_subs.get(client_id)
+        if not subs or sub_id not in subs:
+            return False
+
+        key = subs[sub_id]
+        shared = self._shared_evals.get(key)
+        if shared is None:
+            return False
+
+        new_spec = spec if spec is not None else shared.spec
+        new_t0 = t0_ns if t0_ns is not None else shared.t0_ns
+        new_interval = interval_ms if interval_ms is not None else shared.interval_ms
+
+        # Detach from old SharedEval
+        shared.listeners = [ls for ls in shared.listeners if not (ls.client_id == client_id and ls.sub_id == sub_id)]
+        if not shared.listeners:
+            self._teardown_shared(shared)
+            del self._shared_evals[key]
+
+        # Create or join new SharedEval
+        new_key = _compute_key(new_spec, new_t0, new_interval)
+        listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
+
+        if new_key in self._shared_evals:
+            self._shared_evals[new_key].listeners.append(listener)
+        else:
+            new_shared = _SharedEval(key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval)
+            new_shared.listeners.append(listener)
+            self._shared_evals[new_key] = new_shared
+            await self._start_shared_eval(new_shared)
+
+        subs[sub_id] = new_key
+        return True
+
     async def remove_subscription(self, client_id: str, sub_id: str) -> None:
         subs = self._client_subs.get(client_id)
         if not subs:

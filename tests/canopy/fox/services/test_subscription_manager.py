@@ -274,3 +274,45 @@ class TestSubscriptionManager:
         assert len(manager._shared_evals) == 2
 
         await manager.shutdown()
+
+    async def test_update_subscription_changes_params(self, manager, notifier):
+        messages, send_fn = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
+        await asyncio.sleep(0.05)
+
+        old_key = manager._client_subs["client-1"]["sub-1"]
+        ok = await manager.update_subscription("client-1", "sub-1", send_fn, t0_ns=-5000)
+        assert ok is True
+
+        new_key = manager._client_subs["client-1"]["sub-1"]
+        assert new_key != old_key
+
+        shared = manager._shared_evals[new_key]
+        assert shared.t0_ns == -5000
+
+        await manager.shutdown()
+
+    async def test_update_shared_subscription_detaches(self, manager, notifier):
+        messages_1, send_fn_1 = _make_collector()
+        messages_2, send_fn_2 = _make_collector()
+
+        await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
+        await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2)
+        await asyncio.sleep(0.05)
+
+        assert len(manager._shared_evals) == 1
+
+        ok = await manager.update_subscription("client-1", "sub-1", send_fn_1, interval_ms=100)
+        assert ok is True
+
+        # Now there are two shared evals: original (client-2) and new (client-1)
+        assert len(manager._shared_evals) == 2
+
+        await manager.shutdown()
+
+    async def test_update_nonexistent_subscription(self, manager, notifier):
+        messages, send_fn = _make_collector()
+
+        ok = await manager.update_subscription("client-1", "no-such-sub", send_fn, t0_ns=-1000)
+        assert ok is False

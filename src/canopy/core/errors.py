@@ -54,6 +54,8 @@ class ErrorCode(StrEnum):
     FORMULA_DIMENSION_MISMATCH = auto()
     FORMULA_EVAL_TIMEOUT = auto()
     FORMULA_CIRCULAR_REFERENCE = auto()
+    INVALID_MESSAGE = auto()
+    INVALID_SPEC = auto()
 
     # Vole
     PV_NOT_BUFFERED = auto()

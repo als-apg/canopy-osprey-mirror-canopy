@@ -56,7 +56,7 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                     await websocket.send_json(
                         {
                             "type": "error",
-                            "code": ErrorCode.BAD_REQUEST.value,
+                            "code": ErrorCode.INVALID_MESSAGE.value,
                             "message": "subscribe requires 'spec'",
                         }
                     )
@@ -68,7 +68,7 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                     await websocket.send_json(
                         {
                             "type": "error",
-                            "code": ErrorCode.BAD_REQUEST.value,
+                            "code": ErrorCode.INVALID_SPEC.value,
                             "message": f"invalid spec: {exc}",
                         }
                     )
@@ -77,6 +77,52 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                 sub_id = uuid.uuid4().hex
                 await websocket.send_json({"type": "subscribed", "id": sub_id})
                 await manager.add_subscription(client_id, sub_id, spec, t0_ns, t1_ns, send_fn, interval_ms=interval_ms)
+
+            elif mtype == "update":
+                sub_id = message.get("id", "")
+                t0_update = message.get("t0Ns")
+                interval_update = message.get("intervalMs")
+                spec_update = message.get("spec")
+
+                if not sub_id:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "code": ErrorCode.INVALID_MESSAGE.value,
+                            "message": "update requires 'id'",
+                        }
+                    )
+                    continue
+
+                parsed_spec = None
+                if spec_update is not None:
+                    try:
+                        parsed_spec = FormulaSpec(**spec_update)
+                    except Exception as exc:
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "id": sub_id,
+                                "code": ErrorCode.INVALID_SPEC.value,
+                                "message": f"invalid spec: {exc}",
+                            }
+                        )
+                        continue
+
+                ok = await manager.update_subscription(
+                    client_id, sub_id, send_fn, spec=parsed_spec, t0_ns=t0_update, interval_ms=interval_update
+                )
+                if ok:
+                    await websocket.send_json({"type": "updated", "id": sub_id})
+                else:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "id": sub_id,
+                            "code": ErrorCode.NOT_FOUND.value,
+                            "message": "subscription not found",
+                        }
+                    )
 
             elif mtype == "unsubscribe":
                 sub_id = message.get("id", "")
@@ -89,7 +135,7 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                 await websocket.send_json(
                     {
                         "type": "error",
-                        "code": ErrorCode.BAD_REQUEST.value,
+                        "code": ErrorCode.INVALID_MESSAGE.value,
                         "message": f"unknown message type: {mtype!r}",
                     }
                 )
