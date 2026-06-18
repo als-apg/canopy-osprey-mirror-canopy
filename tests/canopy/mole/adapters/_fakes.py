@@ -27,7 +27,14 @@ class FakeArchiverAdapter:
 
     name: str = "fake"
     type_name: str = "fake"
-    pvs: dict[str, dict] = field(default_factory=lambda: {"PV:TEST": {"units": "V", "precision": 3}})
+    pvs: dict[str, dict] = field(
+        default_factory=lambda: {
+            "PV:TEST": {"units": "V", "precision": 3},
+            "TEST:COUNTER": {"units": "counts", "precision": 0},
+            "TEST:SINE": {"units": "", "precision": 4},
+            "TEST:CONST": {"units": "", "precision": 1},
+        }
+    )
     closed: bool = False
 
     @classmethod

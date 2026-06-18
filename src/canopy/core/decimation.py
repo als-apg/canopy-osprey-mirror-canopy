@@ -1,7 +1,8 @@
 """Uniform-time downsampling: for plot density control, NOT statistical aggregation.
 
-Shared utility used by Mole (fallback when adapters return too many samples)
-and Fox (post-evaluation decimation of formula curves).
+Shared utility used by Mole (fallback when adapters return too many samples),
+Vole (optional decimation on read_window), and Fox (post-evaluation decimation
+of formula curves).
 """
 
 import bisect
