@@ -1,0 +1,32 @@
+name: canopy
+
+services:
+  api:
+    image: ${IMAGE:-canopy:latest}
+    env_file:
+      - .env
+    environment:
+      CANOPY_DEBUG: "false"
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # Uncomment when a worker process is added:
+  # worker:
+  #   image: ${IMAGE:-canopy:latest}
+  #   command: <worker-command-here>
+  #   env_file:
+  #     - .env
+  #   restart: unless-stopped
