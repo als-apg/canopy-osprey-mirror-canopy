@@ -13,6 +13,7 @@ class StoredSample(NamedTuple):
     source: Literal["live", "archive"]
 
 
+# Assumes scalar numeric values; str/bytes payloads will be under-counted.
 BYTES_PER_SAMPLE = 80
 
 

@@ -65,10 +65,9 @@ class BufferService:
         max_points: int | None = None,
     ) -> int:
         """Bulk insert historical samples; returns count actually stored."""
+        ring = self._store.get_or_create(pv, max_age_ns=max_age_ns, max_points=max_points)
         if not samples:
             return 0
-
-        ring = self._store.get_or_create(pv, max_age_ns=max_age_ns, max_points=max_points)
         if max_age_ns is not None or max_points is not None:
             ring.update_ceilings(max_age_ns=max_age_ns, max_points=max_points)
 
@@ -112,19 +111,18 @@ class BufferService:
         async with self._store.lock_for(pv):
             ring.touch(now)
             samples = ring.slice(t0_ns, t1_ns)
+            pre = ring.sample_before(t0_ns) if align == "last" else None
 
             result: list[Sample] = []
-            if align == "last" and samples:
-                pre = ring.sample_before(t0_ns)
-                if pre is not None and (not samples or samples[0].ts_ns > t0_ns):
-                    result.append(
-                        Sample(
-                            ts_ns=t0_ns,
-                            value=pre.value,
-                            severity=pre.severity,
-                            source=pre.source,
-                        )
+            if pre is not None and (not samples or samples[0].ts_ns > t0_ns):
+                result.append(
+                    Sample(
+                        ts_ns=t0_ns,
+                        value=pre.value,
+                        severity=pre.severity,
+                        source=pre.source,
                     )
+                )
             result.extend(self._stored_to_sample(s) for s in samples)
 
         if max_points is not None and len(result) > max_points:
@@ -150,17 +148,21 @@ class BufferService:
         t1_ns = self._resolve_t1(t1_ns)
         now = self._clock.now_ns()
 
-        raw_slices: dict[str, list[StoredSample]] = {}
+        sliced: dict[str, list[StoredSample]] = {}
         pre_window_samples: dict[str, StoredSample | None] = {}
 
-        # Acquire locks in sorted PV-name order to prevent deadlocks
+        # Sorted for deterministic acquisition order (not held simultaneously)
         for pv in sorted(pvs):
             async with self._store.lock_for(pv):
                 ring = self._store.get(pv)
                 assert ring is not None
                 ring.touch(now)
-                raw_slices[pv] = ring.slice(t0_ns, t1_ns)
+                sliced[pv] = ring.slice(t0_ns, t1_ns)
                 pre_window_samples[pv] = ring.sample_before(t0_ns)
+
+        # Re-key in caller's original order so first_input index picks the
+        # caller's first PV, not the alphabetically-first.
+        raw_slices = {pv: sliced[pv] for pv in pvs}
 
         return self._alignment.align(
             raw_slices,

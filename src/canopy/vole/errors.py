@@ -17,3 +17,8 @@ class PVNotBuffered(VoleError):
 class BufferAtCapacity(VoleError):
     status_code = 503
     error_code = ErrorCode.BUFFER_AT_CAPACITY
+
+
+class WindowTooLarge(VoleError):
+    status_code = 422
+    error_code = ErrorCode.WINDOW_TOO_LARGE

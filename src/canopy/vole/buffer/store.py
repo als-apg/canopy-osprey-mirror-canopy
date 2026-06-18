@@ -63,12 +63,8 @@ class PVStore:
             self._locks[pv] = asyncio.Lock()
         return self._locks[pv]
 
-    def lru_candidates(self, *, exclude_prefix: str = "") -> list[tuple[str, PerPVRing]]:
+    def lru_candidates(self) -> list[tuple[str, PerPVRing]]:
         """Return rings sorted by last_access_ns ascending (LRU first)."""
-        candidates = [
-            (name, ring)
-            for name, ring in self._rings.items()
-            if not (exclude_prefix and name.startswith(exclude_prefix))
-        ]
+        candidates = list(self._rings.items())
         candidates.sort(key=lambda pair: pair[1].last_access_ns)
         return candidates

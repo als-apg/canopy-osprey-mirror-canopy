@@ -105,25 +105,3 @@ async def unsubscribe_live(pvs: list[str]) -> None:
     if _ingest is None:
         raise RuntimeError("Vole gateway accessed before app startup bound ingest")
     await _ingest.unsubscribe(pvs)
-
-
-# --- deferred (live tailing not implemented) ----------------------------- #
-
-
-async def subscribe_window(pv: str, lookback_ns: int):  # noqa: ANN201
-    raise NotImplementedError("subscribe_window requires Wren (not yet implemented)")
-
-
-async def register_derived_ring(
-    name: str,
-    inputs: list[str],
-    on_input_step,  # noqa: ANN001
-    *,
-    max_age_ns: int | None = None,
-    max_points: int | None = None,
-) -> None:
-    raise NotImplementedError("Derived rings require Wren (not yet implemented)")
-
-
-async def unregister_derived_ring(name: str) -> None:
-    raise NotImplementedError("Derived rings require Wren (not yet implemented)")

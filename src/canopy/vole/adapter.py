@@ -10,6 +10,7 @@ historical data from Mole and subscribes to live updates via Hare.
 from __future__ import annotations
 
 import time
+import asyncio
 import logging
 from collections.abc import Callable, Awaitable
 
@@ -57,6 +58,7 @@ class VoleDataSource:
         self._subscribe_live = subscribe_live
         self._clock = clock
         self._provisioned: set[str] = set()
+        self._provisioning_locks: dict[str, asyncio.Lock] = {}
 
     async def read_aligned(
         self,
@@ -105,6 +107,11 @@ class VoleDataSource:
     def _can_provision(self) -> bool:
         return self._fetch_window is not None and self._subscribe_live is not None
 
+    def _lock_for(self, pv: str) -> asyncio.Lock:
+        if pv not in self._provisioning_locks:
+            self._provisioning_locks[pv] = asyncio.Lock()
+        return self._provisioning_locks[pv]
+
     async def _provision(self, pvs: list[str], t0_ns: int, t1_ns: int) -> None:
         """Seed missing PVs from Mole and subscribe to Hare live updates."""
         assert self._fetch_window is not None
@@ -122,16 +129,20 @@ class VoleDataSource:
 
         succeeded: list[str] = []
         for pv in to_provision:
-            try:
-                samples = await self._fetch_window(pv, t0_ns, t1_ns)
-                if samples:
-                    await self._buffer.seed(pv, samples)
-                    logger.info("Auto-provisioned PV %s: seeded %d samples from Mole", pv, len(samples))
-                else:
-                    logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
-                succeeded.append(pv)
-            except Exception:
-                logger.warning("Failed to seed PV %s from Mole", pv, exc_info=True)
+            async with self._lock_for(pv):
+                if pv in self._provisioned:
+                    continue
+                try:
+                    samples = await self._fetch_window(pv, t0_ns, t1_ns)
+                    if samples:
+                        await self._buffer.seed(pv, samples)
+                        logger.info("Auto-provisioned PV %s: seeded %d samples from Mole", pv, len(samples))
+                    else:
+                        await self._buffer.seed(pv, [])
+                        logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
+                    succeeded.append(pv)
+                except Exception:
+                    logger.warning("Failed to seed PV %s from Mole", pv, exc_info=True)
 
         if succeeded:
             await self._subscribe_live(succeeded)

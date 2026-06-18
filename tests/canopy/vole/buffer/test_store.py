@@ -72,12 +72,3 @@ class TestLRU:
         candidates = store.lru_candidates()
         names = [name for name, _ in candidates]
         assert names == ["PV:A", "PV:C", "PV:B"]
-
-    def test_lru_excludes_prefix(self, store):
-        store.get_or_create("PV:A").touch(100)
-        store.get_or_create("fox:formula1").touch(50)
-
-        candidates = store.lru_candidates(exclude_prefix="fox:")
-        names = [name for name, _ in candidates]
-        assert "fox:formula1" not in names
-        assert "PV:A" in names

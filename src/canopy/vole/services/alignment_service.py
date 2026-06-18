@@ -12,8 +12,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from canopy.vole.errors import WindowTooLarge
 from canopy.contracts.sample import AlarmSeverity
 from canopy.vole.buffer.ring import StoredSample
+
+MAX_GRID_POINTS = 10_000_000
 
 AlignMode = Literal["nearest", "last", "linear", "none"]
 IndexMode = Literal["union", "intersection", "grid", "first_input"]
@@ -78,6 +81,12 @@ class AlignmentService:
         if index == "grid":
             if grid_dt_ns is None or grid_dt_ns <= 0:
                 raise ValueError("index='grid' requires grid_dt_ns > 0")
+            n_points = (t1_ns - t0_ns) // grid_dt_ns + 1
+            if n_points > MAX_GRID_POINTS:
+                raise WindowTooLarge(
+                    f"Grid would produce {n_points} points (max {MAX_GRID_POINTS}); "
+                    f"increase grid_dt_ns or narrow the time window"
+                )
             return np.arange(t0_ns, t1_ns + 1, grid_dt_ns, dtype=np.int64)
 
         if index == "first_input":

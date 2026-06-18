@@ -57,6 +57,7 @@ class ErrorCode(StrEnum):
     # Vole
     PV_NOT_BUFFERED = auto()
     BUFFER_AT_CAPACITY = auto()
+    WINDOW_TOO_LARGE = auto()
 
 
 class CanopyError(Exception):

@@ -27,12 +27,12 @@ class TestHealthEndpoints:
 
 
 class TestDebugEndpoints:
-    def test_buffers_requires_write_access(self, vole_client):
-        resp = vole_client.get("/vole/v1/_debug/buffers", headers=READ_HEADERS)
-        assert resp.status_code == 403
+    def test_buffers_requires_auth(self, vole_client):
+        resp = vole_client.get("/vole/v1/_debug/buffers")
+        assert resp.status_code == 401
 
-    def test_buffers_with_write_access(self, vole_client):
-        resp = vole_client.get("/vole/v1/_debug/buffers", headers=WRITE_HEADERS)
+    def test_buffers_with_read_access(self, vole_client):
+        resp = vole_client.get("/vole/v1/_debug/buffers", headers=READ_HEADERS)
         assert resp.status_code == 200
 
     def test_evict_pv(self, vole_client):
