@@ -201,6 +201,7 @@ class VoleDataSource:
         if t1_ns == 0:
             t1_ns = now
 
+        seeded: set[str] = set()
         for pv in to_provision:
             async with self._lock_for(pv):
                 if pv in self._provisioned:
@@ -213,8 +214,9 @@ class VoleDataSource:
                     else:
                         await self._buffer.seed(pv, [])
                         logger.info("Auto-provisioned PV %s: no historical data in Mole", pv)
+                    seeded.add(pv)
                 except Exception:
                     logger.info("PV %s not in archiver, subscribing to live only", pv)
 
         await self._subscribe_live(to_provision)
-        self._provisioned.update(to_provision)
+        self._provisioned.update(seeded)
