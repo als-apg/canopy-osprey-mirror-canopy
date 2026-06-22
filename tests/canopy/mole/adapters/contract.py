@@ -8,11 +8,12 @@ suite to verify their implementation conforms.
 
 import pytest
 
-from canopy.contracts.sample import AlarmSeverity
+from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.mole.adapters.base import (
     AdapterHealth,
     ArchiverAdapter,
     BinningNotSupported,
+    LastBeforeNotSupported,
 )
 
 
@@ -35,6 +36,20 @@ async def assert_fetch_window_invariants(adapter: ArchiverAdapter, pv: str, t0_n
         assert isinstance(s.severity, AlarmSeverity)
     for prev, curr in zip(samples, samples[1:]):
         assert prev.ts_ns <= curr.ts_ns, "Samples must be time-ordered ascending"
+
+
+async def assert_fetch_last_before(adapter: ArchiverAdapter, pv: str, ts_ns: int) -> None:
+    try:
+        prior = await adapter.fetch_last_before(pv, ts_ns)
+    except LastBeforeNotSupported:
+        pytest.skip("adapter does not implement fetch_last_before")
+        return
+    if prior is None:
+        return
+    assert isinstance(prior, Sample)
+    assert prior.ts_ns <= ts_ns, "fetch_last_before must return a sample at or before ts_ns"
+    assert prior.source == "archive"
+    assert isinstance(prior.severity, AlarmSeverity)
 
 
 async def assert_fetch_binned_auto(

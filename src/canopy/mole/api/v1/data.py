@@ -30,11 +30,22 @@ async def get_data(
     bin_size: Annotated[
         str | None, Query(alias="binSize", description="Required when binning='time'; nanoseconds as integer")
     ] = None,
+    include_last_before: Annotated[
+        bool,
+        Query(
+            alias="includeLastBefore",
+            description="Raw mode only: also return the most recent sample before `from`, at its true timestamp",
+        ),
+    ] = False,
 ) -> ArchiverSeriesDTO | ArchiverBinnedSeriesDTO:
     """Fetch one PV's time-window data.
 
     Raw mode by default (returns `ArchiverSeriesDTO`). Binned mode when
     `binning` is set (returns `ArchiverBinnedSeriesDTO`). Branch on `mode`.
+
+    `includeLastBefore=true` (raw mode only) prepends the last archived sample
+    before `from` so sparse on-change PVs have a defined value at the window's
+    left edge; it keeps its true (pre-window) timestamp — clip on render.
     """
     t0_ns = parse_time(from_)
     if t0_ns is None:
@@ -44,10 +55,12 @@ async def get_data(
         raise BadRequest("`to` is invalid")
     if t0_ns > t1_ns:
         raise BadRequest("`from` must be ≤ `to`")
+    if include_last_before and binning is not None:
+        raise BadRequest("`includeLastBefore` is only supported in raw mode (omit `binning`)")
 
     if binning is None:
         archiver_name, samples, decimated = await service.fetch_window(
-            pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points
+            pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points, include_last_before=include_last_before
         )
         return ArchiverSeriesDTO(
             pv=pv,

@@ -183,6 +183,48 @@ def test_data_endpoint_no_auth_401(mole_client):
     assert r.json()["code"] == "invalid_api_key"
 
 
+def test_data_endpoint_include_last_before_prepends_pre_window_sample(mole_client):
+    """The fake's prior sample lands before `from` at its true timestamp."""
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={"from": "10000000000", "to": "20000000000", "includeLastBefore": "true"},
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    samples = body["samples"]
+    assert samples[0]["tsNs"] < body["from"]
+    assert samples[0]["value"] == -1.0
+    assert all(s["tsNs"] >= body["from"] for s in samples[1:])
+
+
+def test_data_endpoint_include_last_before_default_off(mole_client):
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={"from": "10000000000", "to": "20000000000"},
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert all(s["tsNs"] >= body["from"] for s in body["samples"])
+
+
+def test_data_endpoint_include_last_before_with_binning_400(mole_client):
+    r = mole_client.get(
+        "/mole/v1/data/PV:TEST",
+        params={
+            "from": "0",
+            "to": "10000000000",
+            "binning": "auto",
+            "maxPoints": 5,
+            "includeLastBefore": "true",
+        },
+        headers=READ_HEADERS,
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == "bad_request"
+
+
 def test_data_endpoint_max_points_no_decimation_with_fake(mole_client):
     """The Fake honors max_points, so decimated stays False."""
     r = mole_client.get(

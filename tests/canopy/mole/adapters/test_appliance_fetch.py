@@ -94,6 +94,81 @@ async def test_fetch_window_default_nanos_is_zero(adapter, httpx_mock: HTTPXMock
     assert samples[0].ts_ns == 5_000_000_000
 
 
+async def test_fetch_window_filters_samples_outside_window(adapter, httpx_mock: HTTPXMock):
+    """The Appliance may auto-include the last sample before `from`; we clip to the window."""
+    httpx_mock.add_response(
+        json=[
+            {
+                "meta": {},
+                "data": [
+                    {"secs": 999, "nanos": 0, "val": 0.5, "severity": 0, "status": 0},  # before window
+                    {"secs": 1000, "nanos": 0, "val": 1.5, "severity": 0, "status": 0},
+                    {"secs": 1001, "nanos": 0, "val": 2.5, "severity": 0, "status": 0},
+                ],
+            }
+        ],
+    )
+    samples = await adapter.fetch_window("PV:TEST", t0_ns=1000_000_000_000, t1_ns=2000_000_000_000)
+    assert [s.ts_ns for s in samples] == [1000_000_000_000, 1001_000_000_000]
+
+
+# --------------------------------------------------------------------------- #
+# fetch_last_before
+# --------------------------------------------------------------------------- #
+
+
+async def test_fetch_last_before_returns_latest_at_or_before(adapter, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        json=[
+            {
+                "meta": {},
+                "data": [
+                    {"secs": 900, "nanos": 0, "val": 1.0, "severity": 0, "status": 0},
+                    {"secs": 950, "nanos": 500, "val": 2.0, "severity": 1, "status": 0},
+                ],
+            }
+        ],
+    )
+    prior = await adapter.fetch_last_before("PV:TEST", ts_ns=1000_000_000_000)
+    assert prior is not None
+    assert prior.ts_ns == 950_000_000_500
+    assert prior.value == 2.0
+    assert prior.severity.name == "MINOR"
+    assert prior.source == "archive"
+
+
+async def test_fetch_last_before_zero_width_query_params(adapter, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json=[{"meta": {}, "data": []}])
+    await adapter.fetch_last_before("PV:TEST", ts_ns=1_700_000_000_000_000_000)
+    request = httpx_mock.get_request()
+    assert request.url.params["from"] == request.url.params["to"]
+    assert request.url.params["pv"] == "PV:TEST"
+
+
+async def test_fetch_last_before_ignores_samples_after_ts(adapter, httpx_mock: HTTPXMock):
+    """Defensive: a row past `ts_ns` (possible via ms flooring) must not be returned."""
+    httpx_mock.add_response(
+        json=[
+            {
+                "meta": {},
+                "data": [{"secs": 1000, "nanos": 1, "val": 9.0, "severity": 0, "status": 0}],
+            }
+        ],
+    )
+    prior = await adapter.fetch_last_before("PV:TEST", ts_ns=1000_000_000_000)
+    assert prior is None
+
+
+async def test_fetch_last_before_no_samples_returns_none(adapter, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json=[{"meta": {}, "data": []}])
+    assert await adapter.fetch_last_before("PV:TEST", ts_ns=1_000_000_000) is None
+
+
+async def test_fetch_last_before_empty_top_level_returns_none(adapter, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(json=[])
+    assert await adapter.fetch_last_before("PV:TEST", ts_ns=1_000_000_000) is None
+
+
 # --------------------------------------------------------------------------- #
 # fetch_window error mapping
 # --------------------------------------------------------------------------- #

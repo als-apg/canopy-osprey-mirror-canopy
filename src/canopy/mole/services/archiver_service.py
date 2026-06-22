@@ -5,6 +5,7 @@ Lifecycle: one instance per `canopy-api` process. Constructed in
 module-level singleton there. Tests can re-bind freely.
 """
 
+import asyncio
 import logging
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
@@ -13,7 +14,7 @@ from canopy.mole.config import MoleConfig
 from canopy.core.decimation import uniform_time_decimate
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint
-from canopy.mole.adapters.base import ArchiverAdapter
+from canopy.mole.adapters.base import ArchiverAdapter, LastBeforeNotSupported
 from canopy.mole.schemas.archiver import (
     ArchiverInfoDTO,
     ArchiverListDTO,
@@ -47,19 +48,40 @@ class ArchiverService:
         *,
         archiver: str | None = None,
         max_points: int | None = None,
+        include_last_before: bool = False,
     ) -> tuple[str, list[Sample], bool]:
         """Raw read. Returns `(archiver_name, samples, decimated)`.
 
         `decimated` is True when the service-side fallback engaged (adapter
         returned more than `max_points`).
+
+        `include_last_before=True` prepends the most recent sample strictly
+        before `t0_ns` (at its true timestamp) so sparse on-change PVs have a
+        defined value at the window's left edge. The prior sample is fetched
+        concurrently with the window, is exempt from `max_points` (which keeps
+        bounding the in-window samples), and is omitted when none is archived.
         """
         adapter = self._resolve(archiver)
-        samples = await adapter.fetch_window(pv, t0_ns=t0_ns, t1_ns=t1_ns, max_points=max_points)
+        prior: Sample | None = None
+        if include_last_before:
+            fetch_last_before = getattr(adapter, "fetch_last_before", None)
+            if fetch_last_before is None:
+                raise LastBeforeNotSupported(f"Archiver '{adapter.name}' does not support includeLastBefore")
+            # `t0_ns - 1`: a sample exactly at the window start is already in-window.
+            samples, prior = await asyncio.gather(
+                adapter.fetch_window(pv, t0_ns=t0_ns, t1_ns=t1_ns, max_points=max_points),
+                fetch_last_before(pv, t0_ns - 1),
+            )
+        else:
+            samples = await adapter.fetch_window(pv, t0_ns=t0_ns, t1_ns=t1_ns, max_points=max_points)
 
         decimated = False
         if max_points is not None and len(samples) > max_points:
             samples = uniform_time_decimate(samples, max_points)
             decimated = True
+
+        if prior is not None and prior.ts_ns < t0_ns:
+            samples = [prior, *samples]
 
         return adapter.name, samples, decimated
 

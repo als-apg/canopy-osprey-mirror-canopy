@@ -65,6 +65,19 @@ class FakeArchiverAdapter:
             for i in range(n)
         ]
 
+    async def fetch_last_before(self, pv: str, ts_ns: int) -> Sample | None:
+        """Deterministic prior sample: 1 s before `ts_ns`, value -1.0."""
+        if pv not in self.pvs:
+            raise PVNotFoundInArchiver(f"PV '{pv}' not in fake archiver")
+        if ts_ns <= 0:
+            return None
+        return Sample(
+            ts_ns=ts_ns - 1_000_000_000,
+            value=-1.0,
+            severity=AlarmSeverity.NO_ALARM,
+            source="archive",
+        )
+
     async def fetch_binned(
         self,
         pv: str,

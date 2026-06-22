@@ -20,7 +20,9 @@ class ArchiverSeriesDTO(CanopyModel):
 
     `from`/`to` carry the resolved window in epoch nanoseconds (handy when
     the request used `to=now`). `decimated` flags whether the service-side
-    fallback decimator engaged.
+    fallback decimator engaged. When the request set `includeLastBefore`,
+    the first sample may precede `from` — it is the last archived sample
+    before the window, at its true timestamp.
     """
 
     mode: Literal["raw"] = "raw"

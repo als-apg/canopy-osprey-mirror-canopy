@@ -41,14 +41,19 @@ async def fetch_window(
     *,
     archiver: str | None = None,
     max_points: int | None = None,
+    include_last_before: bool = False,
 ) -> list[Sample]:
     """Fetch one PV's raw samples from one archiver in `[t0_ns, t1_ns]`.
 
-    `archiver=None` selects the configured default. The gateway returns just
-    the samples; callers that need the resolved archiver name should call the
-    HTTP route or `ArchiverService.fetch_window` directly.
+    `archiver=None` selects the configured default. `include_last_before=True`
+    prepends the most recent sample before `t0_ns` at its true timestamp (see
+    `ArchiverService.fetch_window`). The gateway returns just the samples;
+    callers that need the resolved archiver name should call the HTTP route or
+    `ArchiverService.fetch_window` directly.
     """
-    _, samples, _ = await get_service().fetch_window(pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points)
+    _, samples, _ = await get_service().fetch_window(
+        pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points, include_last_before=include_last_before
+    )
     return samples
 
 

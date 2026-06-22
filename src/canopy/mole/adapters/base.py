@@ -57,6 +57,11 @@ class BinningNotSupported(ArchiverError):
     error_code = ErrorCode.BINNING_NOT_SUPPORTED
 
 
+class LastBeforeNotSupported(ArchiverError):
+    status_code = 501
+    error_code = ErrorCode.LAST_BEFORE_NOT_SUPPORTED
+
+
 # --------------------------------------------------------------------------- #
 # Severity normalization
 # --------------------------------------------------------------------------- #
@@ -136,6 +141,19 @@ class ArchiverAdapter(Protocol):
 
         Adapters that legitimately cannot implement a mode raise
         `BinningNotSupported` (the registry surfaces this as 501).
+        """
+        ...
+
+    async def fetch_last_before(self, pv: str, ts_ns: int) -> "Sample | None":
+        """Return the most recent stored sample at or before `ts_ns`, or `None`.
+
+        Backs the `includeLastBefore` flag on `/mole/v1/data`: for sparse
+        on-change PVs, the value the PV held at a window's start is by
+        definition the last sample *before* the window. The sample keeps its
+        true timestamp — callers clip on render.
+
+        Adapters whose backend cannot answer point-in-time lookups raise
+        `LastBeforeNotSupported` (surfaced as 501).
         """
         ...
 
