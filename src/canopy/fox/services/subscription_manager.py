@@ -145,6 +145,7 @@ class SubscriptionManager:
             await send_fn(
                 {"type": "error", "id": sub_id, "code": ErrorCode.UNHANDLED_EXCEPTION.value, "message": str(exc)}
             )
+        await send_fn({"type": "completed", "id": sub_id})
 
     async def update_subscription(
         self,

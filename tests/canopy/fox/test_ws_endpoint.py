@@ -117,6 +117,34 @@ class TestFoxWebSocket:
             assert msg["type"] == "error"
             assert "requires" in msg["message"]
 
+    def test_ws_one_shot_sends_completed(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json(
+                {
+                    "type": "subscribe",
+                    "spec": {
+                        "kind": "timeseries",
+                        "expression": "{a} + {b}",
+                        "bindings": {"a": "PV:A", "b": "PV:B"},
+                    },
+                    "t0Ns": 1_000_000_000,
+                    "t1Ns": 10_000_000_000,
+                }
+            )
+
+            msg = ws.receive_json()
+            assert msg["type"] == "subscribed"
+            sub_id = msg["id"]
+
+            msg = ws.receive_json()
+            assert msg["type"] == "result"
+            assert msg["id"] == sub_id
+
+            msg = ws.receive_json()
+            assert msg["type"] == "completed"
+            assert msg["id"] == sub_id
+
     def test_ws_unsubscribe(self, ws_client):
         client, _, _ = ws_client
         with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
