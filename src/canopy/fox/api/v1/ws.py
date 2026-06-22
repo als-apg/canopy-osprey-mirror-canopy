@@ -6,6 +6,7 @@ results whenever input PVs update via Vole change notifications.
 
 import time
 import uuid
+import asyncio
 import logging
 
 from fastapi import Security, APIRouter, WebSocket, WebSocketDisconnect
@@ -37,9 +38,11 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
     """
     await websocket.accept()
     client_id = uuid.uuid4().hex
+    send_lock = asyncio.Lock()
 
     async def send_fn(msg: dict) -> None:
-        await websocket.send_json(msg)
+        async with send_lock:
+            await websocket.send_json(msg)
 
     try:
         while True:

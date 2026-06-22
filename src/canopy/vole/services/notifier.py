@@ -21,6 +21,7 @@ class ChangeNotifier:
 
     def __init__(self) -> None:
         self._listeners: dict[str, list[ChangeCallback]] = defaultdict(list)
+        self._tasks: set[asyncio.Task] = set()
 
     def subscribe(self, pv: str, callback: ChangeCallback) -> Callable[[], None]:
         """Register a callback for PV changes. Returns an unsubscribe function."""
@@ -42,7 +43,9 @@ class ChangeNotifier:
         if not callbacks:
             return
         for cb in list(callbacks):
-            asyncio.create_task(self._safe_call(cb, pv))
+            task = asyncio.create_task(self._safe_call(cb, pv))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     @staticmethod
     async def _safe_call(cb: ChangeCallback, pv: str) -> None:
