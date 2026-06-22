@@ -8,7 +8,7 @@ from canopy.vole.buffer.store import PVStore
 
 @pytest.fixture
 def config():
-    return VoleConfig(max_age_ns=1_000_000, max_points=100, global_bytes_max=100_000)
+    return VoleConfig(max_points=100, global_bytes_max=100_000)
 
 
 @pytest.fixture
@@ -29,8 +29,7 @@ class TestGetOrCreate:
         assert ring1 is ring2
 
     def test_custom_ceilings(self, store):
-        ring = store.get_or_create("PV:A", max_age_ns=500, max_points=50)
-        assert ring.max_age_ns == 500
+        ring = store.get_or_create("PV:A", max_points=50)
         assert ring.max_points == 50
 
 

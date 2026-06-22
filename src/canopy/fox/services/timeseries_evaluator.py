@@ -1,4 +1,4 @@
-"""Curve formula evaluation path.
+"""Timeseries formula evaluation path.
 
 Pulls aligned time-series windows from the data source, evaluates the expression
 element-wise over the aligned arrays, and optionally decimates the output.
@@ -11,30 +11,34 @@ from canopy.fox.config import FoxConfig
 from canopy.fox.errors import FormulaDimensionMismatch
 from canopy.core.decimation import uniform_time_decimate
 from canopy.contracts.sample import Sample, AlarmSeverity
-from canopy.contracts.formula import CurveResult, FormulaSpec
+from canopy.contracts.formula import FormulaSpec, TimeseriesResult
 from canopy.fox.services.parser import ParsedFormula
 from canopy.fox.services.evaluator import evaluate_array, worst_severity_arrays
 
 
-async def evaluate_curve_formula(
+async def evaluate_timeseries_formula(
     spec: FormulaSpec,
     parsed: ParsedFormula,
     data_source: DataSource,
     t0_ns: int,
     t1_ns: int,
     config: FoxConfig,
-) -> CurveResult:
-    """Evaluate a curve formula over [t0_ns, t1_ns] using aligned windows."""
+) -> TimeseriesResult:
+    """Evaluate a timeseries formula over [t0_ns, t1_ns] using aligned windows."""
     pvs = [spec.bindings[tok] for tok in parsed.tokens]
+    max_points = spec.max_points or config.max_output_points
 
-    window = await data_source.read_aligned(
-        pvs,
-        t0_ns,
-        t1_ns,
-        align=spec.align,
-        index=spec.index,
-        grid_dt_ns=spec.grid_dt_ns,
-    )
+    if spec.mode == "binned":
+        window = await data_source.read_binned(pvs, t0_ns, t1_ns, target_buckets=max_points)
+    else:
+        window = await data_source.read_aligned(
+            pvs,
+            t0_ns,
+            t1_ns,
+            align=spec.align,
+            index=spec.index,
+            grid_dt_ns=spec.grid_dt_ns,
+        )
 
     variables: dict[str, np.ndarray] = {}
     for i, token in enumerate(parsed.tokens):
@@ -67,7 +71,6 @@ async def evaluate_curve_formula(
     inputs = {tok: spec.bindings[tok] for tok in parsed.tokens}
 
     decimated = False
-    max_points = spec.max_points or config.max_output_points
     if len(ts_list) > max_points:
         samples = [Sample(ts_ns=t, value=v, severity=s, source="archive") for t, v, s in zip(ts_list, values, severity)]
         samples = uniform_time_decimate(samples, max_points)
@@ -76,7 +79,7 @@ async def evaluate_curve_formula(
         severity = [s.severity for s in samples]
         decimated = True
 
-    return CurveResult(
+    return TimeseriesResult(
         ts_ns=ts_list,
         values=values,
         severity=severity,

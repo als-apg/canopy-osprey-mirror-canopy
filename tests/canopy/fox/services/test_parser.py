@@ -111,3 +111,40 @@ class TestUnsafeExpressions:
     def test_dunder_on_allowed_prefix(self, parser):
         with pytest.raises(FormulaUnsafeError, match="Dunder"):
             parser.parse("np.__class__({a})", {"a": "PV:A"})
+
+
+class TestTernaryExpressions:
+    def test_simple_ternary(self, parser):
+        result = parser.parse("{a} if {b} > 0 else 0", {"a": "PV:A", "b": "PV:B"})
+        assert result.tokens == ["a", "b"]
+        assert result.is_numexpr_compatible is False
+
+    def test_nested_ternary(self, parser):
+        result = parser.parse(
+            "'red' if {sev} > 1 else ('orange' if {x} > 10 else 'green')",
+            {"sev": "PV:SEV", "x": "PV:X"},
+        )
+        assert set(result.tokens) == {"sev", "x"}
+        assert result.is_numexpr_compatible is False
+
+    def test_ternary_with_string_output(self, parser):
+        result = parser.parse("'high' if {a} > 100 else 'low'", {"a": "PV:A"})
+        assert result.tokens == ["a"]
+
+
+class TestBooleanOperators:
+    def test_c_style_and(self, parser):
+        result = parser.parse("{a} > 0 && {b} > 0", {"a": "PV:A", "b": "PV:B"})
+        assert " and " in result.placeholder_expr
+
+    def test_c_style_or(self, parser):
+        result = parser.parse("{a} > 0 || {b} > 0", {"a": "PV:A", "b": "PV:B"})
+        assert " or " in result.placeholder_expr
+
+    def test_c_style_not(self, parser):
+        result = parser.parse("!{a}", {"a": "PV:A"})
+        assert "not " in result.placeholder_expr
+
+    def test_not_equals_preserved(self, parser):
+        result = parser.parse("{a} != {b}", {"a": "PV:A", "b": "PV:B"})
+        assert "!=" in result.placeholder_expr

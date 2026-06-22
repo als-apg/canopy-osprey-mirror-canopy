@@ -7,7 +7,7 @@ from canopy.vole.errors import PVNotBuffered
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
 
-# FakeClock starts at 1_000_000_000_000, max_age_ns=60_000_000_000
+# FakeClock starts at 1_000_000_000_000, max_points=1000
 _BASE = 1_000_000_000_000 - 50_000_000_000
 
 
@@ -79,14 +79,16 @@ class TestAutoProvision:
         fetch_calls: list[tuple[str, int, int]] = []
         subscribed: list[list[str]] = []
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             fetch_calls.append((pv, t0, t1))
             return samples
 
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         window = await adapter.read_aligned(["PV:NEW"], _BASE + 100, _BASE + 500, align="last", index="union")
 
         assert len(window.ts_ns) > 0
@@ -100,7 +102,7 @@ class TestAutoProvision:
         samples = _make_samples()
         fetch_count = 0
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             nonlocal fetch_count
             fetch_count += 1
             return samples
@@ -108,7 +110,9 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             pass
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         await adapter.read_aligned(["PV:X"], _BASE + 100, _BASE + 500, align="last", index="union")
         await adapter.read_aligned(["PV:X"], _BASE + 100, _BASE + 500, align="last", index="union")
 
@@ -120,14 +124,16 @@ class TestAutoProvision:
 
         fetched_pvs: list[str] = []
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             fetched_pvs.append(pv)
             return _make_samples()
 
         async def fake_subscribe_live(pvs):
             pass
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         window = await adapter.read_aligned(
             ["PV:EXISTS", "PV:MISSING"], _BASE + 100, _BASE + 500, align="last", index="union"
         )
@@ -136,10 +142,10 @@ class TestAutoProvision:
         assert "PV:MISSING" in window.arrays
         assert fetched_pvs == ["PV:MISSING"]
 
-    async def test_read_aligned_mole_error_not_provisioned(self, test_service, fake_clock):
-        """If Mole fetch raises, the PV is NOT marked provisioned and NOT subscribed."""
+    async def test_read_aligned_mole_error_still_subscribes_live(self, test_service, fake_clock):
+        """If Mole fetch raises, the PV is still subscribed to live updates but not marked provisioned."""
 
-        async def failing_fetch(pv, t0, t1):
+        async def failing_fetch(pv, t0, t1, **kwargs):
             raise RuntimeError("archiver down")
 
         subscribed: list[list[str]] = []
@@ -147,26 +153,30 @@ class TestAutoProvision:
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, failing_fetch, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=failing_fetch, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
 
         with pytest.raises(PVNotBuffered):
             await adapter.read_aligned(["PV:FAIL"], _BASE + 100, _BASE + 500, align="last", index="union")
 
-        # Subscribe was NOT called because the fetch failed
-        assert subscribed == []
+        assert subscribed == [["PV:FAIL"]]
+        assert "PV:FAIL" not in adapter._provisioned
 
     async def test_read_latest_provisions_missing_pv(self, test_service, fake_clock):
         """read_latest for an unknown PV triggers provisioning."""
         sample = Sample(ts_ns=_BASE + 500, value=99.0, severity=AlarmSeverity.NO_ALARM, source="archive")
         subscribed: list[list[str]] = []
 
-        async def fake_fetch_window(pv, t0, t1):
+        async def fake_fetch_window(pv, t0, t1, **kwargs):
             return [sample]
 
         async def fake_subscribe_live(pvs):
             subscribed.append(pvs)
 
-        adapter = VoleDataSource(test_service, fake_fetch_window, fake_subscribe_live, clock=fake_clock)
+        adapter = VoleDataSource(
+            test_service, fetch_window=fake_fetch_window, subscribe_live=fake_subscribe_live, clock=fake_clock
+        )
         result = await adapter.read_latest("PV:LAZY")
 
         assert result is not None

@@ -6,8 +6,7 @@ import pytest
 from canopy.vole.errors import PVNotBuffered
 from canopy.contracts.sample import Sample, AlarmSeverity
 
-# FakeClock starts at 1_000_000_000_000 (conftest), max_age_ns=60_000_000_000
-# Samples must be within 60s of clock start to survive retention.
+# FakeClock starts at 1_000_000_000_000 (conftest), max_points=1000
 _BASE = 1_000_000_000_000 - 50_000_000_000  # 50s before clock start
 
 

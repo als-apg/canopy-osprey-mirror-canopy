@@ -42,6 +42,23 @@ class FakeDataSource:
             severities[pv] = np.zeros(n, dtype=np.int64)
         return AlignedWindow(ts_ns=ts, arrays=arrays, severities=severities)
 
+    async def read_binned(
+        self,
+        pvs: list[str],
+        t0_ns: int,
+        t1_ns: int,
+        *,
+        target_buckets: int | None = None,
+    ) -> AlignedWindow:
+        n = target_buckets or 10
+        ts = np.linspace(t0_ns, t1_ns, n, dtype=np.int64)
+        arrays: dict[str, np.ndarray] = {}
+        severities: dict[str, np.ndarray] = {}
+        for i, pv in enumerate(pvs):
+            arrays[pv] = np.arange(n, dtype=np.float64) + (i + 1)
+            severities[pv] = np.zeros(n, dtype=np.int64)
+        return AlignedWindow(ts_ns=ts, arrays=arrays, severities=severities)
+
     async def read_latest(self, pv: str) -> Sample | None:
         return self.latest.get(pv)
 

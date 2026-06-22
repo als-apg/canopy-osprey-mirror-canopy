@@ -5,6 +5,7 @@ Lifecycle: one instance per ``canopy-api`` process. Constructed in
 module-level singleton there. Tests can re-bind freely.
 """
 
+import time
 import logging
 
 from canopy.fox.ports import DataSource
@@ -12,9 +13,9 @@ from canopy.fox.config import FoxConfig
 from canopy.fox.errors import FormulaCircularReference
 from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
 from canopy.fox.services.parser import Parser
-from canopy.fox.services.curve_evaluator import evaluate_curve_formula
 from canopy.fox.services.scalar_evaluator import evaluate_scalar_formula
 from canopy.fox.services.waveform_evaluator import evaluate_waveform_formula
+from canopy.fox.services.timeseries_evaluator import evaluate_timeseries_formula
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ class FormulaService:
         self._config = config
 
     async def evaluate(self, spec: FormulaSpec, *, t0_ns: int, t1_ns: int) -> FormulaResult:
+        if t1_ns == 0:
+            t1_ns = time.time_ns()
+        if t0_ns < 0:
+            t0_ns = t1_ns + t0_ns
+
         self._reject_fox_refs(spec)
         parsed = self._parser.parse(spec.expression, spec.bindings)
 
@@ -35,9 +41,9 @@ class FormulaService:
             case "scalar":
                 result = await evaluate_scalar_formula(spec, parsed, self._data_source, self._config)
                 return FormulaResult(kind="scalar", scalar=result)
-            case "curve":
-                result = await evaluate_curve_formula(spec, parsed, self._data_source, t0_ns, t1_ns, self._config)
-                return FormulaResult(kind="curve", curve=result)
+            case "timeseries":
+                result = await evaluate_timeseries_formula(spec, parsed, self._data_source, t0_ns, t1_ns, self._config)
+                return FormulaResult(kind="timeseries", timeseries=result)
             case "waveform":
                 result = await evaluate_waveform_formula(spec, parsed, self._data_source, self._config)
                 return FormulaResult(kind="waveform", waveform=result)

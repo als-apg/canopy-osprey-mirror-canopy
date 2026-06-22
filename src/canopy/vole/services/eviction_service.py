@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Awaitable
 
 from canopy.vole.config import VoleConfig
 from canopy.vole.buffer.store import PVStore
 
 logger = logging.getLogger(__name__)
 
+OnEvictFn = Callable[[list[str]], Awaitable[None]]
+
 
 class EvictionService:
     """Memory pressure detection and LRU eviction."""
 
-    def __init__(self, store: PVStore, config: VoleConfig) -> None:
+    def __init__(self, store: PVStore, config: VoleConfig, on_evict: OnEvictFn | None = None) -> None:
         self._store = store
         self._config = config
+        self._on_evict = on_evict
 
     def under_pressure(self) -> bool:
         return self._store.total_bytes > self._config.global_bytes_max
@@ -31,5 +35,8 @@ class EvictionService:
             self._store.drop(pv)
             dropped.append(pv)
             logger.info("Evicted ring %r (%d bytes)", pv, ring.byte_estimate)
+
+        if dropped and self._on_evict is not None:
+            await self._on_evict(dropped)
 
         return dropped

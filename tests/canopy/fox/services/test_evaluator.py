@@ -71,3 +71,32 @@ class TestSeverityPropagation:
         b = np.array([0, 0, 2])  # NO_ALARM, NO_ALARM, MAJOR
         result = worst_severity_arrays([a, b])
         assert result == [AlarmSeverity.NO_ALARM, AlarmSeverity.MINOR, AlarmSeverity.MAJOR]
+
+
+class TestScalarStringOutput:
+    async def test_ternary_returns_string(self):
+        from canopy.fox.services.parser import Parser
+
+        parser = Parser()
+        parsed = parser.parse("'high' if {a} > 100 else 'low'", {"a": "PV:A"})
+        result = await evaluate_scalar(parsed, {"__v0": 150}, timeout_s=1.0)
+        assert result == "high"
+
+    async def test_nested_ternary_returns_string(self):
+        from canopy.fox.services.parser import Parser
+
+        parser = Parser()
+        parsed = parser.parse(
+            "'red' if {sev} > 1 else ('orange' if {x} > 10 else 'green')",
+            {"sev": "PV:SEV", "x": "PV:X"},
+        )
+        result = await evaluate_scalar(parsed, {"__v0": 0, "__v1": 20}, timeout_s=1.0)
+        assert result == "orange"
+
+    async def test_boolean_operators_in_scalar(self):
+        from canopy.fox.services.parser import Parser
+
+        parser = Parser()
+        parsed = parser.parse("{a} > 0 && {b} > 0", {"a": "PV:A", "b": "PV:B"})
+        result = await evaluate_scalar(parsed, {"__v0": 5, "__v1": 3}, timeout_s=1.0)
+        assert result is True

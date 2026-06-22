@@ -16,7 +16,6 @@ def _sample(ts_ns: int) -> StoredSample:
 @pytest.fixture
 def small_config():
     return VoleConfig(
-        max_age_ns=1_000_000_000,
         max_points=100,
         global_bytes_max=400,  # 5 samples worth (5 * 80 = 400)
     )

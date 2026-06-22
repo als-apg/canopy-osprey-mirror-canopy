@@ -48,7 +48,7 @@ def full_pipeline():
     mole_service = ArchiverService(registry, mole_config)
 
     # Vole: in-memory buffer
-    vole_config = VoleConfig(max_age_ns=3_600_000_000_000, max_points=100_000, global_bytes_max=10_000_000)
+    vole_config = VoleConfig(max_points=100_000, global_bytes_max=10_000_000)
     clock = FakeClock(start_ns=2_000_000_000_000)
     store = PVStore(vole_config)
     alignment = AlignmentService()
@@ -101,7 +101,7 @@ class TestMoleToVoleToFox:
             "/fox/v1/evaluate",
             json={
                 "spec": {
-                    "kind": "curve",
+                    "kind": "timeseries",
                     "expression": "{curr} + {energy}",
                     "bindings": {"curr": "BEAM:CURR", "energy": "BEAM:ENERGY"},
                     "align": "last",
@@ -114,12 +114,12 @@ class TestMoleToVoleToFox:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["kind"] == "curve"
+        assert data["kind"] == "timeseries"
 
-        curve = data["curve"]
-        assert len(curve["tsNs"]) > 0
-        assert len(curve["values"]) == len(curve["tsNs"])
-        assert all(v is not None for v in curve["values"])
+        timeseries = data["timeseries"]
+        assert len(timeseries["tsNs"]) > 0
+        assert len(timeseries["values"]) == len(timeseries["tsNs"])
+        assert all(v is not None for v in timeseries["values"])
 
     async def test_scalar_formula_after_seed(self, full_pipeline):
         """Scalar eval uses read_latest, which returns the last seeded sample."""

@@ -2,7 +2,7 @@
 
 Shared utility used by Mole (fallback when adapters return too many samples),
 Vole (optional decimation on read_window), and Fox (post-evaluation decimation
-of formula curves).
+of formula timeseries).
 """
 
 import bisect

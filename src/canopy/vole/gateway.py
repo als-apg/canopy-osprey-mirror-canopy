@@ -6,14 +6,18 @@ is private implementation.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Awaitable
+
 from canopy.contracts.sample import Sample
 from canopy.vole.schemas.buffer import VoleStatsDTO
+from canopy.vole.services.notifier import ChangeNotifier
 from canopy.vole.services.hare_ingest import HareIngestService
 from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.alignment_service import AlignedResult
 
 _service: BufferService | None = None
 _ingest: HareIngestService | None = None
+_notifier: ChangeNotifier | None = None
 
 
 def bind(service: BufferService | None) -> None:
@@ -24,6 +28,17 @@ def bind(service: BufferService | None) -> None:
 def bind_ingest(ingest: HareIngestService | None) -> None:
     global _ingest
     _ingest = ingest
+
+
+def bind_notifier(notifier: ChangeNotifier | None) -> None:
+    global _notifier
+    _notifier = notifier
+
+
+def get_notifier() -> ChangeNotifier:
+    if _notifier is None:
+        raise RuntimeError("Vole notifier accessed before app startup bound it")
+    return _notifier
 
 
 def get_service() -> BufferService:
@@ -43,10 +58,9 @@ async def seed(
     pv: str,
     samples: list[Sample],
     *,
-    max_age_ns: int | None = None,
     max_points: int | None = None,
 ) -> int:
-    return await get_service().seed(pv, samples, max_age_ns=max_age_ns, max_points=max_points)
+    return await get_service().seed(pv, samples, max_points=max_points)
 
 
 async def drop(pv: str) -> None:
@@ -100,8 +114,33 @@ async def subscribe_live(pvs: list[str]) -> None:
     await _ingest.subscribe(pvs)
 
 
+async def subscribe_latest(pvs: list[str]) -> None:
+    """Subscribe to live updates with a size-1 ring per PV (latest value only).
+
+    Used by scalar formula subscriptions that only need read_latest —
+    avoids accumulating a full ring buffer per PV.
+    """
+    if _ingest is None:
+        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
+    service = get_service()
+    for pv in pvs:
+        await service.seed(pv, [], max_points=1)
+    await _ingest.subscribe(pvs)
+
+
 async def unsubscribe_live(pvs: list[str]) -> None:
     """Unsubscribe from live updates for these PVs."""
     if _ingest is None:
         raise RuntimeError("Vole gateway accessed before app startup bound ingest")
     await _ingest.unsubscribe(pvs)
+
+
+# --- change notifications ------------------------------------------------ #
+
+
+def on_change(pv: str, callback: Callable[[str], Awaitable[None]]) -> Callable[[], None]:
+    """Subscribe to notifications when a PV ring receives new data.
+
+    Returns an unsubscribe function. Used by Fox to trigger re-evaluation.
+    """
+    return get_notifier().subscribe(pv, callback)

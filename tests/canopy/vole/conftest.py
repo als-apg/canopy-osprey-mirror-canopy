@@ -17,7 +17,6 @@ from canopy.vole.services.alignment_service import AlignmentService
 @pytest.fixture
 def vole_config():
     return VoleConfig(
-        max_age_ns=60_000_000_000,
         max_points=1000,
         global_bytes_max=1_000_000,
     )
