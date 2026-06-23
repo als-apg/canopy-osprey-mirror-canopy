@@ -33,10 +33,10 @@ class EpicsConfig(BaseSettings):
     # Treat a CA DBR_CHAR array as a string rather than a numeric waveform.
     char_array_as_string: bool = True
 
-    # Max waveform length we will serialize as JSON nd fan out to WebSocket clients.
+    # Max waveform length we will serialize as JSON and fan out to WebSocket clients.
     # Longer arrays are truncated and flagged via PVValue.error. This is a downstream
     # serialization/display guard applied after the array is already in hand, and is distinct
-    # from EPICS_CA_MAX_ARRAY_BYTES
+    # from EPICS_CA_MAX_ARRAY_BYTES.
     max_array_elements: int = 100_000
 
 

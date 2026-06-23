@@ -111,18 +111,9 @@ class PVBroker:
         await self._start_monitors(newly)
         # Seed latest value + static metadata for newly-activated PVs so the
         # subscriber gets an immediate value (and describe info) rather than
-        # waiting for the first monitor tick.
-        for pv in newly:
-            if pv not in self._latest:
-                try:
-                    self._latest[pv] = await self._connector.get(pv)
-                except Exception as exc:
-                    logger.debug("initial get failed for %s: %s", pv, exc)
-            if pv not in self._meta:
-                try:
-                    self._meta[pv] = await self._connector.describe(pv)
-                except Exception as exc:
-                    logger.debug("describe failed for %s: %s", pv, exc)
+        # waiting for the first monitor tick. Seed concurrently so one slow or
+        # unreachable PV can't stall the initial frame for the rest of the batch.
+        await asyncio.gather(*(self._seed_pv(pv) for pv in newly))
         initial = {pv: self._latest[pv] for pv in pvs if pv in self._latest}
         meta = {pv: self._meta[pv] for pv in pvs if pv in self._meta}
         if initial or meta:
@@ -135,6 +126,23 @@ class PVBroker:
                     "count": len(initial),
                 },
             )
+
+    async def _seed_pv(self, pv: str) -> None:
+        """Fetch the seed value + static metadata for one newly-activated PV.
+
+        Per-PV failures are logged and swallowed so that one bad PV doesn't sink
+        the concurrent seed of the rest of the batch.
+        """
+        if pv not in self._latest:
+            try:
+                self._latest[pv] = await self._connector.get(pv)
+            except Exception as exc:
+                logger.debug("initial get failed for %s: %s", pv, exc)
+        if pv not in self._meta:
+            try:
+                self._meta[pv] = await self._connector.describe(pv)
+            except Exception as exc:
+                logger.debug("describe failed for %s: %s", pv, exc)
 
     async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
         if not pvs:
