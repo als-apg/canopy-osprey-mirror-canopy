@@ -23,7 +23,28 @@ def test_ws_subscribe_streams_values():
             assert sample["pv"] == "SIM:WS"
             assert sample["connected"] is True
             assert isinstance(sample["value"], int | float)
+            assert sample["valueKind"] == "scalar"
             assert "severity" in sample
+
+
+def test_ws_initial_frame_carries_metadata():
+    with TestClient(app) as client:
+        with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "pvNames": ["SIM:STATE:ENUM"]})
+
+            initial = None
+            for _ in range(5):
+                msg = ws.receive_json()
+                if msg["type"] == "initial":
+                    initial = msg
+                    break
+
+            assert initial is not None, "expected an initial frame"
+            assert "meta" in initial
+            meta = initial["meta"]["SIM:STATE:ENUM"]
+            assert meta["valueKind"] == "enum"
+            assert meta["enumChoices"]
+            assert initial["data"]["SIM:STATE:ENUM"]["valueKind"] == "enum"
 
 
 def test_ws_ping_pong():

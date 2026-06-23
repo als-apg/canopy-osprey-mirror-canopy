@@ -10,6 +10,7 @@ from p4p.nt import NTScalar
 from p4p.server import Server
 from p4p.server.thread import SharedPV
 
+from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
 from canopy.epics.backends.epics_backend import EpicsConnector
 
@@ -65,5 +66,129 @@ async def test_pva_monitor_delivers_updates(pva_server):
         pva_server.post(2.0)
         assert await _wait_for(lambda: any(r.value == 2.0 for r in received)), "posted update not delivered"
         await sub.close()
+    finally:
+        await conn.close()
+
+
+@pytest.fixture
+def pva_typed_server(monkeypatch):
+    """In-process p4p server hosting one of each dispatch case — NTEnum,
+    NTScalarArray, NTNDArray, NTTable, and an NTScalar with valueAlarm limits —
+    so the connector's Normative-Type dispatch + metadata can be exercised.
+    Loopback only."""
+    import numpy as np
+    from p4p.nt import NTEnum, NTTable, NTNDArray
+
+    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1")
+    monkeypatch.setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO")
+    monkeypatch.setenv("EPICS_PVA_SERVER_PORT", "5085")
+    monkeypatch.setenv("EPICS_PVA_BROADCAST_PORT", "5086")
+
+    enum_pv = SharedPV(nt=NTEnum(), initial={"index": 1, "choices": ["OFF", "ON", "FAULT"]})
+    array_pv = SharedPV(nt=NTScalar("ad"), initial=[1.0, 2.0, 3.0, 4.0])
+    image_pv = SharedPV(nt=NTNDArray(), initial=np.zeros((4, 4), dtype=np.uint8))
+    table_nt = NTTable(columns=[("idx", "i"), ("name", "s"), ("val", "d")])
+    table_pv = SharedPV(
+        nt=table_nt,
+        initial=[
+            {"idx": 1, "name": "a", "val": 1.5},
+            {"idx": 2, "name": "b", "val": 2.5},
+            {"idx": 3, "name": "c", "val": 3.5},
+        ],
+    )
+    alarm_nt = NTScalar("d", valueAlarm=True, display=True)
+    alarm_pv = SharedPV(
+        nt=alarm_nt,
+        initial=alarm_nt.wrap(
+            {
+                "value": 5.0,
+                "valueAlarm": {
+                    "lowWarningLimit": 1.0,
+                    "highWarningLimit": 9.0,
+                    "lowAlarmLimit": 0.0,
+                    "highAlarmLimit": 10.0,
+                },
+                "display": {"units": "A"},
+            }
+        ),
+    )
+    server = Server(
+        providers=[
+            {
+                "CANOPY:TEST:ENUM": enum_pv,
+                "CANOPY:TEST:ARRAY": array_pv,
+                "CANOPY:TEST:IMAGE": image_pv,
+                "CANOPY:TEST:TABLE": table_pv,
+                "CANOPY:TEST:ALARM": alarm_pv,
+            }
+        ]
+    )
+    try:
+        yield
+    finally:
+        server.stop()
+
+
+async def test_pva_enum_dispatch_and_choices(pva_typed_server):
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics"))
+    await conn.start()
+    try:
+        value = await conn.get("pva://CANOPY:TEST:ENUM")
+        assert value.connected is True
+        assert value.value_kind is ValueKind.ENUM
+        assert value.value == 1  # the index; choices come from describe()
+        meta = await conn.describe("pva://CANOPY:TEST:ENUM")
+        assert meta.value_kind is ValueKind.ENUM
+        assert meta.enum_choices == ["OFF", "ON", "FAULT"]
+    finally:
+        await conn.close()
+
+
+async def test_pva_waveform_dispatch(pva_typed_server):
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics"))
+    await conn.start()
+    try:
+        value = await conn.get("pva://CANOPY:TEST:ARRAY")
+        assert value.value_kind is ValueKind.WAVEFORM
+        assert list(value.value) == [1.0, 2.0, 3.0, 4.0]
+    finally:
+        await conn.close()
+
+
+async def test_pva_image_reported_unsupported(pva_typed_server):
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics"))
+    await conn.start()
+    try:
+        value = await conn.get("pva://CANOPY:TEST:IMAGE")
+        assert value.value_kind is ValueKind.UNSUPPORTED
+        assert value.value is None
+        assert value.error and "NTNDArray" in value.error
+    finally:
+        await conn.close()
+
+
+async def test_pva_table_dispatch(pva_typed_server):
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics"))
+    await conn.start()
+    try:
+        value = await conn.get("pva://CANOPY:TEST:TABLE")
+        assert value.value_kind is ValueKind.TABLE
+        table = value.value
+        assert table.labels == ["idx", "name", "val"]
+        assert table.columns == [[1, 2, 3], ["a", "b", "c"], [1.5, 2.5, 3.5]]
+    finally:
+        await conn.close()
+
+
+async def test_pva_value_alarm_limits_in_describe(pva_typed_server):
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics"))
+    await conn.start()
+    try:
+        meta = await conn.describe("pva://CANOPY:TEST:ALARM")
+        assert meta.warning_low == 1.0
+        assert meta.warning_high == 9.0
+        assert meta.alarm_low == 0.0
+        assert meta.alarm_high == 10.0
+        assert meta.units == "A"
     finally:
         await conn.close()

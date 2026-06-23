@@ -80,3 +80,37 @@ async def test_get_value_falls_back_to_one_shot(broker, fake_connector):
     value = await broker.get_value("PV:Z")
     assert value.pv == "PV:Z"
     assert value.connected is True
+
+
+async def test_initial_frame_includes_metadata(broker, fake_connector):
+    ws = FakeWebSocket()
+    broker.add_client("c1", ws)
+    await broker.subscribe("c1", ["PV:A"])
+
+    initial = ws.sent[0]
+    assert initial["type"] == "initial"
+    assert "meta" in initial
+    meta = initial["meta"]["PV:A"]
+    assert meta["valueKind"] == "scalar"  # camelCase on the wire
+    assert meta["units"] == "mm"
+
+
+async def test_diff_frame_carries_no_metadata(broker, fake_connector):
+    ws = FakeWebSocket()
+    broker.add_client("c1", ws)
+    await broker.subscribe("c1", ["PV:A"])
+    ws.sent.clear()
+
+    fake_connector.emit("PV:A", 1.0)
+    await broker._drain_nowait()
+    await broker._flush()
+
+    diff = [m for m in ws.sent if m["type"] == "diff"][-1]
+    assert "meta" not in diff
+    assert diff["data"]["PV:A"]["valueKind"] == "scalar"
+
+
+async def test_get_describe_falls_back_to_one_shot(broker):
+    meta = await broker.get_describe("PV:Q")
+    assert meta.pv == "PV:Q"
+    assert meta.value_kind.value == "scalar"

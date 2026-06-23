@@ -22,12 +22,22 @@ class EpicsConfig(BaseSettings):
     # --- simulation backend ---
     sim_update_hz: float = 5.0
     sim_default_units: str = ""
+    # Element count for simulated waveform PVs (names ending in :WAVEFORM / :WF).
+    sim_waveform_length: int = 64
 
     # --- real (epics) backend ---
     ca_timeout_s: float = 5.0
     pva_timeout_s: float = 5.0
     # When a name is unprefixed and CA fails to connect, retry over PVA.
     unprefixed_pva_fallback: bool = False
+    # Treat a CA DBR_CHAR array as a string rather than a numeric waveform.
+    char_array_as_string: bool = True
+
+    # Max waveform length we will serialize as JSON and fan out to WebSocket clients.
+    # Longer arrays are truncated and flagged via PVValue.error. This is a downstream
+    # serialization/display guard applied after the array is already in hand, and is distinct
+    # from EPICS_CA_MAX_ARRAY_BYTES.
+    max_array_elements: int = 100_000
 
 
 def get_epics_config() -> EpicsConfig:

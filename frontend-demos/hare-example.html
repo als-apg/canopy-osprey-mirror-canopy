@@ -13,7 +13,7 @@
   legend { padding: 0 .4rem; color: #888; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
   label { display: inline-flex; flex-direction: column; font-size: .75rem; color: #888; gap: .15rem; margin-right: .75rem; }
   input { font: inherit; padding: .35rem .5rem; border: 1px solid #bbb; border-radius: 6px; min-width: 14rem; }
-  button { font: inherit; padding: .4rem .8rem; border: 1px solid #888; border-radius: 6px; background: #f3f3f3; cursor: pointer; }
+  button { font: inherit; padding: .4rem .8rem; border: 1px solid #888; border-radius: 6px; background: #f3f3f3; color: #1a1a1a; cursor: pointer; }
   button:hover { background: #e8e8e8; }
   button:disabled { opacity: .5; cursor: default; }
   .row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .5rem; }
@@ -56,7 +56,7 @@
     <legend>Subscribe</legend>
     <div class="row">
       <label style="flex:1">PV names (comma or space separated)
-        <input id="pvs" value="SIM:TEMP, SIM:PRESSURE, SIM:FLOW, SIM:LEVEL" style="width:100%" />
+        <input id="pvs" value="SIM:TEMP, SIM:STATE:ENUM, SIM:TRACE:WAVEFORM, SIM:MSG:STR, SIM:DATA:TABLE" style="width:100%" />
       </label>
       <button id="subBtn" disabled>Subscribe</button>
       <button id="clearBtn" disabled>Unsubscribe all</button>
@@ -65,8 +65,8 @@
   </fieldset>
 
   <table>
-    <thead><tr><th>PV</th><th>Value</th><th>Severity</th><th>Conn</th><th>Units</th><th>Updated</th></tr></thead>
-    <tbody id="tbody"><tr><td colspan="6" class="muted">No data yet — connect and subscribe.</td></tr></tbody>
+    <thead><tr><th>PV</th><th>Value</th><th>Kind</th><th>Severity</th><th>Conn</th><th>Units</th><th>Updated</th></tr></thead>
+    <tbody id="tbody"><tr><td colspan="7" class="muted">No data yet — connect and subscribe.</td></tr></tbody>
   </table>
 
   <h2 style="font-size:.8rem;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:1.25rem 0 .35rem">Frame log</h2>
@@ -77,7 +77,8 @@
   const $ = (id) => document.getElementById(id);
   let ws = null;
   let subscribed = new Set();
-  const state = {};  // pv -> latest value object
+  const state = {};  // pv -> latest PVValue (dynamic)
+  const meta = {};   // pv -> PVMeta (static, from the initial frame)
 
   function log(line) {
     const el = $("log");
@@ -86,12 +87,39 @@
     if (el.textContent.length > 8000) el.textContent = el.textContent.slice(0, 8000);
   }
 
-  function fmtValue(v) {
+  const SPARK = "▁▂▃▄▅▆▇█";
+  function sparkline(arr) {
+    const nums = arr.filter((x) => typeof x === "number");
+    if (!nums.length) return "";
+    const lo = Math.min(...nums), hi = Math.max(...nums), span = (hi - lo) || 1;
+    return nums.slice(0, 48)
+      .map((x) => SPARK[Math.min(SPARK.length - 1, Math.floor(((x - lo) / span) * (SPARK.length - 1)))])
+      .join("");
+  }
+
+  function fmtTable(t) {
+    const cell = (x) => `<td style="padding:0 6px;border:1px solid #ddd">${x}</td>`;
+    const rows = t.columns.length ? t.columns[0].length : 0;
+    const shown = Math.min(rows, 5);
+    let html = `<table style="border-collapse:collapse;font-size:11px"><tr>` +
+      t.labels.map((l) => `<th style="padding:0 6px;border:1px solid #ddd">${l}</th>`).join("") + `</tr>`;
+    for (let r = 0; r < shown; r++) html += `<tr>${t.columns.map((c) => cell(c[r])).join("")}</tr>`;
+    html += `</table>`;
+    if (rows > shown) html += `<span class="muted">… +${rows - shown} rows</span>`;
+    return html;
+  }
+
+  function fmtValue(pv, d) {
+    const v = d.value;
     if (v === null || v === undefined) return "—";
-    if (Array.isArray(v)) {
-      const head = v.slice(0, 4).map((x) => (typeof x === "number" ? (+x).toFixed(2) : x)).join(", ");
-      return `[${v.length}] ${head}${v.length > 4 ? ", …" : ""}`;
+    const kind = (meta[pv] && meta[pv].valueKind) || d.valueKind;
+    if (kind === "enum") {
+      const choices = meta[pv] && meta[pv].enumChoices;
+      const label = choices && choices[v] !== undefined ? choices[v] : v;
+      return `${label} (${v})`;
     }
+    if (kind === "table" && v && Array.isArray(v.columns)) return fmtTable(v);
+    if (Array.isArray(v)) return `[${v.length}] ${sparkline(v)}`;
     if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(4);
     return String(v);
   }
@@ -107,21 +135,24 @@
     const tbody = $("tbody");
     const pvs = Object.keys(state).sort();
     if (!pvs.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">No data yet — connect and subscribe.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="muted">No data yet — connect and subscribe.</td></tr>';
       return;
     }
     tbody.innerHTML = "";
     for (const pv of pvs) {
       const d = state[pv];
+      const m = meta[pv] || {};
       const tr = document.createElement("tr");
       if (d.connected === false) tr.className = "disconnected";
       const sev = d.severity || "INVALID";
+      const kind = m.valueKind || d.valueKind || "";
       tr.innerHTML =
         `<td>${pv}</td>` +
-        `<td class="value">${fmtValue(d.value)}</td>` +
+        `<td class="value">${fmtValue(pv, d)}</td>` +
+        `<td class="muted">${kind}</td>` +
         `<td><span class="sev sev-${sev}">${sev}</span></td>` +
         `<td>${d.connected === false ? "✕" : "✓"}</td>` +
-        `<td class="muted">${d.units || ""}</td>` +
+        `<td class="muted">${m.units || ""}</td>` +
         `<td class="muted">${fmtTs(d.tsNs)}</td>`;
       tbody.appendChild(tr);
     }
@@ -130,6 +161,10 @@
   function applyData(data) {
     for (const pv of Object.keys(data || {})) state[pv] = data[pv];
     render();
+  }
+
+  function applyMeta(m) {
+    for (const pv of Object.keys(m || {})) meta[pv] = m[pv];
   }
 
   function setConnected(on) {
@@ -149,7 +184,7 @@
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       switch (m.type) {
-        case "initial": applyData(m.data); log(`initial: ${m.count} PV(s)`); break;
+        case "initial": applyMeta(m.meta); applyData(m.data); log(`initial: ${m.count} PV(s)`); break;
         case "diff":
           applyData(m.data);
           break;
@@ -179,6 +214,7 @@
     ws.send(JSON.stringify({ type: "unsubscribe", pvNames }));
     subscribed.clear();
     for (const k of Object.keys(state)) delete state[k];
+    for (const k of Object.keys(meta)) delete meta[k];
     render();
     log("unsubscribed all");
   };
