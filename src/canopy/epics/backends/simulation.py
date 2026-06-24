@@ -21,7 +21,7 @@ import asyncio
 from dataclasses import dataclass
 
 from canopy.epics.base import Subscription, EventCallback
-from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue
+from canopy.contracts.pv import PVMeta, PVValue, ValueKind, PVWriteValue, TableValue
 from canopy.contracts.sample import AlarmSeverity
 
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
@@ -42,6 +42,11 @@ class SimulationConnector:
         self._units = units or None
         self._waveform_length = max(1, min(waveform_length, max_array_elements))
         self._tasks: set[asyncio.Task] = set()
+        # Values written via `put`, keyed by PV name. Once set, `get`/monitors
+        # return the override instead of the generated value, so a write
+        # round-trips. This is the simulation backend's stand-in for an IOC's
+        # record state.
+        self._overrides: dict[str, PVWriteValue] = {}
 
     @classmethod
     def from_config(cls, cfg) -> "SimulationConnector":
@@ -97,6 +102,16 @@ class SimulationConnector:
     def _value_for(self, pv: str) -> PVValue:
         kind = self._kind_for(pv)
         now = time.time_ns()
+        if pv in self._overrides:
+            # A prior `put` pinned this PV's value; return it verbatim (keeping
+            # the name-derived kind) so put -> get round-trips.
+            return PVValue(
+                pv=pv,
+                value=self._overrides[pv],
+                value_kind=kind,
+                severity=AlarmSeverity.NO_ALARM,
+                ts_ns=now,
+            )
         if kind is ValueKind.ENUM:
             idx = int(time.monotonic() / 2) % len(_ENUM_CHOICES)
             severity = AlarmSeverity.MAJOR if _ENUM_CHOICES[idx] == "FAULT" else AlarmSeverity.NO_ALARM
@@ -127,6 +142,11 @@ class SimulationConnector:
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
         return self._value_for(pv)
+
+    async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
+        # Record the write so subsequent `get`/monitor ticks reflect it. The
+        # simulation backend never rejects a write (it has no live IOC to fail).
+        self._overrides[pv] = value
 
     async def describe(self, pv: str) -> PVMeta:
         kind = self._kind_for(pv)

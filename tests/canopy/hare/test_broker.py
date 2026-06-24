@@ -4,6 +4,9 @@ Driven deterministically via FakeConnector (emit on demand) + FakeWebSocket,
 without starting the background loops — tests call `_drain_nowait` / `_flush`.
 """
 
+import pytest
+
+from canopy.epics.base import PVWriteFailed
 from canopy.contracts.sample import AlarmSeverity
 from tests.canopy.hare.conftest import FakeWebSocket
 
@@ -114,3 +117,33 @@ async def test_get_describe_falls_back_to_one_shot(broker):
     meta = await broker.get_describe("PV:Q")
     assert meta.pv == "PV:Q"
     assert meta.value_kind.value == "scalar"
+
+
+async def test_put_delegates_to_connector(broker, fake_connector):
+    await broker.put("PV:A", 42.0)
+    assert fake_connector.puts == [("PV:A", 42.0, True, None)]
+
+
+async def test_put_passes_wait_and_timeout(broker, fake_connector):
+    await broker.put("PV:A", 1, wait=False, timeout=0.5)
+    assert fake_connector.puts == [("PV:A", 1, False, 0.5)]
+
+
+async def test_put_propagates_connector_failure(broker, fake_connector):
+    fake_connector.put_error = PVWriteFailed("boom")
+    with pytest.raises(PVWriteFailed):
+        await broker.put("PV:A", 1.0)
+
+
+async def test_put_invalidates_cache_so_read_is_fresh(broker, fake_connector):
+    # A monitored PV's value is cached; after a put, get_value must not serve the
+    # stale cache -- it re-reads through the connector so put-then-read is consistent.
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:A"])
+    fake_connector.emit("PV:A", 1.0)
+    await broker._drain_nowait()
+    assert (await broker.get_value("PV:A")).value == 1.0  # served from cache
+
+    await broker.put("PV:A", 9.9)
+    assert "PV:A" not in broker._latest  # cache invalidated
+    assert (await broker.get_value("PV:A")).value == 0.0  # fresh one-shot connector.get

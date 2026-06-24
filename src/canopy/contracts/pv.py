@@ -58,6 +58,8 @@ class TableValue(CanopyModel):
 # `TableValue`. `None` when disconnected. Images never travel as a `PVValue`.
 PVValueType = float | int | bool | str | list | TableValue | None
 
+PVWriteValue = float | int | bool | str | list
+
 
 class PVValue(CanopyModel):
     """A single live value of a PV — the dynamic, per-update payload."""

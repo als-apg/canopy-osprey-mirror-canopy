@@ -11,6 +11,7 @@ from p4p.server import Server
 from p4p.server.thread import SharedPV
 
 from canopy.contracts.pv import ValueKind
+from canopy.epics.base import PVWriteFailed
 from canopy.epics.config import EpicsConfig
 from canopy.epics.backends.epics_backend import EpicsConnector
 
@@ -190,5 +191,56 @@ async def test_pva_value_alarm_limits_in_describe(pva_typed_server):
         assert meta.alarm_low == 0.0
         assert meta.alarm_high == 10.0
         assert meta.units == "A"
+    finally:
+        await conn.close()
+
+
+# --- writes (put) ----------------------------------------------------------- #
+
+
+class _AcceptPut:
+    """A SharedPV handler that accepts puts by posting the new value, so a write
+    actually lands and a subsequent get reflects it (a default SharedPV rejects
+    puts)."""
+
+    def put(self, pv, op):
+        pv.post(op.value())
+        op.done()
+
+
+@pytest.fixture
+def pva_writable_server(monkeypatch):
+    """In-process p4p server hosting one writable NTScalar, loopback only."""
+    monkeypatch.setenv("EPICS_PVA_ADDR_LIST", "127.0.0.1")
+    monkeypatch.setenv("EPICS_PVA_AUTO_ADDR_LIST", "NO")
+    monkeypatch.setenv("EPICS_PVA_SERVER_PORT", "5085")
+    monkeypatch.setenv("EPICS_PVA_BROADCAST_PORT", "5086")
+    pv = SharedPV(nt=NTScalar("d"), initial=1.0, handler=_AcceptPut())
+    server = Server(providers=[{PV_NAME: pv}])
+    try:
+        yield pv
+    finally:
+        server.stop()
+
+
+async def test_pva_put_round_trips(pva_writable_server):
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics", pva_timeout_s=5.0))
+    await conn.start()
+    try:
+        await conn.put(f"pva://{PV_NAME}", 7.0)
+        value = await conn.get(f"pva://{PV_NAME}")
+        assert value.connected is True
+        assert value.value == 7.0
+    finally:
+        await conn.close()
+
+
+async def test_pva_put_timeout_raises():
+    # No server hosts this PV, so a put with a tiny timeout cannot complete.
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics"))
+    await conn.start()
+    try:
+        with pytest.raises(PVWriteFailed):
+            await conn.put("pva://CANOPY:TEST:NOPE", 1.0, timeout=0.2)
     finally:
         await conn.close()

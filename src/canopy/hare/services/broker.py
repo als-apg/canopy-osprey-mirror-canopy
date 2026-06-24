@@ -16,7 +16,7 @@ from collections.abc import Iterable
 
 from canopy.epics.base import PVConnector, Subscription
 from canopy.hare.config import HareConfig
-from canopy.contracts.pv import PVMeta, PVValue
+from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
 from canopy.hare.services.subscriptions import SubscriptionRegistry
 
 logger = logging.getLogger(__name__)
@@ -245,7 +245,7 @@ class PVBroker:
             deactivated = self._registry.remove_client(client_id)
             await self._stop_monitors(deactivated)
 
-    # --- reads / introspection ------------------------------------------ #
+    # --- reads ----------------------------------------------------------- #
 
     async def get_value(self, pv: str) -> PVValue:
         """Current value: cached if actively monitored, else a one-shot read."""
@@ -260,6 +260,21 @@ class PVBroker:
         if cached is not None:
             return cached
         return await self._connector.describe(pv)
+
+    # --- writes ---------------------------------------------------------- #
+
+    async def put(self, pv: str, value: PVWriteValue, *, wait: bool = True, timeout: float | None = None) -> None:
+        """Write a value to a PV (one-shot, independent of any subscription).
+
+        Delegates to the connector, which routes by protocol prefix and raises
+        `PVWriteFailed` on failure or timeout. On success the cached latest value
+        is dropped so an immediate `get_value` reflects the write instead of the
+        pre-write cache. The monitor path repopulates the cache on its next tick.
+        """
+        await self._connector.put(pv, value, wait=wait, timeout=timeout)
+        self._latest.pop(pv, None)
+
+    # --- introspection --------------------------------------------------- #
 
     def status(self) -> dict:
         return {

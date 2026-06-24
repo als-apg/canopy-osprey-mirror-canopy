@@ -32,6 +32,10 @@ class FakeConnector:
     callbacks: dict[str, EventCallback] = field(default_factory=dict)
     started: bool = False
     closed: bool = False
+    # Recorded `put` calls as (pv, value, wait, timeout); set `put_error` to make
+    # the next put raise (drives the broker/endpoint write-failure paths).
+    puts: list = field(default_factory=list)
+    put_error: Exception | None = None
 
     @classmethod
     def from_config(cls, cfg) -> "FakeConnector":
@@ -46,6 +50,11 @@ class FakeConnector:
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
         return PVValue(pv=pv, value=0.0, severity=AlarmSeverity.NO_ALARM, ts_ns=1, connected=True)
+
+    async def put(self, pv: str, value, *, timeout: float | None = None, wait: bool = True) -> None:
+        self.puts.append((pv, value, wait, timeout))
+        if self.put_error is not None:
+            raise self.put_error
 
     async def describe(self, pv: str) -> PVMeta:
         return PVMeta(pv=pv, value_kind=ValueKind.SCALAR, units="mm", precision=3)
