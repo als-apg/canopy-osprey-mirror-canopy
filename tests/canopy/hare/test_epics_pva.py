@@ -10,8 +10,8 @@ from p4p.nt import NTScalar
 from p4p.server import Server
 from p4p.server.thread import SharedPV
 
-from canopy.contracts.pv import ValueKind
 from canopy.epics.base import PVWriteFailed
+from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
 from canopy.epics.backends.epics_backend import EpicsConnector
 

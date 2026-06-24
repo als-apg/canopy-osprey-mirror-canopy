@@ -2,8 +2,8 @@
 
 from pydantic import Field
 
-from canopy.contracts.base import CanopyModel
 from canopy.contracts.pv import PVWriteValue
+from canopy.contracts.base import CanopyModel
 
 
 class PVWriteDTO(CanopyModel):

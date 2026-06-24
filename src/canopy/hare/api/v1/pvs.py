@@ -4,8 +4,8 @@ from fastapi import Path, Security, APIRouter
 
 from canopy.contracts.pv import PVMeta, PVValue
 from canopy.core.security import require_read_access, require_write_access
-from canopy.hare.dependencies import PVBrokerDep
 from canopy.hare.schemas.pv import PVWriteDTO, PVWriteResultDTO
+from canopy.hare.dependencies import PVBrokerDep
 
 router = APIRouter(prefix="/pvs", tags=["Hare / PVs"])
 

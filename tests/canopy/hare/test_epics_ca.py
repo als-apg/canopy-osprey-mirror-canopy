@@ -11,8 +11,8 @@ import pytest
 pytest.importorskip("aioca")
 pytest.importorskip("p4p")
 
-from canopy.contracts.pv import ValueKind
 from canopy.epics.base import PVWriteFailed
+from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
 from canopy.epics.backends import epics_backend
 from canopy.epics.backends.epics_backend import EpicsConnector

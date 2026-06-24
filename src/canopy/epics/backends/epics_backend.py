@@ -20,7 +20,12 @@ from dataclasses import dataclass
 from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, caput, cainfo, camonitor
 from p4p.client.asyncio import Context as P4PContext
 
-from canopy.epics.base import Subscription, EventCallback, PVWriteFailed, normalize_severity
+from canopy.epics.base import (
+    Subscription,
+    EventCallback,
+    PVWriteFailed,
+    normalize_severity,
+)
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name
