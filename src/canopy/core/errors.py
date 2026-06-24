@@ -69,6 +69,10 @@ class ErrorCode(StrEnum):
     LEGACY_SCREEN_NOT_FOUND = auto()
     CATALOG_MISCONFIGURED = auto()
 
+    # Jobs
+    JOB_NOT_FOUND = auto()
+    JOB_ALREADY_EXISTS = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.

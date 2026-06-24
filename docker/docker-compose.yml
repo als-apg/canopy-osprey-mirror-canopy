@@ -14,11 +14,18 @@ services:
       CANOPY_EPICS__BACKEND: ${CANOPY_EPICS__BACKEND:-simulation}
       CANOPY_DEBUG: ${CANOPY_DEBUG:-true}
       CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
+      CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:canopy@postgres:5432/canopy}
+      CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://redis:6379/0}
     ports:
       - "${API_HOST_PORT:-8000}:8000"
     volumes:
       - ../src:/app/src
       - ../tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -33,19 +40,60 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Uncomment when a worker process is added to the project:
-  # worker:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/Dockerfile.dev
-  #   container_name: canopy-worker
-  #   command: <worker-command-here>
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     CANOPY_EPICS__BACKEND: simulation
-  #     CANOPY_DEBUG: "true"
-  #     CANOPY_API_KEYS: "dev:read+write"
-  #   volumes:
-  #     - ../src:/app/src
-  #   restart: unless-stopped
+  # Long-running work (Squirrel snapshot create/restore) off the request path.
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: canopy-worker
+    command: uv run arq canopy.worker.WorkerSettings
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CANOPY_EPICS__BACKEND: ${CANOPY_EPICS__BACKEND:-simulation}
+      CANOPY_DEBUG: ${CANOPY_DEBUG:-true}
+      CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
+      CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:canopy@postgres:5432/canopy}
+      CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - ../src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: canopy-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-canopy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-canopy}
+      POSTGRES_DB: ${POSTGRES_DB:-canopy}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - canopy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-canopy} -d ${POSTGRES_DB:-canopy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: canopy-redis
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  canopy-pgdata:
