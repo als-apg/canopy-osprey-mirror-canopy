@@ -6,11 +6,11 @@ Vole is an in-memory time-series data buffer that sits between Hare (live PV dat
 
 Each PV gets its own **ring buffer** — a fixed-capacity FIFO queue of timestamped samples. When the buffer is full, the oldest samples are dropped to make room for new ones.
 
-```
-Mole (archiver) ────seed─────> ┌──────────────────┐
-                               │  Per-PV Ring     │ ──read──> Fox (evaluator)
-Hare (live broker) ──append──> │  (FIFO, bounded) │
-                               └──────────────────┘
+```mermaid
+graph LR
+    Mole["Mole (archiver)"] -->|seed| Ring["Per-PV Ring\n(FIFO, bounded)"]
+    Hare["Hare (live broker)"] -->|append| Ring
+    Ring -->|read| Fox["Fox (evaluator)"]
 ```
 
 Key properties:
