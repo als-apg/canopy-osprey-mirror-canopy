@@ -21,6 +21,8 @@ from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
+from canopy.converter.app import app as converter_app
+from canopy.converter.app import converter_lifespan
 
 try:
     __version__ = version("canopy")
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
         fox_lifespan(),
         beaver_lifespan(),
         jobs_lifespan(),
+        converter_lifespan(),
     ):
         logger.info("Starting Canopy API")
         yield
@@ -73,6 +76,7 @@ app.mount("/vole", vole_app)
 app.mount("/fox", fox_app)
 app.mount("/beaver", beaver_app)
 app.mount("/jobs", jobs_app)
+app.mount("/converter", converter_app)
 
 
 @app.get("/health", tags=["meta"])

@@ -73,6 +73,11 @@ class ErrorCode(StrEnum):
     JOB_NOT_FOUND = auto()
     JOB_ALREADY_EXISTS = auto()
 
+    # Converter
+    CONVERTER_UNSUPPORTED_INPUT = auto()
+    CONVERTER_CONVERSION_FAILED = auto()
+    CONVERTER_UPLOAD_TOO_LARGE = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.
