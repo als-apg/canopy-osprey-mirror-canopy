@@ -7,8 +7,15 @@ services:
       - .env
     environment:
       CANOPY_DEBUG: "false"
+      CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:${POSTGRES_PASSWORD}@postgres:5432/canopy}
+      CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://redis:6379/0}
     ports:
       - "${API_HOST_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -23,10 +30,49 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # Uncomment when a worker process is added:
-  # worker:
-  #   image: ${IMAGE:-canopy:latest}
-  #   command: <worker-command-here>
-  #   env_file:
-  #     - .env
-  #   restart: unless-stopped
+  worker:
+    image: ${IMAGE:-canopy:latest}
+    command: arq canopy.worker.WorkerSettings
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CANOPY_DEBUG: "false"
+      CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:${POSTGRES_PASSWORD}@postgres:5432/canopy}
+      CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-canopy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD for production}
+      POSTGRES_DB: ${POSTGRES_DB:-canopy}
+    volumes:
+      - canopy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-canopy} -d ${POSTGRES_DB:-canopy}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - canopy-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  canopy-pgdata:
+  canopy-redisdata:
