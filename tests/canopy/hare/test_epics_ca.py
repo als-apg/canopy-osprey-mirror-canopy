@@ -11,8 +11,10 @@ import pytest
 pytest.importorskip("aioca")
 pytest.importorskip("p4p")
 
+from canopy.epics.base import PVWriteFailed
 from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
+from canopy.epics.backends import epics_backend
 from canopy.epics.backends.epics_backend import EpicsConnector
 
 # EPICS DBF field-type codes.
@@ -91,3 +93,72 @@ def test_waveform_truncated_past_max():
 def test_disconnected_when_not_ok():
     v = _conn()._ca_to_pvvalue("X", FakeAug(0.0, datatype=DBR_DOUBLE, ok=False))
     assert v.connected is False
+
+
+# --- writes (put) ----------------------------------------------------------- #
+
+
+class FakeCANothing:
+    """Stand-in for aioca's CANothing put result, carrying the `.ok` flag the
+    connector checks."""
+
+    def __init__(self, ok=True):
+        self.ok = ok
+
+    def __repr__(self):
+        return f"FakeCANothing(ok={self.ok})"
+
+
+def _fake_caput(calls, *, ok=True, raises=None):
+    """Build an async `caput` replacement that records its call and returns a
+    FakeCANothing (or raises)."""
+
+    async def fake_caput(name, value, **kwargs):
+        calls.append((name, value, kwargs))
+        if raises is not None:
+            raise raises
+        return FakeCANothing(ok=ok)
+
+    return fake_caput
+
+
+async def test_put_ca_routes_and_passes_args(monkeypatch):
+    calls = []
+    monkeypatch.setattr(epics_backend, "caput", _fake_caput(calls))
+    await _conn().put("PV:X", 5.0)
+    assert len(calls) == 1
+    name, value, kwargs = calls[0]
+    assert name == "PV:X"
+    assert value == 5.0
+    assert kwargs["wait"] is True
+    # No explicit timeout -> defaults to the connector's ca_timeout_s.
+    assert kwargs["timeout"] == EpicsConfig().ca_timeout_s
+    assert kwargs["throw"] is False
+
+
+async def test_put_ca_strips_prefix(monkeypatch):
+    calls = []
+    monkeypatch.setattr(epics_backend, "caput", _fake_caput(calls))
+    await _conn().put("ca://PV:X", 1)
+    assert calls[0][0] == "PV:X"
+
+
+async def test_put_ca_honors_timeout_and_wait(monkeypatch):
+    calls = []
+    monkeypatch.setattr(epics_backend, "caput", _fake_caput(calls))
+    await _conn().put("PV:X", 2, timeout=0.5, wait=False)
+    _, _, kwargs = calls[0]
+    assert kwargs["timeout"] == 0.5
+    assert kwargs["wait"] is False
+
+
+async def test_put_ca_not_ok_raises(monkeypatch):
+    monkeypatch.setattr(epics_backend, "caput", _fake_caput([], ok=False))
+    with pytest.raises(PVWriteFailed):
+        await _conn().put("PV:X", 3.0)
+
+
+async def test_put_ca_exception_raises(monkeypatch):
+    monkeypatch.setattr(epics_backend, "caput", _fake_caput([], raises=RuntimeError("boom")))
+    with pytest.raises(PVWriteFailed):
+        await _conn().put("PV:X", 3.0)

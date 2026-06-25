@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 from collections.abc import Callable
 
 from canopy.core.errors import ErrorCode, CanopyError
-from canopy.contracts.pv import PVMeta, PVValue
+from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
 
 # --------------------------------------------------------------------------- #
@@ -103,6 +103,12 @@ class PVConnector(Protocol):
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
         """One-shot read of a PV's current value."""
+        ...
+
+    async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
+        """Write `value` to `pv`. When `wait=True`, block until the write
+        completes (put-with-callback) so the caller knows it landed. The
+        protocol is taken from the PV name prefix (``ca://`` / ``pva://``)"""
         ...
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:

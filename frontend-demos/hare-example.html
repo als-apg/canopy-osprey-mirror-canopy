@@ -64,6 +64,20 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>Write (put)</legend>
+    <div class="row">
+      <label>PV name
+        <input id="writePv" value="SIM:TEMP" style="min-width:12rem" />
+      </label>
+      <label>Value
+        <input id="writeVal" value="42" style="min-width:8rem" />
+      </label>
+      <button id="putBtn">Put</button>
+      <span class="muted">writes via <code>PUT /hare/v1/pvs/{pv}</code> with a write-scoped key; subscribe to the same PV and watch its row update.</span>
+    </div>
+  </fieldset>
+
   <table>
     <thead><tr><th>PV</th><th>Value</th><th>Kind</th><th>Severity</th><th>Conn</th><th>Units</th><th>Updated</th></tr></thead>
     <tbody id="tbody"><tr><td colspan="7" class="muted">No data yet — connect and subscribe.</td></tr></tbody>
@@ -219,6 +233,44 @@
     log("unsubscribed all");
   };
   $("pingBtn").onclick = () => ws && ws.send(JSON.stringify({ type: "ping" }));
+
+  // --- write (put) ----------------------------------------------------- //
+  // Writes (PUT /hare/v1/pvs/{pv}). After a put, the value lands back via
+  // the normal diff stream so a subscribed PV's row updates on its own.
+  function restPvBase() {
+    // Derive the REST base from the WS URL: ws(s):// -> http(s)://, /v1/ws/pvs -> /v1/pvs.
+    return $("url").value.trim().replace(/^ws/, "http").replace("/v1/ws/pvs", "/v1/pvs");
+  }
+  function parseWriteValue(raw) {
+    // Numeric text -> number; otherwise send the trimmed string as-is.
+    const s = raw.trim();
+    if (s === "") return "";
+    const n = Number(s);
+    return Number.isNaN(n) ? s : n;
+  }
+  $("putBtn").onclick = async () => {
+    const pv = $("writePv").value.trim();
+    if (!pv) return;
+    const value = parseWriteValue($("writeVal").value);
+    const url = restPvBase() + "/" + encodeURIComponent(pv);
+    log(`PUT ${pv} = ${JSON.stringify(value)}`);
+    try {
+      const resp = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-API-Key": $("key").value.trim() },
+        body: JSON.stringify({ value, wait: true }),
+      });
+      if (resp.ok) {
+        log(`put ok: ${pv} (watch the table row if subscribed)`);
+      } else {
+        let detail = String(resp.status);
+        try { const e = await resp.json(); detail = e.detail || e.code || detail; } catch {}
+        log(`put failed (${resp.status}): ${detail}`);
+      }
+    } catch (err) {
+      log(`put error: ${err}`);
+    }
+  };
 
   setConnected(false);
 })();

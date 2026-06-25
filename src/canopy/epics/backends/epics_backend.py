@@ -17,11 +17,16 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, cainfo, camonitor
+from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, caput, cainfo, camonitor
 from p4p.client.asyncio import Context as P4PContext
 
-from canopy.epics.base import Subscription, EventCallback, normalize_severity
-from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue
+from canopy.epics.base import (
+    Subscription,
+    EventCallback,
+    PVWriteFailed,
+    normalize_severity,
+)
+from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name
 
@@ -180,6 +185,33 @@ class EpicsConnector:
         except Exception as exc:
             return self._disconnected(pv, str(exc))
         return self._pva_to_pvvalue(pv, value)
+
+    # --- writes ---------------------------------------------------------- #
+
+    async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
+        """Write `value` to `pv`, routed by protocol prefix."""
+        protocol, stripped = parse_pv_name(pv)
+        if protocol == "pva":
+            await self._put_pva(pv, stripped, value, timeout, wait)
+        else:
+            await self._put_ca(pv, stripped, value, timeout, wait)
+
+    async def _put_ca(self, pv: str, stripped: str, value: PVWriteValue, timeout: float | None, wait: bool) -> None:
+        t = timeout if timeout is not None else self._ca_timeout
+        try:
+            result = await caput(stripped, value, wait=wait, timeout=t, throw=False)
+        except Exception as exc:
+            raise PVWriteFailed(f"CA write to {pv} failed: {exc}") from exc
+        if not getattr(result, "ok", True):
+            raise PVWriteFailed(f"CA write to {pv} failed: {result}")
+
+    async def _put_pva(self, pv: str, stripped: str, value: PVWriteValue, timeout: float | None, wait: bool) -> None:
+        t = timeout if timeout is not None else self._pva_timeout
+        try:
+            ctx = self._get_pva_context()
+            await asyncio.wait_for(ctx.put(stripped, value, wait=wait), timeout=t)
+        except Exception as exc:
+            raise PVWriteFailed(f"PVA write to {pv} failed: {exc}") from exc
 
     # --- metadata (describe) --------------------------------------------- #
 

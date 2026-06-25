@@ -75,3 +75,27 @@ async def test_scalar_describe_has_value_alarm_limits():
     meta = await conn.describe("SIM:X")
     assert meta.warning_low == -7.0 and meta.warning_high == 7.0
     assert meta.alarm_low == -9.0 and meta.alarm_high == 9.0
+
+
+async def test_put_scalar_round_trips():
+    conn = SimulationConnector.from_config(EpicsConfig())
+    await conn.put("SIM:X", 42.0)
+    value = await conn.get("SIM:X")
+    assert value.value == 42.0
+    assert value.value_kind is ValueKind.SCALAR
+
+
+async def test_put_string_round_trips():
+    conn = SimulationConnector.from_config(EpicsConfig())
+    await conn.put("SIM:MSG:STR", "hello")
+    value = await conn.get("SIM:MSG:STR")
+    assert value.value == "hello"
+    assert value.value_kind is ValueKind.STRING
+
+
+async def test_put_enum_round_trips():
+    conn = SimulationConnector.from_config(EpicsConfig())
+    await conn.put("SIM:STATE:ENUM", 3)
+    value = await conn.get("SIM:STATE:ENUM")
+    assert value.value == 3
+    assert value.value_kind is ValueKind.ENUM
