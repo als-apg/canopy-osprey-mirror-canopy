@@ -62,6 +62,13 @@ class ErrorCode(StrEnum):
     BUFFER_AT_CAPACITY = auto()
     WINDOW_TOO_LARGE = auto()
 
+    # Beaver
+    WIDGET_NOT_FOUND = auto()
+    QT_CLASS_NOT_MAPPED = auto()
+    ICON_NOT_FOUND = auto()
+    LEGACY_SCREEN_NOT_FOUND = auto()
+    CATALOG_MISCONFIGURED = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.
