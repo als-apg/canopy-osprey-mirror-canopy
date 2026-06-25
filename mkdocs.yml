@@ -85,9 +85,18 @@ markdown_extensions:
 # Page Tree
 nav:
   - Home: index.md
+  - Fox:
+    - fox/index.md
+    - REST API: fox/rest_api.md
+    - WebSocket Subscriptions: fox/websocket.md
+  - Vole:
+    - vole/index.md
+    - Configuration: vole/configuration.md
   - How To:
     - how_to/index.md
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
     - Custom directory adapter: how_to/custom_directory_adapter.md
   - API Reference:
     - api_reference/index.md
+    - Fox: api_reference/fox.md
+    - Vole: api_reference/vole.md
