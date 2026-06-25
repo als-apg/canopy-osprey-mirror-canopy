@@ -58,7 +58,10 @@ class TableValue(CanopyModel):
 # `TableValue`. `None` when disconnected. Images never travel as a `PVValue`.
 PVValueType = float | int | bool | str | list | TableValue | None
 
-PVWriteValue = float | int | bool | str | list
+# The writable subset of `PVValueType`. The list element type is constrained to
+# scalars so a malformed array (e.g. a list of objects) is rejected at the DTO
+# boundary.
+PVWriteValue = float | int | bool | str | list[float | int | bool | str]
 
 
 class PVValue(CanopyModel):

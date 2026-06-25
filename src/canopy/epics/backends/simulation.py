@@ -146,6 +146,8 @@ class SimulationConnector:
     async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
         # Record the write so subsequent `get`/monitor ticks reflect it. The
         # simulation backend never rejects a write (it has no live IOC to fail).
+        # `_overrides` is never evicted, but it's bounded in practice by the small
+        # set of distinct PVs a developer writes to in a dev/test session.
         self._overrides[pv] = value
 
     async def describe(self, pv: str) -> PVMeta:
