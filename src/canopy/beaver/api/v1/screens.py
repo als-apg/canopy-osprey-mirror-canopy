@@ -24,22 +24,18 @@ from canopy.beaver.schemas.legacy import LegacyScreenListDTO, LegacyScreenSummar
 
 router = APIRouter(prefix="/screens", tags=["Beaver / Screens"])
 
-_CONTENT_TYPES = {
-    ".ui": "application/xml",
-    ".py": "text/x-python",
-}
-
 
 @router.get("", dependencies=[Security(require_read_access)])
 def list_legacy_screens(service: WidgetServiceDep) -> LegacyScreenListDTO:
     # Sync handler on purpose: rglob/stat block, and legacy screen trees live
     # on NFS in practice. Starlette runs `def` routes in its threadpool.
     base = service.config.legacy_screens_dir
+    content_types = service.config.content_types
     if not base.is_dir():
         return LegacyScreenListDTO(screens=[], total=0)
     summaries: list[LegacyScreenSummaryDTO] = []
     for path in sorted(base.rglob("*")):
-        if not path.is_file() or path.suffix not in _CONTENT_TYPES:
+        if not path.is_file() or path.suffix not in content_types:
             continue
         stat = path.stat()
         summaries.append(
@@ -58,13 +54,14 @@ def get_legacy_screen(
     service: WidgetServiceDep,
 ) -> FileResponse:
     base = service.config.legacy_screens_dir
+    content_types = service.config.content_types
     resolved = (base / file_path).resolve()
     base_resolved = base.resolve()
     if not _is_within(resolved, base_resolved) or not resolved.is_file():
         raise LegacyScreenNotFound(f"Legacy screen not found: {file_path}")
-    if resolved.suffix not in _CONTENT_TYPES:
+    if resolved.suffix not in content_types:
         raise LegacyScreenNotFound(f"Legacy screen not found: {file_path}")
-    return FileResponse(resolved, media_type=_CONTENT_TYPES[resolved.suffix])
+    return FileResponse(resolved, media_type=content_types[resolved.suffix])
 
 
 def _is_within(child: Path, parent: Path) -> bool:

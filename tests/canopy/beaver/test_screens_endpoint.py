@@ -1,8 +1,15 @@
 """HTTP layer: /beaver/v1/screens (legacy .ui/.py serving)."""
 
 import pytest
+from fastapi.testclient import TestClient
 
+from canopy.main import app as parent_app
 from tests.conftest import READ_HEADERS
+from canopy.beaver.app import app as beaver_app
+from canopy.beaver.config import BeaverConfig
+from canopy.beaver.dependencies import get_widget_service
+from canopy.beaver.catalog.loader import FileCatalogLoader
+from canopy.beaver.services.widget_service import WidgetService
 
 
 def test_list_returns_only_ui_and_py(beaver_client):
@@ -73,3 +80,26 @@ def test_screens_require_auth(beaver_client):
     assert resp.status_code == 401
     resp = beaver_client.get("/beaver/v1/screens/vacuum.ui")
     assert resp.status_code == 401
+
+
+def test_configured_custom_content_type_is_listed_and_served(tmp_catalog):
+    # A lab can serve another format (e.g. Phoebus .bob) by configuring its
+    # content type in BeaverConfig — no edit to the screens module needed.
+    (tmp_catalog / "legacy-screens" / "panel.bob").write_text("<display/>", encoding="utf-8")
+    config = BeaverConfig(
+        widgets_dir=tmp_catalog / "widgets",
+        icons_dir=tmp_catalog / "icons",
+        legacy_screens_dir=tmp_catalog / "legacy-screens",
+        content_types={".ui": "application/xml", ".py": "text/x-python", ".bob": "application/xml"},
+    )
+    service = WidgetService(FileCatalogLoader(config).load(), config)
+    beaver_app.dependency_overrides[get_widget_service] = lambda: service
+    try:
+        with TestClient(parent_app) as client:
+            listing = client.get("/beaver/v1/screens", headers=READ_HEADERS).json()
+            served = client.get("/beaver/v1/screens/panel.bob", headers=READ_HEADERS)
+    finally:
+        beaver_app.dependency_overrides.pop(get_widget_service, None)
+    assert "panel.bob" in {s["path"] for s in listing["screens"]}
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "application/xml"
