@@ -14,10 +14,15 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import func, DateTime
+from sqlalchemy import DateTime, func
 from sqlalchemy.orm import Mapped, DeclarativeBase, mapped_column
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from canopy.core.config import get_settings
 

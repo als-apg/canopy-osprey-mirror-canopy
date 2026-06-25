@@ -4,7 +4,7 @@ Arq's `Job` and the Redis pool are faked, so these need no running Redis.
 """
 
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import pytest
 from arq.jobs import JobStatus
