@@ -22,19 +22,23 @@ from canopy.core.config import get_settings
 #   import canopy.squirrel.data.models  # noqa: F401
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
+# Pull the DB URL from Canopy settings, but deliberately do NOT round-trip it
+# through config.set_main_option(): that stores into ConfigParser, whose
+# %-interpolation would mangle (or reject) a password containing a literal '%'.
+# We inject it straight into the engine config / migration context below instead.
+database_url = get_settings().database_url
+
 
 def run_migrations_offline() -> None:
     """Emit SQL without a live connection (alembic upgrade --sql)."""
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -57,8 +61,10 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = database_url
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

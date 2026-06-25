@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 from datetime import datetime
 
 from canopy.contracts.base import CanopyModel
@@ -9,13 +9,12 @@ class JobStatusDTO(CanopyModel):
 
     ``result`` is an opaque reference produced by the task (e.g.
     ``{"type": "snapshot", "id": ...}``); the Jobs module never interprets it,
-    which is what keeps Jobs domain-agnostic. ``status`` is one of
-    ``pending`` / ``running`` / ``completed`` / ``failed``.
+    which is what keeps Jobs domain-agnostic.
     """
 
     id: str
     function: str | None = None
-    status: str
+    status: Literal["pending", "running", "completed", "failed"]
     progress: int = 0
     message: str | None = None
     result: Any | None = None
