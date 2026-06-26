@@ -24,7 +24,10 @@ Open a new formula subscription.
   "spec": {
     "kind": "timeseries",
     "expression": "{a} + {b}",
-    "bindings": {"a": "PV:SENSOR:A", "b": "PV:SENSOR:B"},
+    "bindings": {
+      "a": "PV:SENSOR:A",
+      "b": "PV:SENSOR:B"
+    },
     "align": "last",
     "index": "union"
   },
@@ -60,7 +63,14 @@ Modify a subscription's parameters without unsubscribing and resubscribing. Any 
 {
   "type": "update",
   "id": "a1b2c3d4e5f6",
-  "spec": {"kind": "timeseries", "expression": "{a} - {b}", "bindings": {"a": "PV:A", "b": "PV:B"}},
+  "spec": {
+    "kind": "timeseries",
+    "expression": "{a} - {b}",
+    "bindings": {
+      "a": "PV:A",
+      "b": "PV:B"
+    }
+  },
   "t0Ns": -120000000000,
   "intervalMs": 5000
 }
@@ -78,7 +88,9 @@ Modify a subscription's parameters without unsubscribing and resubscribing. Any 
 Keep-alive message. The server responds with `pong`.
 
 ```json
-{"type": "ping"}
+{
+  "type": "ping"
+}
 ```
 
 ## Server --> client messages
@@ -88,7 +100,10 @@ Keep-alive message. The server responds with `pong`.
 Confirms a subscription was created and provides the assigned ID.
 
 ```json
-{"type": "subscribed", "id": "a1b2c3d4e5f6"}
+{
+  "type": "subscribed",
+  "id": "a1b2c3d4e5f6"
+}
 ```
 
 ### result
@@ -101,10 +116,22 @@ A new evaluation result for a subscription. The `data` field contains the same r
   "id": "a1b2c3d4e5f6",
   "data": {
     "kind": "timeseries",
-    "tsNs": [1700000000000000000, 1700000001000000000],
-    "values": [3.5, 4.2],
-    "severity": ["NO_ALARM", "NO_ALARM"],
-    "inputs": {"a": "PV:SENSOR:A", "b": "PV:SENSOR:B"},
+    "tsNs": [
+      1700000000000000000,
+      1700000001000000000
+    ],
+    "values": [
+      3.5,
+      4.2
+    ],
+    "severity": [
+      "NO_ALARM",
+      "NO_ALARM"
+    ],
+    "inputs": {
+      "a": "PV:SENSOR:A",
+      "b": "PV:SENSOR:B"
+    },
     "decimated": false
   }
 }
@@ -115,7 +142,10 @@ A new evaluation result for a subscription. The `data` field contains the same r
 Confirms a subscription was updated successfully.
 
 ```json
-{"type": "updated", "id": "a1b2c3d4e5f6"}
+{
+  "type": "updated",
+  "id": "a1b2c3d4e5f6"
+}
 ```
 
 ### completed
@@ -123,7 +153,10 @@ Confirms a subscription was updated successfully.
 Sent after a one-shot evaluation finishes. The subscription is automatically removed — no `unsubscribe` needed.
 
 ```json
-{"type": "completed", "id": "a1b2c3d4e5f6"}
+{
+  "type": "completed",
+  "id": "a1b2c3d4e5f6"
+}
 ```
 
 ### error
@@ -146,7 +179,10 @@ The `id` field is present when the error is specific to a subscription. Connecti
 Response to a `ping` message with the server timestamp.
 
 ```json
-{"type": "pong", "timestamp": 1700003600.123}
+{
+  "type": "pong",
+  "timestamp": 1700003600.123
+}
 ```
 
 ## Subscription modes
@@ -156,7 +192,11 @@ The combination of `t0Ns`, `t1Ns`, and `intervalMs` determines how the subscript
 ### Push mode (default)
 
 ```json
-{"t0Ns": -60000000000, "t1Ns": 0, "intervalMs": 0}
+{
+  "t0Ns": -60000000000,
+  "t1Ns": 0,
+  "intervalMs": 0
+}
 ```
 
 The formula re-evaluates immediately whenever any of its input PVs receive new data from Vole. This provides the lowest-latency updates. The time window slides forward with each evaluation — `t0Ns` as a negative value means "N nanoseconds before now."
@@ -164,7 +204,11 @@ The formula re-evaluates immediately whenever any of its input PVs receive new d
 ### Poll mode
 
 ```json
-{"t0Ns": -60000000000, "t1Ns": 0, "intervalMs": 5000}
+{
+  "t0Ns": -60000000000,
+  "t1Ns": 0,
+  "intervalMs": 5000
+}
 ```
 
 The formula re-evaluates on a fixed timer (every `intervalMs` milliseconds) regardless of whether input data has changed. Use this when you want a predictable update cadence rather than per-sample updates.
@@ -172,7 +216,10 @@ The formula re-evaluates on a fixed timer (every `intervalMs` milliseconds) rega
 ### One-shot mode
 
 ```json
-{"t0Ns": 1700000000000000000, "t1Ns": 1700003600000000000}
+{
+  "t0Ns": 1700000000000000000,
+  "t1Ns": 1700003600000000000
+}
 ```
 
 When `t1Ns` is non-zero (a fixed historical endpoint), the formula evaluates once over the specified window, sends the result, and then sends a `completed` message. The subscription is automatically cleaned up — no `unsubscribe` needed.

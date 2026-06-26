@@ -13,7 +13,10 @@ Evaluates a formula over a time window and returns the computed result.
   "spec": {
     "kind": "timeseries",
     "expression": "{a} + {b}",
-    "bindings": {"a": "PV:SENSOR:A", "b": "PV:SENSOR:B"},
+    "bindings": {
+      "a": "PV:SENSOR:A",
+      "b": "PV:SENSOR:B"
+    },
     "mode": "raw",
     "align": "last",
     "index": "union",
@@ -55,7 +58,10 @@ Returned when `kind` is `"scalar"`:
   "tsNs": 1700003600000000000,
   "value": 42.5,
   "severity": "NO_ALARM",
-  "inputsUsed": {"a": 1, "b": 1}
+  "inputsUsed": {
+    "a": 1,
+    "b": 1
+  }
 }
 ```
 
@@ -74,10 +80,25 @@ Returned when `kind` is `"timeseries"`:
 ```json
 {
   "kind": "timeseries",
-  "tsNs": [1700000000000000000, 1700000001000000000, 1700000002000000000],
-  "values": [1.0, 2.5, null],
-  "severity": ["NO_ALARM", "NO_ALARM", "INVALID"],
-  "inputs": {"a": "PV:SENSOR:A", "b": "PV:SENSOR:B"},
+  "tsNs": [
+    1700000000000000000,
+    1700000001000000000,
+    1700000002000000000
+  ],
+  "values": [
+    1.0,
+    2.5,
+    null
+  ],
+  "severity": [
+    "NO_ALARM",
+    "NO_ALARM",
+    "INVALID"
+  ],
+  "inputs": {
+    "a": "PV:SENSOR:A",
+    "b": "PV:SENSOR:B"
+  },
   "decimated": false
 }
 ```
@@ -99,7 +120,13 @@ Returned when `kind` is `"waveform"`:
 {
   "kind": "waveform",
   "tsNs": 1700003600000000000,
-  "values": [0.1, 0.2, 0.3, 0.4, 0.5],
+  "values": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5
+  ],
   "severity": "NO_ALARM"
 }
 ```
@@ -123,7 +150,9 @@ The request body is a `FormulaSpec` (same shape as the `spec` field in the evalu
 {
   "kind": "timeseries",
   "expression": "{temp} * 1.8 + 32",
-  "bindings": {"temp": "ROOM:TEMP:READING"}
+  "bindings": {
+    "temp": "ROOM:TEMP:READING"
+  }
 }
 ```
 
@@ -132,7 +161,9 @@ The request body is a `FormulaSpec` (same shape as the `spec` field in the evalu
 ```json
 {
   "valid": true,
-  "tokens": ["temp"],
+  "tokens": [
+    "temp"
+  ],
   "errors": []
 }
 ```
@@ -147,8 +178,22 @@ The request body is a `FormulaSpec` (same shape as the `spec` field in the evalu
 
 ```json
 // Request
-{"kind": "scalar", "expression": "{x} + import os", "bindings": {"x": "PV:A"}}
+{
+  "kind": "scalar",
+  "expression": "{x} + import os",
+  "bindings": {
+    "x": "PV:A"
+  }
+}
 
 // Response
-{"valid": false, "tokens": ["x"], "errors": ["Disallowed AST node: Import"]}
+{
+  "valid": false,
+  "tokens": [
+    "x"
+  ],
+  "errors": [
+    "Disallowed AST node: Import"
+  ]
+}
 ```

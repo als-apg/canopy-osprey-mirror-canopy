@@ -15,7 +15,9 @@ Each token must be bound to a PV name in the request's `bindings` field:
 ```json
 {
   "expression": "{temperature} * 1.8 + 32",
-  "bindings": {"temperature": "ROOM:TEMP:READING"}
+  "bindings": {
+    "temperature": "ROOM:TEMP:READING"
+  }
 }
 ```
 
@@ -113,5 +115,8 @@ Determines which set of timestamps to evaluate the formula at.
 All errors return JSON with `code` and `detail` fields:
 
 ```json
-{"code": "formula_parse_error", "detail": "Unbound variable: {temp}"}
+{
+  "code": "formula_parse_error",
+  "detail": "Unbound variable: {temp}"
+}
 ```
