@@ -181,23 +181,20 @@ This is equivalent to the REST `/evaluate` endpoint but over the WebSocket conne
 
 ## Subscription lifecycle
 
-```
-Client                                    Server
-  │                                         │
-  │──── subscribe {spec, t0Ns, t1Ns} ──────>│
-  │                                         │
-  │<──── subscribed {id: "abc"} ────────────│
-  │                                         │
-  │<──── result {id: "abc", data: ...} ─────│  (push: on PV change)
-  │<──── result {id: "abc", data: ...} ─────│  (poll: on timer)
-  │                                         │
-  │──── update {id: "abc", t0Ns: ...} ─────>│
-  │<──── updated {id: "abc"} ───────────────│
-  │                                         │
-  │<──── result {id: "abc", data: ...} ─────│
-  │                                         │
-  │──── unsubscribe {id: "abc"} ───────────>│
-  │                                         │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+
+    Client->>Server: subscribe {spec, t0Ns, t1Ns}
+    Server->>Client: subscribed {id: "abc"}
+    Server->>Client: result {id: "abc", data: ...}
+    Note right of Server: push: on PV change<br/>poll: on timer
+    Server->>Client: result {id: "abc", data: ...}
+    Client->>Server: update {id: "abc", t0Ns: ...}
+    Server->>Client: updated {id: "abc"}
+    Server->>Client: result {id: "abc", data: ...}
+    Client->>Server: unsubscribe {id: "abc"}
 ```
 
 ## Shared evaluation
