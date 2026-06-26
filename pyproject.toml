@@ -20,6 +20,8 @@ dependencies = [
     "alembic>=1.13",
     "arq>=0.26",
     "redis>=5.0",
+    "PyDMConverter>=1.0.4",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]
@@ -29,6 +31,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-httpx>=0.30",
     "hypothesis>=6.100",
+    "import-linter>=2.0",
 ]
 docs = [
     "mkdocs",
@@ -66,4 +69,28 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
+]
+
+[tool.importlinter]
+root_package = "canopy"
+
+# The converter must reach peer modules only through their public gateway —
+# never their services/api/internals. The shared kernel (canopy.core,
+# canopy.contracts) and each module's gateway are allowed.
+[[tool.importlinter.contracts]]
+name = "Converter reaches other modules only through their public gateway"
+type = "forbidden"
+source_modules = ["canopy.converter"]
+forbidden_modules = [
+    "canopy.fox",
+    "canopy.mole",
+    "canopy.hare",
+    "canopy.vole",
+    "canopy.raccoon",
+    "canopy.beaver",
+]
+ignore_imports = [
+    "canopy.converter.dependencies -> canopy.fox.gateway",
+    "canopy.converter.adapters.beaver_registry -> canopy.beaver.gateway",
+    "canopy.converter.adapters.beaver_registry -> canopy.beaver.errors",
 ]
