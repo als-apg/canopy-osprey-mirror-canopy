@@ -4,11 +4,88 @@ The Fox WebSocket endpoint provides live formula evaluation streams. Clients sub
 
 ## Connecting
 
+**Endpoint:**
+
 ```
 ws://<host>/fox/v1/ws/formulas
 ```
 
-Authentication is required via the `X-API-Key` header (or query parameter, depending on your WebSocket client). The key must have the `read` scope.
+Use `wss://` in production (TLS).
+
+### Authentication
+
+The API key (with `read` scope) can be provided in two ways:
+
+1. **Header** (preferred) — set `X-API-Key` during the handshake
+2. **Query parameter** — append `?api_key=<token>` to the URL
+
+If authentication fails, the server closes the connection immediately with WebSocket status code `1008` (Policy Violation) and a reason string indicating the error.
+
+#### Example — query parameter fallback
+
+Some WebSocket clients (e.g., browser `WebSocket` API) don't support custom headers. Use the query parameter instead:
+
+```
+ws://localhost:8000/fox/v1/ws/formulas?api_key=your-api-key
+```
+
+### Example — JavaScript
+
+```javascript
+const ws = new WebSocket("ws://localhost:8000/fox/v1/ws/formulas", {
+  headers: {
+    "X-API-Key": "your-api-key"
+  }
+});
+
+ws.onopen = () => {
+  // Connection established — send subscribe messages here
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  console.log(msg.type, msg);
+};
+
+ws.onclose = (event) => {
+  // event.code 1008 indicates an auth failure
+  console.log("Closed:", event.code, event.reason);
+};
+```
+
+### Example — Python (websockets)
+
+```python
+import asyncio
+import json
+import websockets
+
+async def main():
+    uri = "ws://localhost:8000/fox/v1/ws/formulas"
+    headers = {"X-API-Key": "your-api-key"}
+
+    async with websockets.connect(uri, additional_headers=headers) as ws:
+        # Send a subscribe message
+        await ws.send(json.dumps({
+            "type": "subscribe",
+            "spec": {
+                "kind": "scalar",
+                "expression": "{temp} * 1.8 + 32",
+                "bindings": {
+                    "temp": "ROOM:TEMP:READING"
+                }
+            }
+        }))
+
+        # Receive messages
+        async for raw in ws:
+            msg = json.loads(raw)
+            print(msg["type"], msg)
+
+asyncio.run(main())
+```
+
+### Message format
 
 After connecting, the server accepts JSON messages and responds with JSON messages. Each message has a `type` field that identifies its purpose.
 

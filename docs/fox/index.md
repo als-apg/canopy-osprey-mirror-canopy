@@ -21,9 +21,9 @@ Each token must be bound to a PV name in the request's `bindings` field:
 }
 ```
 
-Token names can contain letters, digits, and underscores. Every token in the expression must have a binding, and every binding must appear in the expression — mismatches produce a parse error.
+Token names (e.g. `temperature`) can contain letters, digits, and underscores. Every token in the expression must have a binding, and every binding must appear in the expression — mismatches produce a parse error.
 
-PV names in bindings are normalized: `ca://` and `pva://` protocol prefixes are automatically stripped, so `ca://ROOM:TEMP:READING` and `ROOM:TEMP:READING` are equivalent.
+PV names in bindings may optionally include `ca://` or `pva://` protocol prefixes — these are stripped internally when resolving data, so `ca://ROOM:TEMP:READING` and `ROOM:TEMP:READING` are equivalent. You do not need to include the prefix, but it won't cause an error if present.
 
 ## Operators
 
