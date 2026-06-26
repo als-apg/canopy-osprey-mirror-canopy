@@ -32,3 +32,10 @@ class UploadTooLarge(ConverterError):
 
     status_code = 413
     error_code = ErrorCode.CONVERTER_UPLOAD_TOO_LARGE
+
+
+class BatchResultNotFound(ConverterError):
+    """A batch-converted screen is not in the result store (bad index or expired)."""
+
+    status_code = 404
+    error_code = ErrorCode.CONVERTER_BATCH_RESULT_NOT_FOUND

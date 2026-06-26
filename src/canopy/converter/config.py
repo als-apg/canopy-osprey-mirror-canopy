@@ -36,6 +36,18 @@ class ConverterConfig(BaseSettings):
     # Reject uploads larger than this (bytes) before parsing. 10 MiB default.
     max_upload_bytes: int = 10 * 1024 * 1024
 
+    # Batch (folder) conversion: archive uploads are larger than single screens.
+    # Reject archives over this size (bytes) before enqueuing. 100 MiB default.
+    max_archive_bytes: int = 100 * 1024 * 1024
+
+    # Cap entries converted per batch so a pathological archive cannot run
+    # unbounded. Entries beyond the cap are reported as skipped.
+    max_batch_entries: int = 5000
+
+    # TTL (seconds) for the staged archive and the per-screen result keys in
+    # Redis. Matches the worker's keep_result so a client can poll then fetch.
+    batch_result_ttl_s: int = 3600
+
 
 def get_converter_config() -> ConverterConfig:
     return ConverterConfig()

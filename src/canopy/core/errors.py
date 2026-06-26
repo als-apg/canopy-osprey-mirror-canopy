@@ -87,6 +87,7 @@ class ErrorCode(StrEnum):
     CONVERTER_UNSUPPORTED_INPUT = auto()
     CONVERTER_CONVERSION_FAILED = auto()
     CONVERTER_UPLOAD_TOO_LARGE = auto()
+    CONVERTER_BATCH_RESULT_NOT_FOUND = auto()
 
 
 class CanopyError(Exception):

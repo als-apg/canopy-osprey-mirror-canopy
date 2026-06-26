@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from canopy.contracts.base import CanopyModel
 
@@ -43,3 +43,44 @@ class ValidateResultDTO(CanopyModel):
     ok: bool
     warnings: list[str] = []
     unknown_widgets: list[UnknownWidgetDTO] = []
+
+
+BatchRowStatus = Literal["succeeded", "failed", "skipped"]
+
+
+class BatchManifestRowDTO(CanopyModel):
+    """One archive entry's outcome in a batch conversion.
+
+    ``result_key`` is the Redis key holding the converted screen IR; it is set
+    only for ``succeeded`` rows and fetched via
+    ``GET /conversions/batch/{jobId}/screens/{index}``.
+    """
+
+    path: str
+    status: BatchRowStatus
+    index: int | None = None
+    warnings: list[str] = []
+    unknown_widgets: list[UnknownWidgetDTO] = []
+    result_key: str | None = None
+
+
+class BatchScreenDTO(CanopyModel):
+    """One converted screen's IR, fetched from a finished batch by index."""
+
+    screen: dict[str, Any]
+
+
+class BatchManifestDTO(CanopyModel):
+    """Lightweight summary of a batch conversion — the Arq job result.
+
+    The converted IR itself is *not* inlined here (a folder can hold thousands of
+    screens); each ``succeeded`` row points at a per-screen Redis key the client
+    fetches on demand. Read from ``JobStatusDTO.result`` after polling
+    ``/jobs/v1/{jobId}``.
+    """
+
+    total: int
+    succeeded: int
+    failed: int
+    skipped: int
+    rows: list[BatchManifestRowDTO] = []

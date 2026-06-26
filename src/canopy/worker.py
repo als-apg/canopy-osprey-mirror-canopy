@@ -20,6 +20,7 @@ from canopy.core.logging import configure_logging
 from canopy.epics.config import get_epics_config
 from canopy.epics.gateway import build_connector
 from canopy.squirrel.tasks import create_snapshot_task, restore_snapshot_task
+from canopy.converter.tasks import convert_batch
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -46,8 +47,8 @@ async def on_shutdown(ctx: dict) -> None:
     logger.info("canopy-worker shutdown complete")
 
 
-# Task functions registered with Arq. Each persistent module appends its tasks.
-FUNCTIONS = [ping, create_snapshot_task, restore_snapshot_task]
+# Task functions registered with Arq. Each module appends its tasks here.
+FUNCTIONS = [ping, convert_batch, create_snapshot_task, restore_snapshot_task]
 
 
 class WorkerSettings:
