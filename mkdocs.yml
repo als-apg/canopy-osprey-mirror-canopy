@@ -56,11 +56,11 @@ plugins:
         - index.md
       enable_creation_date: true
       fallback_to_build_date: true
-  # - git-committers:
-  #     exclude:
-  #       - index.md
-  #     repository: slaclab/Canopy
-  #     branch: main
+  - git-committers:
+      exclude:
+        - index.md
+      repository: slaclab/Canopy
+      branch: main
 
 # Additional Configuration
 extra:
