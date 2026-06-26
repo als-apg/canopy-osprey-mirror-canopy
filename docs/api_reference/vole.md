@@ -174,3 +174,80 @@ Key behaviors:
 - Normalizes PV names by stripping protocol prefixes (`ca://`, `pva://`)
 - Converts Hare's `PVValue` wire format (dict with `value`, `timestamp`, `severity` fields) to Canopy's `Sample` domain object
 - Gracefully degrades if Hare is not available (import wrapped in try/except)
+
+## Module reference
+
+### Gateway
+
+::: canopy.vole.gateway
+    options:
+      show_root_heading: true
+      show_source: false
+
+### Services
+
+#### BufferService
+
+::: canopy.vole.services.buffer_service
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - BufferService
+
+#### EvictionService
+
+::: canopy.vole.services.eviction_service
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - EvictionService
+
+#### ChangeNotifier
+
+::: canopy.vole.services.notifier
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - ChangeNotifier
+
+### Buffer internals
+
+#### PerPVRing
+
+::: canopy.vole.buffer.ring
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - StoredSample
+        - PerPVRing
+
+#### PVStore
+
+::: canopy.vole.buffer.store
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - PVStore
+
+### DataSource adapter
+
+::: canopy.vole.adapter
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - VoleDataSource
+
+### Configuration
+
+::: canopy.vole.config
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - VoleConfig

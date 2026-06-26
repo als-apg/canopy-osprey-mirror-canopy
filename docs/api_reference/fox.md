@@ -137,3 +137,60 @@ Only these `ast` node types are permitted:
 ### Function allowlist (`SAFE_FUNCS`)
 
 Only functions explicitly listed in `SAFE_FUNCS` (defined in `namespace.py`) can be called. Attempts to call unlisted functions produce a `FormulaUnsafeError`. The allowlist is intentionally conservative — it includes mathematical functions but excludes anything with side effects or filesystem/network access.
+
+## Module reference
+
+### Contracts
+
+::: canopy.contracts.formula
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - FormulaSpec
+        - FormulaResult
+        - FormulaValidationResult
+
+### Gateway
+
+::: canopy.fox.gateway
+    options:
+      show_root_heading: true
+      show_source: false
+
+### Services
+
+#### FormulaService
+
+::: canopy.fox.services.formula_service
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - FormulaService
+
+#### SubscriptionManager
+
+::: canopy.fox.services.subscription_manager
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - SubscriptionManager
+
+#### Parser
+
+::: canopy.fox.services.parser
+    options:
+      show_root_heading: true
+      show_source: false
+      members:
+        - ParsedFormula
+        - Parser
+
+### Schemas
+
+::: canopy.fox.schemas.formula
+    options:
+      show_root_heading: true
+      show_source: false
