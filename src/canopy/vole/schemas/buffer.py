@@ -22,10 +22,21 @@ class VoleStatsDTO(CanopyModel):
     rings: list[PerPVInfoDTO] = Field(default_factory=list)
 
 
-class PVSamplesDTO(CanopyModel):
+class PVSeriesDTO(CanopyModel):
     pv: str
     count: int
     samples: list[Sample] = Field(default_factory=list)
+
+
+class AlignedPVDTO(CanopyModel):
+    pv: str
+    values: list[float | None] = Field(default_factory=list)
+    severities: list[int] = Field(default_factory=list)
+
+
+class AlignedResultDTO(CanopyModel):
+    ts_ns: list[int] = Field(default_factory=list)
+    pvs: list[AlignedPVDTO] = Field(default_factory=list)
 
 
 class HeartbeatDTO(CanopyModel):
