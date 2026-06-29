@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import Path, Query, Security, APIRouter
 
 from canopy.core.errors import BadRequest
-from canopy.vole.errors import PVNotBuffered
 from canopy.core.security import require_read_access
-from canopy.core.time_parse import parse_time
+from canopy.core.time_parse import now_ns, parse_time
 from canopy.vole.dependencies import BufferServiceDep
 from canopy.vole.schemas.buffer import PVSamplesDTO
 
@@ -30,15 +29,9 @@ async def single_pv_read(
     t0_ns = parse_time(from_)
     if t0_ns is None:
         raise BadRequest("'from' is required")
-    t1_ns = parse_time(to)
-    if t1_ns is None:
-        raise BadRequest("'to' is invalud")
+    t1_ns = parse_time(to) or now_ns()
     if t0_ns > t1_ns:
         raise BadRequest("'from' must be ≤ 'to'")
 
-    try:
-        samples = await service.read_window(pv, t0_ns, t1_ns, align=align, max_points=max_points)
-
-        return PVSamplesDTO(pv=pv, count=len(samples), samples=samples)
-    except PVNotBuffered:
-        raise
+    samples = await service.read_window(pv, t0_ns, t1_ns, align=align, max_points=max_points)
+    return PVSamplesDTO(pv=pv, count=len(samples), samples=samples)
