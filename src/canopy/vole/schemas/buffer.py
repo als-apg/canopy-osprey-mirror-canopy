@@ -1,4 +1,7 @@
+from pydantic import Field
+
 from canopy.contracts.base import CanopyModel
+from canopy.contracts.sample import Sample
 
 
 class PerPVInfoDTO(CanopyModel):
@@ -16,7 +19,13 @@ class VoleStatsDTO(CanopyModel):
     total_bytes: int
     global_bytes_max: int
     pressure: bool
-    rings: list[PerPVInfoDTO] = []
+    rings: list[PerPVInfoDTO] = Field(default_factory=list)
+
+
+class PVSamplesDTO(CanopyModel):
+    pv: str
+    count: int
+    samples: list[Sample] = Field(default_factory=list)
 
 
 class HeartbeatDTO(CanopyModel):
