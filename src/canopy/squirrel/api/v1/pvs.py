@@ -9,21 +9,21 @@ import json
 from fastapi import Query, Security, APIRouter
 
 from canopy.core.errors import BadRequest
+from canopy.core.security import require_read_access, require_write_access
 from canopy.squirrel.errors import PvNotFound
-from canopy.contracts.pagination import PagedResult
 from canopy.squirrel.schemas.pv import (
     PVElementDTO,
     NewPVElementDTO,
     PVSearchResponse,
     UpdatePVElementDTO,
 )
-from canopy.core.security import require_read_access, require_write_access
+from canopy.contracts.pagination import PagedResult
 from canopy.squirrel.dependencies import PvServiceDep
 from canopy.squirrel.schemas.meta_pv import (
     MetaPVDTO,
     NewMetaPVDTO,
-    DisplayMetaPVDTO,
     UpdateMetaPVDTO,
+    DisplayMetaPVDTO,
 )
 from canopy.squirrel.api.v1._validation import is_uuid
 
@@ -78,9 +78,7 @@ async def search_pvs_filtered(
     offset: int = Query(0, ge=0, description="Offset for pagination"),
 ) -> PVSearchResponse:
     """Offset-paginated, server-side filtered search (more efficient than client-side filtering)."""
-    return await service.search_filtered(
-        q=q, devices=devices or None, tag_ids=tags or None, limit=limit, offset=offset
-    )
+    return await service.search_filtered(q=q, devices=devices or None, tag_ids=tags or None, limit=limit, offset=offset)
 
 
 @router.get("/devices", dependencies=[Security(require_read_access)])

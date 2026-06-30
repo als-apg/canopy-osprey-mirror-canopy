@@ -13,7 +13,7 @@ import asyncio
 from collections.abc import Callable, Awaitable
 
 from sqlalchemy import or_, any_, func, delete, insert, select, update
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import noload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.core.db import Base
@@ -23,8 +23,8 @@ from canopy.squirrel.data.models import (
     MetaPv,
     Snapshot,
     TagGroup,
-    pv_tag,
     SnapshotValue,
+    pv_tag,
 )
 
 # Chunk size for ORM bulk inserts — keeps a large insert from monopolizing the
@@ -76,12 +76,20 @@ class SnapshotRepository(BaseRepository[Snapshot]):
     def __init__(self, session: AsyncSession):
         super().__init__(Snapshot, session)
 
-    async def get_with_values(self, snapshot_id: str, limit: int | None = None, offset: int = 0) -> Snapshot | None:
-        """Get a snapshot with a paginated, name-ordered page of its values.
+    async def get_with_values(
+        self, snapshot_id: str, limit: int | None = None, offset: int = 0
+    ) -> tuple[Snapshot, list[SnapshotValue]] | None:
+        """Get a snapshot plus a paginated, name-ordered page of its values.
 
-        Overrides the relationship's selectin default so huge snapshots can be paged.
+        The page is returned as a standalone list, never assigned onto the mapped
+        ``Snapshot.values`` collection: that relationship is ``cascade="all,
+        delete-orphan"``, so assigning a partial page to it would mark the off-page rows
+        as orphans and DELETE them on the next commit. ``noload`` also skips the
+        relationship's selectin default so a huge snapshot isn't fully loaded just to page it.
         """
-        result = await self.session.execute(select(Snapshot).where(Snapshot.id == snapshot_id))
+        result = await self.session.execute(
+            select(Snapshot).where(Snapshot.id == snapshot_id).options(noload(Snapshot.values))
+        )
         snapshot = result.scalar_one_or_none()
         if not snapshot:
             return None
@@ -96,8 +104,7 @@ class SnapshotRepository(BaseRepository[Snapshot]):
             values_query = values_query.limit(limit)
 
         values_result = await self.session.execute(values_query)
-        snapshot.values = list(values_result.scalars().all())
-        return snapshot
+        return snapshot, list(values_result.scalars().all())
 
     async def update_metadata(
         self,
@@ -359,8 +366,12 @@ class PvRepository(BaseRepository[Pv]):
             count_query = count_query.where(Pv.device.in_(devices))
 
         if tag_ids:
-            query = query.join(Pv.tags).where(Tag.id.in_(tag_ids))
-            count_query = count_query.join(Pv.tags).where(Tag.id.in_(tag_ids))
+            # Match PVs carrying ANY of the tags via a subquery rather than a join: a join
+            # multiplies a PV row per matching tag, duplicating results and inflating
+            # total_count (which corrupts offset pagination). Mirrors ``search_by_name``.
+            pvs_with_tags = select(pv_tag.c.pv_id).where(pv_tag.c.tag_id.in_(tag_ids)).distinct()
+            query = query.where(Pv.id.in_(pvs_with_tags))
+            count_query = count_query.where(Pv.id.in_(pvs_with_tags))
 
         total_result = await self.session.execute(count_query)
         total = total_result.scalar() or 0

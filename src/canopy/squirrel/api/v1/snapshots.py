@@ -9,16 +9,16 @@ request session.
 from fastapi import Query, Security, APIRouter
 
 from canopy.jobs import gateway as jobs_gateway
-from canopy.contracts.jobs import JobCreatedDTO
 from canopy.core.security import require_read_access, require_write_access
+from canopy.contracts.jobs import JobCreatedDTO
 from canopy.squirrel.errors import SnapshotNotFound
 from canopy.squirrel.dependencies import SnapshotServiceDep
 from canopy.squirrel.schemas.snapshot import (
     SnapshotDTO,
     NewSnapshotDTO,
     RestoreRequestDTO,
-    SnapshotSummaryDTO,
     UpdateSnapshotDTO,
+    SnapshotSummaryDTO,
     ComparisonResultDTO,
 )
 from canopy.squirrel.api.v1._validation import is_uuid

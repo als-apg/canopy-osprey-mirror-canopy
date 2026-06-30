@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.squirrel.data.models import Pv
+from canopy.squirrel.schemas.snapshot import NewSnapshotDTO, RestoreRequestDTO
 from canopy.squirrel.adapters.epics_io import EpicsValue
 from canopy.squirrel.restore_hooks.base import RestoreHook
-from canopy.squirrel.schemas.snapshot import NewSnapshotDTO, RestoreRequestDTO
 from canopy.squirrel.restore_hooks.magnet_trim import MagnetTrimHook
 from canopy.squirrel.services.snapshot_service import SnapshotService
 
@@ -99,6 +99,27 @@ async def test_create_skips_disconnected_reads(db_session: AsyncSession):
     by_name = {v.pv_name: v for v in full.pv_values}
     assert by_name["OK:SP"].setpoint_value.value == 1.0
     assert by_name["DEAD:SP"].setpoint_value is None  # disconnected read stored no blob
+
+
+async def test_paginated_get_does_not_delete_values(db_session: AsyncSession):
+    """Regression: a paginated read must never orphan-delete the off-page values.
+
+    ``Snapshot.values`` is ``cascade="all, delete-orphan"``; assigning a partial page to
+    that mapped collection (the old ``get_with_values``) would delete the rest on flush.
+    """
+    for i in range(3):
+        await _seed_pv(db_session, f"P{i}:SP")
+    io = FakeEpicsIO({f"P{i}:SP": _ev(float(i)) for i in range(3)})
+    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="snap"))
+    assert summary.pv_count == 3
+
+    page = await svc.get_by_id(summary.id, limit=1)
+    assert page is not None and len(page.pv_values) == 1  # only one value on the page
+    assert page.pv_count == 3  # but the total is still reported correctly
+
+    await db_session.flush()  # would flush any pending orphan deletes
+    assert await svc.value_repo.count_by_snapshot(summary.id) == 3  # all values still present
 
 
 async def test_restore_writes_setpoints_only(db_session: AsyncSession):

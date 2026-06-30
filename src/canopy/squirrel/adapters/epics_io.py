@@ -157,9 +157,7 @@ class EpicsIO:
                 await progress_callback(done, total, f"Wrote {done}/{total} PVs...")
         return results
 
-    async def _write_one(
-        self, sem: asyncio.Semaphore, addr: str, value: Any
-    ) -> tuple[str, tuple[bool, str | None]]:
+    async def _write_one(self, sem: asyncio.Semaphore, addr: str, value: Any) -> tuple[str, tuple[bool, str | None]]:
         async with sem:
             try:
                 await self._connector.put(addr, value, timeout=self._timeout)

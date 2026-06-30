@@ -6,13 +6,22 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.core.errors import BadRequest
-from canopy.contracts.pagination import PagedResult
 from canopy.squirrel.errors import PvNotFound, MetaPvNotFound, PvAlreadyExists
-from canopy.squirrel.schemas.pv import PVElementDTO, NewPVElementDTO, PVSearchResponse, UpdatePVElementDTO
-from canopy.squirrel.schemas.tag import TagDTO
+from canopy.squirrel.schemas.pv import (
+    PVElementDTO,
+    NewPVElementDTO,
+    PVSearchResponse,
+    UpdatePVElementDTO,
+)
+from canopy.contracts.pagination import PagedResult
 from canopy.squirrel.data.models import Pv
+from canopy.squirrel.schemas.tag import TagDTO
 from canopy.squirrel.schemas.meta_pv import MetaPVDTO, DisplayMetaPVDTO
-from canopy.squirrel.data.repositories import PvRepository, TagRepository, MetaPvRepository
+from canopy.squirrel.data.repositories import (
+    PvRepository,
+    TagRepository,
+    MetaPvRepository,
+)
 
 
 class PvService:
@@ -173,7 +182,10 @@ class PvService:
         if data.rel_tolerance is not None:
             pv.rel_tolerance = data.rel_tolerance
         if data.tags is not None:
-            pv.tags = await self.tag_repo.get_by_ids(data.tags)
+            tags = await self.tag_repo.get_by_ids(data.tags)
+            if len(tags) != len(data.tags):
+                raise BadRequest("One or more tag IDs are invalid")
+            pv.tags = tags
         pv = await self.pv_repo.update(pv)
         return self._to_dto(pv)
 
@@ -181,7 +193,15 @@ class PvService:
         pv = await self.pv_repo.get_by_id(pv_id)
         if not pv:
             return False
-        await self.pv_repo.delete(pv)
+        try:
+            await self.pv_repo.delete(pv)
+        except IntegrityError as e:
+            # The meta_pv FK has no cascade by design: a PV that is still a meta-PV can't
+            # be deleted until its marker is removed. Surface a clean 400 instead of
+            # letting the raw IntegrityError become a 500.
+            raise BadRequest(
+                "Cannot delete a PV that is still registered as a meta-PV; remove the meta-PV marker first"
+            ) from e
         return True
 
     async def get_all_for_snapshot(self) -> list[tuple[str, str | None, str | None]]:
@@ -200,9 +220,7 @@ class PvService:
         pvs, total = await self.pv_repo.search_filtered(
             search_term=q, devices=devices or None, tag_ids=tag_ids or None, limit=limit, offset=offset
         )
-        return PVSearchResponse(
-            results=[self._to_dto(pv) for pv in pvs], total_count=total, limit=limit, offset=offset
-        )
+        return PVSearchResponse(results=[self._to_dto(pv) for pv in pvs], total_count=total, limit=limit, offset=offset)
 
     async def get_all_devices(self) -> list[str]:
         """All distinct device names, for the frontend's device filter."""

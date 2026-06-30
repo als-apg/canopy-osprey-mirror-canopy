@@ -11,12 +11,12 @@ so instead of the source's MockEpicsService + fakeredis we only stub ``jobs.gate
 
 import os
 
-import asyncpg
 import pytest
+import asyncpg
 import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import canopy.squirrel.data.models  # noqa: F401 — register squirrel tables on Base.metadata

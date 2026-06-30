@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.squirrel.errors import TagAlreadyExists, TagGroupAlreadyExists
+from canopy.squirrel.data.models import Tag, TagGroup
 from canopy.squirrel.schemas.tag import (
     TagDTO,
     TagCreate,
@@ -14,7 +15,6 @@ from canopy.squirrel.schemas.tag import (
     TagGroupUpdate,
     TagGroupSummaryDTO,
 )
-from canopy.squirrel.data.models import Tag, TagGroup
 from canopy.squirrel.data.repositories import TagRepository, TagGroupRepository
 
 
@@ -113,6 +113,9 @@ class TagService:
         if not tag or tag.group_id != group_id:
             return None
         if data.name is not None:
+            existing = await self.tag_repo.find_by_group_and_name(group_id, data.name)
+            if existing and existing.id != tag_id:
+                raise TagAlreadyExists(f"Tag '{data.name}' already exists in this group")
             tag.name = data.name
         if data.description is not None:
             tag.description = data.description

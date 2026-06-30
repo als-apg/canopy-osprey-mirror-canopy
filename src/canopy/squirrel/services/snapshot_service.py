@@ -9,13 +9,20 @@ from typing import Any
 from datetime import UTC, datetime
 from collections.abc import Callable
 
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.squirrel.errors import SnapshotNotFound
+from canopy.squirrel.data.models import Snapshot
+from canopy.squirrel.restore_hooks import (
+    RestoreHook,
+    RestoreHookError,
+    get_restore_hook,
+)
 from canopy.squirrel.schemas.snapshot import (
     PVValueDTO,
-    SnapshotDTO,
     TagInfoDTO,
+    SnapshotDTO,
     EpicsValueDTO,
     MetaPVValueDTO,
     NewSnapshotDTO,
@@ -24,8 +31,6 @@ from canopy.squirrel.schemas.snapshot import (
     SnapshotSummaryDTO,
     ComparisonResultDTO,
 )
-from canopy.squirrel.data.models import Snapshot
-from canopy.squirrel.restore_hooks import RestoreHook, RestoreHookError, get_restore_hook
 from canopy.squirrel.adapters.epics_io import EpicsIO
 from canopy.squirrel.data.repositories import (
     PvRepository,
@@ -53,9 +58,17 @@ def _parse_jsonb(value: Any) -> dict | None:
 
 
 def _sanitize_for_json(value: Any) -> Any:
-    """Convert ``NaN``/``Inf``/``-Inf`` (invalid JSON) to ``None``, recursing into lists/dicts."""
+    """Make a value JSON-safe, recursing into lists/dicts.
+
+    ``NaN``/``Inf``/``-Inf`` (invalid JSON) become ``None``; a Pydantic model (e.g. a
+    TABLE PV's ``TableValue``) becomes its ``model_dump``. Without the model branch,
+    ``json.dumps`` on the COPY path raises ``TypeError`` on a non-scalar PV value and
+    aborts the entire snapshot create.
+    """
     if value is None:
         return None
+    if isinstance(value, BaseModel):
+        return _sanitize_for_json(value.model_dump(mode="json"))
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
             return None
@@ -135,13 +148,14 @@ class SnapshotService:
 
     async def get_by_id(self, snapshot_id: str, limit: int | None = None, offset: int = 0) -> SnapshotDTO | None:
         """Get a snapshot with its values (values optionally paginated)."""
-        snapshot = await self.snapshot_repo.get_with_values(snapshot_id, limit=limit, offset=offset)
-        if not snapshot:
+        result = await self.snapshot_repo.get_with_values(snapshot_id, limit=limit, offset=offset)
+        if not result:
             return None
+        snapshot, values = result
 
         total_count = await self.value_repo.count_by_snapshot(snapshot_id)
 
-        pv_ids = [v.pv_id for v in snapshot.values]
+        pv_ids = [v.pv_id for v in values]
         pvs_with_tags = await self.pv_repo.get_by_ids(pv_ids)
         pv_tag_map: dict[str, list[TagInfoDTO]] = {}
         pv_address_map: dict[str, tuple[str | None, str | None]] = {}  # pv_id -> (setpoint, readback)
@@ -152,7 +166,7 @@ class SnapshotService:
             pv_device_map[pv.id] = pv.device
 
         pv_values = []
-        for v in snapshot.values:
+        for v in values:
             setpoint_data = _parse_jsonb(v.setpoint_value)
             readback_data = _parse_jsonb(v.readback_value)
             setpoint_addr, readback_addr = pv_address_map.get(v.pv_id, (None, None))
@@ -173,6 +187,7 @@ class SnapshotService:
                 )
             )
 
+        meta_pvs = [pv.pv_id for pv in await self.meta_pv_repo.get(active=True)]
         return SnapshotDTO(
             id=snapshot.id,
             title=snapshot.title,
@@ -181,6 +196,7 @@ class SnapshotService:
             created_by=snapshot.created_by,
             pv_count=total_count,
             pv_values=pv_values,
+            meta_pvs=await self._get_meta_pv_values_for_snapshot(snapshot.id, meta_pvs),
         )
 
     async def update_snapshot_metadata(
@@ -217,13 +233,17 @@ class SnapshotService:
         total_pv_count = len(pv_addresses)
 
         # Collect the unique addresses to read (config addresses are not snapshotted).
-        setpoint_map: dict[str, str] = {}  # address -> pv_id
-        readback_map: dict[str, str] = {}  # address -> pv_id
+        # An address can belong to more than one PV (only setpoint_address is unique;
+        # readback addresses may be shared), so map each address to a *list* of pv_ids —
+        # keying by a single pv_id would silently drop the reading for every other PV on
+        # that address.
+        setpoint_map: dict[str, list[str]] = {}  # address -> pv_ids
+        readback_map: dict[str, list[str]] = {}  # address -> pv_ids
         for pv_id, setpoint, readback, _config in pv_addresses:
             if setpoint:
-                setpoint_map[setpoint] = pv_id
+                setpoint_map.setdefault(setpoint, []).append(pv_id)
             if readback:
-                readback_map[readback] = pv_id
+                readback_map.setdefault(readback, []).append(pv_id)
 
         all_addresses = list(set(setpoint_map.keys()) | set(readback_map.keys()))
         logger.info("Reading %d unique EPICS addresses for %d PVs", len(all_addresses), total_pv_count)
@@ -231,7 +251,9 @@ class SnapshotService:
         # Rescale address-level progress to PV-level so the user sees "N/total PVs".
         async def pv_progress_callback(current_addr: int, total_addr: int, _message: str) -> None:
             pv_progress_count = int((current_addr / total_addr) * total_pv_count) if total_addr > 0 else 0
-            await progress_callback(pv_progress_count, total_pv_count, f"Read {pv_progress_count:,}/{total_pv_count:,} PVs")
+            await progress_callback(
+                pv_progress_count, total_pv_count, f"Read {pv_progress_count:,}/{total_pv_count:,} PVs"
+            )
 
         if progress_callback:
             epics_values = await self.epics.get_many_with_progress(all_addresses, pv_progress_callback)
@@ -261,17 +283,19 @@ class SnapshotService:
                 "precision": epics_val.precision,
             }
 
-        for address, pv_id in setpoint_map.items():
-            pv_data.setdefault(pv_id, {"setpoint": None, "readback": None, "address": address})
+        for address, pv_ids in setpoint_map.items():
             epics_val = epics_values.get(address)
-            if epics_val and epics_val.connected:
-                pv_data[pv_id]["setpoint"] = _value_blob(epics_val)
+            for pv_id in pv_ids:
+                pv_data.setdefault(pv_id, {"setpoint": None, "readback": None, "address": address})
+                if epics_val and epics_val.connected:
+                    pv_data[pv_id]["setpoint"] = _value_blob(epics_val)
 
-        for address, pv_id in readback_map.items():
-            pv_data.setdefault(pv_id, {"setpoint": None, "readback": None, "address": address})
+        for address, pv_ids in readback_map.items():
             epics_val = epics_values.get(address)
-            if epics_val and epics_val.connected:
-                pv_data[pv_id]["readback"] = _value_blob(epics_val)
+            for pv_id in pv_ids:
+                pv_data.setdefault(pv_id, {"setpoint": None, "readback": None, "address": address})
+                if epics_val and epics_val.connected:
+                    pv_data[pv_id]["readback"] = _value_blob(epics_val)
 
         now = datetime.now(UTC)
         snapshot_values_data = []
@@ -299,9 +323,7 @@ class SnapshotService:
             self.session, snapshot_values_data, progress_callback=progress_callback
         )
 
-        logger.info(
-            "Snapshot created in %.2fs (%d values)", (datetime.now(UTC) - start_time).total_seconds(), count
-        )
+        logger.info("Snapshot created in %.2fs (%d values)", (datetime.now(UTC) - start_time).total_seconds(), count)
 
         meta_pvs = [pv.pv_id for pv in await self.meta_pv_repo.get(active=True)]
         return SnapshotSummaryDTO(
@@ -461,13 +483,15 @@ class SnapshotService:
 
     async def compare_snapshots(self, snapshot1_id: str, snapshot2_id: str) -> ComparisonResultDTO:
         """Compare two stored snapshots (setpoint + readback) under each PV's tolerances."""
-        snap1 = await self.snapshot_repo.get_with_values(snapshot1_id)
-        snap2 = await self.snapshot_repo.get_with_values(snapshot2_id)
-        if not snap1 or not snap2:
+        result1 = await self.snapshot_repo.get_with_values(snapshot1_id)
+        result2 = await self.snapshot_repo.get_with_values(snapshot2_id)
+        if not result1 or not result2:
             raise SnapshotNotFound("One or both snapshots not found")
+        _snap1, values1_list = result1
+        _snap2, values2_list = result2
 
-        values1 = {v.pv_id: v for v in snap1.values}
-        values2 = {v.pv_id: v for v in snap2.values}
+        values1 = {v.pv_id: v for v in values1_list}
+        values2 = {v.pv_id: v for v in values2_list}
 
         all_pv_ids = set(values1.keys()) | set(values2.keys())
         pvs = await self.pv_repo.get_by_ids(list(all_pv_ids))
@@ -501,8 +525,13 @@ class SnapshotService:
             if setpoint_within and readback_within:
                 match_count += 1
             else:
-                out_v1 = v1 if has_setpoint else r1
-                out_v2 = v2 if has_setpoint else r2
+                # Report the pair that is actually out of tolerance (prefer setpoint when
+                # both differ) rather than always emitting the setpoint values — otherwise
+                # a readback-only difference reports two equal setpoints.
+                if not setpoint_within:
+                    out_v1, out_v2 = v1, v2
+                else:
+                    out_v1, out_v2 = r1, r2
                 differences.append(
                     {
                         "pvId": pv_id,

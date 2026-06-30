@@ -63,9 +63,7 @@ async def test_paged_tag_filter(client: AsyncClient, sample_tag_group: dict):
 
     import json
 
-    r = await client.get(
-        f"/v1/pvs/paged?tagFilters={json.dumps({gid: [tag_id]})}", headers=READ_HEADERS
-    )
+    r = await client.get(f"/v1/pvs/paged?tagFilters={json.dumps({gid: [tag_id]})}", headers=READ_HEADERS)
     assert r.status_code == 200
     addrs = {p["setpointAddress"] for p in r.json()["results"]}
     assert addrs == {"TAGGED:SP"}
@@ -100,12 +98,16 @@ async def test_update_bad_uuid_is_404(client: AsyncClient):
 async def test_meta_pv_lifecycle(client: AsyncClient, sample_pv: dict):
     pid = sample_pv["id"]
     # promote
-    r = await client.post("/v1/pvs/meta", headers=WRITE_HEADERS, json={"pvName": "TEST:PV:001:SP", "displayName": "Meta"})
+    r = await client.post(
+        "/v1/pvs/meta", headers=WRITE_HEADERS, json={"pvName": "TEST:PV:001:SP", "displayName": "Meta"}
+    )
     assert r.status_code == 200, r.text
     assert r.json()["pvId"] == pid and r.json()["isActive"] is True
 
     # duplicate promote -> 409
-    assert (await client.post("/v1/pvs/meta", headers=WRITE_HEADERS, json={"pvName": "TEST:PV:001:SP"})).status_code == 409
+    assert (
+        await client.post("/v1/pvs/meta", headers=WRITE_HEADERS, json={"pvName": "TEST:PV:001:SP"})
+    ).status_code == 409
 
     # list + get
     r = await client.get("/v1/pvs/meta", headers=READ_HEADERS)
@@ -113,7 +115,9 @@ async def test_meta_pv_lifecycle(client: AsyncClient, sample_pv: dict):
     assert (await client.get(f"/v1/pvs/meta/{pid}", headers=READ_HEADERS)).status_code == 200
 
     # patch display name + deactivate
-    r = await client.patch(f"/v1/pvs/meta/{pid}", headers=WRITE_HEADERS, json={"displayName": "Renamed", "active": False})
+    r = await client.patch(
+        f"/v1/pvs/meta/{pid}", headers=WRITE_HEADERS, json={"displayName": "Renamed", "active": False}
+    )
     assert r.status_code == 200 and r.json()["displayName"] == "Renamed" and r.json()["isActive"] is False
 
     # filter by active

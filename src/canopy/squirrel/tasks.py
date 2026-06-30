@@ -19,8 +19,8 @@ from arq import Retry
 from canopy.core.db import session_scope
 from canopy.jobs.gateway import report_progress
 from canopy.squirrel.config import get_squirrel_config
-from canopy.squirrel.adapters.epics_io import EpicsIO
 from canopy.squirrel.schemas.snapshot import NewSnapshotDTO, RestoreRequestDTO
+from canopy.squirrel.adapters.epics_io import EpicsIO
 from canopy.squirrel.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)

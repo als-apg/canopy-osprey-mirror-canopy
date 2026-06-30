@@ -2,6 +2,7 @@
 
 from fastapi import Query, Security, APIRouter
 
+from canopy.core.security import require_read_access, require_write_access
 from canopy.contracts.base import CanopyModel
 from canopy.squirrel.errors import TagNotFound, TagGroupNotFound, TagGroupAlreadyExists
 from canopy.squirrel.schemas.tag import (
@@ -13,7 +14,6 @@ from canopy.squirrel.schemas.tag import (
     TagGroupUpdate,
     TagGroupSummaryDTO,
 )
-from canopy.core.security import require_read_access, require_write_access
 from canopy.squirrel.dependencies import TagServiceDep
 from canopy.squirrel.api.v1._validation import is_uuid
 

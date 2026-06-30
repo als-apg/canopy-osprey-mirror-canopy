@@ -87,9 +87,7 @@ class TagGroup(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True)
     description: Mapped[str | None] = mapped_column(Text)
 
-    tags: Mapped[list[Tag]] = relationship(
-        "Tag", back_populates="group", cascade="all, delete-orphan", lazy="selectin"
-    )
+    tags: Mapped[list[Tag]] = relationship("Tag", back_populates="group", cascade="all, delete-orphan", lazy="selectin")
 
 
 class Tag(UUIDMixin, TimestampMixin, Base):
