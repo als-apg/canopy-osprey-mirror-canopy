@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "screen",
+  "metadata": {
+    "title": "screen",
+    "source": {
+      "type": "edl-converter"
+    },
+    "size": {
+      "width": 200,
+      "height": 150
+    }
+  },
+  "macros": [
+    {
+      "name": "P",
+      "default": ""
+    }
+  ],
+  "root": {
+    "id": "w-001",
+    "type": "absolute-canvas",
+    "props": {
+      "width": 200,
+      "height": 150
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 200,
+      "height": 150
+    },
+    "children": [
+      {
+        "id": "w-002",
+        "type": "pv-byte-led",
+        "props": {
+          "pv": "${P}:BITS",
+          "numBits": 8
+        },
+        "geometry": {
+          "x": 10,
+          "y": 10,
+          "width": 120,
+          "height": 20
+        }
+      },
+      {
+        "id": "w-003",
+        "type": "related-display-button",
+        "props": {
+          "file": "subscreen",
+          "label": "Open",
+          "macros": {
+            "DEV": "${P}"
+          }
+        },
+        "geometry": {
+          "x": 10,
+          "y": 40,
+          "width": 80,
+          "height": 20
+        }
+      }
+    ]
+  }
+}

@@ -83,6 +83,11 @@ class ErrorCode(StrEnum):
     TAG_GROUP_ALREADY_EXISTS = auto()
     META_PV_NOT_FOUND = auto()
 
+    # Converter
+    CONVERTER_UNSUPPORTED_INPUT = auto()
+    CONVERTER_CONVERSION_FAILED = auto()
+    CONVERTER_UPLOAD_TOO_LARGE = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.

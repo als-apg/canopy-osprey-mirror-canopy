@@ -1,0 +1,52 @@
+# Canopy converter — bundled standard EDM colors.list
+#
+# A valid, standard EDM colour palette so that screens declaring a bgColor
+# convert deterministically without depending on the host's EDM install. The IR
+# does not yet carry colours, so exact RGB values are not surfaced; this exists
+# to satisfy the parser and cover common colour indices. Point
+# CANOPY_CONVERTER__COLORS_LIST_PATH at your site's colors.list for full
+# fidelity (e.g. the LCLS palette).
+#
+# Format: a version line ("major minor release"), "key = value" settings, then
+# `static <index> "<name>" { r g b }` (6 components for a blinking colour).
+
+4 0 0
+
+blinkms = 500
+columns = 5
+max = 0x10000
+
+# Greyscale ramp (white -> black)
+static 0  "grey-100" { 65535 65535 65535 }
+static 1  "grey-92"  { 60494 60494 60494 }
+static 2  "grey-85"  { 55453 55453 55453 }
+static 3  "grey-77"  { 50412 50412 50412 }
+static 4  "grey-69"  { 45371 45371 45371 }
+static 5  "grey-62"  { 40330 40330 40330 }
+static 6  "grey-54"  { 35289 35289 35289 }
+static 7  "grey-46"  { 30248 30248 30248 }
+static 8  "grey-38"  { 25207 25207 25207 }
+static 9  "grey-31"  { 20166 20166 20166 }
+static 10 "grey-23"  { 15125 15125 15125 }
+static 11 "grey-15"  { 10084 10084 10084 }
+static 12 "grey-8"   { 5043 5043 5043 }
+static 13 "grey-0"   { 0 0 0 }
+
+# Named colours
+static 14 "red"                   { 65535 0 0 }
+static 15 "green"                 { 0 65535 0 }
+static 16 "blue"                  { 0 0 65535 }
+static 17 "yellow"                { 65535 65535 0 }
+static 18 "cyan"                  { 0 65535 65535 }
+static 19 "magenta"               { 65535 0 65535 }
+static 20 "orange"                { 65535 41120 0 }
+static 21 "Controller"            { 30000 30000 65535 }
+static 22 "Monitor: NORMAL"       { 0 65535 0 }
+static 23 "Monitor: MINOR"        { 65535 65535 0 }
+static 24 "Monitor: MAJOR"        { 65535 0 0 }
+static 25 "Monitor: INVALID"      { 65535 0 65535 }
+static 26 "Monitor: DISCONNECTED" { 65535 30000 30000 }
+static 27 "Top Shadow"            { 50115 50115 50115 }
+static 28 "Bottom Shadow"         { 19018 19018 19018 }
+static 29 "blinking red"          { 65535 0 0 41120 0 0 }
+static 30 "blinking purple"       { 65535 0 65535 41120 0 41120 }
