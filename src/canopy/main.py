@@ -20,9 +20,9 @@ from canopy.beaver.app import beaver_lifespan
 from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
+from canopy.core.logging import configure_logging
 from canopy.squirrel.app import app as squirrel_app
 from canopy.squirrel.app import squirrel_lifespan
-from canopy.core.logging import configure_logging
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
 
