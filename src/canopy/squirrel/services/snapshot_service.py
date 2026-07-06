@@ -482,7 +482,13 @@ class SnapshotService:
         )
 
     async def compare_snapshots(self, snapshot1_id: str, snapshot2_id: str) -> ComparisonResultDTO:
-        """Compare two stored snapshots (setpoint + readback) under each PV's tolerances."""
+        """Compare two stored snapshots (setpoint + readback) under each PV's tolerances.
+
+        Loads every value row for *both* snapshots into memory (no pagination) and runs on
+        the request path, so comparing two very large (~100k-PV) snapshots is a sizeable
+        synchronous allocation. Fine at current scale; a known v1 limit to revisit
+        (stream/paginate the diff) if snapshot sizes grow.
+        """
         result1 = await self.snapshot_repo.get_with_values(snapshot1_id)
         result2 = await self.snapshot_repo.get_with_values(snapshot2_id)
         if not result1 or not result2:

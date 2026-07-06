@@ -1,10 +1,16 @@
 """Tag and tag-group endpoints."""
 
 from fastapi import Query, Security, APIRouter
+from pydantic import ValidationError
 
 from canopy.core.security import require_read_access, require_write_access
 from canopy.contracts.base import CanopyModel
-from canopy.squirrel.errors import TagNotFound, TagGroupNotFound, TagGroupAlreadyExists
+from canopy.squirrel.errors import (
+    TagNotFound,
+    SquirrelError,
+    TagGroupNotFound,
+    TagGroupAlreadyExists,
+)
 from canopy.squirrel.schemas.tag import (
     TagCreate,
     TagUpdate,
@@ -154,7 +160,9 @@ async def bulk_import_tags(data: BulkTagImportRequest, service: TagServiceDep) -
                 else:
                     tags_skipped += 1
                     warnings.append(f"Tag '{tag_name}' already exists in group '{group_name}'")
-            except Exception as e:  # noqa: BLE001 — one bad tag shouldn't abort the whole import
+            except (SquirrelError, ValidationError) as e:
+                # One bad tag (a domain error or an invalid tag name) becomes a warning rather
+                # than aborting the whole import.
                 warnings.append(f"Failed to add tag '{tag_name}' to group '{group_name}': {e}")
 
     return BulkTagImportResponse(

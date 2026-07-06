@@ -76,8 +76,10 @@ class PvService:
         )
 
     async def get_by_id(self, pv_id: str) -> PVElementDTO | None:
-        pv = await self.pv_repo.get_by_id(pv_id)
-        return self._to_dto(pv) if pv else None
+        # Route through get_by_ids so tags (and their group) are eager-loaded: _to_dto reads
+        # pv.tags, and a bare session.get() would trigger an async lazy-load (MissingGreenlet).
+        pvs = await self.pv_repo.get_by_ids([pv_id])
+        return self._to_dto(pvs[0]) if pvs else None
 
     async def create(self, data: NewPVElementDTO) -> PVElementDTO:
         setpoint_address = self._normalize_address(data.setpoint_address)
