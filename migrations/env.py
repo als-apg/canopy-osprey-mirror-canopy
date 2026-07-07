@@ -14,12 +14,11 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+# Register every persistent module's models on Base.metadata so --autogenerate
+# sees them. Add an import here when a module gains a data tier.
+import canopy.squirrel.data.models  # noqa: F401, E402
 from canopy.core.db import Base
 from canopy.core.config import get_settings
-
-# Register every persistent module's models on Base.metadata so --autogenerate
-# sees them. Add an import here when a module gains a data tier, e.g.:
-#   import canopy.squirrel.data.models  # noqa: F401
 
 config = context.config
 
@@ -35,6 +34,18 @@ target_metadata = Base.metadata
 database_url = get_settings().database_url
 
 
+def _include_object(obj, name, type_, reflected, compare_to) -> bool:
+    """Exclude Alembic's own version table from autogenerate comparison.
+
+    ``alembic_version`` lives in ``public`` and belongs to no module's metadata;
+    under ``include_schemas=True`` autogenerate would otherwise propose dropping it
+    on every run (and ``alembic check`` would always fail). Never manage it.
+    """
+    if type_ == "table" and name == "alembic_version":
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """Emit SQL without a live connection (alembic upgrade --sql)."""
     context.configure(
@@ -44,6 +55,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         include_schemas=True,
         version_table_schema="public",
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -55,6 +67,7 @@ def do_run_migrations(connection: Connection) -> None:
         target_metadata=target_metadata,
         include_schemas=True,
         version_table_schema="public",
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()

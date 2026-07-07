@@ -11,12 +11,47 @@ permissions:
   contents: read
 
 jobs:
-  tests:
+  # Linux runs the full suite, including the squirrel Postgres integration tests.
+  tests-linux:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: canopy
+          POSTGRES_PASSWORD: canopy
+          POSTGRES_DB: canopy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: uv sync --group dev
+
+    - name: Test with pytest
+      run: uv run pytest tests/ -v
+
+  # Windows/macOS runners can't run service containers, so skip those tests (their conftest
+  # skips when Postgres is unreachable)
+  tests-other:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest, macos-latest]
         python-version: ["3.12"]
 
     steps:

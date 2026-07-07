@@ -21,6 +21,8 @@ from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
+from canopy.squirrel.app import app as squirrel_app
+from canopy.squirrel.app import squirrel_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
 
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
         vole_lifespan(),
         fox_lifespan(),
         beaver_lifespan(),
+        squirrel_lifespan(),
         jobs_lifespan(),
         converter_lifespan(),
     ):
@@ -75,6 +78,7 @@ app.mount("/raccoon", raccoon_app)
 app.mount("/vole", vole_app)
 app.mount("/fox", fox_app)
 app.mount("/beaver", beaver_app)
+app.mount("/squirrel", squirrel_app)
 app.mount("/jobs", jobs_app)
 app.mount("/converter", converter_app)
 

@@ -73,6 +73,16 @@ class ErrorCode(StrEnum):
     JOB_NOT_FOUND = auto()
     JOB_ALREADY_EXISTS = auto()
 
+    # Squirrel
+    SNAPSHOT_NOT_FOUND = auto()
+    PV_NOT_FOUND = auto()
+    PV_ALREADY_EXISTS = auto()
+    TAG_NOT_FOUND = auto()
+    TAG_ALREADY_EXISTS = auto()
+    TAG_GROUP_NOT_FOUND = auto()
+    TAG_GROUP_ALREADY_EXISTS = auto()
+    META_PV_NOT_FOUND = auto()
+
     # Converter
     CONVERTER_UNSUPPORTED_INPUT = auto()
     CONVERTER_CONVERSION_FAILED = auto()
