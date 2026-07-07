@@ -68,6 +68,27 @@ def _scalar_spec() -> FormulaSpec:
     )
 
 
+async def test_add_subscription_leaves_no_orphan_on_start_failure(formula_service, notifier):
+    # If _start_shared_eval raises, no task-less SharedEval may linger -- a later
+    # subscriber with the same key would silently attach to a dead eval.
+    async def boom(pvs: list[str]) -> None:
+        raise RuntimeError("subscribe failed")
+
+    mgr = SubscriptionManager(
+        formula_service=formula_service,
+        on_change_fn=notifier.subscribe,
+        subscribe_live_fn=boom,
+        subscribe_latest_fn=boom,
+    )
+    _messages, send_fn = _make_collector()
+
+    with pytest.raises(RuntimeError):
+        await mgr.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=send_fn)
+
+    assert mgr._shared_evals == {}  # no orphan
+    assert mgr._client_subs.get("c1", {}) == {}  # sub not registered
+
+
 def _timeseries_spec() -> FormulaSpec:
     return FormulaSpec(
         kind="timeseries",

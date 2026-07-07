@@ -6,11 +6,16 @@ from fastapi import Security, APIRouter, WebSocket, WebSocketDisconnect
 
 from canopy.core.errors import ErrorCode
 from canopy.core.security import ws_require_read_access
+from canopy.hare.schemas.ws import PingMessage, WSMessageError, parse_ws_message
 from canopy.hare.dependencies import PVBrokerDep
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["Hare / WebSocket"])
+
+
+async def _send_error(websocket: WebSocket, message: str) -> None:
+    await websocket.send_json({"type": "error", "code": ErrorCode.INVALID_MESSAGE.value, "message": message})
 
 
 @router.websocket("/pvs", dependencies=[Security(ws_require_read_access)])
@@ -43,22 +48,29 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
     broker.add_client(client_id, websocket)
     try:
         while True:
-            message = await websocket.receive_json()
-            mtype = message.get("type")
-            if mtype == "subscribe":
-                await broker.subscribe(client_id, list(message.get("pvNames", [])))
-            elif mtype == "unsubscribe":
-                await broker.unsubscribe(client_id, list(message.get("pvNames", [])))
-            elif mtype == "ping":
+            # A malformed frame (non-JSON, non-object, wrong field types) sends an
+            # error frame and keeps the connection open -- one bad message must
+            # not disconnect a client and drop all its subscriptions.
+            try:
+                raw = await websocket.receive_json()
+            except WebSocketDisconnect:
+                raise
+            except Exception:
+                await _send_error(websocket, "message must be valid JSON")
+                continue
+
+            try:
+                message = parse_ws_message(raw)
+            except WSMessageError as exc:
+                await _send_error(websocket, str(exc))
+                continue
+
+            if isinstance(message, PingMessage):
                 await websocket.send_json({"type": "pong", "timestamp": time.time()})
-            else:
-                await websocket.send_json(
-                    {
-                        "type": "error",
-                        "code": ErrorCode.BAD_REQUEST.value,
-                        "message": f"unknown message type: {mtype!r}",
-                    }
-                )
+            elif message.type == "subscribe":
+                await broker.subscribe(client_id, message.pv_names)
+            else:  # unsubscribe
+                await broker.unsubscribe(client_id, message.pv_names)
     except WebSocketDisconnect:
         await broker.remove_client(client_id)
     except Exception as exc:

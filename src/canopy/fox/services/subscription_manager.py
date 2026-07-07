@@ -111,8 +111,16 @@ class SubscriptionManager:
         else:
             shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms)
             shared.listeners.append(listener)
+            # Register only after a successful start: if _start_shared_eval
+            # raises partway through, tear down what it set up and propagate,
+            # leaving no orphaned (task-less) SharedEval that later subscribers
+            # would silently attach to.
+            try:
+                await self._start_shared_eval(shared)
+            except Exception:
+                self._teardown_shared(shared)
+                raise
             self._shared_evals[key] = shared
-            await self._start_shared_eval(shared)
 
         self._client_subs[client_id][sub_id] = key
         logger.debug("Client %s subscribed %s → shared eval %s", client_id, sub_id, key[:8])
@@ -191,8 +199,12 @@ class SubscriptionManager:
         else:
             new_shared = _SharedEval(key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval)
             new_shared.listeners.append(listener)
+            try:
+                await self._start_shared_eval(new_shared)
+            except Exception:
+                self._teardown_shared(new_shared)
+                raise
             self._shared_evals[new_key] = new_shared
-            await self._start_shared_eval(new_shared)
 
         subs[sub_id] = new_key
         return True
