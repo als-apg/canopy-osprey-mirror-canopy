@@ -31,7 +31,7 @@ META_SCHEMA: dict[str, Any] = {
         "description": {"type": "string"},
         "category": {
             "type": "string",
-            "enum": ["indicators", "controls", "containers", "plots", "decorations", "legacy"],
+            "enum": ["indicators", "controls", "containers", "plots", "decorations", "drawing", "legacy"],
         },
         "paletteIcon": {"type": "string", "minLength": 1},
         "reactComponent": {
