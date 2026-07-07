@@ -27,6 +27,8 @@ async def converter_lifespan():
     """
     config = get_converter_config()
     # Point the EDM parser at the bundled (or configured) colors.list.
+    # TODO(pydm-converter-tool#150 + dep bump): replace with an explicit
+    # color_list_path=config.colors_list_path argument to convert_bytes.
     apply_edm_colors(config)
     # Seam #1: pick the widget registry by config — the Beaver gateway when
     # enabled, else the vendored snapshot shipped with pydmconverter.
