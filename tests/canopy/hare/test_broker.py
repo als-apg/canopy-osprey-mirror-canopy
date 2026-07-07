@@ -11,6 +11,7 @@ import pytest
 
 from canopy.epics.base import PVWriteFailed
 from canopy.contracts.sample import AlarmSeverity
+from canopy.epics.pv_protocol import InvalidPVName
 from tests.canopy.hare.conftest import FakeWebSocket
 
 
@@ -22,6 +23,29 @@ async def test_subscribe_starts_monitor_and_sends_initial(broker, fake_connector
     assert "PV:A" in fake_connector.callbacks  # monitor started
     assert ws.sent and ws.sent[0]["type"] == "initial"
     assert "PV:A" in ws.sent[0]["data"]
+
+
+async def test_subscribe_skips_invalid_names(broker, fake_connector):
+    # A malformed name in the batch (bare prefix, empty) must be dropped, not
+    # reach the connector, and must not stop the valid PVs from subscribing.
+    ws = FakeWebSocket()
+    broker.add_client("c1", ws)
+    await broker.subscribe("c1", ["PV:A", "pva://", "", "PVA://"])
+
+    assert "PV:A" in fake_connector.callbacks
+    assert "pva://" not in fake_connector.callbacks
+    assert "" not in fake_connector.callbacks
+    assert "PVA://" not in fake_connector.callbacks
+
+
+async def test_get_value_rejects_invalid_name(broker):
+    with pytest.raises(InvalidPVName):
+        await broker.get_value("pva://")
+
+
+async def test_put_rejects_invalid_name(broker):
+    with pytest.raises(InvalidPVName):
+        await broker.put("", 1.0)
 
 
 async def test_event_flushed_as_diff(broker, fake_connector):
