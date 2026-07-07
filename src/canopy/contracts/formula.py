@@ -6,6 +6,8 @@ Squirrel (delta-vs-snapshot), and notebooks (ad-hoc evaluation).
 
 from typing import Literal
 
+from pydantic import Field
+
 from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
 
@@ -27,8 +29,10 @@ class FormulaSpec(CanopyModel):
     mode: FormulaMode = "raw"
     align: AlignmentMode = "last"
     index: IndexMode = "union"
-    grid_dt_ns: int | None = None
-    max_points: int | None = None
+    # Both must be positive when provided; 0/negative previously flowed through
+    # to a bare ValueError (grid) or a negative bucket count (max_points).
+    grid_dt_ns: int | None = Field(default=None, gt=0)
+    max_points: int | None = Field(default=None, gt=0)
 
 
 class ScalarResult(CanopyModel):

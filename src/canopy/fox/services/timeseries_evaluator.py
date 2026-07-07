@@ -26,7 +26,9 @@ async def evaluate_timeseries_formula(
 ) -> TimeseriesResult:
     """Evaluate a timeseries formula over [t0_ns, t1_ns] using aligned windows."""
     pvs = [spec.bindings[tok] for tok in parsed.tokens]
-    max_points = spec.max_points or config.max_output_points
+    # spec.max_points is validated > 0; clamp it to the configured ceiling so a
+    # client can't request an unbounded bucket count downstream.
+    max_points = min(spec.max_points or config.max_output_points, config.max_output_points)
 
     if spec.mode == "binned":
         window = await data_source.read_binned(pvs, t0_ns, t1_ns, target_buckets=max_points)

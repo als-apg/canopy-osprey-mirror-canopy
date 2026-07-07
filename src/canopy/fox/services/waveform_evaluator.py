@@ -8,7 +8,11 @@ import numpy as np
 
 from canopy.fox.ports import DataSource
 from canopy.fox.config import FoxConfig
-from canopy.fox.errors import FormulaInputMissing, FormulaDimensionMismatch
+from canopy.fox.errors import (
+    FormulaTypeError,
+    FormulaInputMissing,
+    FormulaDimensionMismatch,
+)
 from canopy.contracts.sample import AlarmSeverity
 from canopy.contracts.formula import FormulaSpec, WaveformResult
 from canopy.fox.services.parser import ParsedFormula
@@ -35,12 +39,17 @@ async def evaluate_waveform_formula(
             missing.append(pv)
             continue
 
-        if isinstance(sample.value, list | bytes):
-            arr = np.asarray(list(sample.value), dtype=np.float64)
-        elif isinstance(sample.value, np.ndarray):
-            arr = sample.value.astype(np.float64)
-        else:
-            arr = np.array([float(sample.value) if sample.value is not None else 0.0])
+        try:
+            if isinstance(sample.value, list | bytes):
+                arr = np.asarray(list(sample.value), dtype=np.float64)
+            elif isinstance(sample.value, np.ndarray):
+                arr = sample.value.astype(np.float64)
+            else:
+                arr = np.array([float(sample.value) if sample.value is not None else 0.0])
+        except (TypeError, ValueError) as exc:
+            # e.g. a non-numeric string PV or a list of strings bound to a
+            # waveform formula: float() raises -> 500. Report as a type error.
+            raise FormulaTypeError(f"PV '{pv}' value is not numeric waveform data") from exc
 
         variables[f"__v{i}"] = arr
         lengths.add(len(arr))

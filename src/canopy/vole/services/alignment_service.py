@@ -80,7 +80,7 @@ class AlignmentService:
     ) -> np.ndarray:
         if index == "grid":
             if grid_dt_ns is None or grid_dt_ns <= 0:
-                raise ValueError("index='grid' requires grid_dt_ns > 0")
+                raise WindowTooLarge("index='grid' requires grid_dt_ns > 0")
             n_points = (t1_ns - t0_ns) // grid_dt_ns + 1
             if n_points > MAX_GRID_POINTS:
                 raise WindowTooLarge(

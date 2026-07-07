@@ -51,6 +51,17 @@ class TestEvaluateArray:
         result = await evaluate_array(parsed, {"__v0": a}, timeout_s=1.0)
         assert float(result) == 2.0
 
+    async def test_shape_mismatch_maps_to_type_error(self, parser):
+        # numexpr raises a bare ValueError on a broadcast mismatch; it must surface
+        # as a typed FormulaTypeError (422), not a generic 500.
+        from canopy.fox.errors import FormulaTypeError
+
+        parsed = parser.parse("{a} + {b}", {"a": "PV:A", "b": "PV:B"})
+        with pytest.raises(FormulaTypeError):
+            await evaluate_array(
+                parsed, {"__v0": np.array([1.0, 2.0, 3.0]), "__v1": np.array([1.0, 2.0])}, timeout_s=1.0
+            )
+
     async def test_multiply(self, parser):
         parsed = parser.parse("{a} * {b}", {"a": "PV:A", "b": "PV:B"})
         a = np.array([1.0, 2.0, 3.0])

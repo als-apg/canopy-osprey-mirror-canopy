@@ -11,7 +11,7 @@ import numpy as np
 import numexpr as ne
 from asteval import Interpreter
 
-from canopy.fox.errors import FormulaTypeError, FormulaEvalTimeout
+from canopy.fox.errors import FoxError, FormulaTypeError, FormulaEvalTimeout
 from canopy.contracts.sample import AlarmSeverity
 from canopy.fox.services.parser import ParsedFormula
 from canopy.fox.language.namespace import NUMEXPR_NAME_MAP, build_eval_namespace
@@ -104,10 +104,7 @@ async def evaluate_array(
             return _evaluate_array_numexpr(parsed, variables)
         return _evaluate_array_asteval(parsed, variables)
 
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(compute), timeout=timeout_s)
-    except TimeoutError:
-        raise FormulaEvalTimeout(f"Expression evaluation timed out after {timeout_s:.1f}s")
+    return await _run_compute(compute, timeout_s)
 
 
 async def evaluate_scalar(
@@ -120,7 +117,21 @@ async def evaluate_scalar(
     def compute():
         return _evaluate_scalar_asteval(parsed, variables)
 
+    return await _run_compute(compute, timeout_s)
+
+
+async def _run_compute(compute, timeout_s: float):
+    """Run a compute() in a worker thread, mapping failures to typed errors.
+
+    numexpr/numpy raise plain ``ValueError`` (shape/dtype), ``OverflowError``,
+    ``RecursionError`` etc. Without this they escape as generic 500s; map them to
+    ``FormulaTypeError`` (422) so bad inputs read as client errors, not crashes.
+    """
     try:
         return await asyncio.wait_for(asyncio.to_thread(compute), timeout=timeout_s)
     except TimeoutError:
-        raise FormulaEvalTimeout(f"Expression evaluation timed out after {timeout_s:.1f}s")
+        raise FormulaEvalTimeout(f"Expression evaluation timed out after {timeout_s:.1f}s") from None
+    except FoxError:
+        raise
+    except (ValueError, ArithmeticError, TypeError, RecursionError) as exc:
+        raise FormulaTypeError(f"Evaluation error: {exc}") from exc
