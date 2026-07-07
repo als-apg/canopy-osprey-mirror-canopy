@@ -20,6 +20,7 @@ import tarfile
 import zipfile
 from typing import Any
 from pathlib import PurePosixPath
+from collections.abc import Iterator
 
 import anyio
 
@@ -69,30 +70,46 @@ def _is_safe_path(name: str) -> bool:
     return not p.is_absolute() and ".." not in p.parts
 
 
-def _iter_archive(data: bytes) -> list[tuple[str, bytes]]:
-    """Yield ``(path, bytes)`` for each regular file in a zip or tar.gz archive.
+def _count_archive_entries(data: bytes) -> int:
+    """Count convertible entries without reading their contents (member list only).
 
-    Type is sniffed from magic bytes (zip ``PK\\x03\\x04``, gzip ``\\x1f\\x8b``).
-    Directories, symlinks and unsafe paths are dropped here; ``convert_batch``
-    separately records non-screen entries as skipped.
+    Lets ``convert_batch`` report a real percentage while still streaming the bytes
+    one entry at a time. Applies the same directory/traversal filter as
+    :func:`_iter_archive` so the count matches what will actually be yielded.
     """
     if data[:4] == b"PK\x03\x04":
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            return [
-                (info.filename, zf.read(info))
-                for info in zf.infolist()
-                if not info.is_dir() and _is_safe_path(info.filename)
-            ]
+            return sum(1 for info in zf.infolist() if not info.is_dir() and _is_safe_path(info.filename))
     if data[:2] == b"\x1f\x8b" or tarfile.is_tarfile(io.BytesIO(data)):
-        out: list[tuple[str, bytes]] = []
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf:
+            return sum(1 for member in tf.getmembers() if member.isfile() and _is_safe_path(member.name))
+    raise ConverterError("Unrecognized archive format; expected .zip or .tar.gz")
+
+
+def _iter_archive(data: bytes) -> Iterator[tuple[str, bytes]]:
+    """Yield ``(path, bytes)`` for each regular file in a zip or tar.gz archive.
+
+    Entries are read and yielded one at a time so ``convert_batch`` never holds
+    the whole decompressed archive in memory at once. Type is sniffed from magic
+    bytes (zip ``PK\\x03\\x04``, gzip ``\\x1f\\x8b``). Directories, symlinks and
+    unsafe paths are dropped here; ``convert_batch`` separately records non-screen
+    entries as skipped.
+    """
+    if data[:4] == b"PK\x03\x04":
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            for info in zf.infolist():
+                if not info.is_dir() and _is_safe_path(info.filename):
+                    yield (info.filename, zf.read(info))
+        return
+    if data[:2] == b"\x1f\x8b" or tarfile.is_tarfile(io.BytesIO(data)):
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf:
             for member in tf.getmembers():
                 if not member.isfile() or not _is_safe_path(member.name):
                     continue
                 fh = tf.extractfile(member)
                 if fh is not None:
-                    out.append((member.name, fh.read()))
-        return out
+                    yield (member.name, fh.read())
+        return
     raise ConverterError("Unrecognized archive format; expected .zip or .tar.gz")
 
 
@@ -113,11 +130,12 @@ async def convert_batch(ctx: dict, token: str) -> dict[str, Any]:
         return _manifest([])
 
     try:
-        entries = _iter_archive(data)
         service = _get_service()
         rows: list[dict[str, Any]] = []
-        total = len(entries)
-        for i, (path, raw) in enumerate(entries):
+        # Cheap pre-pass over the member list gives a real percentage without
+        # decompressing entries; _iter_archive then streams the bytes one at a time.
+        total = _count_archive_entries(data)
+        for i, (path, raw) in enumerate(_iter_archive(data)):
             if i >= config.max_batch_entries:
                 rows.append({"path": path, "status": "skipped", "warnings": ["batch entry cap reached"]})
                 continue
