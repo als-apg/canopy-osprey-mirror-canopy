@@ -39,6 +39,9 @@ async def list_snapshots(
 @router.post("", dependencies=[Security(require_write_access)])
 async def create_snapshot(data: NewSnapshotDTO) -> JobCreatedDTO:
     """Enqueue a snapshot of every registered PV. The worker reads EPICS and persists it."""
+    # No SnapshotServiceDep / pre-check here (unlike restore's snapshot_exists guard): create
+    # targets *all* registered PVs, so there is no caller-supplied id that could make the job
+    # doomed up front — nothing to validate before enqueueing.
     job_id = await jobs_gateway.enqueue("create_snapshot_task", title=data.title, description=data.description)
     return JobCreatedDTO(job_id=job_id, status_url=f"/jobs/v1/{job_id}")
 
