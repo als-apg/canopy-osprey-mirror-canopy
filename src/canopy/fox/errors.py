@@ -44,3 +44,8 @@ class FormulaEvalTimeout(FoxError):
 class FormulaCircularReference(FoxError):
     status_code = 400
     error_code = ErrorCode.FORMULA_CIRCULAR_REFERENCE
+
+
+class SubscriptionLimitExceeded(FoxError):
+    status_code = 429
+    error_code = ErrorCode.SUBSCRIPTION_LIMIT_EXCEEDED

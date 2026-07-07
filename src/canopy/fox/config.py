@@ -23,6 +23,13 @@ class FoxConfig(BaseSettings):
     max_output_points: int = 10_000
     max_expression_len: int = 2048
 
+    # --- resource caps --- #
+    # Floor on poll-mode interval so a client can't request a tight re-eval loop
+    # (e.g. intervalMs=1 -> ~1000 evals/sec) that pins a CPU.
+    min_interval_ms: int = 50
+    # Max live formula subscriptions a single client may hold at once.
+    max_subscriptions_per_client: int = 1_000
+
 
 def get_fox_config() -> FoxConfig:
     return FoxConfig()
