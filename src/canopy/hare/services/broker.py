@@ -56,16 +56,43 @@ class PVBroker:
             return
         await self._connector.start()
         self._running = True
-        self._tasks = [
-            asyncio.create_task(self._consume_loop()),
-            asyncio.create_task(self._flush_loop()),
-            asyncio.create_task(self._heartbeat_loop()),
-        ]
+        self._tasks = [self._spawn_loop(name) for name in ("consume", "flush", "heartbeat")]
         logger.info(
             "PVBroker started (backend=%s, batch=%dms)",
             getattr(self._connector, "backend_name", "?"),
             self._config.ws_batch_interval_ms,
         )
+
+    _LOOP_FACTORIES: dict[str, str] = {
+        "consume": "_consume_loop",
+        "flush": "_flush_loop",
+        "heartbeat": "_heartbeat_loop",
+    }
+
+    def _spawn_loop(self, name: str) -> asyncio.Task:
+        """Create a supervised background-loop task."""
+        coro = getattr(self, self._LOOP_FACTORIES[name])()
+        task = asyncio.create_task(coro, name=name)
+        task.add_done_callback(self._supervise_loop)
+        return task
+
+    def _supervise_loop(self, task: asyncio.Task) -> None:
+        """Done-callback: a background loop should only finish on shutdown.
+
+        The loop bodies already swallow per-iteration errors, so a task
+        reaching here while the broker is still running means an unexpected
+        failure in the loop scaffolding itself. Log it loudly (never silent)
+        and restart the loop so diffs/heartbeats keep flowing to every client.
+        """
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is None:
+            return
+        name = task.get_name()
+        logger.error("broker loop %r exited unexpectedly; restarting", name, exc_info=exc)
+        if self._running:
+            self._tasks = [self._spawn_loop(name) if t is task else t for t in self._tasks]
 
     async def stop(self) -> None:
         self._running = False
@@ -183,9 +210,14 @@ class PVBroker:
 
     async def _consume_loop(self) -> None:
         while self._running:
-            value = await self._queue.get()
-            await self._ingest(value)
-            await self._drain_nowait()
+            try:
+                value = await self._queue.get()
+                await self._ingest(value)
+                await self._drain_nowait()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("broker consume loop iteration failed")
 
     async def _drain_nowait(self) -> None:
         """Process all currently-queued events without blocking. Drives `_consume_loop`; also called directly by tests."""
@@ -205,7 +237,12 @@ class PVBroker:
         interval = self._config.ws_batch_interval_ms / 1000.0
         while self._running:
             await asyncio.sleep(interval)
-            await self._flush()
+            try:
+                await self._flush()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("broker flush loop iteration failed")
 
     async def _flush(self) -> None:
         async with self._buffer_lock:
@@ -225,13 +262,18 @@ class PVBroker:
     async def _heartbeat_loop(self) -> None:
         while self._running:
             await asyncio.sleep(self._config.heartbeat_interval_s)
-            message = {
-                "type": "heartbeat",
-                "timestamp": time.time(),
-                "backend": getattr(self._connector, "backend_name", None),
-            }
-            for client_id in list(self._channels):
-                await self._send(client_id, message)
+            try:
+                message = {
+                    "type": "heartbeat",
+                    "timestamp": time.time(),
+                    "backend": getattr(self._connector, "backend_name", None),
+                }
+                for client_id in list(self._channels):
+                    await self._send(client_id, message)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("broker heartbeat loop iteration failed")
 
     async def _send(self, client_id: str, message: dict) -> None:
         channel = self._channels.get(client_id)

@@ -308,11 +308,17 @@ class EpicsConnector:
         loop = self._loop or asyncio.get_event_loop()
 
         def callback(value, *_args):
-            if isinstance(value, CANothing):
-                pvvalue = self._disconnected(pv, "disconnected from IOC")
-            else:
-                pvvalue = self._ca_to_pvvalue(pv, value)
-            loop.call_soon_threadsafe(on_event, pvvalue)
+            # Runs on aioca's C worker thread. An exception here would propagate
+            # into libca's callback dispatch with no Python frame above it to
+            # catch it, which can abort the process -- so nothing may escape.
+            try:
+                if isinstance(value, CANothing):
+                    pvvalue = self._disconnected(pv, "disconnected from IOC")
+                else:
+                    pvvalue = self._ca_to_pvvalue(pv, value)
+                loop.call_soon_threadsafe(on_event, pvvalue)
+            except Exception:
+                logger.exception("CA monitor callback for %s failed", pv)
 
         subscription = camonitor(stripped, callback, notify_disconnect=True, format=FORMAT_TIME)
         return _CaSubscription(subscription)
@@ -326,17 +332,23 @@ class EpicsConnector:
 
         async def callback(value):
             nonlocal connected_once
-            if isinstance(value, Exception):
-                # p4p reports the initial not-yet-connected state before the first
-                # value. Suppress that so a live PV doesn't flicker disconnected on
-                # subscribe. Only report drops once we've actually connected.
-                if not connected_once:
-                    return
-                pvvalue = self._disconnected(pv, str(value))
-            else:
-                connected_once = True
-                pvvalue = self._pva_to_pvvalue(pv, value)
-            on_event(pvvalue)
+            # p4p invokes this as a task on the loop; an unhandled exception
+            # would become an unretrieved-task error and silently wedge this
+            # PV's monitor. Guard the whole body.
+            try:
+                if isinstance(value, Exception):
+                    # p4p reports the initial not-yet-connected state before the first
+                    # value. Suppress that so a live PV doesn't flicker disconnected on
+                    # subscribe. Only report drops once we've actually connected.
+                    if not connected_once:
+                        return
+                    pvvalue = self._disconnected(pv, str(value))
+                else:
+                    connected_once = True
+                    pvvalue = self._pva_to_pvvalue(pv, value)
+                on_event(pvvalue)
+            except Exception:
+                logger.exception("PVA monitor callback for %s failed", pv)
 
         monitor = ctx.monitor(stripped, callback, notify_disconnect=True)
         return _PvaSubscription(monitor)
