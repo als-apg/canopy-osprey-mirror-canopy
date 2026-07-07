@@ -40,13 +40,24 @@ class VoleChannel:
         self._ingest = ingest
 
     async def send_json(self, data: Any) -> None:
-        if not isinstance(data, dict):
-            return
-        frame_type = data.get("type")
-        if frame_type in ("diff", "initial"):
-            pv_data = data.get("data")
-            if isinstance(pv_data, dict):
-                await self._ingest._handle_frame(pv_data)
+        # Never let an ingestion error escape: the broker treats a send_json
+        # exception as a dead websocket and would silently unregister Vole,
+        # permanently stopping live ingestion for every PV. A malformed frame
+        # must cost us at most that frame.
+        try:
+            if not isinstance(data, dict):
+                return
+            frame_type = data.get("type")
+            if frame_type in ("diff", "initial"):
+                pv_data = data.get("data")
+                if isinstance(pv_data, dict):
+                    await self._ingest._handle_frame(pv_data)
+        except Exception:
+            logger.warning(
+                "Failed to ingest %r frame",
+                data.get("type") if isinstance(data, dict) else type(data).__name__,
+                exc_info=True,
+            )
 
     async def close(self) -> None:
         pass
@@ -102,22 +113,26 @@ class HareIngestService:
         return set(self._subscribed_pvs)
 
     async def _handle_frame(self, data: dict[str, dict]) -> None:
-        """Process a diff/initial frame: convert each PVValue to a Sample and append."""
+        """Process a diff/initial frame: convert each PVValue to a Sample and append.
+
+        The whole per-PV body is guarded so one malformed PV entry (e.g. a
+        non-numeric ``tsNs``) skips only that PV — the rest of the frame still
+        lands, and no exception propagates back to the broker.
+        """
         for pv_name, pv_dict in data.items():
             if not isinstance(pv_dict, dict):
                 continue
             if not pv_dict.get("connected", True):
                 continue
 
-            sample = self._pv_value_to_sample(pv_dict)
-            if sample is None:
-                continue
-
-            canonical_pv = _strip_protocol_prefix(pv_name)
             try:
+                sample = self._pv_value_to_sample(pv_dict)
+                if sample is None:
+                    continue
+                canonical_pv = _strip_protocol_prefix(pv_name)
                 await self._buffer.append(canonical_pv, sample)
             except Exception:
-                logger.debug("Failed to append live sample for %s", canonical_pv, exc_info=True)
+                logger.warning("Failed to ingest live sample for %s", pv_name, exc_info=True)
 
     @staticmethod
     def _pv_value_to_sample(pv_dict: dict) -> Sample | None:
@@ -127,6 +142,11 @@ class HareIngestService:
         severity_raw = pv_dict.get("severity", "NO_ALARM")
 
         if ts_ns is None:
+            return None
+        # A bool is an int in Python but never a valid timestamp; anything
+        # non-numeric (string, dict, ...) would blow up in int() below.
+        if isinstance(ts_ns, bool) or not isinstance(ts_ns, int | float):
+            logger.debug("Skipping sample for %s: non-numeric tsNs %r", pv_dict.get("pv"), ts_ns)
             return None
 
         if isinstance(severity_raw, str):
