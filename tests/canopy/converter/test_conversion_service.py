@@ -21,14 +21,15 @@ def test_convert_edl_bytes_produces_validated_ir():
     assert result.screen["schemaVersion"] == "1.0"
     assert result.screen["id"]
     assert result.stats.widget_count >= 1
-    # p0_min carries an unmapped activeRectangleClass -> placeholder + warning (D11).
-    assert any("placeholder" in w for w in result.warnings)
 
 
-def test_unknown_widgets_are_grouped_by_original_class():
+def test_edl_classes_are_fully_supported():
+    """Every class in p0_min maps to a registry widget: no unknowns, no placeholders."""
     result = ConversionService().convert(_edl_bytes(), kind="edl")
-    classes = {u.original_class for u in result.unknown_widgets}
-    assert "activeRectangleClass" in classes
+    types = {c["type"] for c in result.screen["root"]["children"]}
+    assert types == {"text-label", "pv-text-input", "pv-button", "rectangle"}
+    assert result.unknown_widgets == []
+    assert not any("placeholder" in w for w in result.warnings)
 
 
 def test_bad_kind_raises_unsupported_input():

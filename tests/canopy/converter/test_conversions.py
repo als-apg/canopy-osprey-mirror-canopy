@@ -41,7 +41,7 @@ def test_convert_edl_returns_screen_ir():
     assert set(body) >= {"screen", "warnings", "unknownWidgets", "formulas", "stats"}
     assert body["screen"]["schemaVersion"] == "1.0"
     assert body["stats"]["widgetCount"] >= 1
-    assert body["unknownWidgets"][0]["originalClass"] == "activeRectangleClass"
+    assert body["unknownWidgets"] == []
 
 
 def test_kind_can_be_given_explicitly_without_suffix():
@@ -106,8 +106,8 @@ def test_validate_returns_diagnostics_only():
     body = resp.json()
     assert body["ok"] is True
     assert "screen" not in body  # the IR is discarded on a dry run
-    assert body["unknownWidgets"][0]["originalClass"] == "activeRectangleClass"
-    assert any("placeholder" in w for w in body["warnings"])
+    assert body["unknownWidgets"] == []
+    assert not any("placeholder" in w for w in body["warnings"])
 
 
 def test_validate_unsupported_input_returns_ok_false():
