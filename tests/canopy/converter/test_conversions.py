@@ -157,3 +157,126 @@ def test_convert_ui_input_returns_screen_ir():
     body = resp.json()
     assert body["screen"]["schemaVersion"] == "1.0"
     assert body["stats"]["widgetCount"] >= 1
+
+
+# --- Batch (folder) conversion --------------------------------------------------
+
+import io  # noqa: E402
+import zipfile  # noqa: E402
+from uuid import uuid4  # noqa: E402
+
+import fakeredis  # noqa: E402
+import fakeredis.aioredis  # noqa: E402
+
+from canopy.jobs import gateway as jobs_gateway  # noqa: E402
+
+
+def _zip_bytes(entries: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def _patch_jobs(monkeypatch):
+    """Wire the lazily-imported Jobs gateway to a fakeredis pool + capturing enqueue.
+
+    Returns a *sync* client over the same in-memory FakeServer so tests can seed
+    keys without crossing event loops (the async pool the route uses binds to the
+    request loop).
+    """
+    server = fakeredis.FakeServer()
+    captured = {}
+
+    async def fake_get_pool():
+        return fakeredis.aioredis.FakeRedis(server=server)
+
+    async def fake_enqueue(function, *args, **kwargs):
+        captured["function"] = function
+        captured["args"] = args
+        return uuid4().hex
+
+    monkeypatch.setattr(jobs_gateway, "get_pool", fake_get_pool)
+    monkeypatch.setattr(jobs_gateway, "enqueue", fake_enqueue)
+    return fakeredis.FakeStrictRedis(server=server), captured
+
+
+def test_batch_enqueues_and_returns_job(monkeypatch):
+    _, captured = _patch_jobs(monkeypatch)
+    archive = _zip_bytes({"a.edl": EDL})
+    with TestClient(app) as client:
+        resp = client.post(
+            "/converter/v1/conversions/batch",
+            headers=READ_HEADERS,
+            files={"file": ("screens.zip", archive, "application/zip")},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["statusUrl"].startswith("/jobs/v1/")
+    # Enqueued the batch task with the staging token; archive staged under that token.
+    assert captured["function"] == "convert_batch"
+    assert captured["args"]  # (token,)
+
+
+def test_batch_rejects_non_archive(monkeypatch):
+    _patch_jobs(monkeypatch)
+    with TestClient(app) as client:
+        resp = client.post(
+            "/converter/v1/conversions/batch",
+            headers=READ_HEADERS,
+            files={"file": ("a.edl", EDL, "application/octet-stream")},
+        )
+    assert resp.status_code == 415
+    assert resp.json()["code"] == "converter_unsupported_input"
+
+
+def test_batch_rejects_oversized_archive(monkeypatch):
+    _patch_jobs(monkeypatch)
+    converter_app.dependency_overrides[get_config] = lambda: ConverterConfig(max_archive_bytes=16)
+    try:
+        with TestClient(app) as client:
+            resp = client.post(
+                "/converter/v1/conversions/batch",
+                headers=READ_HEADERS,
+                files={"file": ("screens.zip", _zip_bytes({"a.edl": EDL}), "application/zip")},
+            )
+    finally:
+        converter_app.dependency_overrides.pop(get_config, None)
+    assert resp.status_code == 413
+
+
+def test_batch_requires_api_key():
+    with TestClient(app) as client:
+        resp = client.post(
+            "/converter/v1/conversions/batch",
+            files={"file": ("screens.zip", _zip_bytes({"a.edl": EDL}), "application/zip")},
+        )
+    assert resp.status_code == 401
+
+
+def test_get_batch_screen_hit(monkeypatch):
+    from canopy.converter.tasks import result_key
+
+    seed, _ = _patch_jobs(monkeypatch)
+    job_id, index = "job-xyz", 3
+    seed.set(result_key(job_id, index), '{"schemaVersion": "1.0", "id": "s"}')
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/converter/v1/conversions/batch/{job_id}/screens/{index}",
+            headers=READ_HEADERS,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["screen"]["schemaVersion"] == "1.0"
+
+
+def test_get_batch_screen_miss_returns_404(monkeypatch):
+    _patch_jobs(monkeypatch)
+    with TestClient(app) as client:
+        resp = client.get(
+            "/converter/v1/conversions/batch/job-xyz/screens/999",
+            headers=READ_HEADERS,
+        )
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "converter_batch_result_not_found"

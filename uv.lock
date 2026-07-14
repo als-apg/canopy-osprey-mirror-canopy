@@ -180,6 +180,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "fakeredis" },
     { name = "hypothesis" },
     { name = "import-linter" },
     { name = "pre-commit" },
@@ -220,6 +221,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fakeredis", specifier = ">=2.21" },
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "import-linter", specifier = ">=2.0" },
     { name = "pre-commit" },
@@ -379,6 +381,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/55/57/42c5bb50507c528d9af10879067920d27c5a6b33fbef16c2e1b55de77ccc/epicscorelibs-7.0.10.99.0.1-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:7de58f4e8a7dd8edf7b808ffc99391e95ca3516c4f2780258c31f4f844d63239", size = 5358518, upload-time = "2026-02-11T01:39:37.699Z" },
     { url = "https://files.pythonhosted.org/packages/13/83/ba7b1534760786b45bdbe590bf9b972ba594582c80ca4ac473371321a6c4/epicscorelibs-7.0.10.99.0.1-cp314-cp314-win_amd64.whl", hash = "sha256:5e2f294e60a0b3a50af5c26cda8c62b1ba926742f3a7d562e9ae65432dd16c18", size = 2587325, upload-time = "2026-02-11T01:39:39.181Z" },
     { url = "https://files.pythonhosted.org/packages/e6/94/5c7b17b3ff1962f9fe04b07d45008bccb3a6236887bb426babaa5690d372/epicscorelibs-7.0.10.99.0.1-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:045751cdbb9bda21e830bd92753c259d10c8582c2e2bbd3dfa768158a57f541b", size = 5358535, upload-time = "2026-02-11T01:39:40.386Z" },
+]
+
+[[package]]
+name = "fakeredis"
+version = "2.36.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "redis" },
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0a/ed/86ed74d8829c3bc565025c1c9efaf8518c9165fbf8c9cc2c026c8ed21bd9/fakeredis-2.36.2.tar.gz", hash = "sha256:c37a0b307fae3f27ec7c19e59519e57b8c52782e00303df9075361b5ba441be6", size = 213336, upload-time = "2026-06-17T13:25:38.934Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/4d/e6e40f93031adbf654d34e542bd396e9f3bc1c6209b40c920d58c9e1317a/fakeredis-2.36.2-py3-none-any.whl", hash = "sha256:84cbb9c74ca8946c0d2499daadf3a5d0bfe3cfbac71e3398316d1a1eab3421c4", size = 141039, upload-time = "2026-06-17T13:25:36.638Z" },
 ]
 
 [[package]]

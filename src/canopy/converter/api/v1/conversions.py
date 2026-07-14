@@ -1,3 +1,5 @@
+import json
+from uuid import uuid4
 from typing import Literal, Annotated
 from pathlib import Path
 
@@ -5,13 +7,20 @@ from fastapi import File, Form, Security, APIRouter, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from canopy.core.security import require_read_access
-from canopy.converter.errors import UploadTooLarge, ConversionFailed, UnsupportedInput
+from canopy.contracts.jobs import JobCreatedDTO
+from canopy.converter.errors import (
+    UploadTooLarge,
+    ConversionFailed,
+    UnsupportedInput,
+    BatchResultNotFound,
+)
 from canopy.converter.dependencies import (
     FoxValidateDep,
     ConverterConfigDep,
     ConversionServiceDep,
 )
 from canopy.converter.schemas.conversions import (
+    BatchScreenDTO,
     UnknownWidgetDTO,
     FormulaSummaryDTO,
     ValidateResultDTO,
@@ -117,3 +126,53 @@ async def validate_conversion(
             UnknownWidgetDTO(original_class=u.original_class, count=u.count) for u in result.unknown_widgets
         ],
     )
+
+
+def _looks_like_archive(data: bytes) -> bool:
+    """True for a zip (``PK\\x03\\x04``) or gzip (``\\x1f\\x8b``) payload."""
+    return data[:4] == b"PK\x03\x04" or data[:2] == b"\x1f\x8b"
+
+
+@router.post("/conversions/batch", dependencies=[Security(require_read_access)])
+async def create_batch_conversion(
+    config: ConverterConfigDep,
+    file: Annotated[UploadFile, File(description="A .zip or .tar.gz of legacy .edl/.ui screens")],
+) -> JobCreatedDTO:
+    """Convert a folder of legacy screens asynchronously.
+
+    Accepts one archive (``.zip``/``.tar.gz``), stages it, and enqueues a job.
+    Poll ``GET /jobs/v1/{jobId}``: its ``result`` is a ``BatchManifestDTO`` whose
+    ``succeeded`` rows carry an ``index``; fetch each screen's IR from
+    ``GET /conversions/batch/{jobId}/screens/{index}``.
+    """
+    # Lazy import: keeps the converter loadable without Jobs and routes the
+    # cross-module call through the public gateway only (mirrors get_fox_validate).
+    from canopy.jobs import gateway as jobs_gateway
+    from canopy.converter.tasks import input_key
+
+    data = await _read_upload(file, config.max_archive_bytes)
+    if not _looks_like_archive(data):
+        raise UnsupportedInput("Batch upload must be a .zip or .tar.gz archive")
+
+    token = uuid4().hex
+    pool = await jobs_gateway.get_pool()
+    await pool.set(input_key(token), data, ex=config.batch_result_ttl_s)
+    job_id = await jobs_gateway.enqueue("convert_batch", token)
+    return JobCreatedDTO(job_id=job_id, status_url=f"/jobs/v1/{job_id}")
+
+
+@router.get("/conversions/batch/{job_id}/screens/{index}", dependencies=[Security(require_read_access)])
+async def get_batch_screen(job_id: str, index: int) -> BatchScreenDTO:
+    """Fetch one converted screen's IR from a finished batch by its manifest ``index``.
+
+    Diagnostics (warnings, unknown widgets) live in the batch manifest row; this
+    returns just the Screen IR document the editor loads.
+    """
+    from canopy.jobs import gateway as jobs_gateway
+    from canopy.converter.tasks import result_key
+
+    pool = await jobs_gateway.get_pool()
+    raw = await pool.get(result_key(job_id, index))
+    if raw is None:
+        raise BatchResultNotFound(f"No batch screen for job {job_id!r} index {index} (expired or unknown)")
+    return BatchScreenDTO(screen=json.loads(raw))
