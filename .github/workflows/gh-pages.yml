@@ -47,6 +47,8 @@ jobs:
     needs: build  # Ensures that the deploy step only runs after the build
     if: github.event_name == 'push'  # Only run deploy on push events
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to push to the gh-pages branch
 
     steps:
       - name: Download Built Docs
