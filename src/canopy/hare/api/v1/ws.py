@@ -36,7 +36,11 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
     - ``{"type": "heartbeat", "timestamp": T, "backend": "simulation"}``
     - ``{"type": "pong", "timestamp": T}``
     - ``{"type": "error", "code": "bad_request", "message": "..."}`` (``code`` is an
-      `ErrorCode`, matching the REST error envelope's ``code`` field)
+      `ErrorCode`, matching the REST error envelope's ``code`` field). On a
+      ``subscribe`` with malformed names the error carries ``code`` ``invalid_pv_name``
+      and a ``pvNames`` list of the rejected names; the batch's valid PVs still
+      subscribe. This lets a client tell "rejected at subscribe time" apart from
+      "valid PV that hasn't produced a value yet."
     """
     await websocket.accept()
     client_id = uuid.uuid4().hex

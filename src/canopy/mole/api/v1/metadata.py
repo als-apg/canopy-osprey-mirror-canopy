@@ -4,6 +4,7 @@ from fastapi import Path, Query, Security, APIRouter
 
 from canopy.core.security import require_read_access
 from canopy.mole.schemas.pv import PVMetadataDTO
+from canopy.epics.pv_protocol import validate_pv_name
 from canopy.mole.dependencies import ArchiverServiceDep
 
 router = APIRouter(prefix="/metadata", tags=["Mole / Metadata"])
@@ -20,4 +21,5 @@ async def get_metadata(
     For the Appliance adapter only `units` and `precision` are populated; the
     rest stay `null` and come from Channel Access (Hare / EPICS Connector).
     """
+    validate_pv_name(pv)
     return await service.metadata(pv, archiver=archiver)
