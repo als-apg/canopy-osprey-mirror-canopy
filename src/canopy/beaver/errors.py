@@ -35,3 +35,8 @@ class LegacyScreenNotFound(BeaverError):
 class CatalogMisconfigured(BeaverError):
     status_code = 500
     error_code = ErrorCode.CATALOG_MISCONFIGURED
+
+
+class ScreenSchemaVersionNotFound(BeaverError):
+    status_code = 404
+    error_code = ErrorCode.SCREEN_SCHEMA_VERSION_NOT_FOUND

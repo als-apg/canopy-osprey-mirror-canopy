@@ -68,6 +68,7 @@ class ErrorCode(StrEnum):
     ICON_NOT_FOUND = auto()
     LEGACY_SCREEN_NOT_FOUND = auto()
     CATALOG_MISCONFIGURED = auto()
+    SCREEN_SCHEMA_VERSION_NOT_FOUND = auto()
 
     # Jobs
     JOB_NOT_FOUND = auto()
