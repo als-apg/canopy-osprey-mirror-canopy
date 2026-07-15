@@ -1,8 +1,7 @@
 """Tests for HareIngestService using a fake broker."""
 
 from canopy.contracts.sample import AlarmSeverity
-from canopy.epics.pv_protocol import strip_protocol_prefix
-from canopy.vole.services.hare_ingest import HareIngestService
+from canopy.vole.services.hare_ingest import HareIngestService, _strip_protocol_prefix
 
 
 class FakeBroker:
@@ -262,10 +261,10 @@ class TestDiffHandling:
 
 class TestProtocolPrefixStripping:
     def test_ca_prefix(self):
-        assert strip_protocol_prefix("ca://QUAD:BDES") == "QUAD:BDES"
+        assert _strip_protocol_prefix("ca://QUAD:BDES") == "QUAD:BDES"
 
     def test_pva_prefix(self):
-        assert strip_protocol_prefix("pva://TEST:IMAGE") == "TEST:IMAGE"
+        assert _strip_protocol_prefix("pva://TEST:IMAGE") == "TEST:IMAGE"
 
     def test_no_prefix(self):
-        assert strip_protocol_prefix("PV:PLAIN") == "PV:PLAIN"
+        assert _strip_protocol_prefix("PV:PLAIN") == "PV:PLAIN"

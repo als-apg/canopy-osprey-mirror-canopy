@@ -28,7 +28,7 @@ from canopy.epics.base import (
 )
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
-from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name, validate_pv_name
+from canopy.epics.pv_protocol import is_unprefixed, parse_pv_name
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,6 @@ class EpicsConnector:
     # --- one-shot reads -------------------------------------------------- #
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
-        validate_pv_name(pv)
         protocol, stripped = parse_pv_name(pv)
         if protocol == "pva":
             return await self._get_pva(pv, stripped, timeout)
@@ -191,7 +190,6 @@ class EpicsConnector:
 
     async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
         """Write `value` to `pv`, routed by protocol prefix."""
-        validate_pv_name(pv)
         protocol, stripped = parse_pv_name(pv)
         if protocol == "pva":
             await self._put_pva(pv, stripped, value, timeout, wait)
@@ -218,7 +216,6 @@ class EpicsConnector:
     # --- metadata (describe) --------------------------------------------- #
 
     async def describe(self, pv: str) -> PVMeta:
-        validate_pv_name(pv)
         protocol, stripped = parse_pv_name(pv)
         if protocol == "pva":
             return await self._describe_pva(pv, stripped)
@@ -302,7 +299,6 @@ class EpicsConnector:
     # --- monitors -------------------------------------------------------- #
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:
-        validate_pv_name(pv)
         protocol, stripped = parse_pv_name(pv)
         if protocol == "pva":
             return self._subscribe_pva(pv, stripped, on_event)

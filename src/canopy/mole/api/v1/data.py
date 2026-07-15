@@ -4,7 +4,6 @@ from fastapi import Path, Query, Security, APIRouter
 
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access
-from canopy.epics.pv_protocol import validate_pv_name
 from canopy.mole.dependencies import ArchiverServiceDep
 from canopy.mole.schemas.series import (
     SampleDTO,
@@ -48,7 +47,6 @@ async def get_data(
     before `from` so sparse on-change PVs have a defined value at the window's
     left edge; it keeps its true (pre-window) timestamp — clip on render.
     """
-    validate_pv_name(pv)
     t0_ns = parse_time(from_)
     if t0_ns is None:
         raise BadRequest("`from` is required")

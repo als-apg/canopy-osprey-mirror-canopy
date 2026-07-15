@@ -15,10 +15,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 
 from canopy.epics.base import PVConnector, Subscription
-from canopy.core.errors import ErrorCode
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
-from canopy.epics.pv_protocol import InvalidPVName, validate_pv_name
 from canopy.hare.services.subscriptions import SubscriptionRegistry
 
 logger = logging.getLogger(__name__)
@@ -133,39 +131,7 @@ class PVBroker:
         await self._stop_monitors(deactivated)
         self._channels.pop(client_id, None)
 
-    @staticmethod
-    def _accept_names(pvs: list[str]) -> tuple[list[str], list[str]]:
-        """Split a subscribe batch into ``(accepted, rejected)`` names, logging each drop.
-
-        A single bad name (empty, over-long, whitespace- or protocol-prefixed
-        garbage) must not abort the whole batch or reach the EPICS connector, so
-        it is skipped here rather than raised - the rest of the client's PVs
-        still subscribe. Rejected names are returned so the caller can tell the
-        client which ones were dropped instead of leaving them to look like PVs
-        that simply never produced a value.
-        """
-        accepted: list[str] = []
-        rejected: list[str] = []
-        for pv in pvs:
-            try:
-                accepted.append(validate_pv_name(pv))
-            except InvalidPVName as exc:
-                logger.warning("ignoring invalid PV name in subscribe: %s", exc)
-                rejected.append(pv)
-        return accepted, rejected
-
     async def subscribe(self, client_id: str, pvs: list[str]) -> None:
-        pvs, rejected = self._accept_names(pvs)
-        if rejected:
-            await self._send(
-                client_id,
-                {
-                    "type": "error",
-                    "code": ErrorCode.INVALID_PV_NAME.value,
-                    "message": f"rejected {len(rejected)} invalid PV name(s)",
-                    "pvNames": rejected,
-                },
-            )
         if not pvs:
             return
         newly = self._registry.subscribe(client_id, pvs)
@@ -325,7 +291,6 @@ class PVBroker:
 
     async def get_value(self, pv: str) -> PVValue:
         """Current value: cached if actively monitored, else a one-shot read."""
-        validate_pv_name(pv)
         cached = self._latest.get(pv)
         if cached is not None:
             return cached
@@ -333,7 +298,6 @@ class PVBroker:
 
     async def get_describe(self, pv: str) -> PVMeta:
         """Static metadata: cached if actively monitored, else a one-shot describe."""
-        validate_pv_name(pv)
         cached = self._meta.get(pv)
         if cached is not None:
             return cached
@@ -349,7 +313,6 @@ class PVBroker:
         is dropped so an immediate `get_value` reflects the write instead of the
         pre-write cache. The monitor path repopulates the cache on its next tick.
         """
-        validate_pv_name(pv)
         await self._connector.put(pv, value, wait=wait, timeout=timeout)
         self._latest.pop(pv, None)
 

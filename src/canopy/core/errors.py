@@ -39,7 +39,6 @@ class ErrorCode(StrEnum):
     PV_READ_TIMEOUT = auto()
     PV_WRITE_FAILED = auto()
     EPICS_BACKEND_UNAVAILABLE = auto()
-    INVALID_PV_NAME = auto()
 
     # Raccoon
     DIRECTORY_UNAVAILABLE = auto()

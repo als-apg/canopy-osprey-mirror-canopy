@@ -47,27 +47,6 @@ def test_ws_initial_frame_carries_metadata():
             assert initial["data"]["SIM:STATE:ENUM"]["valueKind"] == "enum"
 
 
-def test_ws_subscribe_with_invalid_name_does_not_crash_connection():
-    # The PVA:// incident, end-to-end: a bare-prefix name in the batch must be
-    # dropped without killing the socket, and the valid PV still streams.
-    with TestClient(app) as client:
-        with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
-            ws.send_json({"type": "subscribe", "pvNames": ["pva://", "SIM:WS"]})
-
-            got_valid = False
-            for _ in range(5):
-                msg = ws.receive_json()
-                if msg["type"] in ("initial", "diff") and "SIM:WS" in msg.get("data", {}):
-                    got_valid = True
-                    break
-
-            assert got_valid, "valid PV should still stream despite the invalid name"
-
-            # Connection is still alive and responsive.
-            ws.send_json({"type": "ping"})
-            assert ws.receive_json()["type"] == "pong"
-
-
 def test_ws_ping_pong():
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
