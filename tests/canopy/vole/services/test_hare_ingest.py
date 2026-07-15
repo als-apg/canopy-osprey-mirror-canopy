@@ -186,6 +186,50 @@ class TestDiffHandling:
 
         await ingest.stop()
 
+    async def test_malformed_ts_does_not_break_other_pvs(self, test_service):
+        # A non-numeric tsNs on one PV must skip only that PV; the rest of the
+        # frame still lands and no exception escapes into the broker.
+        broker = FakeBroker()
+        ingest = HareIngestService(test_service, broker)
+        await ingest.start()
+
+        ts = 990_000_000_000
+        channel = broker.clients[HareIngestService.CLIENT_ID]
+        await channel.send_json(
+            {
+                "type": "diff",
+                "data": {
+                    "PV:BAD": {"pv": "PV:BAD", "value": 1.0, "severity": "NO_ALARM", "tsNs": "N/A", "connected": True},
+                    "PV:GOOD": {"pv": "PV:GOOD", "value": 2.0, "severity": "NO_ALARM", "tsNs": ts, "connected": True},
+                },
+                "count": 2,
+            }
+        )
+
+        assert await test_service.read_latest("PV:BAD") is None
+        good = await test_service.read_latest("PV:GOOD")
+        assert good is not None and good.value == 2.0
+        # Vole is still a registered broker client — ingestion was not torn down.
+        assert HareIngestService.CLIENT_ID in broker.clients
+
+        await ingest.stop()
+
+    async def test_send_json_never_raises_on_garbage_frame(self, test_service):
+        # send_json is the broker-facing surface; if it raises, the broker
+        # unregisters Vole and kills all ingestion. It must swallow anything.
+        broker = FakeBroker()
+        ingest = HareIngestService(test_service, broker)
+        await ingest.start()
+
+        channel = broker.clients[HareIngestService.CLIENT_ID]
+        # data is not a dict; tsNs is a dict; value is unrepresentable — none may raise.
+        await channel.send_json({"type": "diff", "data": {"PV:X": {"tsNs": {}, "value": 1.0, "connected": True}}})
+        await channel.send_json({"type": "diff", "data": "not-a-dict"})
+        await channel.send_json("not-a-frame")
+
+        assert HareIngestService.CLIENT_ID in broker.clients
+        await ingest.stop()
+
     async def test_multiple_pvs_in_one_diff(self, test_service):
         broker = FakeBroker()
         ingest = HareIngestService(test_service, broker)
