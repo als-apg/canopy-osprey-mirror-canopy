@@ -15,10 +15,18 @@ import logging
 from typing import Any
 
 from canopy.contracts.sample import Sample, AlarmSeverity
-from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.services.buffer_service import BufferService
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_protocol_prefix(pv: str) -> str:
+    """Remove ca:// or pva:// prefix if present."""
+    if pv.startswith("ca://"):
+        return pv[5:]
+    if pv.startswith("pva://"):
+        return pv[6:]
+    return pv
 
 
 class VoleChannel:
@@ -121,7 +129,7 @@ class HareIngestService:
                 sample = self._pv_value_to_sample(pv_dict)
                 if sample is None:
                     continue
-                canonical_pv = strip_protocol_prefix(pv_name)
+                canonical_pv = _strip_protocol_prefix(pv_name)
                 await self._buffer.append(canonical_pv, sample)
             except Exception:
                 logger.warning("Failed to ingest live sample for %s", pv_name, exc_info=True)

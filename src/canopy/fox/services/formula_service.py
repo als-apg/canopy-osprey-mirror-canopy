@@ -12,7 +12,6 @@ from canopy.fox.ports import DataSource
 from canopy.fox.config import FoxConfig
 from canopy.fox.errors import FormulaCircularReference
 from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
-from canopy.epics.pv_protocol import validate_pv_name
 from canopy.fox.services.parser import Parser
 from canopy.fox.services.scalar_evaluator import evaluate_scalar_formula
 from canopy.fox.services.waveform_evaluator import evaluate_waveform_formula
@@ -35,7 +34,7 @@ class FormulaService:
         if t0_ns < 0:
             t0_ns = t1_ns + t0_ns
 
-        self._validate_bindings(spec)
+        self._reject_fox_refs(spec)
         parsed = self._parser.parse(spec.expression, spec.bindings)
 
         match spec.kind:
@@ -52,7 +51,7 @@ class FormulaService:
     async def validate(self, spec: FormulaSpec) -> FormulaValidationResult:
         """Parse + AST-check without touching the data source."""
         try:
-            self._validate_bindings(spec)
+            self._reject_fox_refs(spec)
             parsed = self._parser.parse(spec.expression, spec.bindings)
             return FormulaValidationResult(valid=True, tokens=parsed.tokens)
         except FormulaCircularReference as exc:
@@ -60,17 +59,11 @@ class FormulaService:
         except Exception as exc:
             return FormulaValidationResult(valid=False, errors=[str(exc)])
 
-    def _validate_bindings(self, spec: FormulaSpec) -> None:
-        """Bindings must resolve to well-formed PV names only.
-
-        Rejects formula-of-formula composition (``fox:`` refs) and malformed PV
-        names (empty, over-long, protocol-prefixed garbage) so a bad binding
-        can't reach the data source / EPICS layer.
-        """
+    def _reject_fox_refs(self, spec: FormulaSpec) -> None:
+        """Bindings must resolve to PV names only — no formula-of-formula."""
         for var, pv in spec.bindings.items():
             if pv.startswith("fox:"):
                 raise FormulaCircularReference(
                     f"Binding '{var}' references a derived formula '{pv}'; "
                     "formula-of-formula composition is not supported"
                 )
-            validate_pv_name(pv)
