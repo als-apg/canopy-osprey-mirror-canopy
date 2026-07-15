@@ -38,6 +38,28 @@ async def test_subscribe_skips_invalid_names(broker, fake_connector):
     assert "PVA://" not in fake_connector.callbacks
 
 
+async def test_subscribe_notifies_client_of_rejected_names(broker, fake_connector):
+    # Rejected names must be surfaced to the client so it can tell them apart
+    # from valid PVs that simply haven't produced a value yet.
+    ws = FakeWebSocket()
+    broker.add_client("c1", ws)
+    await broker.subscribe("c1", ["PV:A", "pva://", ""])
+
+    errors = [m for m in ws.sent if m["type"] == "error"]
+    assert errors
+    err = errors[0]
+    assert err["code"] == "invalid_pv_name"
+    assert set(err["pvNames"]) == {"pva://", ""}
+
+
+async def test_subscribe_all_valid_sends_no_error(broker, fake_connector):
+    ws = FakeWebSocket()
+    broker.add_client("c1", ws)
+    await broker.subscribe("c1", ["PV:A", "PV:B"])
+
+    assert not any(m["type"] == "error" for m in ws.sent)
+
+
 async def test_get_value_rejects_invalid_name(broker):
     with pytest.raises(InvalidPVName):
         await broker.get_value("pva://")

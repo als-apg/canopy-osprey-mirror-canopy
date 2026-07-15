@@ -82,6 +82,17 @@ def _has_control_chars(text: str) -> bool:
     return any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text)
 
 
+def _has_whitespace(text: str) -> bool:
+    """True if `text` contains any whitespace (space, tab, newline, ...).
+
+    EPICS channel names never contain whitespace. Catching it here rejects the
+    common spreadsheet copy-paste case (``"  PV:NAME  "`` or an interior space)
+    with a clean 400 instead of letting a space-padded name reach aioca/p4p,
+    where it fails as a silent connection timeout rather than a validation error.
+    """
+    return any(ch.isspace() for ch in text)
+
+
 def validate_pv_name(pv_name: str) -> str:
     """Return `pv_name` unchanged if it is a well-formed PV name, else raise.
 
@@ -89,6 +100,9 @@ def validate_pv_name(pv_name: str) -> str:
 
     - non-strings and the empty / whitespace-only string;
     - names longer than :data:`MAX_PV_NAME_LEN`;
+    - names containing any whitespace (leading, trailing, or interior) — a
+      space-padded name would otherwise reach aioca/p4p and fail as a silent
+      connection timeout instead of a clean 400;
     - names containing NUL / control characters (which corrupt C string
       handling in the EPICS libraries);
     - a bare protocol prefix with no channel name after it (``"pva://"``);
@@ -104,6 +118,8 @@ def validate_pv_name(pv_name: str) -> str:
         raise InvalidPVName("PV name must not be empty")
     if len(pv_name) > MAX_PV_NAME_LEN:
         raise InvalidPVName(f"PV name exceeds {MAX_PV_NAME_LEN} characters")
+    if _has_whitespace(pv_name):
+        raise InvalidPVName("PV name contains whitespace")
     if _has_control_chars(pv_name):
         raise InvalidPVName("PV name contains control characters")
     stripped = strip_protocol_prefix(pv_name)

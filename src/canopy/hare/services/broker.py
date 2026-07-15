@@ -15,6 +15,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 
 from canopy.epics.base import PVConnector, Subscription
+from canopy.core.errors import ErrorCode
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
 from canopy.epics.pv_protocol import InvalidPVName, validate_pv_name
@@ -133,23 +134,38 @@ class PVBroker:
         self._channels.pop(client_id, None)
 
     @staticmethod
-    def _accept_names(pvs: list[str]) -> list[str]:
-        """Drop malformed names from a subscribe batch, logging each.
+    def _accept_names(pvs: list[str]) -> tuple[list[str], list[str]]:
+        """Split a subscribe batch into ``(accepted, rejected)`` names, logging each drop.
 
-        A single bad name (empty, over-long, protocol-prefixed garbage) must not
-        abort the whole batch or reach the EPICS connector, so it is skipped here
-        rather than raised — the rest of the client's PVs still subscribe.
+        A single bad name (empty, over-long, whitespace- or protocol-prefixed
+        garbage) must not abort the whole batch or reach the EPICS connector, so
+        it is skipped here rather than raised - the rest of the client's PVs
+        still subscribe. Rejected names are returned so the caller can tell the
+        client which ones were dropped instead of leaving them to look like PVs
+        that simply never produced a value.
         """
         accepted: list[str] = []
+        rejected: list[str] = []
         for pv in pvs:
             try:
                 accepted.append(validate_pv_name(pv))
             except InvalidPVName as exc:
                 logger.warning("ignoring invalid PV name in subscribe: %s", exc)
-        return accepted
+                rejected.append(pv)
+        return accepted, rejected
 
     async def subscribe(self, client_id: str, pvs: list[str]) -> None:
-        pvs = self._accept_names(pvs)
+        pvs, rejected = self._accept_names(pvs)
+        if rejected:
+            await self._send(
+                client_id,
+                {
+                    "type": "error",
+                    "code": ErrorCode.INVALID_PV_NAME.value,
+                    "message": f"rejected {len(rejected)} invalid PV name(s)",
+                    "pvNames": rejected,
+                },
+            )
         if not pvs:
             return
         newly = self._registry.subscribe(client_id, pvs)

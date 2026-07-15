@@ -104,6 +104,13 @@ class TestValidatePvName:
         with pytest.raises(InvalidPVName):
             validate_pv_name(name)
 
+    @pytest.mark.parametrize("name", ["  PV:NAME  ", " PV:NAME", "PV:NAME ", "PV NAME", "ca://PV:NAME "])
+    def test_whitespace_rejected(self, name):
+        # Spreadsheet copy-paste: a space-padded or internally-spaced name would
+        # otherwise reach aioca/p4p and fail as a silent timeout, not a 400.
+        with pytest.raises(InvalidPVName):
+            validate_pv_name(name)
+
     def test_residual_scheme_rejected(self):
         # A doubled / mistyped prefix leaves "://" in the stripped name.
         with pytest.raises(InvalidPVName):
