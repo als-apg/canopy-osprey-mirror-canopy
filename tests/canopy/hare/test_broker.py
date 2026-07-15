@@ -4,6 +4,9 @@ Driven deterministically via FakeConnector (emit on demand) + FakeWebSocket,
 without starting the background loops — tests call `_drain_nowait` / `_flush`.
 """
 
+import asyncio
+import contextlib
+
 import pytest
 
 from canopy.epics.base import PVWriteFailed
@@ -147,3 +150,71 @@ async def test_put_invalidates_cache_so_read_is_fresh(broker, fake_connector):
     await broker.put("PV:A", 9.9)
     assert "PV:A" not in broker._latest  # cache invalidated
     assert (await broker.get_value("PV:A")).value == 0.0  # fresh one-shot connector.get
+
+
+class TestLoopSupervision:
+    async def test_flush_loop_survives_iteration_error(self, broker, monkeypatch):
+        # A single failing flush must not kill the loop: fan-out has to keep
+        # working for every client after a transient error.
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+
+        calls = {"n": 0}
+        real_flush = broker._flush
+
+        async def flaky_flush():
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("transient flush error")
+            await real_flush()
+
+        monkeypatch.setattr(broker, "_flush", flaky_flush)
+        broker._running = True
+        task = asyncio.create_task(broker._flush_loop())
+        try:
+            await asyncio.sleep(0.05)  # several 10ms intervals
+            assert not task.done()  # survived the first-iteration error
+            assert calls["n"] >= 2  # and kept flushing afterwards
+        finally:
+            broker._running = False
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def test_supervisor_restarts_crashed_loop_when_running(self, broker):
+        broker._running = True
+
+        async def crash():
+            raise RuntimeError("scaffolding boom")
+
+        dead = asyncio.create_task(crash(), name="heartbeat")
+        with contextlib.suppress(BaseException):
+            await dead
+        broker._tasks = [dead]
+
+        broker._supervise_loop(dead)  # simulate the done-callback firing
+
+        assert len(broker._tasks) == 1
+        replacement = broker._tasks[0]
+        assert replacement is not dead
+        assert not replacement.done()
+
+        broker._running = False
+        replacement.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await replacement
+
+    async def test_supervisor_does_not_restart_when_stopped(self, broker):
+        broker._running = False
+
+        async def crash():
+            raise RuntimeError("boom")
+
+        dead = asyncio.create_task(crash(), name="flush")
+        with contextlib.suppress(BaseException):
+            await dead
+        broker._tasks = [dead]
+
+        broker._supervise_loop(dead)
+
+        assert broker._tasks == [dead]  # no restart during shutdown
