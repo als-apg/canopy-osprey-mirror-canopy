@@ -9,20 +9,32 @@ from datetime import UTC, datetime
 
 from canopy.core.errors import BadRequest
 
+# Epoch-nanoseconds must fit a signed 64-bit range and be non-negative. Beyond
+# this, downstream datetime.fromtimestamp / int64 conversions raise OverflowError
+# / OSError and surface as 500s; reject at the boundary as a clean 400 instead.
+_MIN_NS = 0
+_MAX_NS = 9_223_372_036_854_775_807  # int64 max (~year 2262)
+
+
+def _bounded(ns: int, original: object) -> int:
+    if ns < _MIN_NS or ns > _MAX_NS:
+        raise BadRequest(f"Time out of range: {original!r}")
+    return ns
+
 
 def parse_time(value: str | int | None) -> int | None:
     """Parse an input value into UTC nanoseconds.
 
     `None` → `None` (caller decides default). Empty string → `None` likewise.
-    Raises `BadRequest` on malformed input.
+    Raises `BadRequest` on malformed or out-of-range input.
     """
     if value is None or value == "":
         return None
     if isinstance(value, int):
-        return value
+        return _bounded(value, value)
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        return _bounded(int(value), value)
+    except ValueError:
         pass
     s = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
@@ -31,8 +43,11 @@ def parse_time(value: str | int | None) -> int | None:
         raise BadRequest(f"Invalid time value: {value!r}") from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
-    secs = int(dt.timestamp())
-    return secs * 1_000_000_000 + dt.microsecond * 1000
+    try:
+        secs = int(dt.timestamp())
+    except (OverflowError, OSError) as exc:
+        raise BadRequest(f"Time out of range: {value!r}") from exc
+    return _bounded(secs * 1_000_000_000 + dt.microsecond * 1000, value)
 
 
 def now_ns() -> int:

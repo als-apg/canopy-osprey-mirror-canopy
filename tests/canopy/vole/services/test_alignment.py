@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from canopy.vole.errors import WindowTooLarge
 from canopy.contracts.sample import AlarmSeverity
 from canopy.vole.buffer.ring import StoredSample
 from canopy.vole.services.alignment_service import AlignmentService
@@ -41,7 +42,7 @@ class TestIndexModes:
         assert list(result.ts_ns) == expected
 
     def test_grid_without_dt_raises(self, svc):
-        with pytest.raises(ValueError, match="grid_dt_ns"):
+        with pytest.raises(WindowTooLarge, match="grid_dt_ns"):
             svc.align({"A": []}, 0, 1000, align="last", index="grid")
 
     def test_first_input_index(self, svc):

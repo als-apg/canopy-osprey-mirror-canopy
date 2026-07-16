@@ -6,7 +6,7 @@ expression as a scalar, and returns a ``ScalarResult``.
 
 from canopy.fox.ports import DataSource
 from canopy.fox.config import FoxConfig
-from canopy.fox.errors import FormulaInputMissing
+from canopy.fox.errors import FormulaTypeError, FormulaInputMissing
 from canopy.contracts.sample import AlarmSeverity
 from canopy.contracts.formula import FormulaSpec, ScalarResult
 from canopy.fox.services.parser import ParsedFormula
@@ -33,8 +33,17 @@ async def evaluate_scalar_formula(
             continue
         if isinstance(sample.value, float | int | bool | str):
             variables[f"__v{idx}"] = sample.value
+        elif sample.value is None:
+            variables[f"__v{idx}"] = 0.0
         else:
-            variables[f"__v{idx}"] = float(sample.value) if sample.value is not None else 0.0
+            # e.g. an array-valued PV bound to a scalar formula: float(list) would
+            # raise TypeError -> 500. Report it as a client type error instead.
+            try:
+                variables[f"__v{idx}"] = float(sample.value)
+            except (TypeError, ValueError) as exc:
+                raise FormulaTypeError(
+                    f"PV '{pv}' value is not usable in a scalar formula: {type(sample.value).__name__}"
+                ) from exc
         severities.append(sample.severity)
         inputs_used[pv] = sample.ts_ns
 

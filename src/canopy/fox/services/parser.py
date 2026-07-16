@@ -26,6 +26,13 @@ from canopy.fox.language.namespace import (
 _TOKEN_RE = re.compile(r"\{([^{}]+)\}")
 _NESTED_BRACE_RE = re.compile(r"\{[^}]*\{")
 
+# Reject constant exponents above this. numexpr folds a constant power like
+# ``10**10**10`` into a Python big-int before evaluating, which pins a CPU for
+# many seconds (and to_thread workers can't be cancelled). asteval guards its
+# own scalar path; this guards the numexpr array path. No real PV formula needs
+# a literal exponent this large.
+_MAX_CONST_EXPONENT = 1024
+
 _BOOL_REPLACEMENTS = [
     (re.compile(r"&&"), " and "),
     (re.compile(r"\|\|"), " or "),
@@ -95,14 +102,28 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         tree = ast.parse(placeholder_expr, mode="eval")
     except SyntaxError as exc:
         raise FormulaParseError(f"Syntax error in expression: {exc.msg}") from None
+    except (MemoryError, RecursionError):
+        # CPython's parser raises these (not SyntaxError) on pathologically deep
+        # nesting. Reachable only if max_expression_len is raised, but map it to
+        # a clean 4xx rather than a 500 regardless.
+        raise FormulaParseError("Expression is too complex to parse") from None
 
-    violations = check_ast_safety(tree)
-    if violations:
-        raise FormulaUnsafeError(f"Unsafe expression: {'; '.join(violations)}")
+    # The post-parse analysis recurses over the AST (notably _const_number,
+    # which walks left-recursive BinOp chains). An expression that parses within
+    # the length limit can still nest deeply enough to blow the Python stack here
+    # (e.g. ``{x}**(1+1+...+1)``), so the RecursionError guard has to cover this
+    # block too, not just ast.parse - otherwise it escapes as a 500.
+    try:
+        violations = check_ast_safety(tree)
+        if violations:
+            raise FormulaUnsafeError(f"Unsafe expression: {'; '.join(violations)}")
 
-    _check_function_calls(tree)
+        _check_function_calls(tree)
+        _check_exponents(tree)
 
-    is_numexpr = _check_numexpr_compatible(tree)
+        is_numexpr = _check_numexpr_compatible(tree)
+    except RecursionError:
+        raise FormulaParseError("Expression is too complex to parse") from None
 
     return ParsedFormula(
         expression=expression,
@@ -121,6 +142,49 @@ def _check_function_calls(tree: ast.AST) -> None:
                 raise FormulaUnsafeError("Complex function calls are not allowed")
             if func_name not in SAFE_FUNCS and func_name not in SAFE_CONSTANTS:
                 raise FormulaUnsafeError(f"Function '{func_name}' is not allowed")
+
+
+def _const_number(node: ast.AST) -> float | int | None:
+    """Best-effort static value of a small numeric constant expression, else None.
+
+    Deliberately bounded: it refuses to compute values from large operands so it
+    can't itself be turned into the big-int blowup it exists to detect. Anything
+    involving a variable (e.g. ``x``) or an operator it doesn't fold returns None.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, int | float) and not isinstance(node.value, bool):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        inner = _const_number(node.operand)
+        return None if inner is None else -inner
+    if isinstance(node, ast.BinOp):
+        left = _const_number(node.left)
+        right = _const_number(node.right)
+        if left is None or right is None:
+            return None
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            if abs(left) > 1e9 or abs(right) > 1e9:
+                return None
+            return left * right
+        if isinstance(node.op, ast.Pow):
+            # Only fold small powers; a large one is exactly what we reject, so
+            # don't compute it here.
+            if abs(right) > 64 or abs(left) > 1e9:
+                return None
+            return left**right
+    return None
+
+
+def _check_exponents(tree: ast.AST) -> None:
+    """Reject a power whose exponent is a constant above the safe bound."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            exponent = _const_number(node.right)
+            if exponent is not None and abs(exponent) > _MAX_CONST_EXPONENT:
+                raise FormulaUnsafeError(f"Constant exponent {exponent:g} exceeds the maximum of {_MAX_CONST_EXPONENT}")
 
 
 def _resolve_call_name(node: ast.Call) -> str | None:

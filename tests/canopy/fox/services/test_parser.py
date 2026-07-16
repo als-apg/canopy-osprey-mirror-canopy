@@ -113,6 +113,30 @@ class TestUnsafeExpressions:
             parser.parse("np.__class__({a})", {"a": "PV:A"})
 
 
+class TestExponentGuard:
+    @pytest.mark.parametrize("expr", ["{a}*0+10**10**10", "{a}*0+2**2**30", "{a}**2000", "{a}*0+2**(5*1000)"])
+    def test_large_constant_exponent_rejected(self, parser, expr):
+        # A big constant power makes numexpr fold a Python big-int and hang.
+        with pytest.raises(FormulaUnsafeError, match="exponent"):
+            parser.parse(expr, {"a": "PV:A"})
+
+    @pytest.mark.parametrize("expr", ["{a}**2", "{a}**{b}", "{a}*0+2**1000", "sqrt({a})**3"])
+    def test_normal_powers_allowed(self, parser, expr):
+        binds = {"a": "PV:A"}
+        if "{b}" in expr:
+            binds["b"] = "PV:B"
+        parser.parse(expr, binds)  # must not raise
+
+    def test_deeply_nested_exponent_maps_to_parse_error(self, parser):
+        # A left-recursive BinOp chain in the exponent parses within the length
+        # limit but recurses deeply in _const_number. That RecursionError must
+        # map to a clean FormulaParseError, not escape as a 500.
+        expr = "{a}**(" + "+".join(["1"] * 1000) + ")"
+        assert len(expr) <= 2048
+        with pytest.raises(FormulaParseError, match="too complex"):
+            parser.parse(expr, {"a": "PV:A"})
+
+
 class TestTernaryExpressions:
     def test_simple_ternary(self, parser):
         result = parser.parse("{a} if {b} > 0 else 0", {"a": "PV:A", "b": "PV:B"})
