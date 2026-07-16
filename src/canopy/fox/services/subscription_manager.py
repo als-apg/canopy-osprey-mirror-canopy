@@ -111,8 +111,16 @@ class SubscriptionManager:
         else:
             shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms)
             shared.listeners.append(listener)
+            # Register only after a successful start: if _start_shared_eval
+            # raises partway through, tear down what it set up and propagate,
+            # leaving no orphaned (task-less) SharedEval that later subscribers
+            # would silently attach to.
+            try:
+                await self._start_shared_eval(shared)
+            except Exception:
+                self._teardown_shared(shared)
+                raise
             self._shared_evals[key] = shared
-            await self._start_shared_eval(shared)
 
         self._client_subs[client_id][sub_id] = key
         logger.debug("Client %s subscribed %s → shared eval %s", client_id, sub_id, key[:8])
@@ -176,23 +184,36 @@ class SubscriptionManager:
         new_t0 = t0_ns if t0_ns is not None else shared.t0_ns
         new_interval = interval_ms if interval_ms is not None else shared.interval_ms
 
-        # Detach from old SharedEval
-        shared.listeners = [ls for ls in shared.listeners if not (ls.client_id == client_id and ls.sub_id == sub_id)]
-        if not shared.listeners:
-            self._teardown_shared(shared)
-            del self._shared_evals[key]
-
-        # Create or join new SharedEval
         new_key = _compute_key(new_spec, new_t0, new_interval)
-        listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
+        if new_key == key:
+            # Params resolved to the same eval (e.g. an update that changed
+            # nothing). Detaching-then-reattaching here would needlessly tear
+            # down and restart a live eval, so leave it as is.
+            return True
 
+        # Start (or join) the new SharedEval *before* touching the old one. If
+        # _start_shared_eval raises, the old eval and this listener's mapping
+        # are still intact, so the subscription keeps producing data instead of
+        # being orphaned on a deleted key.
+        listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
         if new_key in self._shared_evals:
             self._shared_evals[new_key].listeners.append(listener)
         else:
             new_shared = _SharedEval(key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval)
             new_shared.listeners.append(listener)
+            try:
+                await self._start_shared_eval(new_shared)
+            except Exception:
+                self._teardown_shared(new_shared)
+                raise
             self._shared_evals[new_key] = new_shared
-            await self._start_shared_eval(new_shared)
+
+        # New eval is live; now detach from the old one and tear it down if this
+        # was its last listener.
+        shared.listeners = [ls for ls in shared.listeners if not (ls.client_id == client_id and ls.sub_id == sub_id)]
+        if not shared.listeners:
+            self._teardown_shared(shared)
+            del self._shared_evals[key]
 
         subs[sub_id] = new_key
         return True

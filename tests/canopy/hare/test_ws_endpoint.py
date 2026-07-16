@@ -81,3 +81,50 @@ def test_ws_requires_auth():
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect("/hare/v1/ws/pvs") as ws:
                 ws.receive_json()
+
+
+def test_ws_non_object_message_errors_without_dropping():
+    # A JSON array/scalar used to raise AttributeError on message.get and drop
+    # the connection. Now it returns an error frame and stays open.
+    with TestClient(app) as client:
+        with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            ws.send_json([1, 2, 3])
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["code"] == "invalid_message"
+            # still alive
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+
+def test_ws_non_json_text_message_errors_without_dropping():
+    with TestClient(app) as client:
+        with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            ws.send_text("this is not json")
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+
+def test_ws_pvnames_as_string_is_rejected_not_exploded():
+    # "MYPV" must not become ['M','Y','P','V'] -> 4 bogus monitors.
+    with TestClient(app) as client:
+        with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "pvNames": "SIM:WS"})
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert err["code"] == "invalid_message"
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+
+def test_ws_unknown_type_errors_without_dropping():
+    with TestClient(app) as client:
+        with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            ws.send_json({"type": "frobnicate"})
+            err = ws.receive_json()
+            assert err["type"] == "error"
+            assert "frobnicate" in err["message"]
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"

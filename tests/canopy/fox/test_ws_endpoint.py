@@ -145,6 +145,38 @@ class TestFoxWebSocket:
             assert msg["type"] == "completed"
             assert msg["id"] == sub_id
 
+    def test_ws_non_object_message_errors_without_dropping(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json([1, 2, 3])
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert msg["code"] == "invalid_message"
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+    def test_ws_non_json_text_errors_without_dropping(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_text("not json")
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+    def test_ws_non_numeric_interval_is_rejected(self, ws_client):
+        # "fast" used to raise mid-setup and orphan a shared eval. Now it's a
+        # clean error and the connection survives.
+        client, _, _ = ws_client
+        with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": _SCALAR_SPEC, "intervalMs": "fast"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert msg["code"] == "invalid_message"
+            assert "intervalMs" in msg["message"]
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
     def test_ws_unsubscribe(self, ws_client):
         client, _, _ = ws_client
         with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
@@ -161,3 +193,28 @@ class TestFoxWebSocket:
             ws.send_json({"type": "ping"})
             msg = ws.receive_json()
             assert msg["type"] == "pong"
+
+    def test_ws_update_failure_errors_without_dropping(self, ws_client):
+        # A raising update_subscription must send an error frame and keep the
+        # socket open, not fall through to remove_client and drop the connection.
+        client, _, sub_manager = ws_client
+
+        async def boom(*_args, **_kwargs):
+            raise RuntimeError("update failed")
+
+        sub_manager.update_subscription = boom
+
+        with client.websocket_connect("/fox/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": _SCALAR_SPEC})
+            assert ws.receive_json()["type"] == "subscribed"
+            assert ws.receive_json()["type"] == "result"
+
+            ws.send_json({"type": "update", "id": "sub-1", "t0Ns": -5000})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert msg["code"] == "unhandled_exception"
+            assert msg["id"] == "sub-1"
+
+            # Socket survives: connection was not dropped.
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
