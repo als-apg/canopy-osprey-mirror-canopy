@@ -20,13 +20,18 @@
   "propSchema": {
     "$schema": "https://json-schema.org/draft-07/schema",
     "type": "object",
-    "required": ["pv"],
+    "required": [],
     "properties": {
       "pv": {
         "type": "string",
         "title": "PV Channel",
         "description": "EPICS PV name (supports ${MACRO} substitution)",
         "format": "pv-channel"
+      },
+      "text": {
+        "type": "string",
+        "title": "Static Text",
+        "description": "Static fallback text shown when no PV is bound (channel-less PyDMLabel)."
       },
       "precision": {
         "oneOf": [
@@ -50,6 +55,7 @@
 
   "qtPropMap": {
     "channel": { "to": "pv", "transform": "stripProtocol" },
+    "text": { "to": "text" },
     "precisionFromPV": { "to": "precision", "transform": "boolToFromPV" },
     "precision": { "to": "precision" },
     "showUnits": { "to": "showUnits" },
