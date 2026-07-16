@@ -13,6 +13,7 @@ import logging
 from dataclasses import field, dataclass
 from collections.abc import Callable, Awaitable
 
+from canopy.fox.errors import SubscriptionLimitExceeded
 from canopy.core.errors import ErrorCode, CanopyError
 from canopy.contracts.formula import FormulaSpec
 from canopy.epics.pv_protocol import strip_protocol_prefix
@@ -64,11 +65,16 @@ class SubscriptionManager:
         on_change_fn: OnChangeFn,
         subscribe_live_fn: SubscribeFn,
         subscribe_latest_fn: SubscribeFn | None = None,
+        *,
+        min_interval_ms: int = 50,
+        max_subscriptions_per_client: int = 1_000,
     ) -> None:
         self._formula_service = formula_service
         self._on_change = on_change_fn
         self._subscribe_live = subscribe_live_fn
         self._subscribe_latest = subscribe_latest_fn or subscribe_live_fn
+        self._min_interval_ms = min_interval_ms
+        self._max_subscriptions_per_client = max_subscriptions_per_client
         self._shared_evals: dict[str, _SharedEval] = {}
         self._client_subs: dict[str, dict[str, str]] = {}
 
@@ -95,6 +101,18 @@ class SubscriptionManager:
         if t1_ns != 0:
             await self._one_shot(sub_id, spec, t0_ns, t1_ns, send_fn)
             return
+
+        # Floor the poll interval so a client can't request a CPU-pinning loop.
+        if 0 < interval_ms < self._min_interval_ms:
+            interval_ms = self._min_interval_ms
+
+        # Cap live subscriptions per client (a re-subscribe of an existing id
+        # replaces, so it doesn't count against the cap).
+        existing = self._client_subs.get(client_id, {})
+        if sub_id not in existing and len(existing) >= self._max_subscriptions_per_client:
+            raise SubscriptionLimitExceeded(
+                f"client has reached the maximum of {self._max_subscriptions_per_client} live subscriptions"
+            )
 
         if client_id not in self._client_subs:
             self._client_subs[client_id] = {}
@@ -183,6 +201,12 @@ class SubscriptionManager:
         new_spec = spec if spec is not None else shared.spec
         new_t0 = t0_ns if t0_ns is not None else shared.t0_ns
         new_interval = interval_ms if interval_ms is not None else shared.interval_ms
+
+        # Floor the poll interval, same as add_subscription: without this a client
+        # could subscribe legitimately then update to interval_ms=1 and spin up a
+        # ~1000 eval/sec poll loop that pins a CPU core.
+        if 0 < new_interval < self._min_interval_ms:
+            new_interval = self._min_interval_ms
 
         new_key = _compute_key(new_spec, new_t0, new_interval)
         if new_key == key:

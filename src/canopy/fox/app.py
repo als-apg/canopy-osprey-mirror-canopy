@@ -43,6 +43,8 @@ async def fox_lifespan():
         on_change_fn=vole_gateway.on_change,
         subscribe_live_fn=vole_gateway.subscribe_live,
         subscribe_latest_fn=vole_gateway.subscribe_latest,
+        min_interval_ms=config.min_interval_ms,
+        max_subscriptions_per_client=config.max_subscriptions_per_client,
     )
     gateway.bind_subscription_manager(sub_manager)
 

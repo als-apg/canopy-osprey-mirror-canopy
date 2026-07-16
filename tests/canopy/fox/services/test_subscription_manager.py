@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from canopy.fox.config import FoxConfig
+from canopy.fox.errors import SubscriptionLimitExceeded
 from canopy.contracts.formula import FormulaSpec
 from tests.canopy.fox.conftest import FakeDataSource
 from canopy.fox.services.parser import Parser
@@ -126,6 +127,78 @@ def _timeseries_spec() -> FormulaSpec:
         expression="{a} + {b}",
         bindings={"a": "PV:A", "b": "PV:B"},
     )
+
+
+class TestResourceCaps:
+    async def test_interval_is_floored_to_min(self, formula_service, notifier):
+        async def sub_live(pvs: list[str]) -> None:
+            pass
+
+        mgr = SubscriptionManager(
+            formula_service=formula_service,
+            on_change_fn=notifier.subscribe,
+            subscribe_live_fn=sub_live,
+            min_interval_ms=50,
+        )
+        _messages, send_fn = _make_collector()
+        await mgr.add_subscription("c1", "s1", _scalar_spec(), 0, 0, send_fn, interval_ms=1)
+        key = mgr._client_subs["c1"]["s1"]
+        assert mgr._shared_evals[key].interval_ms == 50
+        await mgr.shutdown()
+
+    async def test_update_interval_is_floored_to_min(self, formula_service, notifier):
+        # A client can't dodge the floor by subscribing legitimately and then
+        # updating to a CPU-pinning interval.
+        async def sub_live(pvs: list[str]) -> None:
+            pass
+
+        mgr = SubscriptionManager(
+            formula_service=formula_service,
+            on_change_fn=notifier.subscribe,
+            subscribe_live_fn=sub_live,
+            min_interval_ms=50,
+        )
+        _messages, send_fn = _make_collector()
+        await mgr.add_subscription("c1", "s1", _scalar_spec(), 0, 0, send_fn, interval_ms=100)
+        ok = await mgr.update_subscription("c1", "s1", send_fn, interval_ms=1)
+        assert ok is True
+        key = mgr._client_subs["c1"]["s1"]
+        assert mgr._shared_evals[key].interval_ms == 50
+        await mgr.shutdown()
+
+    async def test_per_client_subscription_cap(self, formula_service, notifier):
+        async def sub_live(pvs: list[str]) -> None:
+            pass
+
+        mgr = SubscriptionManager(
+            formula_service=formula_service,
+            on_change_fn=notifier.subscribe,
+            subscribe_live_fn=sub_live,
+            max_subscriptions_per_client=2,
+        )
+        _messages, send_fn = _make_collector()
+        await mgr.add_subscription("c1", "s1", _scalar_spec(), 0, 0, send_fn)
+        await mgr.add_subscription("c1", "s2", _timeseries_spec(), 1000, 0, send_fn)
+        with pytest.raises(SubscriptionLimitExceeded):
+            await mgr.add_subscription("c1", "s3", _scalar_spec(), 0, 0, send_fn, interval_ms=100)
+        await mgr.shutdown()
+
+    async def test_resubscribe_same_id_not_blocked_by_cap(self, formula_service, notifier):
+        async def sub_live(pvs: list[str]) -> None:
+            pass
+
+        mgr = SubscriptionManager(
+            formula_service=formula_service,
+            on_change_fn=notifier.subscribe,
+            subscribe_live_fn=sub_live,
+            max_subscriptions_per_client=1,
+        )
+        _messages, send_fn = _make_collector()
+        await mgr.add_subscription("c1", "s1", _scalar_spec(), 0, 0, send_fn)
+        # Replacing the same sub_id must not trip the cap.
+        await mgr.add_subscription("c1", "s1", _timeseries_spec(), 1000, 0, send_fn)
+        assert list(mgr._client_subs["c1"].keys()) == ["s1"]
+        await mgr.shutdown()
 
 
 class TestSubscriptionManager:

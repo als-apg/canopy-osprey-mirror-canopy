@@ -57,6 +57,7 @@ class ErrorCode(StrEnum):
     FORMULA_CIRCULAR_REFERENCE = auto()
     INVALID_MESSAGE = auto()
     INVALID_SPEC = auto()
+    SUBSCRIPTION_LIMIT_EXCEEDED = auto()
 
     # Vole
     PV_NOT_BUFFERED = auto()

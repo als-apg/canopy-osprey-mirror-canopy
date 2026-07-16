@@ -10,9 +10,39 @@ import contextlib
 import pytest
 
 from canopy.epics.base import PVWriteFailed
+from canopy.hare.config import HareConfig
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import InvalidPVName
 from tests.canopy.hare.conftest import FakeWebSocket
+from canopy.hare.services.broker import PVBroker
+
+
+class TestResourceCaps:
+    def test_event_queue_is_bounded(self, fake_connector):
+        broker = PVBroker(fake_connector, HareConfig(event_queue_maxsize=7))
+        assert broker._queue.maxsize == 7
+
+    async def test_subscribe_caps_pvs_per_message(self, fake_connector):
+        broker = PVBroker(fake_connector, HareConfig(max_pvs_per_message=3))
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", [f"PV:{i}" for i in range(10)])
+        # Only the first 3 reach the connector as monitors.
+        assert len(fake_connector.callbacks) == 3
+
+    async def test_subscribe_caps_total_per_client(self, fake_connector):
+        broker = PVBroker(fake_connector, HareConfig(max_subscriptions_per_client=4))
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:0", "PV:1", "PV:2"])
+        await broker.subscribe("c1", ["PV:3", "PV:4", "PV:5"])  # only PV:3 fits
+        assert len(broker.registry.client_pvs("c1")) == 4
+
+    async def test_resubscribe_is_idempotent_under_cap(self, fake_connector):
+        broker = PVBroker(fake_connector, HareConfig(max_subscriptions_per_client=2))
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A", "PV:B"])
+        # Re-subscribing existing PVs must not be rejected by the cap.
+        await broker.subscribe("c1", ["PV:A", "PV:B"])
+        assert broker.registry.client_pvs("c1") == {"PV:A", "PV:B"}
 
 
 async def test_subscribe_starts_monitor_and_sends_initial(broker, fake_connector):

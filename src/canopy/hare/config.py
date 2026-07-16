@@ -24,6 +24,17 @@ class HareConfig(BaseSettings):
     # Heartbeat frames keep clients aware the broker is alive.
     heartbeat_interval_s: float = 5.0
 
+    # --- resource caps (protect the shared broker from one abusive client) --- #
+    # Max PV names accepted in a single subscribe frame (excess is dropped).
+    max_pvs_per_message: int = 5_000
+    # Max distinct PVs a single client may be subscribed to at once.
+    max_subscriptions_per_client: int = 20_000
+    # Bound on the internal event queue so a fast producer can't grow it without
+    # limit (OOM). At capacity the oldest-losing policy is "drop newest + warn".
+    event_queue_maxsize: int = 100_000
+    # Max concurrent seed (get+describe) calls when activating a subscribe batch.
+    seed_concurrency: int = 32
+
 
 def get_hare_config() -> HareConfig:
     return HareConfig()

@@ -43,7 +43,9 @@ class PVBroker:
         self._meta: dict[str, PVMeta] = {}
         self._buffer: dict[str, PVValue] = {}
         self._buffer_lock = asyncio.Lock()
-        self._queue: asyncio.Queue[PVValue] = asyncio.Queue()
+        # Bounded so a fast producer can't grow the queue without limit; the
+        # QueueFull path in _on_event then applies backpressure by dropping.
+        self._queue: asyncio.Queue[PVValue] = asyncio.Queue(maxsize=config.event_queue_maxsize)
         self._running = False
         self._tasks: list[asyncio.Task] = []
 
@@ -154,6 +156,48 @@ class PVBroker:
                 rejected.append(pv)
         return accepted, rejected
 
+    def _apply_caps(self, client_id: str, pvs: list[str]) -> list[str]:
+        """Enforce the per-message and per-client subscription caps.
+
+        Returns the accepted names: already-subscribed PVs pass through
+        (idempotent, no budget cost), new PVs are admitted up to the client's
+        remaining budget. Excess is dropped with a warning so one client can't
+        exhaust the shared broker's memory / EPICS connections.
+        """
+        if len(pvs) > self._config.max_pvs_per_message:
+            logger.warning(
+                "subscribe batch of %d exceeds per-message cap %d; truncating",
+                len(pvs),
+                self._config.max_pvs_per_message,
+            )
+            pvs = pvs[: self._config.max_pvs_per_message]
+
+        existing = self._registry.client_pvs(client_id)
+        budget = max(0, self._config.max_subscriptions_per_client - len(existing))
+        accepted: list[str] = []
+        seen: set[str] = set()
+        new_admitted = 0
+        dropped = 0
+        for pv in pvs:
+            if pv in seen:
+                continue
+            seen.add(pv)
+            if pv in existing:
+                accepted.append(pv)
+            elif new_admitted < budget:
+                accepted.append(pv)
+                new_admitted += 1
+            else:
+                dropped += 1
+        if dropped:
+            logger.warning(
+                "client %s hit subscription cap %d; dropped %d PV(s)",
+                client_id,
+                self._config.max_subscriptions_per_client,
+                dropped,
+            )
+        return accepted
+
     async def subscribe(self, client_id: str, pvs: list[str]) -> None:
         pvs, rejected = self._accept_names(pvs)
         if rejected:
@@ -168,13 +212,23 @@ class PVBroker:
             )
         if not pvs:
             return
+        pvs = self._apply_caps(client_id, pvs)
+        if not pvs:
+            return
         newly = self._registry.subscribe(client_id, pvs)
         await self._start_monitors(newly)
         # Seed latest value + static metadata for newly-activated PVs so the
         # subscriber gets an immediate value (and describe info) rather than
-        # waiting for the first monitor tick. Seed concurrently so one slow or
-        # unreachable PV can't stall the initial frame for the rest of the batch.
-        await asyncio.gather(*(self._seed_pv(pv) for pv in newly))
+        # waiting for the first monitor tick. Seed concurrently -- but bounded by
+        # a semaphore so a huge batch can't open thousands of connections at once
+        # -- so one slow or unreachable PV can't stall the rest of the batch.
+        sem = asyncio.Semaphore(self._config.seed_concurrency)
+
+        async def _seed(pv: str) -> None:
+            async with sem:
+                await self._seed_pv(pv)
+
+        await asyncio.gather(*(_seed(pv) for pv in newly))
         initial = {pv: self._latest[pv] for pv in pvs if pv in self._latest}
         meta = {pv: self._meta[pv] for pv in pvs if pv in self._meta}
         if initial or meta:
