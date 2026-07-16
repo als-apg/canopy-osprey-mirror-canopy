@@ -21,10 +21,10 @@ from canopy.converter.services.conversion_service import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
-EDL = (FIXTURES / "p0_min.edl").read_bytes()
+EDL = (FIXTURES / "min.edl").read_bytes()
 
 
-def _post(client, *, headers=READ_HEADERS, filename="p0_min.edl", content=EDL, data=None):
+def _post(client, *, headers=READ_HEADERS, filename="min.edl", content=EDL, data=None):
     return client.post(
         "/converter/v1/conversions",
         headers=headers,
@@ -100,7 +100,7 @@ def test_validate_returns_diagnostics_only():
         resp = client.post(
             "/converter/v1/conversions/validate",
             headers=READ_HEADERS,
-            files={"file": ("p0_min.edl", EDL, "application/octet-stream")},
+            files={"file": ("min.edl", EDL, "application/octet-stream")},
         )
     assert resp.status_code == 200
     body = resp.json()
@@ -140,18 +140,18 @@ def test_validate_requires_api_key():
     with TestClient(app) as client:
         resp = client.post(
             "/converter/v1/conversions/validate",
-            files={"file": ("p0_min.edl", EDL, "application/octet-stream")},
+            files={"file": ("min.edl", EDL, "application/octet-stream")},
         )
     assert resp.status_code == 401
 
 
 def test_convert_ui_input_returns_screen_ir():
-    ui = (FIXTURES / "p1_widgets.ui").read_bytes()
+    ui = (FIXTURES / "widgets.ui").read_bytes()
     with TestClient(app) as client:
         resp = client.post(
             "/converter/v1/conversions",
             headers=READ_HEADERS,
-            files={"file": ("p1_widgets.ui", ui, "application/octet-stream")},
+            files={"file": ("widgets.ui", ui, "application/octet-stream")},
         )
     assert resp.status_code == 200
     body = resp.json()

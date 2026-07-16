@@ -13,7 +13,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _edl_bytes() -> bytes:
-    return (FIXTURES / "p0_min.edl").read_bytes()
+    return (FIXTURES / "min.edl").read_bytes()
 
 
 def _edl_unknown_bytes() -> bytes:
@@ -28,7 +28,7 @@ def test_convert_edl_bytes_produces_validated_ir():
 
 
 def test_edl_classes_are_fully_supported():
-    """Every class in p0_min maps to a registry widget: no unknowns, no placeholders."""
+    """Every class in min.edl maps to a registry widget: no unknowns, no placeholders."""
     result = ConversionService().convert(_edl_bytes(), kind="edl")
     types = {c["type"] for c in result.screen["root"]["children"]}
     assert types == {"text-label", "pv-text-input", "pv-button", "rectangle"}
