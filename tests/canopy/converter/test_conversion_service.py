@@ -17,7 +17,7 @@ def _edl_bytes() -> bytes:
 
 
 def _edl_unknown_bytes() -> bytes:
-    return (FIXTURES / "p0_unknown.edl").read_bytes()
+    return (FIXTURES / "unknown_class.edl").read_bytes()
 
 
 def test_convert_edl_bytes_produces_validated_ir():
