@@ -89,6 +89,37 @@ async def test_add_subscription_leaves_no_orphan_on_start_failure(formula_servic
     assert mgr._client_subs.get("c1", {}) == {}  # sub not registered
 
 
+async def test_update_subscription_preserves_old_eval_on_start_failure(formula_service, notifier):
+    # If starting the new eval fails, update_subscription must leave the old eval
+    # and the sub->key mapping intact rather than orphaning the subscription on a
+    # torn-down key. subscribe_live only fails on the *second* call (the update).
+    calls = {"n": 0}
+
+    async def subscribe_live(pvs: list[str]) -> None:
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("subscribe failed")
+
+    mgr = SubscriptionManager(
+        formula_service=formula_service,
+        on_change_fn=notifier.subscribe,
+        subscribe_live_fn=subscribe_live,
+        subscribe_latest_fn=subscribe_live,
+    )
+    _messages, send_fn = _make_collector()
+
+    await mgr.add_subscription("c1", "s1", _scalar_spec(), t0_ns=1000, t1_ns=0, send_fn=send_fn)
+    old_key = mgr._client_subs["c1"]["s1"]
+
+    with pytest.raises(RuntimeError):
+        await mgr.update_subscription("c1", "s1", send_fn, t0_ns=-5000)
+
+    # Old eval survives; the mapping still points at it (not orphaned).
+    assert mgr._client_subs["c1"]["s1"] == old_key
+    assert old_key in mgr._shared_evals
+    await mgr.shutdown()
+
+
 def _timeseries_spec() -> FormulaSpec:
     return FormulaSpec(
         kind="timeseries",

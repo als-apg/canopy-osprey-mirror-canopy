@@ -184,16 +184,18 @@ class SubscriptionManager:
         new_t0 = t0_ns if t0_ns is not None else shared.t0_ns
         new_interval = interval_ms if interval_ms is not None else shared.interval_ms
 
-        # Detach from old SharedEval
-        shared.listeners = [ls for ls in shared.listeners if not (ls.client_id == client_id and ls.sub_id == sub_id)]
-        if not shared.listeners:
-            self._teardown_shared(shared)
-            del self._shared_evals[key]
-
-        # Create or join new SharedEval
         new_key = _compute_key(new_spec, new_t0, new_interval)
-        listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
+        if new_key == key:
+            # Params resolved to the same eval (e.g. an update that changed
+            # nothing). Detaching-then-reattaching here would needlessly tear
+            # down and restart a live eval, so leave it as is.
+            return True
 
+        # Start (or join) the new SharedEval *before* touching the old one. If
+        # _start_shared_eval raises, the old eval and this listener's mapping
+        # are still intact, so the subscription keeps producing data instead of
+        # being orphaned on a deleted key.
+        listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
         if new_key in self._shared_evals:
             self._shared_evals[new_key].listeners.append(listener)
         else:
@@ -205,6 +207,13 @@ class SubscriptionManager:
                 self._teardown_shared(new_shared)
                 raise
             self._shared_evals[new_key] = new_shared
+
+        # New eval is live; now detach from the old one and tear it down if this
+        # was its last listener.
+        shared.listeners = [ls for ls in shared.listeners if not (ls.client_id == client_id and ls.sub_id == sub_id)]
+        if not shared.listeners:
+            self._teardown_shared(shared)
+            del self._shared_evals[key]
 
         subs[sub_id] = new_key
         return True

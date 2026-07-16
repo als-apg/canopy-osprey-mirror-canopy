@@ -145,9 +145,21 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                         await _send_error(send_fn, ErrorCode.INVALID_SPEC.value, f"invalid spec: {exc}", sub_id=sub_id)
                         continue
 
-                ok = await manager.update_subscription(
-                    client_id, sub_id, send_fn, spec=parsed_spec, t0_ns=t0_update, interval_ms=interval_update
-                )
+                # Guard like the subscribe handler: a failure while starting the
+                # new eval must send an error frame, not fall through to the outer
+                # handler and drop the whole connection (and all its subscriptions).
+                try:
+                    ok = await manager.update_subscription(
+                        client_id, sub_id, send_fn, spec=parsed_spec, t0_ns=t0_update, interval_ms=interval_update
+                    )
+                except CanopyError as exc:
+                    await _send_error(send_fn, exc.error_code.value, exc.detail, sub_id=sub_id)
+                    continue
+                except Exception as exc:
+                    logger.warning("Fox update failed for %s: %s", sub_id, exc)
+                    await _send_error(send_fn, ErrorCode.UNHANDLED_EXCEPTION.value, str(exc), sub_id=sub_id)
+                    continue
+
                 if ok:
                     await send_fn({"type": "updated", "id": sub_id})
                 else:
