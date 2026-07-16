@@ -26,6 +26,7 @@ _CATEGORY_LABELS = {
     "containers": "Containers",
     "plots": "Plots & Charts",
     "decorations": "Decorations",
+    "drawing": "Drawing",
     "legacy": "Legacy",
 }
 

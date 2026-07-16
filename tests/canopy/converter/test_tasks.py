@@ -11,7 +11,7 @@ import fakeredis.aioredis
 from canopy.converter.tasks import input_key, convert_batch
 
 FIXTURES = Path(__file__).parent / "fixtures"
-GOOD_EDL = (FIXTURES / "p0_min.edl").read_bytes()
+GOOD_EDL = (FIXTURES / "min.edl").read_bytes()
 
 
 def _zip(entries: dict[str, bytes]) -> bytes:

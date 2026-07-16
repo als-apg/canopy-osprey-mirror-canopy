@@ -21,10 +21,10 @@ from canopy.converter.services.conversion_service import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
-EDL = (FIXTURES / "p0_min.edl").read_bytes()
+EDL = (FIXTURES / "min.edl").read_bytes()
 
 
-def _post(client, *, headers=READ_HEADERS, filename="p0_min.edl", content=EDL, data=None):
+def _post(client, *, headers=READ_HEADERS, filename="min.edl", content=EDL, data=None):
     return client.post(
         "/converter/v1/conversions",
         headers=headers,
@@ -41,7 +41,7 @@ def test_convert_edl_returns_screen_ir():
     assert set(body) >= {"screen", "warnings", "unknownWidgets", "formulas", "stats"}
     assert body["screen"]["schemaVersion"] == "1.0"
     assert body["stats"]["widgetCount"] >= 1
-    assert body["unknownWidgets"][0]["originalClass"] == "activeRectangleClass"
+    assert body["unknownWidgets"] == []
 
 
 def test_kind_can_be_given_explicitly_without_suffix():
@@ -100,14 +100,14 @@ def test_validate_returns_diagnostics_only():
         resp = client.post(
             "/converter/v1/conversions/validate",
             headers=READ_HEADERS,
-            files={"file": ("p0_min.edl", EDL, "application/octet-stream")},
+            files={"file": ("min.edl", EDL, "application/octet-stream")},
         )
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
     assert "screen" not in body  # the IR is discarded on a dry run
-    assert body["unknownWidgets"][0]["originalClass"] == "activeRectangleClass"
-    assert any("placeholder" in w for w in body["warnings"])
+    assert body["unknownWidgets"] == []
+    assert not any("placeholder" in w for w in body["warnings"])
 
 
 def test_validate_unsupported_input_returns_ok_false():
@@ -140,18 +140,18 @@ def test_validate_requires_api_key():
     with TestClient(app) as client:
         resp = client.post(
             "/converter/v1/conversions/validate",
-            files={"file": ("p0_min.edl", EDL, "application/octet-stream")},
+            files={"file": ("min.edl", EDL, "application/octet-stream")},
         )
     assert resp.status_code == 401
 
 
 def test_convert_ui_input_returns_screen_ir():
-    ui = (FIXTURES / "p1_widgets.ui").read_bytes()
+    ui = (FIXTURES / "widgets.ui").read_bytes()
     with TestClient(app) as client:
         resp = client.post(
             "/converter/v1/conversions",
             headers=READ_HEADERS,
-            files={"file": ("p1_widgets.ui", ui, "application/octet-stream")},
+            files={"file": ("widgets.ui", ui, "application/octet-stream")},
         )
     assert resp.status_code == 200
     body = resp.json()

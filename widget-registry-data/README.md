@@ -22,14 +22,14 @@ Required top-level fields (camelCase on the wire; Pydantic accepts either form o
 | `version` | semver string | Bump on incompatible `propSchema` changes. |
 | `displayName` | string | Shown in the SB palette. |
 | `description` | string | Tooltip in SB. |
-| `category` | enum | One of `indicators`, `controls`, `containers`, `plots`, `decorations`, `legacy`. |
+| `category` | enum | One of `indicators`, `controls`, `containers`, `plots`, `decorations`, `drawing`, `legacy`. |
 | `paletteIcon` | filename | Must exist under `icons/`. |
 | `reactComponent` | `{name, module}` | Drives the TSX-emitter imports. |
 | `propSchema` | JSON Schema (draft-07) | Validates a widget instance's `props` block. |
 | `inspectorSchema` | `{groups: [{name, fields}]}` | Field grouping in the SB Property Inspector. |
 | `supportsPv` | boolean | Widget binds to a PV. |
 | `supportsRules` | boolean | Wren rules can target this widget. |
-| `supportsChildren` | boolean | True for containers (`group-box`, `tabs`, `frame`, `scroll-area`, `absolute-canvas`). |
+| `supportsChildren` | boolean | True for containers (`group-box`, `tabs`, `frame`, `scroll-area`, `absolute-canvas`, `group`). |
 
 Optional:
 
@@ -49,7 +49,7 @@ Optional:
 ## qtMapping decisions
 
 - For widgets that have both a PyDM-prefixed and a vanilla Qt class (e.g. `PyDMLabel` / `QLabel`, `PyDMPushButton` / `QPushButton`), register the **PyDM class** on the PV-bound widget and the **vanilla class** on the non-PV widget. They do not collide and the converter dispatches correctly: `pv-label` ← `PyDMLabel`, `text-label` ← `QLabel`.
-- For widgets with no clean Qt source (e.g. `pv-radio-group` — clusters of `QRadioButton` need group-detection the converter does not do), omit `qtMapping` entirely. The converter falls through to the `unknown-widget` placeholder for those screens.
+- `pv-radio-group` maps from `PyDMEnumButton`, the PyDM widget that already groups its enum options into one component. Loose clusters of vanilla `QRadioButton`s are a different case: the converter does not do the group-detection needed to recognize them as a single logical widget, so for widgets with no clean single-class Qt source, omit `qtMapping` entirely and let the converter fall through to the `unknown-widget` placeholder for those screens.
 
 ## Prop transform names
 
@@ -65,6 +65,7 @@ The `qtPropMap.<prop>.transform` field names a function in the converter's trans
 | `qtFrameShadow` | Qt frame shadow enum → `"plain"` / `"raised"` / `"sunken"`. |
 | `qtScrollPolicy` | Qt scrollbar policy enum → `"auto"` / `"always-on"` / `"always-off"`. |
 | `firstOf` | Take the first item from a list (e.g., `filenames` → `file`). |
+| `edmLineStyle` | EDM line-style int/enum → `solid` / `dashed` / `dotted`. |
 
 Adding a new transform name requires a corresponding implementation in the converter package — coordinate via the converter / TSX home issue (#18).
 

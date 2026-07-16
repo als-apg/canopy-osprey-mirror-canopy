@@ -6,6 +6,12 @@ point ``EDMCOLORFILE`` at the module's bundled (or config-overridden) file at
 startup so conversions are deterministic and independent of the host's EDM
 install. A missing file degrades gracefully (the parser returns empty colour
 data), so this only improves fidelity — it never blocks conversion.
+
+TODO(pydm-converter-tool#150): the converter grows an explicit
+``color_list_path=`` keyword on ``convert_bytes``/``convert_to_ir``. After that
+PR merges and the pinned ``pydmconverter`` is bumped past it, pass
+``config.colors_list_path`` at the call site (ConversionService) and retire
+this env-var indirection.
 """
 
 from __future__ import annotations

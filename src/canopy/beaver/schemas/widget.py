@@ -18,6 +18,7 @@ WidgetCategory = Literal[
     "containers",
     "plots",
     "decorations",
+    "drawing",
     "legacy",
 ]
 

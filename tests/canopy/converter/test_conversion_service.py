@@ -13,7 +13,11 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _edl_bytes() -> bytes:
-    return (FIXTURES / "p0_min.edl").read_bytes()
+    return (FIXTURES / "min.edl").read_bytes()
+
+
+def _edl_unknown_bytes() -> bytes:
+    return (FIXTURES / "unknown_class.edl").read_bytes()
 
 
 def test_convert_edl_bytes_produces_validated_ir():
@@ -21,14 +25,29 @@ def test_convert_edl_bytes_produces_validated_ir():
     assert result.screen["schemaVersion"] == "1.0"
     assert result.screen["id"]
     assert result.stats.widget_count >= 1
-    # p0_min carries an unmapped activeRectangleClass -> placeholder + warning (D11).
-    assert any("placeholder" in w for w in result.warnings)
 
 
-def test_unknown_widgets_are_grouped_by_original_class():
+def test_edl_classes_are_fully_supported():
+    """Every class in min.edl maps to a registry widget: no unknowns, no placeholders."""
     result = ConversionService().convert(_edl_bytes(), kind="edl")
-    classes = {u.original_class for u in result.unknown_widgets}
-    assert "activeRectangleClass" in classes
+    types = {c["type"] for c in result.screen["root"]["children"]}
+    assert types == {"text-label", "pv-text-input", "pv-button", "rectangle"}
+    assert result.unknown_widgets == []
+    assert not any("placeholder" in w for w in result.warnings)
+
+
+def test_unknown_edl_class_is_grouped_by_original_class():
+    """An unsupported EDM class is detected, rendered as a placeholder, and grouped.
+
+    Keeps positive coverage on the unknown-widget branch of _summarize: every other
+    test asserts unknown_widgets == [], so without this a regression that stopped
+    detecting unknowns (or stopped grouping them) would pass unnoticed.
+    """
+    result = ConversionService().convert(_edl_unknown_bytes(), kind="edl")
+    types = {c["type"] for c in result.screen["root"]["children"]}
+    assert "unknown-widget" in types
+    assert [(u.original_class, u.count) for u in result.unknown_widgets] == [("activeFooBarClass", 1)]
+    assert any("placeholder" in w for w in result.warnings)
 
 
 def test_bad_kind_raises_unsupported_input():

@@ -13,7 +13,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 async def test_convert_screen_returns_validated_screen_dict():
     gateway.bind(ConversionService())
     try:
-        screen = await gateway.convert_screen((FIXTURES / "p1_widgets.edl").read_bytes(), kind="edl")
+        screen = await gateway.convert_screen((FIXTURES / "widgets.edl").read_bytes(), kind="edl")
     finally:
         gateway.bind(None)
     assert screen["schemaVersion"] == "1.0"
