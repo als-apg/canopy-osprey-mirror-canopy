@@ -108,14 +108,22 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         # a clean 4xx rather than a 500 regardless.
         raise FormulaParseError("Expression is too complex to parse") from None
 
-    violations = check_ast_safety(tree)
-    if violations:
-        raise FormulaUnsafeError(f"Unsafe expression: {'; '.join(violations)}")
+    # The post-parse analysis recurses over the AST (notably _const_number,
+    # which walks left-recursive BinOp chains). An expression that parses within
+    # the length limit can still nest deeply enough to blow the Python stack here
+    # (e.g. ``{x}**(1+1+...+1)``), so the RecursionError guard has to cover this
+    # block too, not just ast.parse - otherwise it escapes as a 500.
+    try:
+        violations = check_ast_safety(tree)
+        if violations:
+            raise FormulaUnsafeError(f"Unsafe expression: {'; '.join(violations)}")
 
-    _check_function_calls(tree)
-    _check_exponents(tree)
+        _check_function_calls(tree)
+        _check_exponents(tree)
 
-    is_numexpr = _check_numexpr_compatible(tree)
+        is_numexpr = _check_numexpr_compatible(tree)
+    except RecursionError:
+        raise FormulaParseError("Expression is too complex to parse") from None
 
     return ParsedFormula(
         expression=expression,

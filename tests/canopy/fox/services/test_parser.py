@@ -127,6 +127,15 @@ class TestExponentGuard:
             binds["b"] = "PV:B"
         parser.parse(expr, binds)  # must not raise
 
+    def test_deeply_nested_exponent_maps_to_parse_error(self, parser):
+        # A left-recursive BinOp chain in the exponent parses within the length
+        # limit but recurses deeply in _const_number. That RecursionError must
+        # map to a clean FormulaParseError, not escape as a 500.
+        expr = "{a}**(" + "+".join(["1"] * 1000) + ")"
+        assert len(expr) <= 2048
+        with pytest.raises(FormulaParseError, match="too complex"):
+            parser.parse(expr, {"a": "PV:A"})
+
 
 class TestTernaryExpressions:
     def test_simple_ternary(self, parser):
