@@ -1,0 +1,43 @@
+4 0 0
+beginScreenProperties
+major 4
+minor 0
+release 0
+x 0
+y 0
+w 400
+h 300
+font "helvetica-medium-r-12.0"
+ctlFont "helvetica-medium-r-12.0"
+btnFont "helvetica-medium-r-12.0"
+endScreenProperties
+
+
+# (Static Text)
+object activeXTextClass
+beginObjectProperties
+major 4
+minor 1
+release 1
+x 10
+y 20
+w 120
+h 18
+font "helvetica-medium-r-12.0"
+fgColor rgb 0 0 0
+value {
+  "Label $(PREFIX)"
+}
+endObjectProperties
+
+# (Fabricated unsupported class - must land in unknown_widgets)
+object activeFooBarClass
+beginObjectProperties
+major 4
+minor 0
+release 0
+x 200
+y 20
+w 100
+h 50
+endObjectProperties

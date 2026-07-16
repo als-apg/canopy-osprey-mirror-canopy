@@ -23,10 +23,15 @@ def _seed_config() -> BeaverConfig:
     )
 
 
+# Hardcoded so an accidental add/deletion of a seed widget def fails here rather
+# than passing tautologically against the same directory the loader reads. Bump
+# this when the seed widget set changes.
+_EXPECTED_WIDGET_COUNT = 29
+
+
 def test_seed_catalog_loads():
     index = FileCatalogLoader(_seed_config()).load()
-    expected_count = len(list(_WIDGETS_DIR.glob("*.json")))
-    assert index.widget_count == expected_count
+    assert index.widget_count == _EXPECTED_WIDGET_COUNT
 
 
 def test_seed_catalog_includes_new_drawing_and_shape_widgets():

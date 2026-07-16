@@ -16,6 +16,10 @@ def _edl_bytes() -> bytes:
     return (FIXTURES / "p0_min.edl").read_bytes()
 
 
+def _edl_unknown_bytes() -> bytes:
+    return (FIXTURES / "p0_unknown.edl").read_bytes()
+
+
 def test_convert_edl_bytes_produces_validated_ir():
     result = ConversionService().convert(_edl_bytes(), kind="edl")
     assert result.screen["schemaVersion"] == "1.0"
@@ -30,6 +34,20 @@ def test_edl_classes_are_fully_supported():
     assert types == {"text-label", "pv-text-input", "pv-button", "rectangle"}
     assert result.unknown_widgets == []
     assert not any("placeholder" in w for w in result.warnings)
+
+
+def test_unknown_edl_class_is_grouped_by_original_class():
+    """An unsupported EDM class is detected, rendered as a placeholder, and grouped.
+
+    Keeps positive coverage on the unknown-widget branch of _summarize: every other
+    test asserts unknown_widgets == [], so without this a regression that stopped
+    detecting unknowns (or stopped grouping them) would pass unnoticed.
+    """
+    result = ConversionService().convert(_edl_unknown_bytes(), kind="edl")
+    types = {c["type"] for c in result.screen["root"]["children"]}
+    assert "unknown-widget" in types
+    assert [(u.original_class, u.count) for u in result.unknown_widgets] == [("activeFooBarClass", 1)]
+    assert any("placeholder" in w for w in result.warnings)
 
 
 def test_bad_kind_raises_unsupported_input():
