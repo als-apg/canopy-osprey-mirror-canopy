@@ -3,7 +3,7 @@
 import pytest
 
 from canopy.core.errors import BadRequest
-from canopy.mole.api.v1._time_parse import parse_time
+from canopy.core.time_parse import parse_time
 
 
 class TestParseTimeBounds:
