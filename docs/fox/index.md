@@ -50,7 +50,7 @@ All functions operate element-wise on arrays (timeseries data) and accept scalar
 | Reductions | `mean`, `sum`, `min`, `max`, `std`, `var`, `ptp`, `count_nonzero` |
 | Element-wise | `where(condition, x, y)`, `clip(value, low, high)` |
 
-Functions use NumPy implementations internally. You can also access `np.*` and `math.*` attributes directly (e.g., `np.pi`, `math.factorial` is **not** available — only the allowlisted functions above).
+Functions use NumPy implementations internally. You can access `np.*` and `math.*` constants directly (e.g., `np.pi`), but only the allowlisted functions above are callable — other attributes like `math.factorial` are **not** exposed.
 
 ## Constants
 

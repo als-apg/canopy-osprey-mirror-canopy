@@ -1,5 +1,5 @@
 import math
-from typing import Annotated
+from typing import Literal, Annotated
 
 from fastapi import Path, Query, Security, APIRouter
 
@@ -8,6 +8,9 @@ from canopy.core.security import require_read_access
 from canopy.core.time_parse import now_ns, parse_time
 from canopy.vole.dependencies import BufferServiceDep
 from canopy.vole.schemas.buffer import PVSeriesDTO, AlignedPVDTO, AlignedResultDTO
+
+AlignMode = Literal["last", "nearest", "linear", "none"]
+IndexMode = Literal["union", "intersection", "grid", "first_input"]
 
 router = APIRouter(prefix="/pvs", tags=["Vole / PVs"])
 
@@ -18,8 +21,8 @@ async def multi_pv_aligned_read(
     pvs: Annotated[str, Query(description="Comma-separated PV names")],
     from_: Annotated[str, Query(alias="from", description="ISO-8601 or epoch-ns")],
     to: Annotated[str | None, Query(description="ISO-8601 or epoch-ns")] = None,
-    align: Annotated[str, Query(description="Alignment mode: last, nearest, linear, none")] = "last",
-    index: Annotated[str, Query(description="Index mode: union, intersection, grid, first_input")] = "union",
+    align: Annotated[AlignMode, Query(description="Alignment mode: last, nearest, linear, none")] = "last",
+    index: Annotated[IndexMode, Query(description="Index mode: union, intersection, grid, first_input")] = "union",
     grid_dt_ns: Annotated[
         int | None, Query(alias="gridDtNs", ge=1, description="Grid spacing in ns (required when index=grid)")
     ] = None,
@@ -33,7 +36,7 @@ async def multi_pv_aligned_read(
         raise BadRequest("'from' is required")
     t1_ns = parse_time(to) or now_ns()
     if t0_ns > t1_ns:
-        raise BadRequest("'from' must be ≤ 'to'")
+        raise BadRequest("'from' must be <= 'to'")
 
     if index == "grid" and grid_dt_ns is None:
         raise BadRequest("'gridDtNs' is required when index='grid'")
@@ -60,12 +63,12 @@ async def single_pv_read(
     from_: Annotated[str, Query(alias="from", description="ISO-8601 or epoch-ns")],
     to: Annotated[str | None, Query(description="ISO-8601 or epoch-ns")] = None,
     align: Annotated[
-        str,
+        Literal["last", "none"],
         Query(description="'last' (default) pins a pre-window sample at t0; 'none' returns raw slice"),
     ] = "last",
     max_points: Annotated[
         int | None,
-        Query(alias="maxPoints", ge=1, description="Decimation cap (raw) or bucket count (binning=auto)"),
+        Query(alias="maxPoints", ge=1, description="Decimation cap; if set, downsample to at most this many points"),
     ] = None,
 ):
     t0_ns = parse_time(from_)
@@ -73,7 +76,7 @@ async def single_pv_read(
         raise BadRequest("'from' is required")
     t1_ns = parse_time(to) or now_ns()
     if t0_ns > t1_ns:
-        raise BadRequest("'from' must be ≤ 'to'")
+        raise BadRequest("'from' must be <= 'to'")
 
     samples = await service.read_window(pv, t0_ns, t1_ns, align=align, max_points=max_points)
     return PVSeriesDTO(pv=pv, count=len(samples), samples=samples)

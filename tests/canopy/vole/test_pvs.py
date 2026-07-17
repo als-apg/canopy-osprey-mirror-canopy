@@ -183,6 +183,8 @@ class TestMultiPVAlignedRead:
             params={"pvs": "PV:A,PV:B", "from": str(_BASE)},
             headers=READ_HEADERS,
         )
+        data = resp.json()
+
         assert resp.status_code == 200
-        assert len(data := resp.json())
         assert len(data["pvs"]) == 2
+        assert len(data["pvs"][0]["values"]) == len(data["tsNs"])
