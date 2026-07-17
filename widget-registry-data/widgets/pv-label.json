@@ -49,7 +49,16 @@
         "default": "default"
       },
       "foregroundColor": { "type": "string" },
-      "backgroundColor": { "type": "string" }
+      "backgroundColor": { "type": "string" },
+      "fontSize": {
+        "type": "number",
+        "title": "Font Size (px)"
+      },
+      "align": {
+        "type": "string",
+        "enum": ["left", "center", "right"],
+        "default": "left"
+      }
     }
   },
 
@@ -63,7 +72,9 @@
     "alarmSensitiveBorder": { "to": "alarmBorder" },
     "displayFormat": { "to": "format" },
     "foregroundColor": { "to": "foregroundColor" },
-    "backgroundColor": { "to": "backgroundColor" }
+    "backgroundColor": { "to": "backgroundColor" },
+    "fontSize": { "to": "fontSize" },
+    "alignment": { "to": "align", "transform": "qtAlignment" }
   },
 
   "inspectorSchema": {

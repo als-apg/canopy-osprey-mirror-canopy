@@ -49,6 +49,10 @@
       "openInNewWindow": {
         "type": "boolean",
         "default": false
+      },
+      "fontSize": {
+        "type": "number",
+        "title": "Font Size (px)"
       }
     }
   },
@@ -62,6 +66,9 @@
     },
     "macros": {
       "to": "macros"
+    },
+    "fontSize": {
+      "to": "fontSize"
     }
   },
   "inspectorSchema": {
