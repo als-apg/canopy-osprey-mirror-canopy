@@ -77,35 +77,21 @@ jobs:
   # APP_SECRETS_DEV is the ONLY config source for the DEV deploy (no env files
   # are committed), so a missing/malformed secret must fail here with a clear
   # message, not as a health-check timeout after a full deploy attempt. Same
-  # check as deploy.yml's validate-secrets, for the one auto-deployed instance.
+  # script as deploy.yml's validate-secrets, for the one auto-deployed instance.
   validate-dev-secrets:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
     steps:
+      - name: Checkout validation script
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
       - name: Validate APP_SECRETS_DEV
-        run: |
-          set -euo pipefail
-          if [ -z "$APP_SECRETS_DEV" ]; then
-            echo "::error::APP_SECRETS_DEV is empty. All DEV config (API_PORT, EPICS_*, URLs) lives in this secret - there are no committed env files. See DEPLOYMENT.md for the required JSON shape."
-            exit 1
-          fi
-          echo "::add-mask::$APP_SECRETS_DEV"
-          if ! printf '%s' "$APP_SECRETS_DEV" | jq -e 'type == "object"' >/dev/null 2>&1; then
-            echo "::error::APP_SECRETS_DEV is not a JSON object. Re-store it as JSON (same shape software-factory/deploy.sh expects); a KEY=value/dotenv blob fails the jq merge."
-            exit 1
-          fi
-          missing=$(printf '%s' "$APP_SECRETS_DEV" | jq -r '
-            ((._shared // {}) * (.CONTAINER_DEV // {})) as $m
-            | ["API_PORT", "CANOPY_DATABASE_URL", "CANOPY_REDIS_URL"]
-            | map(select((($m[.] // "") | tostring | length) == 0))
-            | join(", ")')
-          if [ -n "$missing" ]; then
-            echo "::error::APP_SECRETS_DEV is missing required key(s) under \"CONTAINER_DEV\" (or _shared): $missing. See DEPLOYMENT.md for the full secret shape."
-            exit 1
-          fi
-          echo "APP_SECRETS_DEV validated."
+        run: SECRET_NAME=APP_SECRETS_DEV SECRET_VALUE="$APP_SECRETS_DEV" FACILITY=CONTAINER_DEV bash .github/scripts/validate_app_secrets.sh
 
   # Auto-deploy every push to main to the DEV instance. LCLS/FACET/TESTFAC are
   # deployed manually via the Deploy workflow (workflow_dispatch).

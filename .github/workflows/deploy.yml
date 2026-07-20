@@ -67,49 +67,32 @@ jobs:
       DEPLOY_ASTA: ${{ inputs.deploy_asta }}
       DEPLOY_FACET: ${{ inputs.deploy_facet }}
       DEPLOY_DEV: ${{ inputs.deploy_dev }}
-      APP_SECRETS_NC: ${{ secrets.APP_SECRETS_NC }}
-      APP_SECRETS_SC: ${{ secrets.APP_SECRETS_SC }}
-      APP_SECRETS_NLCTA: ${{ secrets.APP_SECRETS_NLCTA }}
-      APP_SECRETS_ASTA: ${{ secrets.APP_SECRETS_ASTA }}
-      APP_SECRETS_FACET: ${{ secrets.APP_SECRETS_FACET }}
-      APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
+      # Gate each secret on its checkbox so only the selected instances'
+      # secrets enter the job environment.
+      APP_SECRETS_NC: ${{ inputs.deploy_nc && secrets.APP_SECRETS_NC || '' }}
+      APP_SECRETS_SC: ${{ inputs.deploy_sc && secrets.APP_SECRETS_SC || '' }}
+      APP_SECRETS_NLCTA: ${{ inputs.deploy_nlcta && secrets.APP_SECRETS_NLCTA || '' }}
+      APP_SECRETS_ASTA: ${{ inputs.deploy_asta && secrets.APP_SECRETS_ASTA || '' }}
+      APP_SECRETS_FACET: ${{ inputs.deploy_facet && secrets.APP_SECRETS_FACET || '' }}
+      APP_SECRETS_DEV: ${{ inputs.deploy_dev && secrets.APP_SECRETS_DEV || '' }}
     steps:
+      - name: Checkout validation script
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
       - name: Validate selected APP_SECRETS
         run: |
           set -euo pipefail
-          check() {
-            local name="$1" val="$2" fac="$3"
-            if [ -z "$val" ]; then
-              echo "::error::$name is empty. All per-instance config (API_PORT, EPICS_*, URLs) lives in this secret - there are no committed env files. See DEPLOYMENT.md for the required JSON shape."
-              exit 1
-            fi
-            echo "::add-mask::$val"
-            if ! printf '%s' "$val" | jq -e 'type == "object"' >/dev/null 2>&1; then
-              echo "::error::$name is not a JSON object. Re-store it as JSON (same shape software-factory/deploy.sh expects); a KEY=value/dotenv blob fails the jq merge."
-              exit 1
-            fi
-            # deploy.sh renders (._shared * .<facility>) into the app's .env, and
-            # defaults api_port to 8080 when API_PORT is absent - wrong for the
-            # 8081 instances. Require the keys the app cannot run without.
-            local missing
-            missing=$(printf '%s' "$val" | jq -r --arg fac "$fac" '
-              ((._shared // {}) * (.[$fac] // {})) as $m
-              | ["API_PORT", "CANOPY_DATABASE_URL", "CANOPY_REDIS_URL"]
-              | map(select((($m[.] // "") | tostring | length) == 0))
-              | join(", ")')
-            if [ -n "$missing" ]; then
-              echo "::error::$name is missing required key(s) under \"$fac\" (or _shared): $missing. See DEPLOYMENT.md for the full secret shape."
-              exit 1
-            fi
-          }
           # Plain `if`, not `&&`: under set -e a false `[ ]` test as the last
           # command on a line would abort the step.
-          if [ "$DEPLOY_NC" = "true" ];    then check APP_SECRETS_NC "$APP_SECRETS_NC" CONTAINER_LCLS; fi
-          if [ "$DEPLOY_SC" = "true" ];    then check APP_SECRETS_SC "$APP_SECRETS_SC" CONTAINER_LCLS; fi
-          if [ "$DEPLOY_NLCTA" = "true" ]; then check APP_SECRETS_NLCTA "$APP_SECRETS_NLCTA" CONTAINER_TESTFAC; fi
-          if [ "$DEPLOY_ASTA" = "true" ];  then check APP_SECRETS_ASTA "$APP_SECRETS_ASTA" CONTAINER_TESTFAC; fi
-          if [ "$DEPLOY_FACET" = "true" ]; then check APP_SECRETS_FACET "$APP_SECRETS_FACET" CONTAINER_FACET; fi
-          if [ "$DEPLOY_DEV" = "true" ];   then check APP_SECRETS_DEV "$APP_SECRETS_DEV" CONTAINER_DEV; fi
+          if [ "$DEPLOY_NC" = "true" ];    then SECRET_NAME=APP_SECRETS_NC    SECRET_VALUE="$APP_SECRETS_NC"    FACILITY=CONTAINER_LCLS    bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_SC" = "true" ];    then SECRET_NAME=APP_SECRETS_SC    SECRET_VALUE="$APP_SECRETS_SC"    FACILITY=CONTAINER_LCLS    bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_NLCTA" = "true" ]; then SECRET_NAME=APP_SECRETS_NLCTA SECRET_VALUE="$APP_SECRETS_NLCTA" FACILITY=CONTAINER_TESTFAC bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_ASTA" = "true" ];  then SECRET_NAME=APP_SECRETS_ASTA  SECRET_VALUE="$APP_SECRETS_ASTA"  FACILITY=CONTAINER_TESTFAC bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_FACET" = "true" ]; then SECRET_NAME=APP_SECRETS_FACET SECRET_VALUE="$APP_SECRETS_FACET" FACILITY=CONTAINER_FACET   bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_DEV" = "true" ];   then SECRET_NAME=APP_SECRETS_DEV   SECRET_VALUE="$APP_SECRETS_DEV"   FACILITY=CONTAINER_DEV     bash .github/scripts/validate_app_secrets.sh; fi
           echo "Selected APP_SECRETS validated."
 
   deploy-nc:
