@@ -26,7 +26,7 @@ def _seed_config() -> BeaverConfig:
 # Hardcoded so an accidental add/deletion of a seed widget def fails here rather
 # than passing tautologically against the same directory the loader reads. Bump
 # this when the seed widget set changes.
-_EXPECTED_WIDGET_COUNT = 29
+_EXPECTED_WIDGET_COUNT = 31
 
 
 def test_seed_catalog_loads():
@@ -48,7 +48,7 @@ def test_seed_catalog_qt_class_mappings():
 
 def test_seed_catalog_drawing_category_membership():
     index = FileCatalogLoader(_seed_config()).load()
-    assert {w.id for w in index.by_category["drawing"]} == {"rectangle", "ellipse", "line", "arc"}
+    assert {w.id for w in index.by_category["drawing"]} == {"rectangle", "ellipse", "line", "arc", "polygon"}
 
 
 def test_seed_catalog_extended_prop_schemas():
