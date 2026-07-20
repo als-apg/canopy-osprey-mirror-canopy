@@ -24,14 +24,24 @@ on:
 permissions:
   contents: read
   packages: write
+  deployments: write
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set deployable image tag
+        id: vars
+        # Matches the bare short-sha tag produced by `type=sha,prefix=` below,
+        # which is the tag pushed to GHCR on main and consumed by deploy-dev.
+        run: echo "image_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -63,3 +73,38 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # APP_SECRETS_DEV is the ONLY config source for the DEV deploy (no env files
+  # are committed), so a missing/malformed secret must fail here with a clear
+  # message, not as a health-check timeout after a full deploy attempt. Same
+  # script as deploy.yml's validate-secrets, for the one auto-deployed instance.
+  validate-dev-secrets:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
+    steps:
+      - name: Checkout validation script
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Validate APP_SECRETS_DEV
+        run: SECRET_NAME=APP_SECRETS_DEV SECRET_VALUE="$APP_SECRETS_DEV" FACILITY=CONTAINER_DEV bash .github/scripts/validate_app_secrets.sh
+
+  # Auto-deploy every push to main to the DEV instance. LCLS/FACET/TESTFAC are
+  # deployed manually via the Deploy workflow (workflow_dispatch).
+  deploy-dev:
+    needs: [build, validate-dev-secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy
+      repository_name: Canopy
+      tag: ${{ needs.build.outputs.image_tag }}
+      facilities: '["CONTAINER_DEV"]'
+      health_check_path: /health
+      migration_command: 'alembic upgrade head'
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_DEV }}

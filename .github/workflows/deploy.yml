@@ -1,0 +1,192 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (e.g. v1.2.0 or main-abc1234)'
+        required: true
+        type: string
+      deploy_nc:
+        description: 'Deploy NC instance (LCLS:8080)'
+        type: boolean
+        default: false
+      deploy_sc:
+        description: 'Deploy SC instance (LCLS:8081)'
+        type: boolean
+        default: false
+      deploy_nlcta:
+        description: 'Deploy NLCTA instance (TESTFAC:8080)'
+        type: boolean
+        default: false
+      deploy_asta:
+        description: 'Deploy ASTA instance (TESTFAC:8081)'
+        type: boolean
+        default: false
+      deploy_facet:
+        description: 'Deploy FACET instance (FACET:8080)'
+        type: boolean
+        default: false
+      deploy_dev:
+        description: 'Deploy DEV instance (DEV:8080)'
+        type: boolean
+        default: false
+      migration_command:
+        description: 'Migration command run before services restart (empty = skip)'
+        required: false
+        type: string
+        default: 'alembic upgrade head'
+      force_deploy:
+        description: 'Force deploy even if same tag is already running'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Dry run (ansible --check, no actual changes)'
+        type: boolean
+        default: false
+
+permissions:
+  deployments: write
+  contents: read
+  actions: read
+  packages: read
+
+jobs:
+  # Fail fast if a selected instance's APP_SECRETS is unusable. software-factory's
+  # deploy.sh parses APP_SECRETS with jq and dies with an opaque "Invalid numeric
+  # literal" trace on a KEY=value/dotenv blob. And because the secret is the ONLY
+  # config source (no env files are committed), a missing API_PORT would silently
+  # fall back to deploy.sh's 8080 default and break the 8081 instances, and missing
+  # URLs would only surface as a health-check timeout after a full deploy attempt.
+  validate-secrets:
+    runs-on: [self-hosted, deployment]
+    env:
+      DEPLOY_NC: ${{ inputs.deploy_nc }}
+      DEPLOY_SC: ${{ inputs.deploy_sc }}
+      DEPLOY_NLCTA: ${{ inputs.deploy_nlcta }}
+      DEPLOY_ASTA: ${{ inputs.deploy_asta }}
+      DEPLOY_FACET: ${{ inputs.deploy_facet }}
+      DEPLOY_DEV: ${{ inputs.deploy_dev }}
+      # Gate each secret on its checkbox so only the selected instances'
+      # secrets enter the job environment.
+      APP_SECRETS_NC: ${{ inputs.deploy_nc && secrets.APP_SECRETS_NC || '' }}
+      APP_SECRETS_SC: ${{ inputs.deploy_sc && secrets.APP_SECRETS_SC || '' }}
+      APP_SECRETS_NLCTA: ${{ inputs.deploy_nlcta && secrets.APP_SECRETS_NLCTA || '' }}
+      APP_SECRETS_ASTA: ${{ inputs.deploy_asta && secrets.APP_SECRETS_ASTA || '' }}
+      APP_SECRETS_FACET: ${{ inputs.deploy_facet && secrets.APP_SECRETS_FACET || '' }}
+      APP_SECRETS_DEV: ${{ inputs.deploy_dev && secrets.APP_SECRETS_DEV || '' }}
+    steps:
+      - name: Checkout validation script
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Validate selected APP_SECRETS
+        run: |
+          set -euo pipefail
+          # Plain `if`, not `&&`: under set -e a false `[ ]` test as the last
+          # command on a line would abort the step.
+          if [ "$DEPLOY_NC" = "true" ];    then SECRET_NAME=APP_SECRETS_NC    SECRET_VALUE="$APP_SECRETS_NC"    FACILITY=CONTAINER_LCLS    bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_SC" = "true" ];    then SECRET_NAME=APP_SECRETS_SC    SECRET_VALUE="$APP_SECRETS_SC"    FACILITY=CONTAINER_LCLS    bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_NLCTA" = "true" ]; then SECRET_NAME=APP_SECRETS_NLCTA SECRET_VALUE="$APP_SECRETS_NLCTA" FACILITY=CONTAINER_TESTFAC bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_ASTA" = "true" ];  then SECRET_NAME=APP_SECRETS_ASTA  SECRET_VALUE="$APP_SECRETS_ASTA"  FACILITY=CONTAINER_TESTFAC bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_FACET" = "true" ]; then SECRET_NAME=APP_SECRETS_FACET SECRET_VALUE="$APP_SECRETS_FACET" FACILITY=CONTAINER_FACET   bash .github/scripts/validate_app_secrets.sh; fi
+          if [ "$DEPLOY_DEV" = "true" ];   then SECRET_NAME=APP_SECRETS_DEV   SECRET_VALUE="$APP_SECRETS_DEV"   FACILITY=CONTAINER_DEV     bash .github/scripts/validate_app_secrets.sh; fi
+          echo "Selected APP_SECRETS validated."
+
+  deploy-nc:
+    needs: validate-secrets
+    if: inputs.deploy_nc
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy-nc
+      repository_name: Canopy
+      tag: ${{ inputs.image_tag }}
+      facilities: '["CONTAINER_LCLS"]'
+      migration_command: ${{ inputs.migration_command }}
+      health_check_path: /health
+      force_deploy: ${{ inputs.force_deploy }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_NC }}
+
+  deploy-sc:
+    needs: validate-secrets
+    if: inputs.deploy_sc
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy-sc
+      repository_name: Canopy
+      tag: ${{ inputs.image_tag }}
+      facilities: '["CONTAINER_LCLS"]'
+      migration_command: ${{ inputs.migration_command }}
+      health_check_path: /health
+      force_deploy: ${{ inputs.force_deploy }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_SC }}
+
+  deploy-nlcta:
+    needs: validate-secrets
+    if: inputs.deploy_nlcta
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy-nlcta
+      repository_name: Canopy
+      tag: ${{ inputs.image_tag }}
+      facilities: '["CONTAINER_TESTFAC"]'
+      migration_command: ${{ inputs.migration_command }}
+      health_check_path: /health
+      force_deploy: ${{ inputs.force_deploy }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_NLCTA }}
+
+  deploy-asta:
+    needs: validate-secrets
+    if: inputs.deploy_asta
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy-asta
+      repository_name: Canopy
+      tag: ${{ inputs.image_tag }}
+      facilities: '["CONTAINER_TESTFAC"]'
+      migration_command: ${{ inputs.migration_command }}
+      health_check_path: /health
+      force_deploy: ${{ inputs.force_deploy }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_ASTA }}
+
+  deploy-facet:
+    needs: validate-secrets
+    if: inputs.deploy_facet
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy-facet
+      repository_name: Canopy
+      tag: ${{ inputs.image_tag }}
+      facilities: '["CONTAINER_FACET"]'
+      migration_command: ${{ inputs.migration_command }}
+      health_check_path: /health
+      force_deploy: ${{ inputs.force_deploy }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_FACET }}
+
+  deploy-dev:
+    needs: validate-secrets
+    if: inputs.deploy_dev
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy
+      repository_name: Canopy
+      tag: ${{ inputs.image_tag }}
+      facilities: '["CONTAINER_DEV"]'
+      migration_command: ${{ inputs.migration_command }}
+      health_check_path: /health
+      force_deploy: ${{ inputs.force_deploy }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_DEV }}

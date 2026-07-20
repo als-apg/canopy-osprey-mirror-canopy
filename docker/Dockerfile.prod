@@ -28,6 +28,11 @@ COPY --from=builder /app/.venv /app/.venv
 
 ENV PATH="/app/.venv/bin:$PATH"
 
+# The deploy playbook runs migrations as `compose run --rm api <migration_command>`,
+# so the image must carry the alembic tree.
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
+
 RUN useradd --create-home --shell /bin/bash --no-log-init appuser \
     && chown -R appuser:appuser /app
 USER appuser
@@ -35,6 +40,6 @@ USER appuser
 EXPOSE 8000
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+    CMD python -c 'import os, urllib.request; urllib.request.urlopen("http://localhost:" + os.environ.get("API_PORT", "8000") + "/health")' || exit 1
 
 CMD ["uvicorn", "canopy.main:app", "--host", "0.0.0.0", "--port", "8000"]
