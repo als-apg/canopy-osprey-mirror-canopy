@@ -1,0 +1,187 @@
+name: Init Data Layer (one-time)
+
+# Brings up postgres + redis containers for one canopy instance via the
+# safeguarded playbook in docker/data-layer/init.yml. Manual dispatch only.
+# mode=init refuses if anything already exists; mode=recreate restarts existing
+# containers against the same volume (no data loss); mode=wipe pg_dumps before
+# destroying + rebuilding. See the playbook header for the full mode contract.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance:
+        description: "Instance to initialize"
+        required: true
+        type: choice
+        options: [NC, SC, NLCTA, ASTA, FACET, DEV]
+      confirm_instance:
+        description: "Type the instance name again to confirm (must match exactly)"
+        required: true
+        type: string
+      mode:
+        description: "init = fresh bring-up | recreate = restart existing containers against the same volume, no data loss (does NOT apply a rotated password to an existing database) | wipe = pg_dump then destroy + rebuild"
+        required: true
+        type: choice
+        options: [init, recreate, wipe]
+        default: init
+      dry_run:
+        description: "Run ansible in --check mode (no changes)"
+        type: boolean
+        default: false
+      backup_root:
+        description: "Directory on the target host for pg_dump output"
+        required: false
+        type: string
+        default: "/sdf/group/ad/eed/ad-build/canopy-backups"
+
+permissions:
+  contents: read
+
+# Join the deploy workflows' concurrency group (deploy-<component_name>, set by
+# software-factory's container-deploy.yml) so an init/wipe can never overlap a
+# deploy of the same instance - and vice versa. DEV's component has no suffix.
+concurrency:
+  group: deploy-canopy${{ inputs.instance == 'NC' && '-nc' || inputs.instance == 'SC' && '-sc' || inputs.instance == 'NLCTA' && '-nlcta' || inputs.instance == 'ASTA' && '-asta' || inputs.instance == 'FACET' && '-facet' || '' }}
+  cancel-in-progress: false
+
+jobs:
+  init:
+    runs-on: [self-hosted, deployment]
+    env:
+      INSTANCE: ${{ inputs.instance }}
+      CONFIRM_INSTANCE: ${{ inputs.confirm_instance }}
+      MODE: ${{ inputs.mode }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      BACKUP_ROOT: ${{ inputs.backup_root }}
+      APP_SECRETS_NC: ${{ secrets.APP_SECRETS_NC }}
+      APP_SECRETS_SC: ${{ secrets.APP_SECRETS_SC }}
+      APP_SECRETS_NLCTA: ${{ secrets.APP_SECRETS_NLCTA }}
+      APP_SECRETS_ASTA: ${{ secrets.APP_SECRETS_ASTA }}
+      APP_SECRETS_FACET: ${{ secrets.APP_SECRETS_FACET }}
+      APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
+    steps:
+      - name: Confirm instance name typed correctly
+        run: |
+          if [ "$CONFIRM_INSTANCE" != "$INSTANCE" ]; then
+            echo "::error::confirm_instance ('$CONFIRM_INSTANCE') does not match instance ('$INSTANCE'). Aborting."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve facility and extract secrets
+        id: prep
+        run: |
+          set -euo pipefail
+
+          FACILITY=$(python3 -c "
+          import sys, yaml
+          with open('docker/data-layer/instances.yml') as f:
+              cfg = yaml.safe_load(f)
+          try:
+              print(cfg['instances']['$INSTANCE']['facility'])
+          except KeyError:
+              sys.exit(f'instance $INSTANCE not in instances.yml')
+          ")
+          echo "facility=$FACILITY" >> "$GITHUB_OUTPUT"
+
+          SECRET_VAR="APP_SECRETS_${INSTANCE}"
+          APP_SECRETS_JSON="${!SECRET_VAR:-}"
+          if [ -z "$APP_SECRETS_JSON" ]; then
+            echo "::error::Secret $SECRET_VAR is empty. Set it as a JSON object shaped like software-factory expects, e.g. {\"$FACILITY\": {\"POSTGRES_PASSWORD\": \"...\", \"REDIS_PASSWORD\": \"...\", \"CANOPY_DATABASE_URL\": \"...\", \"CANOPY_REDIS_URL\": \"...\"}}."
+            exit 1
+          fi
+
+          # Fail clearly if the secret is not JSON (e.g. stored as a KEY=value
+          # dotenv blob). jq otherwise dies with an opaque "Invalid numeric
+          # literal" trace, and software-factory's deploy.sh would fail the same
+          # way on a real deploy. Never echo the value, only the variable name.
+          if ! printf '%s' "$APP_SECRETS_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::$SECRET_VAR is not a JSON object. It must be JSON shaped like {\"$FACILITY\": {\"POSTGRES_PASSWORD\": \"...\", ...}}, the same secret software-factory's deploy uses. A KEY=value/dotenv blob will fail here and at deploy time."
+            exit 1
+          fi
+
+          # Resolve config the same way software-factory's deploy.sh does:
+          # merge the shared block under the facility block (facility wins).
+          MERGED=$(echo "$APP_SECRETS_JSON" | jq --arg f "$FACILITY" '(._shared // {}) * (.[$f] // {})')
+
+          POSTGRES_PASSWORD=$(echo "$MERGED" | jq -r '.POSTGRES_PASSWORD // empty')
+          REDIS_PASSWORD=$(echo "$MERGED" | jq -r '.REDIS_PASSWORD // empty')
+
+          if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$REDIS_PASSWORD" ]; then
+            echo "::error::$SECRET_VAR is missing POSTGRES_PASSWORD or REDIS_PASSWORD under the \"$FACILITY\" key (or _shared)."
+            exit 1
+          fi
+
+          # Mask every string value in the merged secrets (same pattern as
+          # software-factory's container-deploy.yml), not just the two passwords.
+          while read -r val; do
+            if [ "${#val}" -gt 4 ]; then echo "::add-mask::$val"; fi
+          done < <(echo "$MERGED" | jq -r '[.. | strings] | unique[]')
+          echo "::add-mask::$POSTGRES_PASSWORD"
+          echo "::add-mask::$REDIS_PASSWORD"
+
+          # Guard against silent drift: the password we create postgres/redis with
+          # must equal the one the app authenticates with (embedded in the URLs that
+          # deploy.sh renders into the app's .env). Catch it here, before any
+          # host changes, instead of as an opaque auth failure at deploy time.
+          extract_url_pw() { sed -nE 's#^[a-zA-Z+]+://[^:]*:([^@]+)@.*#\1#p'; }
+
+          DB_URL=$(echo "$MERGED" | jq -r '.CANOPY_DATABASE_URL // empty')
+          if [ -n "$DB_URL" ]; then
+            URL_PG_PW=$(printf '%s' "$DB_URL" | extract_url_pw)
+            if [ -n "$URL_PG_PW" ] && [ "$URL_PG_PW" != "$POSTGRES_PASSWORD" ]; then
+              echo "::error::POSTGRES_PASSWORD does not match the password embedded in CANOPY_DATABASE_URL for $FACILITY. Reconcile them before initializing."
+              exit 1
+            fi
+          fi
+
+          REDIS_DSN=$(echo "$MERGED" | jq -r '.CANOPY_REDIS_URL // empty')
+          if [ -n "$REDIS_DSN" ]; then
+            URL_REDIS_PW=$(printf '%s' "$REDIS_DSN" | extract_url_pw)
+            if [ -n "$URL_REDIS_PW" ] && [ "$URL_REDIS_PW" != "$REDIS_PASSWORD" ]; then
+              echo "::error::REDIS_PASSWORD does not match the password embedded in CANOPY_REDIS_URL for $FACILITY. Reconcile them before initializing."
+              exit 1
+            fi
+          fi
+
+          # Hand everything to ansible as a single 0600 JSON vars-file instead of
+          # -e key=value args: keeps secrets out of the runner's process list and
+          # is robust to special characters (same JSON-blob approach as deploy.sh).
+          EXTRA_VARS_FILE="$RUNNER_TEMP/init-extra-vars.json"
+          touch "$EXTRA_VARS_FILE"
+          chmod 600 "$EXTRA_VARS_FILE"
+          jq -n \
+            --arg instance "$INSTANCE" \
+            --arg confirm_instance "$CONFIRM_INSTANCE" \
+            --arg mode "$MODE" \
+            --arg facility "$FACILITY" \
+            --arg backup_root "$BACKUP_ROOT" \
+            --arg postgres_password "$POSTGRES_PASSWORD" \
+            --arg redis_password "$REDIS_PASSWORD" \
+            '{$instance, $confirm_instance, $mode, $facility, $backup_root, $postgres_password, $redis_password}' \
+            > "$EXTRA_VARS_FILE"
+
+      - name: Run init playbook
+        env:
+          ANSIBLE_FORCE_COLOR: "1"
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          set -euo pipefail
+          CHECK_FLAG=""
+          if [ "$DRY_RUN" = "true" ]; then
+            CHECK_FLAG="--check"
+          fi
+
+          ansible-playbook \
+            -i /sdf/group/ad/eed/ad-build/software-factory/global_inventory.ini \
+            docker/data-layer/init.yml \
+            -e @"$RUNNER_TEMP/init-extra-vars.json" \
+            $CHECK_FLAG
+
+      - name: Remove extra-vars file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/init-extra-vars.json"

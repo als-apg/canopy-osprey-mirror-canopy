@@ -1,78 +1,34 @@
-name: canopy
+# Production compose: app containers only.
+#
+# Postgres + Redis are NOT here. They are brought up once per instance by the
+# Init Data Layer workflow (.github/workflows/init-data-layer.yml) and reached
+# over the host's 127.0.0.1:<port> published by that workflow. The app runs with
+# network_mode: host because the EPICS connector needs CA/PVA UDP broadcast.
+#
+# The software-factory container-deploy playbook copies this file to the target,
+# writes a sibling .env (IMAGE=<ghcr>:<tag> plus the env rendered from the
+# APP_SECRETS JSON - the only config source; no env files are committed), then
+# runs `docker compose --env-file .env up -d`.
 
 services:
   api:
-    image: ${IMAGE:-canopy:latest}
-    env_file:
-      - .env
-    environment:
-      CANOPY_DEBUG: "false"
-      CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:${POSTGRES_PASSWORD}@postgres:5432/canopy}
-      CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://redis:6379/0}
-    ports:
-      - "${API_HOST_PORT:-8000}:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+    image: ${IMAGE}
+    command: ["uvicorn", "canopy.main:app", "--host", "0.0.0.0", "--port", "${API_PORT:-8000}"]
+    env_file: .env
+    network_mode: host
+    restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
-        ]
+      test: ["CMD-SHELL", "curl -f http://localhost:${API_PORT:-8000}/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
 
   worker:
-    image: ${IMAGE:-canopy:latest}
-    command: arq canopy.worker.WorkerSettings
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      CANOPY_DEBUG: "false"
-      CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:${POSTGRES_PASSWORD}@postgres:5432/canopy}
-      CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://redis:6379/0}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+    image: ${IMAGE}
+    command: ["arq", "canopy.worker.WorkerSettings"]
+    env_file: .env
+    network_mode: host
     restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-canopy}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD for production}
-      POSTGRES_DB: ${POSTGRES_DB:-canopy}
-    volumes:
-      - canopy-pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-canopy} -d ${POSTGRES_DB:-canopy}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - canopy-redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-volumes:
-  canopy-pgdata:
-  canopy-redisdata:
+    deploy:
+      replicas: 2
