@@ -39,9 +39,13 @@ permissions:
 
 # Join the deploy workflows' concurrency group (deploy-<component_name>, set by
 # software-factory's container-deploy.yml) so an init/wipe can never overlap a
-# deploy of the same instance - and vice versa. DEV's component has no suffix.
+# deploy of the same instance - and vice versa. The instance->component map must
+# cover every dropdown option; keep it in sync with the copy in the guard step
+# below, which fails unmapped instances before any host changes. An unmapped
+# instance falls into the 'deploy-init-unmapped' group, which never matches a
+# real deploy group - so it can collide with nothing but another unmapped init.
 concurrency:
-  group: deploy-canopy${{ inputs.instance == 'NC' && '-nc' || inputs.instance == 'SC' && '-sc' || inputs.instance == 'NLCTA' && '-nlcta' || inputs.instance == 'ASTA' && '-asta' || inputs.instance == 'FACET' && '-facet' || '' }}
+  group: deploy-${{ fromJSON('{"NC":"canopy-nc","SC":"canopy-sc","NLCTA":"canopy-nlcta","ASTA":"canopy-asta","FACET":"canopy-facet","DEV":"canopy"}')[inputs.instance] || 'init-unmapped' }}
   cancel-in-progress: false
 
 jobs:
@@ -53,17 +57,21 @@ jobs:
       MODE: ${{ inputs.mode }}
       DRY_RUN: ${{ inputs.dry_run }}
       BACKUP_ROOT: ${{ inputs.backup_root }}
-      APP_SECRETS_NC: ${{ secrets.APP_SECRETS_NC }}
-      APP_SECRETS_SC: ${{ secrets.APP_SECRETS_SC }}
-      APP_SECRETS_NLCTA: ${{ secrets.APP_SECRETS_NLCTA }}
-      APP_SECRETS_ASTA: ${{ secrets.APP_SECRETS_ASTA }}
-      APP_SECRETS_FACET: ${{ secrets.APP_SECRETS_FACET }}
-      APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
+      # Dynamic lookup: only the selected instance's secret enters the job
+      # environment; the other five never leave the secret store.
+      APP_SECRETS_JSON: ${{ secrets[format('APP_SECRETS_{0}', inputs.instance)] }}
     steps:
-      - name: Confirm instance name typed correctly
+      - name: Confirm instance selection
+        env:
+          # Keep in sync with the concurrency map at the top of this workflow.
+          MAPPED_COMPONENT: ${{ fromJSON('{"NC":"canopy-nc","SC":"canopy-sc","NLCTA":"canopy-nlcta","ASTA":"canopy-asta","FACET":"canopy-facet","DEV":"canopy"}')[inputs.instance] }}
         run: |
           if [ "$CONFIRM_INSTANCE" != "$INSTANCE" ]; then
             echo "::error::confirm_instance ('$CONFIRM_INSTANCE') does not match instance ('$INSTANCE'). Aborting."
+            exit 1
+          fi
+          if [ -z "$MAPPED_COMPONENT" ]; then
+            echo "::error::Instance '$INSTANCE' has no entry in this workflow's instance->component concurrency map, so init/wipe cannot interlock with its deploys. Add it to both copies of the map (concurrency group + this step) and rerun."
             exit 1
           fi
 
@@ -88,10 +96,9 @@ jobs:
           ")
           echo "facility=$FACILITY" >> "$GITHUB_OUTPUT"
 
-          SECRET_VAR="APP_SECRETS_${INSTANCE}"
-          APP_SECRETS_JSON="${!SECRET_VAR:-}"
-          if [ -z "$APP_SECRETS_JSON" ]; then
-            echo "::error::Secret $SECRET_VAR is empty. Set it as a JSON object shaped like software-factory expects, e.g. {\"$FACILITY\": {\"POSTGRES_PASSWORD\": \"...\", \"REDIS_PASSWORD\": \"...\", \"CANOPY_DATABASE_URL\": \"...\", \"CANOPY_REDIS_URL\": \"...\"}}."
+          SECRET_NAME="APP_SECRETS_${INSTANCE}"
+          if [ -z "${APP_SECRETS_JSON:-}" ]; then
+            echo "::error::Secret $SECRET_NAME is empty. Set it as a JSON object shaped like software-factory expects, e.g. {\"$FACILITY\": {\"POSTGRES_PASSWORD\": \"...\", \"REDIS_PASSWORD\": \"...\", \"CANOPY_DATABASE_URL\": \"...\", \"CANOPY_REDIS_URL\": \"...\"}}."
             exit 1
           fi
 
@@ -100,7 +107,7 @@ jobs:
           # literal" trace, and software-factory's deploy.sh would fail the same
           # way on a real deploy. Never echo the value, only the variable name.
           if ! printf '%s' "$APP_SECRETS_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
-            echo "::error::$SECRET_VAR is not a JSON object. It must be JSON shaped like {\"$FACILITY\": {\"POSTGRES_PASSWORD\": \"...\", ...}}, the same secret software-factory's deploy uses. A KEY=value/dotenv blob will fail here and at deploy time."
+            echo "::error::$SECRET_NAME is not a JSON object. It must be JSON shaped like {\"$FACILITY\": {\"POSTGRES_PASSWORD\": \"...\", ...}}, the same secret software-factory's deploy uses. A KEY=value/dotenv blob will fail here and at deploy time."
             exit 1
           fi
 
@@ -112,7 +119,7 @@ jobs:
           REDIS_PASSWORD=$(echo "$MERGED" | jq -r '.REDIS_PASSWORD // empty')
 
           if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$REDIS_PASSWORD" ]; then
-            echo "::error::$SECRET_VAR is missing POSTGRES_PASSWORD or REDIS_PASSWORD under the \"$FACILITY\" key (or _shared)."
+            echo "::error::$SECRET_NAME is missing POSTGRES_PASSWORD or REDIS_PASSWORD under the \"$FACILITY\" key (or _shared)."
             exit 1
           fi
 
