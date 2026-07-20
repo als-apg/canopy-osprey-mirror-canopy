@@ -28,6 +28,11 @@ COPY --from=builder /app/.venv /app/.venv
 
 ENV PATH="/app/.venv/bin:$PATH"
 
+# The deploy playbook runs migrations as `compose run --rm api <migration_command>`,
+# so the image must carry the alembic tree.
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
+
 RUN useradd --create-home --shell /bin/bash --no-log-init appuser \
     && chown -R appuser:appuser /app
 USER appuser

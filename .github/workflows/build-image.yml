@@ -119,6 +119,6 @@ jobs:
       tag: ${{ needs.build.outputs.image_tag }}
       facilities: '["CONTAINER_DEV"]'
       health_check_path: /health
-      migration_command: ''
+      migration_command: 'alembic upgrade head'
     secrets:
       APP_SECRETS: ${{ secrets.APP_SECRETS_DEV }}

@@ -112,7 +112,8 @@ overlapping a deploy of the same instance.
 ### Automatic (DEV)
 
 Every push to `main` builds + pushes the image (`build-image.yml`) and then deploys it
-to DEV via the appended `deploy-dev` job.
+to DEV via the appended `deploy-dev` job, running `alembic upgrade head` before the
+services restart.
 
 ### Manual (any instance)
 
@@ -122,7 +123,7 @@ Actions -> `Deploy` -> Run workflow.
 |---------------------|----------------------------------------------------------------|
 | `image_tag`         | GHCR tag, e.g. `main-abc1234` or the short sha from a main build |
 | `deploy_<instance>` | One checkbox per instance (nc/sc/nlcta/asta/facet/dev)         |
-| `migration_command` | Empty = skip (Canopy has no alembic yet). Set to `alembic upgrade head` once migrations exist |
+| `migration_command` | Default `alembic upgrade head`, run as `compose run --rm api <command>` before services restart. Clear it to skip — e.g. when rolling back to an older image whose migration tree predates the database revision |
 | `force_deploy`      | Deploy even if the same tag is already running                 |
 | `dry_run`           | Ansible `--check`, no changes                                  |
 
@@ -154,6 +155,9 @@ cat /sdf/group/ad/eed/ad-build/canopy/.current_tag   # DEV; suffix -<instance> f
 
 ## Notes
 
+- Init Data Layer creates an **empty** database; the schema comes entirely from the
+  deploy-time `alembic upgrade head` (the app never creates tables at runtime), so the
+  first deploy after an init must not skip migrations.
 - App containers use `network_mode: host` (EPICS CA/PVA needs UDP broadcast) and reach
   postgres/redis via `127.0.0.1:<host port>`; there is no shared docker network.
 - The local `docker/docker-compose.yml` (bundled postgres + redis) is for development

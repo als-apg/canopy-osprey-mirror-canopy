@@ -32,10 +32,10 @@ on:
         type: boolean
         default: false
       migration_command:
-        description: 'Migration command (empty = skip; set to "alembic upgrade head" once migrations exist)'
+        description: 'Migration command run before services restart (empty = skip)'
         required: false
         type: string
-        default: ''
+        default: 'alembic upgrade head'
       force_deploy:
         description: 'Force deploy even if same tag is already running'
         type: boolean
