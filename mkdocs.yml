@@ -68,6 +68,7 @@ extra:
 
 # Extensions
 markdown_extensions:
+  - admonition
   - attr_list
   - md_in_html
   - toc:
@@ -95,6 +96,7 @@ nav:
     - WebSocket Subscriptions: fox/websocket.md
   - Vole:
     - vole/index.md
+    - REST API: vole/rest_api.md
     - Configuration: vole/configuration.md
   - How To:
     - how_to/index.md
