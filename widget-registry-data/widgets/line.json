@@ -58,7 +58,7 @@
     "penColor": { "to": "lineColor" },
     "penWidth": { "to": "lineWidth" },
     "penStyle": { "to": "lineStyle", "transform": "edmLineStyle" },
-    "points": { "to": "points" },
+    "points": { "to": "points", "transform": "parsePoints" },
     "arrowStartPoint": { "to": "arrowStart" },
     "arrowEndPoint": { "to": "arrowEnd" },
     "opacity": { "to": "opacity" }
