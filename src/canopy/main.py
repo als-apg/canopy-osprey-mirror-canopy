@@ -25,6 +25,8 @@ from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
 from canopy.squirrel.app import app as squirrel_app
 from canopy.squirrel.app import squirrel_lifespan
+from canopy.analytics.app import app as analytics_app
+from canopy.analytics.app import analytics_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
 
@@ -46,6 +48,7 @@ async def lifespan(app: FastAPI):
         magpie_lifespan(),
         jobs_lifespan(),
         converter_lifespan(),
+        analytics_lifespan(),
     ):
         logger.info(f"Starting Canopy API [version {__version__}]")
         yield
@@ -79,6 +82,7 @@ app.mount("/squirrel", squirrel_app)
 app.mount("/magpie", magpie_app)
 app.mount("/jobs", jobs_app)
 app.mount("/converter", converter_app)
+app.mount("/analytics", analytics_app)
 
 
 @app.get("/health", tags=["meta"])
