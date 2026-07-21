@@ -32,13 +32,18 @@
 # instances that co-locate (NC+SC on LCLS, NLCTA+ASTA on TESTFAC) stay offset
 # from each other as well. Keep these in sync with the ports embedded in each
 # APP_SECRETS_<INSTANCE>'s CANOPY_DATABASE_URL / CANOPY_REDIS_URL.
+#
+# Volume names are canopy_pg_<instance>_data for the same reason: the legacy
+# react-squirrel data layer uses the bare pg_<instance>_data names on these same
+# hosts, so an unprefixed name would make `init` refuse (or worse, mount
+# squirrel's data). The canopy_ prefix keeps the two deployments fully separate.
 
 instances:
   NC:
     facility: CONTAINER_LCLS
     container_postgres: canopy-nc-postgres
     container_redis: canopy-nc-redis
-    volume_postgres: pg_nc_data
+    volume_postgres: canopy_pg_nc_data
     host_port_postgres: 5442
     host_port_redis: 6389
     postgres_user: canopy
@@ -48,7 +53,7 @@ instances:
     facility: CONTAINER_LCLS
     container_postgres: canopy-sc-postgres
     container_redis: canopy-sc-redis
-    volume_postgres: pg_sc_data
+    volume_postgres: canopy_pg_sc_data
     host_port_postgres: 5443
     host_port_redis: 6390
     postgres_user: canopy
@@ -58,7 +63,7 @@ instances:
     facility: CONTAINER_TESTFAC
     container_postgres: canopy-nlcta-postgres
     container_redis: canopy-nlcta-redis
-    volume_postgres: pg_nlcta_data
+    volume_postgres: canopy_pg_nlcta_data
     host_port_postgres: 5442
     host_port_redis: 6389
     postgres_user: canopy
@@ -68,7 +73,7 @@ instances:
     facility: CONTAINER_TESTFAC
     container_postgres: canopy-asta-postgres
     container_redis: canopy-asta-redis
-    volume_postgres: pg_asta_data
+    volume_postgres: canopy_pg_asta_data
     host_port_postgres: 5443
     host_port_redis: 6390
     postgres_user: canopy
@@ -78,7 +83,7 @@ instances:
     facility: CONTAINER_FACET
     container_postgres: canopy-facet-postgres
     container_redis: canopy-facet-redis
-    volume_postgres: pg_facet_data
+    volume_postgres: canopy_pg_facet_data
     host_port_postgres: 5442
     host_port_redis: 6389
     postgres_user: canopy
@@ -88,7 +93,7 @@ instances:
     facility: CONTAINER_DEV
     container_postgres: canopy-dev-postgres
     container_redis: canopy-dev-redis
-    volume_postgres: pg_dev_data
+    volume_postgres: canopy_pg_dev_data
     host_port_postgres: 5442
     host_port_redis: 6389
     postgres_user: canopy
