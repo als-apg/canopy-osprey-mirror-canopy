@@ -6,8 +6,13 @@ from fastapi import Path, Query, Security, APIRouter
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access
 from canopy.core.time_parse import now_ns, parse_time
-from canopy.vole.dependencies import BufferServiceDep
-from canopy.vole.schemas.buffer import PVSeriesDTO, AlignedPVDTO, AlignedResultDTO
+from canopy.vole.dependencies import BufferServiceDep, IngestServiceDep
+from canopy.vole.schemas.buffer import (
+    PVSeriesDTO,
+    AlignedPVDTO,
+    AlignedResultDTO,
+    PVSubscribeRequest,
+)
 
 AlignMode = Literal["last", "nearest", "linear", "none"]
 IndexMode = Literal["union", "intersection", "grid", "first_input"]
@@ -54,6 +59,17 @@ async def multi_pv_aligned_read(
             for pv in pv_list
         ],
     )
+
+
+@router.post("/subscribe", dependencies=[Security(require_read_access)])
+async def subscribe_pvs(
+    body: PVSubscribeRequest,
+    ingest: IngestServiceDep,
+):
+    if not body.pvs:
+        raise BadRequest("'pvs' must contain at least one PV name")
+    await ingest.subscribe(body.pvs)
+    return {"subscribed": body.pvs}
 
 
 @router.get("/{pv:path}", dependencies=[Security(require_read_access)])
