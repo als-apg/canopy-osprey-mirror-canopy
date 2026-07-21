@@ -19,6 +19,7 @@ class VoleConfig(BaseSettings):
     global_bytes_max: int = 4_294_967_296
     default_align: str = "last"
     default_index: str = "union"
+    buffer_grace_seconds: int = 60
 
 
 def get_vole_config() -> VoleConfig:
