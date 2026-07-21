@@ -14,18 +14,24 @@ per instance by the `Init Data Layer (one-time)` workflow and reached over the h
 
 | Instance | Facility (inventory)  | API port | PG host port | Redis host port | DB          | Deploy component |
 |----------|-----------------------|----------|--------------|-----------------|-------------|------------------|
-| NC       | CONTAINER_LCLS        | 8080     | 5432         | 6379            | canopy_nc   | canopy-nc        |
-| SC       | CONTAINER_LCLS        | 8081     | 5433         | 6380            | canopy_sc   | canopy-sc        |
-| NLCTA    | CONTAINER_TESTFAC     | 8080     | 5432         | 6379            | canopy_nlcta| canopy-nlcta     |
-| ASTA     | CONTAINER_TESTFAC     | 8081     | 5433         | 6380            | canopy_asta | canopy-asta      |
-| FACET    | CONTAINER_FACET       | 8080     | 5432         | 6379            | canopy_facet| canopy-facet     |
-| DEV      | CONTAINER_DEV         | 8080     | 5432         | 6379            | canopy_dev  | canopy           |
+| NC       | CONTAINER_LCLS        | 8080     | 5442         | 6389            | canopy_nc   | canopy-nc        |
+| SC       | CONTAINER_LCLS        | 8081     | 5443         | 6390            | canopy_sc   | canopy-sc        |
+| NLCTA    | CONTAINER_TESTFAC     | 8080     | 5442         | 6389            | canopy_nlcta| canopy-nlcta     |
+| ASTA     | CONTAINER_TESTFAC     | 8081     | 5443         | 6390            | canopy_asta | canopy-asta      |
+| FACET    | CONTAINER_FACET       | 8080     | 5442         | 6389            | canopy_facet| canopy-facet     |
+| DEV      | CONTAINER_DEV         | 8080     | 5442         | 6389            | canopy_dev  | canopy           |
 
 All per-instance app config lives in the `APP_SECRETS_<INSTANCE>` GitHub secret —
 credentials *and* plain config (API port, EPICS address lists, debug flag). Nothing
 is committed to the repo, deliberately: the EPICS `*_ADDR_LIST` values are internal
 network addresses. The only committed per-instance data is the non-secret data-layer
 container/volume/port map in `docker/data-layer/instances.yml`.
+
+Canopy shares each facility host with the legacy react-squirrel data layer (which
+publishes 5432/6379, and 5433/6380 for the second instance on a box), so Canopy's
+data layer is offset by +10: 5442/6389 for the first instance on a host, 5443/6390
+for the second. These host ports must match the ones embedded in each secret's
+`CANOPY_DATABASE_URL` / `CANOPY_REDIS_URL`.
 
 ## Prerequisite: `APP_SECRETS_<INSTANCE>` GitHub secrets
 
@@ -42,7 +48,7 @@ facility's network config and are intentionally not written down in this repo):
 ```json
 {
   "_shared": {
-    "CANOPY_API_KEYS": "<key1>,<key2>"
+    "CANOPY_API_KEYS": "<read-write-token>:read+write,<read-only-token>:read"
   },
   "CONTAINER_LCLS": {
     "API_PORT": 8080,
@@ -51,8 +57,8 @@ facility's network config and are intentionally not written down in this repo):
     "CANOPY_DATABASE_MAX_OVERFLOW": 20,
     "POSTGRES_PASSWORD": "<pg-password>",
     "REDIS_PASSWORD": "<redis-password>",
-    "CANOPY_DATABASE_URL": "postgresql+asyncpg://canopy:<pg-password>@127.0.0.1:5432/canopy_nc",
-    "CANOPY_REDIS_URL": "redis://:<redis-password>@127.0.0.1:6379/0",
+    "CANOPY_DATABASE_URL": "postgresql+asyncpg://canopy:<pg-password>@127.0.0.1:5442/canopy_nc",
+    "CANOPY_REDIS_URL": "redis://:<redis-password>@127.0.0.1:6389/0",
     "EPICS_CA_ADDR_LIST": "<facility CA address list>",
     "EPICS_CA_AUTO_ADDR_LIST": "NO",
     "EPICS_CA_SERVER_PORT": 5064,
@@ -68,7 +74,8 @@ facility's network config and are intentionally not written down in this repo):
 Per-instance adjustments to the template:
 
 - `API_PORT`, the DB/Redis host ports in the URLs, and the DB name follow the
-  instance table above (SC and ASTA are the `8081` / `5433` / `6380` instances).
+  instance table above (SC and ASTA are the `8081` / `5443` / `6390` instances;
+  every other instance uses `5442` / `6389`).
 - DEV: `CANOPY_DEBUG: true`; DEV and FACET typically only set `EPICS_CA_ADDR_LIST`.
 - NLCTA / ASTA: TESTFAC runs non-default CA server/repeater ports and explicit PVA
   address/broadcast settings — take the values from the facility EPICS environment.
