@@ -24,6 +24,14 @@
 # Access path: the app containers run with network_mode: host (EPICS CA/PVA
 # needs UDP broadcast), so they reach postgres/redis via the 127.0.0.1 host
 # ports published below - there is deliberately no shared docker network.
+#
+# Host ports: Canopy shares each facility's host with the legacy react-squirrel
+# data layer, which already publishes 5432/6379 (and 5433/6380 for the second
+# instance on a box). To avoid colliding with it, Canopy is offset by +10:
+# 5442/6389 for the first instance on a host, 5443/6390 for the second. The two
+# instances that co-locate (NC+SC on LCLS, NLCTA+ASTA on TESTFAC) stay offset
+# from each other as well. Keep these in sync with the ports embedded in each
+# APP_SECRETS_<INSTANCE>'s CANOPY_DATABASE_URL / CANOPY_REDIS_URL.
 
 instances:
   NC:
@@ -31,8 +39,8 @@ instances:
     container_postgres: canopy-nc-postgres
     container_redis: canopy-nc-redis
     volume_postgres: pg_nc_data
-    host_port_postgres: 5432
-    host_port_redis: 6379
+    host_port_postgres: 5442
+    host_port_redis: 6389
     postgres_user: canopy
     postgres_db: canopy_nc
 
@@ -41,8 +49,8 @@ instances:
     container_postgres: canopy-sc-postgres
     container_redis: canopy-sc-redis
     volume_postgres: pg_sc_data
-    host_port_postgres: 5433
-    host_port_redis: 6380
+    host_port_postgres: 5443
+    host_port_redis: 6390
     postgres_user: canopy
     postgres_db: canopy_sc
 
@@ -51,8 +59,8 @@ instances:
     container_postgres: canopy-nlcta-postgres
     container_redis: canopy-nlcta-redis
     volume_postgres: pg_nlcta_data
-    host_port_postgres: 5432
-    host_port_redis: 6379
+    host_port_postgres: 5442
+    host_port_redis: 6389
     postgres_user: canopy
     postgres_db: canopy_nlcta
 
@@ -61,8 +69,8 @@ instances:
     container_postgres: canopy-asta-postgres
     container_redis: canopy-asta-redis
     volume_postgres: pg_asta_data
-    host_port_postgres: 5433
-    host_port_redis: 6380
+    host_port_postgres: 5443
+    host_port_redis: 6390
     postgres_user: canopy
     postgres_db: canopy_asta
 
@@ -71,8 +79,8 @@ instances:
     container_postgres: canopy-facet-postgres
     container_redis: canopy-facet-redis
     volume_postgres: pg_facet_data
-    host_port_postgres: 5432
-    host_port_redis: 6379
+    host_port_postgres: 5442
+    host_port_redis: 6389
     postgres_user: canopy
     postgres_db: canopy_facet
 
@@ -81,8 +89,8 @@ instances:
     container_postgres: canopy-dev-postgres
     container_redis: canopy-dev-redis
     volume_postgres: pg_dev_data
-    host_port_postgres: 5432
-    host_port_redis: 6379
+    host_port_postgres: 5442
+    host_port_redis: 6389
     postgres_user: canopy
     postgres_db: canopy_dev
 
