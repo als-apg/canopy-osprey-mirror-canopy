@@ -101,7 +101,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy-nc
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ inputs.image_tag }}
       facilities: '["CONTAINER_LCLS"]'
       migration_command: ${{ inputs.migration_command }}
@@ -117,7 +117,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy-sc
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ inputs.image_tag }}
       facilities: '["CONTAINER_LCLS"]'
       migration_command: ${{ inputs.migration_command }}
@@ -133,7 +133,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy-nlcta
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ inputs.image_tag }}
       facilities: '["CONTAINER_TESTFAC"]'
       migration_command: ${{ inputs.migration_command }}
@@ -149,7 +149,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy-asta
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ inputs.image_tag }}
       facilities: '["CONTAINER_TESTFAC"]'
       migration_command: ${{ inputs.migration_command }}
@@ -165,7 +165,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy-facet
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ inputs.image_tag }}
       facilities: '["CONTAINER_FACET"]'
       migration_command: ${{ inputs.migration_command }}
@@ -181,7 +181,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ inputs.image_tag }}
       facilities: '["CONTAINER_DEV"]'
       migration_command: ${{ inputs.migration_command }}

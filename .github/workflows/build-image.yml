@@ -101,7 +101,7 @@ jobs:
     uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
     with:
       component_name: canopy
-      repository_name: Canopy
+      repository_name: canopy
       tag: ${{ needs.build.outputs.image_tag }}
       facilities: '["CONTAINER_DEV"]'
       health_check_path: /health
