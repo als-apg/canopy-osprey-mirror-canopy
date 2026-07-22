@@ -35,12 +35,10 @@ dev = [
     "fakeredis>=2.21",
 ]
 docs = [
-    "mkdocs",
+    "zensical>=0.0.51",
     "mkdocs-material",
     "mkdocstrings",
     "mkdocstrings-python",
-    "mkdocs-git-revision-date-localized-plugin",
-    "mkdocs-git-committers-plugin-2",
 ]
 
 [build-system]
