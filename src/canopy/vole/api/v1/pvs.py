@@ -11,7 +11,8 @@ from canopy.vole.schemas.buffer import (
     PVSeriesDTO,
     AlignedPVDTO,
     AlignedResultDTO,
-    PVSubscribeRequest,
+    PVSubscribeResultDTO,
+    PVSubscribeRequestDTO,
 )
 
 AlignMode = Literal["last", "nearest", "linear", "none"]
@@ -63,13 +64,13 @@ async def multi_pv_aligned_read(
 
 @router.post("/subscribe", dependencies=[Security(require_read_access)])
 async def subscribe_pvs(
-    body: PVSubscribeRequest,
+    body: PVSubscribeRequestDTO,
     ingest: IngestServiceDep,
 ):
     if not body.pvs:
         raise BadRequest("'pvs' must contain at least one PV name")
     await ingest.subscribe(body.pvs)
-    return {"subscribed": body.pvs}
+    return PVSubscribeResultDTO(subscribed=body.pvs)
 
 
 @router.get("/{pv:path}", dependencies=[Security(require_read_access)])
@@ -96,3 +97,12 @@ async def single_pv_read(
 
     samples = await service.read_window(pv, t0_ns, t1_ns, align=align, max_points=max_points)
     return PVSeriesDTO(pv=pv, count=len(samples), samples=samples)
+
+
+@router.post("/subscribe/{pv:path}", dependencies=[Security(require_read_access)])
+async def single_subscribe_pv(
+    pv: Annotated[str, Path(description="PV name; URL-encode if it contains special characters")],
+    ingest: IngestServiceDep,
+):
+    await ingest.subscribe([pv])
+    return PVSubscribeResultDTO(subscribed=[pv])

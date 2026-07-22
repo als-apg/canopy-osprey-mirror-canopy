@@ -61,6 +61,15 @@ class TestSubscribeEndpoint:
         )
         assert resp.status_code == 401
 
+    async def test_single_subscribe_returns_200(self, vole_client: TestClient) -> None:
+        resp = vole_client.post(
+            "/vole/v1/pvs/subscribe/PV:A",
+            headers=READ_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["subscribed"] == ["PV:A"]
+
 
 class TestGraceManager:
     @pytest.fixture

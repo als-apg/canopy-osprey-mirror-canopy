@@ -60,5 +60,9 @@ class HeartbeatDTO(CanopyModel):
     total_bytes: int
 
 
-class PVSubscribeRequest(CanopyModel):
+class PVSubscribeRequestDTO(CanopyModel):
     pvs: list[str]
+
+
+class PVSubscribeResultDTO(CanopyModel):
+    subscribed: list[str] = Field(default_factory=list)
