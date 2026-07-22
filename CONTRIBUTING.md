@@ -33,7 +33,7 @@ uv run isort .
 ## Building Docs
 
 ```bash
-uv run mkdocs serve
+uv run zensical serve
 ```
 
 ## Submitting Changes

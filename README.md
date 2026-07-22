@@ -64,5 +64,5 @@ Examples are provided under the `frontend-demos` directory for connecting to PVs
 ## Building Docs
 
 ```bash
-uv run mkdocs serve
+uv run zensical serve
 ```
