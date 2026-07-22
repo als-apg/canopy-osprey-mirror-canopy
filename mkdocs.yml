@@ -1,12 +1,12 @@
 # Project Information
-site_name: Canopy
-site_url: https://slaclab.github.io/Canopy/
+site_name: canopy
+site_url: https://slaclab.github.io/canopy/
 site_author: SLAC National Accelerator Laboratory - EED / Software Applications Group
 site_description:  Canopy is a planned platform for control system displays, tools and applications.
 
 # Repository
-repo_name: slaclab/Canopy
-repo_url: https://github.com/slaclab/Canopy
+repo_name: slaclab/canopy
+repo_url: https://github.com/slaclab/canopy
 
 # Configuration
 theme:
@@ -26,12 +26,14 @@ theme:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: black
+      accent: red
       toggle:
         icon: material/toggle-switch-off-outline
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: black
+      accent: red
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
@@ -51,20 +53,14 @@ plugins:
             docstring_options:
               ignore_init_summary: true
             merge_init_into_class: true
-  - git-revision-date-localized:
-      exclude:
-        - index.md
-      enable_creation_date: true
-      fallback_to_build_date: true
-  - git-committers:
-      exclude:
-        - index.md
-      repository: slaclab/Canopy
-      branch: main
 
 # Additional Configuration
 extra:
-  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/slaclab
+      name: SLAC GitHub
+copyright: Copyright © 2026, The Board of Trustees of the Leland Stanford Junior
 
 # Extensions
 markdown_extensions:
@@ -99,10 +95,8 @@ nav:
     - REST API: vole/rest_api.md
     - Configuration: vole/configuration.md
   - How To:
-    - how_to/index.md
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
     - Custom directory adapter: how_to/custom_directory_adapter.md
   - API Reference:
-    - api_reference/index.md
     - Fox: api_reference/fox.md
     - Vole: api_reference/vole.md
