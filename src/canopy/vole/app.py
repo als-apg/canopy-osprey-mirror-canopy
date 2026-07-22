@@ -52,7 +52,7 @@ async def vole_lifespan():
     gateway.bind_ingest(ingest)
     logger.info("Vole connected to Hare for live data ingestion")
 
-    grace = GraceManager(ingest, config)
+    grace = GraceManager(ingest, service, config)
     broker.add_deactivation_hook(grace.on_pv_deactivated, exclude_clients={HareIngestService.CLIENT_ID})
     broker.add_activation_hook(grace.on_pv_activated, exclude_clients={HareIngestService.CLIENT_ID})
 

@@ -24,9 +24,15 @@ class IngestProtocol(Protocol):
     async def unsubscribe(self, pvs: list[str]) -> None: ...
 
 
+@runtime_checkable
+class BufferProtocol(Protocol):
+    async def drop(self, pv: str) -> None: ...
+
+
 class GraceManager:
-    def __init__(self, ingest: IngestProtocol, config: VoleConfig) -> None:
+    def __init__(self, ingest: IngestProtocol, buffer: BufferProtocol, config: VoleConfig) -> None:
         self._ingest = ingest
+        self._buffer = buffer
         self._grace_seconds = config.buffer_grace_seconds
         self._pending: dict[str, asyncio.Task] = {}
 
@@ -45,7 +51,8 @@ class GraceManager:
         await asyncio.sleep(self._grace_seconds)
         self._pending.pop(pv, None)
         await self._ingest.unsubscribe([pv])
-        logger.debug("Grace period expired; unsubscribed Vole from %s", pv)
+        await self._buffer.drop(pv)
+        logger.debug("Grace period expired; unsubscribed and dropped buffer for %s", pv)
 
     async def shutdown(self) -> None:
         for task in self._pending.values():

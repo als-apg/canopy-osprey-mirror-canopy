@@ -25,6 +25,16 @@ class FakeIngest:
         self.unsubscribed.append(pvs)
 
 
+class FakeBuffer:
+    """Minimal stand-in for BufferService for GraceManager tests."""
+
+    def __init__(self) -> None:
+        self.dropped: list[str] = []
+
+    async def drop(self, pv: str) -> None:
+        self.dropped.append(pv)
+
+
 class TestSubscribeEndpoint:
     async def test_subscribe_returns_200(self, vole_client: TestClient) -> None:
         resp = vole_client.post(
@@ -61,21 +71,23 @@ class TestGraceManager:
             buffer_grace_seconds=0,
         )
 
-    async def test_deactivation_fires_unsubscribe_after_grace(self, grace_config: VoleConfig) -> None:
+    async def test_deactivation_fires_unsubscribe_and_drops_buffer(self, grace_config: VoleConfig) -> None:
         grace_config.buffer_grace_seconds = 0
         ingest = FakeIngest(subscribed={"PV:A"})
-        mgr = GraceManager(ingest, grace_config)
+        buffer = FakeBuffer()
+        mgr = GraceManager(ingest, buffer, grace_config)
 
         await mgr.on_pv_deactivated(["PV:A"])
         await asyncio.sleep(0.05)
 
         assert ["PV:A"] in ingest.unsubscribed
+        assert buffer.dropped == ["PV:A"]
         await mgr.shutdown()
 
     async def test_activation_cancels_pending_grace(self, grace_config: VoleConfig) -> None:
         grace_config.buffer_grace_seconds = 10
         ingest = FakeIngest(subscribed={"PV:A"})
-        mgr = GraceManager(ingest, grace_config)
+        mgr = GraceManager(ingest, FakeBuffer(), grace_config)
 
         await mgr.on_pv_deactivated(["PV:A"])
         assert "PV:A" in mgr._pending
@@ -87,7 +99,7 @@ class TestGraceManager:
 
     async def test_deactivation_ignores_pv_not_subscribed(self, grace_config: VoleConfig) -> None:
         ingest = FakeIngest(subscribed=set())
-        mgr = GraceManager(ingest, grace_config)
+        mgr = GraceManager(ingest, FakeBuffer(), grace_config)
 
         await mgr.on_pv_deactivated(["PV:NOPE"])
         assert mgr._pending == {}
@@ -96,7 +108,7 @@ class TestGraceManager:
     async def test_shutdown_cancels_pending_timers(self, grace_config: VoleConfig) -> None:
         grace_config.buffer_grace_seconds = 100
         ingest = FakeIngest(subscribed={"PV:A", "PV:B"})
-        mgr = GraceManager(ingest, grace_config)
+        mgr = GraceManager(ingest, FakeBuffer(), grace_config)
 
         await mgr.on_pv_deactivated(["PV:A", "PV:B"])
         assert len(mgr._pending) == 2
