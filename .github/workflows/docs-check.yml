@@ -1,4 +1,4 @@
-name: Documentation Build Check
+name: Build Documentation
 
 on:
   pull_request:
@@ -8,9 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
-    name: Build
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
