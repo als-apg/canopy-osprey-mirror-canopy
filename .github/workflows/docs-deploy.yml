@@ -21,19 +21,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9
         with:
-          python-version: "3.x"
+          python-version-file: pyproject.toml
 
       - name: Configure pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6
 
       - name: Install dependencies
-        run: pip install zensical
+        run: uv sync --group docs
 
       - name: Build documentation
-        run: zensical build --clean --strict
+        run: uv run zensical build --clean --strict
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5

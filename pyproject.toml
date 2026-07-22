@@ -36,7 +36,6 @@ dev = [
 ]
 docs = [
     "zensical>=0.0.51",
-    "mkdocs-material",
     "mkdocstrings",
     "mkdocstrings-python",
 ]
