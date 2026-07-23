@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
@@ -16,11 +17,14 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src/ ./src/
+COPY .git/ ./.git/
 
 # --no-editable bakes the canopy package into the venv's site-packages instead
 # of linking to /app/src. The prod stage copies only /app/.venv (not src/), so
 # an editable install would leave `import canopy` dangling at runtime.
 RUN uv sync --frozen --no-dev --no-editable
+
+RUN rm -rf .git
 
 # === Production stage ===
 FROM python:3.12-slim
