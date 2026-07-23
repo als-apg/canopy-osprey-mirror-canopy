@@ -81,6 +81,38 @@
       changed_when: false
       check_mode: false
 
+    # Read-only reconnaissance, printed before any gate can refuse. CI is the
+    # only eye on these hosts, so every run - including --check dry runs -
+    # reports the state it saw: leftover containers, who holds the host ports,
+    # whether the image is present, and the daemon's proxy config. Nothing
+    # here touches secrets.
+    - name: Collect host diagnostics
+      shell: |
+        echo '=== remote user and groups ==='
+        id
+        echo '=== docker socket ==='
+        ls -l /var/run/docker.sock 2>&1 || true
+        echo '=== docker ps -a (this instance) ==='
+        docker ps -a --filter name={{ cfg.container_postgres }} --filter name={{ cfg.container_redis }} 2>&1 || true
+        echo '=== docker logs {{ cfg.container_postgres }} (last 30) ==='
+        docker logs --tail 30 {{ cfg.container_postgres }} 2>&1 || true
+        echo '=== docker logs {{ cfg.container_redis }} (last 30) ==='
+        docker logs --tail 30 {{ cfg.container_redis }} 2>&1 || true
+        echo '=== listeners on host ports {{ cfg.host_port_postgres }} / {{ cfg.host_port_redis }} ==='
+        ss -tlnp 2>&1 | grep -E ':({{ cfg.host_port_postgres }}|{{ cfg.host_port_redis }})\s' || echo '(none)'
+        echo '=== image {{ postgres_image }} present locally? ==='
+        docker image inspect {{ postgres_image }} --format present 2>&1 || echo 'absent or unreadable (see error above)'
+        echo '=== docker daemon proxy config ==='
+        docker info 2>&1 | grep -i proxy || echo '(none reported / daemon unreachable)'
+      register: diag
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Host diagnostics
+      debug:
+        msg: "{{ diag.stdout_lines | default(['(diagnostics unavailable: ' ~ (diag.stderr | default('unknown')) ~ ')']) }}"
+
     - name: Refuse if any data-layer object exists and mode is init
       fail:
         msg: |
@@ -208,6 +240,10 @@
         - mode == 'recreate'
         - pg_inspect.rc == 0
 
+    # Pass POSTGRES_PASSWORD via `-e POSTGRES_PASSWORD` (no value) so docker
+    # inherits it from the CLI's environment, set via `environment:` below - the
+    # password never appears in argv, so the task stays debuggable (no no_log),
+    # same pattern as the pg_dump / psql health-check tasks.
     - name: Run postgres
       command:
         argv:
@@ -221,7 +257,7 @@
           - -e
           - "POSTGRES_USER={{ cfg.postgres_user }}"
           - -e
-          - "POSTGRES_PASSWORD={{ postgres_password }}"
+          - POSTGRES_PASSWORD
           - -e
           - "POSTGRES_DB={{ cfg.postgres_db }}"
           - -p
@@ -229,8 +265,9 @@
           - -v
           - "{{ cfg.volume_postgres }}:/var/lib/postgresql/data"
           - "{{ postgres_image }}"
+      environment:
+        POSTGRES_PASSWORD: "{{ postgres_password }}"
       when: mode != 'recreate' or pg_inspect.rc != 0
-      no_log: true
 
     - name: Start existing redis (recreate)
       command: docker start {{ cfg.container_redis }}
@@ -305,6 +342,10 @@
         - (redis_health.stdout | trim) == 'PONG'
       changed_when: false
       no_log: true
+      # In check mode the command never runs, so `until` can never pass and
+      # the task burns all 30 retries before failing the dry run. Skip it
+      # explicitly; the run task it verifies is skipped in check mode anyway.
+      when: not ansible_check_mode
 
     - name: Summary
       debug:
