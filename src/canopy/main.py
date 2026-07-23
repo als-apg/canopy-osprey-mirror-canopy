@@ -1,10 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
-from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from canopy import __version__
 from canopy.fox.app import app as fox_app
 from canopy.fox.app import fox_lifespan
 from canopy.hare.app import app as hare_app
@@ -26,12 +26,6 @@ from canopy.squirrel.app import squirrel_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
 
-try:
-    __version__ = version("canopy")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
-
-
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -50,7 +44,7 @@ async def lifespan(app: FastAPI):
         jobs_lifespan(),
         converter_lifespan(),
     ):
-        logger.info("Starting Canopy API")
+        logger.info(f"Starting Canopy API [version {__version__}]")
         yield
         logger.info("Canopy API shutdown complete")
 
