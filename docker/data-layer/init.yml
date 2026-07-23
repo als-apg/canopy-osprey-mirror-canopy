@@ -88,18 +88,22 @@
     # here touches secrets.
     - name: Collect host diagnostics
       shell: |
+        echo '=== remote user and groups ==='
+        id
+        echo '=== docker socket ==='
+        ls -l /var/run/docker.sock 2>&1 || true
         echo '=== docker ps -a (this instance) ==='
-        docker ps -a --filter name={{ cfg.container_postgres }} --filter name={{ cfg.container_redis }}
+        docker ps -a --filter name={{ cfg.container_postgres }} --filter name={{ cfg.container_redis }} 2>&1 || true
         echo '=== docker logs {{ cfg.container_postgres }} (last 30) ==='
         docker logs --tail 30 {{ cfg.container_postgres }} 2>&1 || true
         echo '=== docker logs {{ cfg.container_redis }} (last 30) ==='
         docker logs --tail 30 {{ cfg.container_redis }} 2>&1 || true
         echo '=== listeners on host ports {{ cfg.host_port_postgres }} / {{ cfg.host_port_redis }} ==='
-        ss -tlnp | grep -E ':({{ cfg.host_port_postgres }}|{{ cfg.host_port_redis }})\s' || echo '(none)'
+        ss -tlnp 2>&1 | grep -E ':({{ cfg.host_port_postgres }}|{{ cfg.host_port_redis }})\s' || echo '(none)'
         echo '=== image {{ postgres_image }} present locally? ==='
-        docker image inspect {{ postgres_image }} --format present || echo 'absent (docker run will need to pull)'
+        docker image inspect {{ postgres_image }} --format present 2>&1 || echo 'absent or unreadable (see error above)'
         echo '=== docker daemon proxy config ==='
-        docker info 2>/dev/null | grep -i proxy || echo '(none reported)'
+        docker info 2>&1 | grep -i proxy || echo '(none reported / daemon unreachable)'
       register: diag
       failed_when: false
       changed_when: false
@@ -338,6 +342,10 @@
         - (redis_health.stdout | trim) == 'PONG'
       changed_when: false
       no_log: true
+      # In check mode the command never runs, so `until` can never pass and
+      # the task burns all 30 retries before failing the dry run. Skip it
+      # explicitly; the run task it verifies is skipped in check mode anyway.
+      when: not ansible_check_mode
 
     - name: Summary
       debug:
