@@ -1,3 +1,3 @@
 # API Reference
 
-This section is wehre you can read information on individual snippets of code.
+This section is where you can read information on individual snippets of code.

@@ -1,3 +1,9 @@
+---
+hide:
+    - toc
+    - footer
+---
+
 # Canopy
 
 Canopy is a backend platform for making control system tools and applications
