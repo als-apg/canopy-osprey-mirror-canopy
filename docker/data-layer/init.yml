@@ -81,6 +81,34 @@
       changed_when: false
       check_mode: false
 
+    # Read-only reconnaissance, printed before any gate can refuse. CI is the
+    # only eye on these hosts, so every run - including --check dry runs -
+    # reports the state it saw: leftover containers, who holds the host ports,
+    # whether the image is present, and the daemon's proxy config. Nothing
+    # here touches secrets.
+    - name: Collect host diagnostics
+      shell: |
+        echo '=== docker ps -a (this instance) ==='
+        docker ps -a --filter name={{ cfg.container_postgres }} --filter name={{ cfg.container_redis }}
+        echo '=== docker logs {{ cfg.container_postgres }} (last 30) ==='
+        docker logs --tail 30 {{ cfg.container_postgres }} 2>&1 || true
+        echo '=== docker logs {{ cfg.container_redis }} (last 30) ==='
+        docker logs --tail 30 {{ cfg.container_redis }} 2>&1 || true
+        echo '=== listeners on host ports {{ cfg.host_port_postgres }} / {{ cfg.host_port_redis }} ==='
+        ss -tlnp | grep -E ':({{ cfg.host_port_postgres }}|{{ cfg.host_port_redis }})\s' || echo '(none)'
+        echo '=== image {{ postgres_image }} present locally? ==='
+        docker image inspect {{ postgres_image }} --format present || echo 'absent (docker run will need to pull)'
+        echo '=== docker daemon proxy config ==='
+        docker info 2>/dev/null | grep -i proxy || echo '(none reported)'
+      register: diag
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Host diagnostics
+      debug:
+        msg: "{{ diag.stdout_lines | default(['(diagnostics unavailable: ' ~ (diag.stderr | default('unknown')) ~ ')']) }}"
+
     - name: Refuse if any data-layer object exists and mode is init
       fail:
         msg: |
