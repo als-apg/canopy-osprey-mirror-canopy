@@ -208,6 +208,10 @@
         - mode == 'recreate'
         - pg_inspect.rc == 0
 
+    # Pass POSTGRES_PASSWORD via `-e POSTGRES_PASSWORD` (no value) so docker
+    # inherits it from the CLI's environment, set via `environment:` below - the
+    # password never appears in argv, so the task stays debuggable (no no_log),
+    # same pattern as the pg_dump / psql health-check tasks.
     - name: Run postgres
       command:
         argv:
@@ -221,7 +225,7 @@
           - -e
           - "POSTGRES_USER={{ cfg.postgres_user }}"
           - -e
-          - "POSTGRES_PASSWORD={{ postgres_password }}"
+          - POSTGRES_PASSWORD
           - -e
           - "POSTGRES_DB={{ cfg.postgres_db }}"
           - -p
@@ -229,8 +233,9 @@
           - -v
           - "{{ cfg.volume_postgres }}:/var/lib/postgresql/data"
           - "{{ postgres_image }}"
+      environment:
+        POSTGRES_PASSWORD: "{{ postgres_password }}"
       when: mode != 'recreate' or pg_inspect.rc != 0
-      no_log: true
 
     - name: Start existing redis (recreate)
       command: docker start {{ cfg.container_redis }}
