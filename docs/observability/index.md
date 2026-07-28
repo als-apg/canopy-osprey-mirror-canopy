@@ -1,7 +1,6 @@
 # Observability
 
-Canopy ships a lightweight, fully open-source observability pipeline
-(mirroring the approach proven in react-squirrel-backend PR #82):
+Canopy ships a lightweight observability pipeline:
 
 ```
 canopy-api / canopy-worker write JSON log lines

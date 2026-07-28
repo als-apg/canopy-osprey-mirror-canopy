@@ -1,5 +1,4 @@
-# Single-instance Loki with filesystem storage — development / small-facility
-# scale. Matches the pattern from react-squirrel-backend PR #82.
+# Single-instance Loki with filesystem storage.
 auth_enabled: false
 
 server:
