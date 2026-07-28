@@ -92,6 +92,10 @@ class ErrorCode(StrEnum):
     CONVERTER_UPLOAD_TOO_LARGE = auto()
     CONVERTER_BATCH_RESULT_NOT_FOUND = auto()
 
+    # Magpie
+    CONFIG_NOT_FOUND = auto()
+    CONFIG_SLUG_CONFLICT = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.

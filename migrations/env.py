@@ -14,6 +14,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import canopy.magpie.data.models  # noqa: F401, E402
+
 # Register every persistent module's models on Base.metadata so --autogenerate
 # sees them. Add an import here when a module gains a data tier.
 import canopy.squirrel.data.models  # noqa: F401, E402
