@@ -1,19 +1,13 @@
 """Module-level runtime state for the converter.
 
 Kept separate from ``app.py`` so the API layer can read uptime without an
-import cycle through the FastAPI app.
+import cycle through the FastAPI app. Thin wrapper around the shared
+``canopy.core.runtime.ModuleRuntime`` so each module still owns a distinct
+instance behind its own import path.
 """
 
-import time
+from canopy.core.runtime import ModuleRuntime
 
-_start_monotonic: float = time.monotonic()
-
-
-def mark_started() -> None:
-    """Record the boot time. Called from the parent app's lifespan startup."""
-    global _start_monotonic
-    _start_monotonic = time.monotonic()
-
-
-def uptime_s() -> float:
-    return time.monotonic() - _start_monotonic
+_runtime = ModuleRuntime()
+mark_started = _runtime.mark_started
+uptime_s = _runtime.uptime_s
