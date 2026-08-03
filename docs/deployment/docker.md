@@ -12,7 +12,7 @@ Two compose files live under `docker/`:
 
 ```bash
 cd docker
-cp .env.example .env        # optional — sensible defaults are baked in
+cp ../.env.example .env     # optional — sensible defaults are baked in
 docker compose up -d
 ```
 

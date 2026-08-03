@@ -137,7 +137,7 @@ Actions -> `Deploy` -> Run workflow.
 
 | Input               | Notes                                                          |
 |---------------------|----------------------------------------------------------------|
-| `image_tag`         | GHCR tag, e.g. `main-abc1234` or the short sha from a main build |
+| `image_tag`         | GHCR tag — the bare commit short SHA from a main build (e.g. `abc1234`) |
 | `deploy_<instance>` | One checkbox per instance (nc/sc/nlcta/asta/facet/dev)         |
 | `migration_command` | Default `alembic upgrade head`, run as `compose run --rm api <command>` before services restart. Clear it to skip — e.g. when rolling back to an older image whose migration tree predates the database revision |
 | `force_deploy`      | Deploy even if the same tag is already running                 |

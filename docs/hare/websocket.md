@@ -145,7 +145,9 @@ diffs for the values.
 
 A PV that is valid but has not produced a value yet (e.g. a disconnected
 channel) may be absent from `initial` — its first `diff` arrives when the
-channel connects.
+channel connects. If no PV in the batch yields a value or metadata, the
+`initial` frame is skipped entirely, so do not treat it as a subscribe
+acknowledgement.
 
 ### diff
 
