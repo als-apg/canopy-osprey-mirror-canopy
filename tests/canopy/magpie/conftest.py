@@ -27,6 +27,8 @@ TEST_DATABASE_URL = os.environ.get(
     "CANOPY_TEST_DATABASE_URL", "postgresql+asyncpg://canopy:canopy@localhost:5432/canopy_test"
 )
 _ADMIN_DSN = os.environ.get("CANOPY_TEST_ADMIN_DSN", "postgresql://canopy:canopy@localhost:5432/postgres")
+# Derived from TEST_DATABASE_URL so an override creates the database it actually uses.
+_TEST_DB_NAME = TEST_DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
 _SCHEMA = "magpie"
 
 READ_HEADERS = {"X-API-Key": "test-read"}
@@ -39,7 +41,7 @@ _MAGPIE_TABLES = [t for t in Base.metadata.sorted_tables if t.schema == _SCHEMA]
 
 @pytest_asyncio.fixture(scope="session")
 async def ensure_test_db():
-    """Create the ``canopy_test`` database once per session if it doesn't exist.
+    """Create the test database (per ``TEST_DATABASE_URL``) once per session if absent.
 
     If Postgres is unreachable, skip (rather than fail) every test that needs it, so the
     repo's no-infra ``pytest`` run still passes — these integration tests light up when
@@ -50,9 +52,10 @@ async def ensure_test_db():
     except (OSError, asyncpg.PostgresError) as e:
         pytest.skip(f"Postgres unavailable for magpie integration tests ({_ADMIN_DSN}): {e}")
     try:
-        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = 'canopy_test'")
+        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", _TEST_DB_NAME)
         if not exists:
-            await conn.execute("CREATE DATABASE canopy_test")
+            # Identifier can't be parameterized; quote it instead.
+            await conn.execute(f'CREATE DATABASE "{_TEST_DB_NAME}"')
     finally:
         await conn.close()
 

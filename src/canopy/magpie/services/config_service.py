@@ -31,6 +31,23 @@ def _new_slug() -> str:
     return "".join(secrets.choice(_SLUG_ALPHABET) for _ in range(_SLUG_LENGTH))
 
 
+def _check_text(value: str | None, field: str) -> None:
+    """Reject NUL in a text column, which Postgres cannot store (see _check_data)."""
+    if value is not None and "\x00" in value:
+        raise BadRequest(f"Config {field} must not contain NUL characters")
+
+
+def _has_nul(value: object) -> bool:
+    """Recursively test a decoded JSON value for a NUL in any string (key or value)."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(_has_nul(k) or _has_nul(v) for k, v in value.items())
+    if isinstance(value, list | tuple):
+        return any(_has_nul(v) for v in value)
+    return False
+
+
 class ConfigService:
     """Config store CRUD. Owns no transaction — the caller commits.
 
@@ -58,12 +75,29 @@ class ConfigService:
         )
 
     @staticmethod
-    def _check_size(data: dict) -> None:
-        if len(json.dumps(data).encode("utf-8")) > MAX_DATA_BYTES:
+    def _check_data(data: dict) -> None:
+        """Reject payloads Postgres can't store, or that exceed the size cap.
+
+        ``ensure_ascii=False`` matters: the default escapes every non-ASCII character
+        to ``\\uXXXX``, which measures a 2-byte UTF-8 character as 6 and would reject a
+        config at roughly a third of the advertised limit.
+        """
+        # JSONB is text under the hood and Postgres rejects NUL in text. Pydantic accepts
+        # it (it's legal JSON) and asyncpg then raises an untranslatable-character error
+        # that no handler catches, so refuse it here as a clean 400. Checked on the parsed
+        # structure, not the serialized form — json.dumps rewrites a real NUL to the
+        # six-character text "\\u0000", which no substring check can tell apart from a
+        # string that genuinely contains those characters.
+        if _has_nul(data):
+            raise BadRequest("Config data must not contain NUL characters")
+        if len(json.dumps(data, ensure_ascii=False).encode("utf-8")) > MAX_DATA_BYTES:
             raise BadRequest(f"Config data exceeds the {MAX_DATA_BYTES // 1024} KB limit")
 
     async def create(self, app: str, data: NewConfigDTO) -> ConfigDTO:
-        self._check_size(data.data)
+        self._check_data(data.data)
+        _check_text(data.name, "name")
+        _check_text(data.description, "description")
+        _check_text(data.created_by, "createdBy")
         # Retry on the (astronomically unlikely) slug collision; a fresh slug per attempt.
         for attempt in range(_SLUG_MAX_RETRIES):
             config = Config(
@@ -75,9 +109,12 @@ class ConfigService:
                 created_by=data.created_by,
             )
             try:
-                config = await self.repo.create(config)
+                # SAVEPOINT, not a bare rollback: the session belongs to the caller
+                # (see the class docstring), so unwinding the whole transaction here
+                # would silently discard any write it made before calling us.
+                async with self.session.begin_nested():
+                    config = await self.repo.create(config)
             except IntegrityError:
-                await self.session.rollback()
                 if attempt == _SLUG_MAX_RETRIES - 1:
                     raise ConfigSlugConflict("Could not allocate a unique config slug") from None
                 continue
@@ -120,11 +157,13 @@ class ConfigService:
         if config is None:
             return None
         if data.data is not None:
-            self._check_size(data.data)
+            self._check_data(data.data)
             config.data = data.data
         if data.name is not None:
+            _check_text(data.name, "name")
             config.name = data.name
         if data.description is not None:
+            _check_text(data.description, "description")
             config.description = data.description
         config = await self.repo.update(config)
         return self._to_dto(config)

@@ -95,6 +95,59 @@ async def test_get_malformed_slug_404(client: AsyncClient):
     assert r.json()["code"] == "config_not_found"
 
 
+async def test_malformed_continuation_token_400(client: AsyncClient):
+    """A bad token must not reach asyncpg as an invalid UUID comparison (500)."""
+    for token in ("garbage", "0" * 40, "not-a-uuid-but-36-chars-long-aaaaaaaa"):
+        r = await client.get(f"/v1/configs/trace?continuationToken={token}", headers=READ_HEADERS)
+        assert r.status_code == 400, f"{token!r} -> {r.status_code} {r.text}"
+        assert r.json()["code"] == "bad_request"
+
+
+async def test_nul_byte_in_data_is_400(client: AsyncClient):
+    """Legal JSON that Postgres can't store must be a clean 400, not a 500."""
+    r = await client.post(
+        "/v1/configs/trace",
+        headers=WRITE_HEADERS,
+        json={"name": "nul", "data": {"a": "b\u0000c"}},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "bad_request"
+
+
+async def test_nul_byte_in_name_is_400(client: AsyncClient):
+    r = await client.post(
+        "/v1/configs/trace",
+        headers=WRITE_HEADERS,
+        json={"name": "a\u0000b", "data": {}},
+    )
+    assert r.status_code == 400, r.text
+
+
+async def test_non_ascii_data_measured_as_utf8(client: AsyncClient):
+    """Size is capped in real UTF-8 bytes, not \\uXXXX-escaped ones.
+
+    60k accented chars is ~120 KB of UTF-8 — comfortably under the 256 KB cap, but
+    ~360 KB once ``json.dumps`` escapes each one, which used to reject it.
+    """
+    r = await client.post(
+        "/v1/configs/trace",
+        headers=WRITE_HEADERS,
+        json={"name": "accented", "data": {"blob": "é" * 60_000}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["blob"] == "é" * 60_000
+
+
+async def test_oversize_data_still_rejected(client: AsyncClient):
+    r = await client.post(
+        "/v1/configs/trace",
+        headers=WRITE_HEADERS,
+        json={"name": "huge", "data": {"blob": "a" * (256 * 1024 + 100)}},
+    )
+    assert r.status_code == 400, r.text
+    assert "limit" in r.json()["detail"]
+
+
 async def test_update_mutable_fields(client: AsyncClient, sample_config: dict):
     slug = sample_config["slug"]
     r = await client.put(

@@ -17,7 +17,7 @@ async def magpie_lifespan():
     Magpie's service is request-scoped (built per request from a DB session) and the
     shared engine connects lazily, so there is no singleton to wire here. Composed by
     the parent app's lifespan in ``canopy.main``. Mounted sub-apps don't run their own
-    behind ``app.mount()``.
+    lifespan behind ``app.mount()``.
     """
     mark_started()
     logger.info("Magpie started")

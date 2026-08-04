@@ -16,7 +16,7 @@ from canopy.magpie.errors import ConfigNotFound
 from canopy.magpie.dependencies import ConfigServiceDep
 from canopy.contracts.pagination import PagedResult
 from canopy.magpie.schemas.config import ConfigDTO, NewConfigDTO, UpdateConfigDTO
-from canopy.magpie.api.v1._validation import is_app, is_slug
+from canopy.magpie.api.v1._validation import is_app, is_slug, is_uuid
 
 router = APIRouter(prefix="/configs", tags=["Configs"])
 
@@ -43,6 +43,10 @@ async def list_configs(
 ) -> PagedResult[ConfigDTO]:
     """List an app's configs (keyset-paginated)."""
     _require_app(app)
+    # The token is a row id; letting a malformed one through would reach asyncpg as a
+    # bad UUID comparison and surface as a 500 rather than a 400.
+    if continuationToken is not None and not is_uuid(continuationToken):
+        raise BadRequest("Invalid continuationToken")
     return await service.list_by_app(
         app=app,
         search=search,
