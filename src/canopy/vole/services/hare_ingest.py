@@ -82,14 +82,19 @@ class HareIngestService:
         await self._broker.remove_client(self.CLIENT_ID)
         logger.info("HareIngestService stopped")
 
-    async def subscribe(self, pvs: list[str]) -> None:
-        """Subscribe Vole to live updates for these PVs via Hare."""
+    async def subscribe(self, pvs: list[str]) -> list[str]:
+        """Subscribe Vole to live updates for these PVs via Hare.
+
+        Returns which of ``pvs`` are subscribed afterwards. Only names the broker
+        accepted are recorded — a rejected one would make GraceManager believe
+        there is a buffer to tear down.
+        """
         new_pvs = [pv for pv in pvs if pv not in self._subscribed_pvs]
-        if not new_pvs:
-            return
-        await self._broker.subscribe(self.CLIENT_ID, new_pvs)
-        self._subscribed_pvs.update(new_pvs)
-        logger.debug("Vole subscribed to %d PVs: %s", len(new_pvs), new_pvs[:5])
+        if new_pvs:
+            accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs)
+            self._subscribed_pvs.update(accepted)
+            logger.debug("Vole subscribed to %d/%d new PVs: %s", len(accepted), len(new_pvs), accepted[:5])
+        return [pv for pv in pvs if pv in self._subscribed_pvs]
 
     async def unsubscribe(self, pvs: list[str]) -> None:
         """Unsubscribe Vole from live updates for these PVs."""

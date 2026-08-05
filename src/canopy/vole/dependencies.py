@@ -12,9 +12,7 @@ def get_buffer_service() -> BufferService:
 
 
 def get_ingest_service() -> HareIngestService:
-    if gateway._ingest is None:
-        raise RuntimeError("Vole ingest not available")
-    return gateway._ingest
+    return gateway.get_ingest()
 
 
 BufferServiceDep = Annotated[BufferService, Depends(get_buffer_service)]

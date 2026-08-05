@@ -205,7 +205,13 @@ class PVBroker:
             )
         return accepted
 
-    async def subscribe(self, client_id: str, pvs: list[str]) -> None:
+    async def subscribe(self, client_id: str, pvs: list[str]) -> list[str]:
+        """Subscribe a client to PVs; returns the names actually accepted.
+
+        Invalid names and names past the caps are dropped rather than raised, so
+        callers must use the return value rather than assume the whole request
+        was honoured.
+        """
         pvs, rejected = self._accept_names(pvs)
         if rejected:
             await self._send(
@@ -218,10 +224,10 @@ class PVBroker:
                 },
             )
         if not pvs:
-            return
+            return []
         pvs = self._apply_caps(client_id, pvs)
         if not pvs:
-            return
+            return []
         previously_subscribed = self._registry.client_pvs(client_id)
         newly = self._registry.subscribe(client_id, pvs)
         await self._start_monitors(newly)
@@ -252,6 +258,7 @@ class PVBroker:
                     "count": len(initial),
                 },
             )
+        return pvs
 
     async def _seed_pv(self, pv: str) -> None:
         """Fetch the seed value + static metadata for one newly-activated PV.
@@ -273,10 +280,15 @@ class PVBroker:
     async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
         if not pvs:
             return
+        # Only PVs the client actually held were released here. Firing on the raw
+        # request list would let any client deactivate a PV it never subscribed
+        # to -- e.g. a REST-warmed one held only by `vole-internal`.
+        held = self._registry.client_pvs(client_id)
+        released = [pv for pv in pvs if pv in held]
         deactivated = self._registry.unsubscribe(client_id, pvs)
         await self._stop_monitors(deactivated)
-        if pvs:
-            await self._fire_deactivation_hooks(pvs, client_id)
+        if released:
+            await self._fire_deactivation_hooks(released, client_id)
 
     # --- monitor lifecycle ----------------------------------------------- #
 

@@ -100,6 +100,38 @@ class TestDeactivationHooks:
 
         assert deactivated == []
 
+    async def test_unsubscribe_of_unheld_pv_does_not_fire_deactivation(self, broker: PVBroker) -> None:
+        """A REST-warmed buffer is held only by `vole-internal`, so its external
+        subscriber count is already zero — one unsubscribe frame from an
+        unrelated client must not be enough to kill it."""
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook, exclude_clients={"vole-internal"})
+        broker.add_client("vole-internal", FakeWebSocket())
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("vole-internal", ["PV:A"])
+
+        await broker.unsubscribe("c1", ["PV:A"])
+
+        assert deactivated == []
+
+    async def test_repeated_unsubscribe_fires_deactivation_once(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.unsubscribe("c1", ["PV:A"])
+        await broker.unsubscribe("c1", ["PV:A"])
+
+        assert deactivated == [["PV:A"]]
+
     async def test_deactivation_hook_excluded_client(self, broker: PVBroker) -> None:
         deactivated: list[list[str]] = []
 

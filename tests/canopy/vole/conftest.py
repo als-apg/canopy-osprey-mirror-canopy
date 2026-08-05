@@ -15,15 +15,22 @@ from canopy.vole.services.alignment_service import AlignmentService
 
 
 class FakeIngestService:
-    """Minimal fake for the subscribe endpoint tests."""
+    """Minimal fake for the subscribe endpoint tests.
+
+    ``reject`` stands in for names the real broker silently drops (past a
+    subscription cap), so tests can check the endpoint reports the outcome.
+    """
 
     CLIENT_ID = "vole-internal-test"
 
     def __init__(self) -> None:
         self._subscribed_pvs: set[str] = set()
+        self.reject: set[str] = set()
 
-    async def subscribe(self, pvs: list[str]) -> None:
-        self._subscribed_pvs.update(pvs)
+    async def subscribe(self, pvs: list[str]) -> list[str]:
+        accepted = [pv for pv in pvs if pv not in self.reject]
+        self._subscribed_pvs.update(accepted)
+        return accepted
 
     async def unsubscribe(self, pvs: list[str]) -> None:
         self._subscribed_pvs -= set(pvs)

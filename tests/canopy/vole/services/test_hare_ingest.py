@@ -16,8 +16,9 @@ class FakeBroker:
     def add_client(self, client_id: str, channel) -> None:
         self.clients[client_id] = channel
 
-    async def subscribe(self, client_id: str, pvs: list[str]) -> None:
+    async def subscribe(self, client_id: str, pvs: list[str]) -> list[str]:
         self.subscriptions.setdefault(client_id, []).extend(pvs)
+        return list(pvs)
 
     async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
         self.unsubscribed.append(pvs)
@@ -64,6 +65,35 @@ class TestHareIngestLifecycle:
 
         assert "ca://PV:A" not in ingest.subscribed_pvs
         assert "ca://PV:B" in ingest.subscribed_pvs
+        await ingest.stop()
+
+    async def test_broker_rejected_pv_not_recorded_as_subscribed(self, test_service):
+        """A name the broker drops must not enter _subscribed_pvs, or GraceManager
+        starts a grace timer for a PV that was never subscribed."""
+
+        class RejectingBroker(FakeBroker):
+            async def subscribe(self, client_id: str, pvs: list[str]) -> list[str]:
+                accepted = [pv for pv in pvs if pv != "PV:BAD"]
+                self.subscriptions.setdefault(client_id, []).extend(accepted)
+                return accepted
+
+        ingest = HareIngestService(test_service, RejectingBroker())
+        await ingest.start()
+
+        subscribed = await ingest.subscribe(["PV:GOOD", "PV:BAD"])
+
+        assert subscribed == ["PV:GOOD"]
+        assert ingest.subscribed_pvs == {"PV:GOOD"}
+        await ingest.stop()
+
+    async def test_subscribe_returns_already_subscribed_pvs(self, test_service):
+        broker = FakeBroker()
+        ingest = HareIngestService(test_service, broker)
+        await ingest.start()
+
+        await ingest.subscribe(["PV:A"])
+        assert await ingest.subscribe(["PV:A", "PV:B"]) == ["PV:A", "PV:B"]
+
         await ingest.stop()
 
     async def test_duplicate_subscribe_ignored(self, test_service):

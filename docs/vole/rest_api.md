@@ -154,12 +154,18 @@ maintaining a persistent connection.
 }
 ```
 
+`subscribed` lists what Vole is actually buffering. A name dropped by Hare's
+subscription caps is absent from it, so compare against the request rather than
+assuming every PV was accepted.
+
 ### Errors
 
 | Status | Code | Condition |
 |--------|------|-----------|
 | 400 | `bad_request` | Empty `pvs` list |
+| 400 | `invalid_pv_name` | Any PV name is empty, over-long, or contains whitespace / control characters |
 | 401 | `unauthorized` | Missing or invalid API key |
+| 503 | `ingest_unavailable` | Live ingestion is not wired up (Hare not connected) |
 
 ---
 
@@ -185,11 +191,15 @@ Convenience endpoint that subscribes a single PV by path parameter.
 }
 ```
 
+`subscribed` is empty if Hare declined the PV (e.g. its subscription cap is reached).
+
 ### Errors
 
 | Status | Code | Condition |
 |--------|------|-----------|
+| 400 | `invalid_pv_name` | The PV name is empty, over-long, or contains whitespace / control characters |
 | 401 | `unauthorized` | Missing or invalid API key |
+| 503 | `ingest_unavailable` | Live ingestion is not wired up (Hare not connected) |
 
 ---
 

@@ -6,6 +6,7 @@ from fastapi import Path, Query, Security, APIRouter
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access
 from canopy.core.time_parse import now_ns, parse_time
+from canopy.epics.pv_protocol import validate_pv_name
 from canopy.vole.dependencies import BufferServiceDep, IngestServiceDep
 from canopy.vole.schemas.buffer import (
     PVSeriesDTO,
@@ -69,8 +70,10 @@ async def subscribe_pvs(
 ):
     if not body.pvs:
         raise BadRequest("'pvs' must contain at least one PV name")
-    await ingest.subscribe(body.pvs)
-    return PVSubscribeResultDTO(subscribed=body.pvs)
+    for pv in body.pvs:
+        validate_pv_name(pv)
+    subscribed = await ingest.subscribe(body.pvs)
+    return PVSubscribeResultDTO(subscribed=subscribed)
 
 
 @router.get("/{pv:path}", dependencies=[Security(require_read_access)])
@@ -104,5 +107,6 @@ async def single_subscribe_pv(
     pv: Annotated[str, Path(description="PV name; URL-encode if it contains special characters")],
     ingest: IngestServiceDep,
 ):
-    await ingest.subscribe([pv])
-    return PVSubscribeResultDTO(subscribed=[pv])
+    validate_pv_name(pv)
+    subscribed = await ingest.subscribe([pv])
+    return PVSubscribeResultDTO(subscribed=subscribed)

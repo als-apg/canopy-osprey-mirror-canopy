@@ -22,3 +22,14 @@ class BufferAtCapacity(VoleError):
 class WindowTooLarge(VoleError):
     status_code = 422
     error_code = ErrorCode.WINDOW_TOO_LARGE
+
+
+class IngestUnavailable(VoleError):
+    """Live ingestion is not wired up, so Vole cannot subscribe to PVs.
+
+    A 503 rather than a 500: in Mole-only mode (Hare absent) subscribing is
+    legitimately unavailable rather than broken, and reads still work.
+    """
+
+    status_code = 503
+    error_code = ErrorCode.INGEST_UNAVAILABLE
