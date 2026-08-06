@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  # Linux runs the full suite, including the squirrel Postgres integration tests.
+  # Linux runs the full suite, including the squirrel and magpie Postgres integration tests.
   tests-linux:
     runs-on: ubuntu-latest
     services:

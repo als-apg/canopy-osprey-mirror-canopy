@@ -14,7 +14,7 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import DateTime, func
+from sqlalchemy import DateTime, func, select
 from sqlalchemy.orm import Mapped, DeclarativeBase, mapped_column
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -44,6 +44,46 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class BaseRepository[ModelType: Base]:
+    """Base repository with common CRUD operations (flush-not-commit).
+
+    Each repository takes an ``AsyncSession`` and only ever ``flush()``es — the
+    transaction boundary (commit / rollback) is owned by the caller (``get_session``
+    request dep, or ``session_scope`` in a worker task). Shared here so every
+    persistent module reuses one definition.
+    """
+
+    def __init__(self, model: type[ModelType], session: AsyncSession):
+        self.model = model
+        self.session = session
+
+    async def get_by_id(self, id: str) -> ModelType | None:
+        return await self.session.get(self.model, id)
+
+    async def get_all(self) -> list[ModelType]:
+        result = await self.session.execute(select(self.model))
+        return list(result.scalars().all())
+
+    async def create(self, obj: ModelType) -> ModelType:
+        self.session.add(obj)
+        await self.session.flush()
+        await self.session.refresh(obj)
+        return obj
+
+    async def update(self, obj: ModelType) -> ModelType:
+        await self.session.flush()
+        await self.session.refresh(obj)
+        return obj
+
+    async def delete(self, obj: ModelType) -> None:
+        await self.session.delete(obj)
+        await self.session.flush()
+
+    async def count(self) -> int:
+        result = await self.session.execute(select(func.count()).select_from(self.model))
+        return result.scalar() or 0
 
 
 _engine: AsyncEngine | None = None
