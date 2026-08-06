@@ -32,7 +32,12 @@ router = APIRouter(prefix="/configs", tags=["Configs"])
 AppPath = Annotated[str, Path(description=f"Owning app ({APP_NAME_RULE})")]
 
 
-def _require_app(app: str) -> None:
+def _validate_app_name(app: str) -> None:
+    """Reject a malformed ``app`` name. Format only — not a DB existence check.
+
+    Used by the routes that write or filter on ``app`` (create, list). The item
+    routes deliberately skip it and let the app handshake 404 a mismatch instead.
+    """
     if not is_app(app):
         raise InvalidAppName(f"Invalid app name '{app}' ({APP_NAME_RULE})")
 
@@ -40,7 +45,7 @@ def _require_app(app: str) -> None:
 @router.post("/{app}", dependencies=[Security(require_write_access)])
 async def create_config(app: AppPath, data: NewConfigDTO, service: ConfigServiceDep) -> ConfigDTO:
     """Create a config under ``app``."""
-    _require_app(app)
+    _validate_app_name(app)
     return await service.create(app, data)
 
 
@@ -53,7 +58,7 @@ async def list_configs(
     continuationToken: str | None = Query(None),
 ) -> PagedResult[ConfigDTO]:
     """List an app's configs (keyset-paginated)."""
-    _require_app(app)
+    _validate_app_name(app)
     # The token is a row id; letting a malformed one through would reach asyncpg as a
     # bad UUID comparison and surface as a 500 rather than a 400.
     if continuationToken is not None and not is_uuid(continuationToken):
