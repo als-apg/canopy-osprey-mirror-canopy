@@ -103,6 +103,36 @@ async def test_malformed_continuation_token_400(client: AsyncClient):
         assert r.json()["code"] == "bad_request"
 
 
+async def test_malformed_app_name_is_invalid_app_name(client: AsyncClient):
+    """A bad app name gets its own code, and the message states the rule.
+
+    Distinguishable from the other 400s on this surface (bad token, NUL, oversize)
+    without parsing ``detail``.
+    """
+    for app in ("Trace", "my.app", "trace ", "a" * 65, "trace!"):
+        r = await client.get(f"/v1/configs/{app}", headers=READ_HEADERS)
+        assert r.status_code == 400, f"{app!r} -> {r.status_code} {r.text}"
+        body = r.json()
+        assert body["code"] == "invalid_app_name", body
+        assert "lowercase" in body["detail"], body
+
+
+async def test_malformed_app_name_on_create_is_invalid_app_name(client: AsyncClient):
+    r = await client.post("/v1/configs/Trace", headers=WRITE_HEADERS, json={"name": "x", "data": {}})
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "invalid_app_name"
+
+
+async def test_item_routes_treat_bad_app_as_not_found(client: AsyncClient, sample_config: dict):
+    """``app`` is an assertion on the item routes, so a bad one reads as 404, not 400.
+
+    Deliberate asymmetry with create/list, which write or filter on ``app``.
+    """
+    r = await client.get(f"/v1/configs/Trace/{sample_config['slug']}", headers=READ_HEADERS)
+    assert r.status_code == 404, r.text
+    assert r.json()["code"] == "config_not_found"
+
+
 async def test_nul_byte_in_data_is_400(client: AsyncClient):
     """Legal JSON that Postgres can't store must be a clean 400, not a 500."""
     r = await client.post(

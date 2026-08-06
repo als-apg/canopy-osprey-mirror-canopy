@@ -95,6 +95,7 @@ class ErrorCode(StrEnum):
     # Magpie
     CONFIG_NOT_FOUND = auto()
     CONFIG_SLUG_CONFLICT = auto()
+    INVALID_APP_NAME = auto()
 
 
 class CanopyError(Exception):

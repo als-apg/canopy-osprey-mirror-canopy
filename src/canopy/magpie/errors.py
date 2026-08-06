@@ -20,3 +20,15 @@ class ConfigNotFound(MagpieError):
 class ConfigSlugConflict(MagpieError):
     status_code = 409
     error_code = ErrorCode.CONFIG_SLUG_CONFLICT
+
+
+class InvalidAppName(MagpieError):
+    """The ``{app}`` path segment doesn't match the allowed charset.
+
+    Distinct from a generic ``BadRequest`` so a client can tell "your app name is
+    malformed" apart from every other 400 on this surface (oversize payload, NUL
+    byte, bad continuation token) without parsing ``detail``.
+    """
+
+    status_code = 400
+    error_code = ErrorCode.INVALID_APP_NAME
