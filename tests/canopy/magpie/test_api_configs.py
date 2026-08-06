@@ -103,6 +103,13 @@ async def test_malformed_continuation_token_400(client: AsyncClient):
         assert r.json()["code"] == "bad_request"
 
 
+async def test_nul_byte_in_search_is_400(client: AsyncClient):
+    """A NUL in search must not reach asyncpg's ilike() as an untranslatable char (500)."""
+    r = await client.get("/v1/configs/trace", params={"search": "a\u0000b"}, headers=READ_HEADERS)
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "bad_request"
+
+
 async def test_search_over_cap_rejected(client: AsyncClient):
     """search is capped at 255, matching the name/description columns it filters."""
     r = await client.get("/v1/configs/trace", params={"search": "a" * 256}, headers=READ_HEADERS)

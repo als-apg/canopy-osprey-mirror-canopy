@@ -140,6 +140,7 @@ class ConfigService:
         page_size: int = 100,
         continuation_token: str | None = None,
     ) -> PagedResult[ConfigDTO]:
+        _check_text(search, "search")
         configs, next_token, total_count = await self.repo.list_by_app(
             app=app,
             search=search,
