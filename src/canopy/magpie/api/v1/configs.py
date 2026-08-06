@@ -48,7 +48,7 @@ async def create_config(app: AppPath, data: NewConfigDTO, service: ConfigService
 async def list_configs(
     app: AppPath,
     service: ConfigServiceDep,
-    search: str | None = Query(None, description="Case-insensitive contains over name/description"),
+    search: str | None = Query(None, max_length=255, description="Case-insensitive contains over name/description"),
     pageSize: int = Query(100, ge=1, le=1000),
     continuationToken: str | None = Query(None),
 ) -> PagedResult[ConfigDTO]:

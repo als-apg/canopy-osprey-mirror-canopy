@@ -103,6 +103,17 @@ async def test_malformed_continuation_token_400(client: AsyncClient):
         assert r.json()["code"] == "bad_request"
 
 
+async def test_search_over_cap_rejected(client: AsyncClient):
+    """search is capped at 255, matching the name/description columns it filters."""
+    r = await client.get("/v1/configs/trace", params={"search": "a" * 256}, headers=READ_HEADERS)
+    assert r.status_code == 422, r.text
+
+
+async def test_search_at_cap_accepted(client: AsyncClient):
+    r = await client.get("/v1/configs/trace", params={"search": "a" * 255}, headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+
+
 async def test_malformed_app_name_is_invalid_app_name(client: AsyncClient):
     """A bad app name gets its own code, and the message states the rule.
 
