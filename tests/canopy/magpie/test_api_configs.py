@@ -245,3 +245,123 @@ async def test_missing_key_401(client: AsyncClient):
 async def test_read_key_on_write_route_403(client: AsyncClient):
     r = await client.post("/v1/configs/trace", headers=READ_HEADERS, json={"name": "x", "data": {}})
     assert r.status_code == 403
+
+
+# --- discovery: GET /v1/apps ------------------------------------------------
+
+
+async def test_list_apps_empty(client: AsyncClient):
+    r = await client.get("/v1/apps", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert r.json() == []
+
+
+async def test_list_apps_grouped_and_counted(client: AsyncClient):
+    for app, name in [("trace", "t1"), ("trace", "t2"), ("beaver", "b1")]:
+        r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": name, "data": {}})
+        assert r.status_code == 200, r.text
+
+    r = await client.get("/v1/apps", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    # Alphabetical by app, counts per app.
+    assert r.json() == [{"app": "beaver", "count": 1}, {"app": "trace", "count": 2}]
+
+
+async def test_list_apps_requires_read(client: AsyncClient):
+    r = await client.get("/v1/apps")
+    assert r.status_code == 401
+
+
+# --- discovery: GET /v1/_debug/configs (cross-app) --------------------------
+
+
+async def test_debug_configs_lists_across_apps(client: AsyncClient):
+    for app, name in [("trace", "t1"), ("beaver", "b1"), ("beaver", "b2")]:
+        r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": name, "data": {}})
+        assert r.status_code == 200, r.text
+
+    r = await client.get("/v1/_debug/configs", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["totalCount"] == 3
+    assert {c["app"] for c in body["results"]} == {"trace", "beaver"}
+
+
+async def test_debug_configs_paginates(client: AsyncClient):
+    for i in range(3):
+        app = "trace" if i % 2 == 0 else "beaver"
+        r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": f"c{i}", "data": {}})
+        assert r.status_code == 200, r.text
+
+    r = await client.get("/v1/_debug/configs?pageSize=2", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    page1 = r.json()
+    assert len(page1["results"]) == 2
+    assert page1["totalCount"] == 3
+    token = page1["continuationToken"]
+    assert token
+
+    r = await client.get(f"/v1/_debug/configs?pageSize=2&continuationToken={token}", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    page2 = r.json()
+    assert len(page2["results"]) == 1
+    assert page2["continuationToken"] is None
+
+
+async def test_debug_configs_malformed_token_400(client: AsyncClient):
+    r = await client.get("/v1/_debug/configs?continuationToken=garbage", headers=READ_HEADERS)
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "bad_request"
+
+
+async def test_debug_configs_nul_search_400(client: AsyncClient):
+    r = await client.get("/v1/_debug/configs", params={"search": "a\u0000b"}, headers=READ_HEADERS)
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "bad_request"
+
+
+async def test_debug_configs_requires_read(client: AsyncClient):
+    r = await client.get("/v1/_debug/configs")
+    assert r.status_code == 401
+
+
+# --- discovery: GET /v1/_debug/slugs/{slug} ---------------------------------
+
+
+async def test_debug_resolve_slug_finds_owner_without_naming_app(client: AsyncClient, sample_config: dict):
+    """The point of the route: resolve by slug alone and learn which app owns it."""
+    slug = sample_config["slug"]
+    r = await client.get(f"/v1/_debug/slugs/{slug}", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["slug"] == slug
+    assert body["app"] == "trace"
+
+
+async def test_debug_resolve_slug_bypasses_handshake(client: AsyncClient, sample_config: dict):
+    """A slug that 404s under the wrong app on the normal route still resolves here."""
+    slug = sample_config["slug"]
+    # Normal app-scoped read under the wrong app is a 404 (handshake).
+    r = await client.get(f"/v1/configs/beaver/{slug}", headers=READ_HEADERS)
+    assert r.status_code == 404
+    # Debug resolve ignores the handshake and finds it.
+    r = await client.get(f"/v1/_debug/slugs/{slug}", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert r.json()["app"] == "trace"
+
+
+async def test_debug_resolve_unknown_slug_404(client: AsyncClient):
+    r = await client.get("/v1/_debug/slugs/deadbeef01", headers=READ_HEADERS)
+    assert r.status_code == 404
+    assert r.json()["code"] == "config_not_found"
+
+
+async def test_debug_resolve_malformed_slug_404(client: AsyncClient):
+    r = await client.get("/v1/_debug/slugs/not-a-valid-slug!!", headers=READ_HEADERS)
+    assert r.status_code == 404
+    assert r.json()["code"] == "config_not_found"
+
+
+async def test_debug_resolve_slug_requires_read(client: AsyncClient):
+    r = await client.get("/v1/_debug/slugs/deadbeef01")
+    assert r.status_code == 401

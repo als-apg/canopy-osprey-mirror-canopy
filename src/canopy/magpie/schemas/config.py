@@ -45,3 +45,10 @@ class ConfigDTO(ConfigBase):
     slug: str
     created_date: datetime
     last_modified_date: datetime
+
+
+class AppSummaryDTO(CanopyModel):
+    """One app that has stored configs, with how many. Powers ``GET /v1/apps``."""
+
+    app: str
+    count: int

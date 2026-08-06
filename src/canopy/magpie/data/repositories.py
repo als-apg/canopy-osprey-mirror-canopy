@@ -65,3 +65,51 @@ class ConfigRepository(BaseRepository[Config]):
             next_token = configs[-1].id
 
         return configs, next_token, total_count
+
+    async def list_apps(self) -> list[tuple[str, int]]:
+        """``(app, count)`` for every app that has configs, ordered by app name.
+
+        There is no separate app registry — an app exists only by having rows here.
+        """
+        result = await self.session.execute(select(Config.app, func.count()).group_by(Config.app).order_by(Config.app))
+        return [(app, count) for app, count in result.all()]
+
+    async def list_all(
+        self,
+        search: str | None = None,
+        limit: int = 100,
+        continuation_token: str | None = None,
+    ) -> tuple[list[Config], str | None, int]:
+        """Cross-app keyset list — ``list_by_app`` without the ``app`` filter.
+
+        Same ``id`` cursor, ``limit + 1`` next-page detection, and search filter, so a
+        continuation token from here is interchangeable in shape with the per-app one.
+        """
+        query = select(Config)
+        count_query = select(func.count()).select_from(Config)
+
+        if search:
+            search_filter = or_(
+                Config.name.ilike(f"%{search}%"),
+                Config.description.ilike(f"%{search}%"),
+            )
+            query = query.where(search_filter)
+            count_query = count_query.where(search_filter)
+
+        if continuation_token:
+            query = query.where(Config.id > continuation_token)
+
+        query = query.order_by(Config.id).limit(limit + 1)  # +1 to detect a next page
+
+        result = await self.session.execute(query)
+        configs = list(result.scalars().all())
+
+        count_result = await self.session.execute(count_query)
+        total_count = count_result.scalar() or 0
+
+        next_token = None
+        if len(configs) > limit:
+            configs = configs[:limit]
+            next_token = configs[-1].id
+
+        return configs, next_token, total_count

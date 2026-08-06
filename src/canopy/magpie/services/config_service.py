@@ -16,6 +16,7 @@ from canopy.magpie.schemas.config import (
     MAX_DATA_BYTES,
     ConfigDTO,
     NewConfigDTO,
+    AppSummaryDTO,
     UpdateConfigDTO,
 )
 from canopy.magpie.data.repositories import ConfigRepository
@@ -152,6 +153,39 @@ class ConfigService:
             continuation_token=next_token,
             total_count=total_count,
         )
+
+    async def list_apps(self) -> list[AppSummaryDTO]:
+        """Every app that has stored configs, with a count. Cross-app, no contents."""
+        return [AppSummaryDTO(app=app, count=count) for app, count in await self.repo.list_apps()]
+
+    async def list_all(
+        self,
+        search: str | None = None,
+        page_size: int = 100,
+        continuation_token: str | None = None,
+    ) -> PagedResult[ConfigDTO]:
+        """Cross-app config list (debug). Deliberately not app-scoped — see the _debug router."""
+        _check_text(search, "search")  # same NUL guard as list_by_app
+        configs, next_token, total_count = await self.repo.list_all(
+            search=search,
+            limit=page_size,
+            continuation_token=continuation_token,
+        )
+        return PagedResult(
+            results=[self._to_dto(c) for c in configs],
+            continuation_token=next_token,
+            total_count=total_count,
+        )
+
+    async def resolve_slug(self, slug: str) -> ConfigDTO | None:
+        """Resolve by slug alone, bypassing the app handshake (debug only).
+
+        The normal read path is ``get_by_slug(app, slug)``, which 404s a slug that
+        doesn't belong to ``app``. This answers "which app owns this slug?" instead,
+        so it must not enforce the handshake.
+        """
+        config = await self.repo.get_by_slug(slug)
+        return self._to_dto(config) if config else None
 
     async def update(self, app: str, slug: str, data: UpdateConfigDTO) -> ConfigDTO | None:
         config = await self._get_for_app(app, slug)
