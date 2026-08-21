@@ -1,0 +1,121 @@
+name: Container Host Maintenance
+
+# Docker usage reports, service log capture, image pruning, and container
+# writable-layer resets.
+# Manual dispatch only. See docker/maintenance/maintenance.yml for the action
+# contract; report is read-only and always safe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      facility:
+        description: "Target container host (inventory group)"
+        required: true
+        type: choice
+        options: [CONTAINER_DEV, CONTAINER_LCLS, CONTAINER_TESTFAC, CONTAINER_FACET]
+      maintenance_action:
+        description: "report = read-only usage | app-logs = compose logs for component | prune-images = remove UNREFERENCED images host-wide, all tenants | recreate-app = force-recreate component containers, resetting writable layers (volumes untouched)"
+        required: true
+        type: choice
+        options: [report, app-logs, prune-images, recreate-app]
+        default: report
+      component:
+        description: "Canopy component for app-logs / recreate-app (canopy, canopy-nc, canopy-sc, canopy-nlcta, canopy-asta, canopy-facet)"
+        required: false
+        type: string
+        default: ""
+      confirm_facility:
+        description: "Type the facility again to confirm (required for prune-images and recreate-app)"
+        required: false
+        type: string
+        default: ""
+      prune_until:
+        description: "prune-images only: spare images younger than this docker duration (e.g. 168h)"
+        required: false
+        type: string
+        default: "168h"
+      log_tail:
+        description: "app-logs only: lines per service"
+        required: false
+        type: string
+        default: "200"
+
+permissions:
+  contents: read
+
+# App-scoped actions join the deploy workflows' concurrency group
+# (deploy-<component>, set by software-factory's container-deploy.yml and also
+# joined by init-data-layer.yml) so a recreate can never overlap a deploy of
+# the same component. Actions without a component only need to serialize with
+# themselves per facility.
+concurrency:
+  group: ${{ inputs.component && format('deploy-{0}', inputs.component) || format('maintenance-{0}', inputs.facility) }}
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: [self-hosted, deployment]
+    env:
+      FACILITY: ${{ inputs.facility }}
+      MAINT_ACTION: ${{ inputs.maintenance_action }}
+      COMPONENT: ${{ inputs.component }}
+      CONFIRM_FACILITY: ${{ inputs.confirm_facility }}
+      PRUNE_UNTIL: ${{ inputs.prune_until }}
+      LOG_TAIL: ${{ inputs.log_tail }}
+    steps:
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          case "$MAINT_ACTION" in
+            prune-images|recreate-app)
+              if [ "$CONFIRM_FACILITY" != "$FACILITY" ]; then
+                echo "::error::confirm_facility ('$CONFIRM_FACILITY') must match facility ('$FACILITY') for $MAINT_ACTION. Aborting."
+                exit 1
+              fi ;;
+          esac
+          case "$MAINT_ACTION" in
+            app-logs|recreate-app)
+              if [ -z "$COMPONENT" ]; then
+                echo "::error::$MAINT_ACTION needs a component (e.g. canopy-nc)."
+                exit 1
+              fi ;;
+          esac
+          if [ -n "$COMPONENT" ] && ! printf '%s' "$COMPONENT" | grep -Eq '^canopy(-[a-z0-9]+)*$'; then
+            echo "::error::component must match ^canopy(-[a-z0-9]+)*$ - this workflow only manages canopy services."
+            exit 1
+          fi
+          if ! printf '%s' "$LOG_TAIL" | grep -Eq '^[0-9]+$'; then
+            echo "::error::log_tail must be a number."
+            exit 1
+          fi
+          if ! printf '%s' "$PRUNE_UNTIL" | grep -Eq '^[0-9]+[smh]?$'; then
+            echo "::error::prune_until must be a docker duration like 168h (or a bare number of seconds)."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: docker/maintenance
+          persist-credentials: false
+
+      - name: Run maintenance playbook
+        env:
+          ANSIBLE_FORCE_COLOR: "1"
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          set -euo pipefail
+          # No secrets are involved anywhere in this workflow, so plain
+          # --extra-vars is fine; jq handles the quoting.
+          EXTRA_VARS=$(jq -n \
+            --arg facility "$FACILITY" \
+            --arg maintenance_action "$MAINT_ACTION" \
+            --arg component "$COMPONENT" \
+            --arg prune_until "$PRUNE_UNTIL" \
+            --argjson log_tail "$LOG_TAIL" \
+            '{$facility, $maintenance_action, $component, $prune_until, $log_tail}')
+
+          ansible-playbook \
+            -i /sdf/group/ad/eed/ad-build/software-factory/global_inventory.ini \
+            docker/maintenance/maintenance.yml \
+            --extra-vars "$EXTRA_VARS"
