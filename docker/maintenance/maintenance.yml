@@ -1,0 +1,198 @@
+# Container-host maintenance for canopy deployments
+#
+# Required extra-vars (passed by .github/workflows/maintenance.yml):
+#   facility            inventory group, e.g. CONTAINER_TESTFAC
+#   maintenance_action  report       read-only disk + docker usage (also runs
+#                                    first for every other action, so cleanup
+#                                    runs show a before/after)
+#                       app-logs     docker compose logs --tail for one
+#                                    canopy component
+#                       prune-images docker image prune -af, host-wide: removes
+#                                    any tenant's UNREFERENCED images older
+#                                    than prune_until; images in use by any
+#                                    container are never touched
+#                       recreate-app docker compose up -d --force-recreate for
+#                                    one canopy component: discards container
+#                                    writable layers (volumes and the rendered
+#                                    .env are untouched), then re-checks /health
+#   component           canopy compose project for app-logs / recreate-app
+#   prune_until         prune-images: spare images younger than this (168h)
+#   log_tail            app-logs: lines per service
+#
+# component is deliberately restricted to canopy* names: this workflow must not
+# become a lever on other tenants' services.
+
+- name: "Container host maintenance: {{ maintenance_action }}"
+  hosts: "{{ facility }}"
+  gather_facts: no
+  vars:
+    component: ""
+    prune_until: "168h"
+    log_tail: 200
+    app_dir: "{{ deploy_base }}/{{ component }}"
+  tasks:
+    - name: Validate inputs
+      assert:
+        that:
+          - maintenance_action in ['report', 'app-logs', 'prune-images', 'recreate-app']
+          - maintenance_action not in ['app-logs', 'recreate-app']
+            or component is match('^canopy(-[a-z0-9]+)*$')
+        fail_msg: >-
+          maintenance_action must be report/app-logs/prune-images/recreate-app;
+          app-logs and recreate-app additionally need component matching
+          ^canopy(-[a-z0-9]+)*$ (e.g. canopy, canopy-nc).
+
+    # Every action starts with the usage report: for cleanups it doubles as
+    # the "before" snapshot. || true per command so a sick docker daemon still
+    # yields the df output instead of an empty report.
+    - name: Collect disk + docker usage
+      shell: !unsafe |
+        echo '=== df /var ==='
+        df -h /var 2>&1 || true
+        echo
+        echo '=== docker system df ==='
+        docker system df 2>&1 || true
+        echo
+        echo '=== containers, SIZE = writable layer ==='
+        docker ps -a --size --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Size}}' 2>&1 || true
+        echo
+        echo '=== images ==='
+        docker images --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}' 2>&1 || true
+      register: usage_report
+      changed_when: false
+      failed_when: false
+
+    - name: Usage report
+      debug:
+        msg: "{{ usage_report.stdout_lines }}"
+
+    # --- app-scoped preflight ---
+
+    - name: Locate deployed component
+      stat:
+        path: "{{ app_dir }}/docker-compose.yml"
+      register: compose_stat
+      when: maintenance_action in ['app-logs', 'recreate-app']
+
+    - name: Refuse if component is not deployed on this host
+      fail:
+        msg: >-
+          {{ app_dir }}/docker-compose.yml not found: component
+          '{{ component }}' has never been deployed to {{ facility }},
+          or the name is wrong.
+      when:
+        - maintenance_action in ['app-logs', 'recreate-app']
+        - not compose_stat.stat.exists
+
+    # --- app-logs ---
+
+    - name: Collect service logs
+      command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - "{{ app_dir }}/docker-compose.yml"
+          - --env-file
+          - "{{ app_dir }}/.env"
+          - logs
+          - --no-color
+          - --tail
+          - "{{ log_tail }}"
+      args:
+        chdir: "{{ app_dir }}"
+      register: app_logs
+      changed_when: false
+      when: maintenance_action == 'app-logs'
+
+    - name: Service logs
+      debug:
+        msg: "{{ app_logs.stdout_lines }}"
+      when: maintenance_action == 'app-logs'
+
+    # --- prune-images ---
+
+    - name: "Prune unreferenced images older than {{ prune_until }} (all tenants)"
+      command:
+        argv:
+          - docker
+          - image
+          - prune
+          - -af
+          - --filter
+          - "until={{ prune_until }}"
+      register: prune_out
+      changed_when: "'Total reclaimed space: 0B' not in prune_out.stdout"
+      when: maintenance_action == 'prune-images'
+
+    - name: Prune result
+      debug:
+        msg: "{{ prune_out.stdout_lines }}"
+      when: maintenance_action == 'prune-images'
+
+    # --- recreate-app ---
+
+    # The health check needs the instance's port, which lives only in the
+    # .env already rendered on the host (deploys get it from APP_SECRETS;
+    # maintenance deliberately runs without secrets access).
+    - name: Read API_PORT from the deployed .env
+      shell: "grep -m1 '^API_PORT=' '{{ app_dir }}/.env' | cut -d= -f2"
+      register: api_port_out
+      changed_when: false
+      failed_when: false
+      when: maintenance_action == 'recreate-app'
+
+    - name: Resolve API port
+      set_fact:
+        api_port: >-
+          {{ api_port_out.stdout | trim
+             if (api_port_out.stdout | default('') | trim | length > 0)
+             else '8080' }}
+      when: maintenance_action == 'recreate-app'
+
+    - name: Recreate services (resets container writable layers)
+      command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - "{{ app_dir }}/docker-compose.yml"
+          - --env-file
+          - "{{ app_dir }}/.env"
+          - up
+          - -d
+          - --force-recreate
+          - --remove-orphans
+      args:
+        chdir: "{{ app_dir }}"
+      when: maintenance_action == 'recreate-app'
+
+    - name: Wait for API health
+      uri:
+        url: "http://localhost:{{ api_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 30
+      delay: 5
+      when: maintenance_action == 'recreate-app'
+
+    # --- after cleanup: the "after" snapshot ---
+
+    - name: Collect post-action usage
+      shell: !unsafe |
+        echo '=== df /var ==='
+        df -h /var 2>&1 || true
+        echo
+        echo '=== docker system df ==='
+        docker system df 2>&1 || true
+      register: post_report
+      changed_when: false
+      failed_when: false
+      when: maintenance_action in ['prune-images', 'recreate-app']
+
+    - name: Post-action usage
+      debug:
+        msg: "{{ post_report.stdout_lines }}"
+      when: maintenance_action in ['prune-images', 'recreate-app']
