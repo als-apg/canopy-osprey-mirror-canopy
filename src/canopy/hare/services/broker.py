@@ -12,7 +12,7 @@ import asyncio
 import logging
 from typing import Protocol, runtime_checkable
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Awaitable
 
 from canopy.epics.base import PVConnector, Subscription
 from canopy.core.errors import ErrorCode
@@ -20,6 +20,8 @@ from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
 from canopy.epics.pv_protocol import InvalidPVName, validate_pv_name
 from canopy.hare.services.subscriptions import SubscriptionRegistry
+
+LifecycleHook = Callable[[list[str]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,8 @@ class PVBroker:
         self._queue: asyncio.Queue[PVValue] = asyncio.Queue(maxsize=config.event_queue_maxsize)
         self._running = False
         self._tasks: list[asyncio.Task] = []
+        self._activation_hooks: list[tuple[LifecycleHook, set[str]]] = []
+        self._deactivation_hooks: list[tuple[LifecycleHook, set[str]]] = []
 
     @property
     def registry(self) -> SubscriptionRegistry:
@@ -131,8 +135,11 @@ class PVBroker:
         self._registry.add_client(client_id)
 
     async def remove_client(self, client_id: str) -> None:
+        affected_pvs = list(self._registry.client_pvs(client_id))
         deactivated = self._registry.remove_client(client_id)
         await self._stop_monitors(deactivated)
+        if affected_pvs:
+            await self._fire_deactivation_hooks(affected_pvs, client_id)
         self._channels.pop(client_id, None)
 
     @staticmethod
@@ -198,7 +205,13 @@ class PVBroker:
             )
         return accepted
 
-    async def subscribe(self, client_id: str, pvs: list[str]) -> None:
+    async def subscribe(self, client_id: str, pvs: list[str]) -> list[str]:
+        """Subscribe a client to PVs; returns the names actually accepted.
+
+        Invalid names and names past the caps are dropped rather than raised, so
+        callers must use the return value rather than assume the whole request
+        was honoured.
+        """
         pvs, rejected = self._accept_names(pvs)
         if rejected:
             await self._send(
@@ -211,12 +224,16 @@ class PVBroker:
                 },
             )
         if not pvs:
-            return
+            return []
         pvs = self._apply_caps(client_id, pvs)
         if not pvs:
-            return
+            return []
+        previously_subscribed = self._registry.client_pvs(client_id)
         newly = self._registry.subscribe(client_id, pvs)
         await self._start_monitors(newly)
+        new_for_client = [pv for pv in pvs if pv not in previously_subscribed]
+        if new_for_client:
+            await self._fire_activation_hooks(new_for_client, client_id)
         # Seed latest value + static metadata for newly-activated PVs so the
         # subscriber gets an immediate value (and describe info) rather than
         # waiting for the first monitor tick. Seed concurrently -- but bounded by
@@ -241,6 +258,7 @@ class PVBroker:
                     "count": len(initial),
                 },
             )
+        return pvs
 
     async def _seed_pv(self, pv: str) -> None:
         """Fetch the seed value + static metadata for one newly-activated PV.
@@ -262,8 +280,15 @@ class PVBroker:
     async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
         if not pvs:
             return
+        # Only PVs the client actually held were released here. Firing on the raw
+        # request list would let any client deactivate a PV it never subscribed
+        # to -- e.g. a REST-warmed one held only by `vole-internal`.
+        held = self._registry.client_pvs(client_id)
+        released = [pv for pv in pvs if pv in held]
         deactivated = self._registry.unsubscribe(client_id, pvs)
         await self._stop_monitors(deactivated)
+        if released:
+            await self._fire_deactivation_hooks(released, client_id)
 
     # --- monitor lifecycle ----------------------------------------------- #
 
@@ -372,8 +397,11 @@ class PVBroker:
         except Exception as exc:
             logger.debug("send to %s failed: %s; dropping client", client_id, exc)
             self._channels.pop(client_id, None)
+            affected_pvs = list(self._registry.client_pvs(client_id))
             deactivated = self._registry.remove_client(client_id)
             await self._stop_monitors(deactivated)
+            if affected_pvs:
+                await self._fire_deactivation_hooks(affected_pvs, client_id)
 
     # --- reads ----------------------------------------------------------- #
 
@@ -417,3 +445,68 @@ class PVBroker:
             "active_monitors": len(self._monitors),
             **self._registry.stats(),
         }
+
+    # --- lifecycle hooks ------------------------------------------------- #
+
+    def add_activation_hook(self, hook: LifecycleHook, *, exclude_clients: set[str] | None = None) -> None:
+        self._activation_hooks.append((hook, exclude_clients or set()))
+
+    def remove_activation_hook(self, hook: LifecycleHook) -> None:
+        self._activation_hooks = [(h, ex) for h, ex in self._activation_hooks if h is not hook]
+
+    def add_deactivation_hook(self, hook: LifecycleHook, *, exclude_clients: set[str] | None = None) -> None:
+        self._deactivation_hooks.append((hook, exclude_clients or set()))
+
+    def remove_deactivation_hook(self, hook: LifecycleHook) -> None:
+        self._deactivation_hooks = [(h, ex) for h, ex in self._deactivation_hooks if h is not hook]
+
+    async def _fire_activation_hooks(self, pvs: list[str], client_id: str) -> None:
+        for hook, exclude in self._activation_hooks:
+            if client_id in exclude:
+                continue
+            relevant = self._filter_newly_active_for_hook(pvs, exclude)
+            if relevant:
+                try:
+                    await hook(relevant)
+                except Exception:
+                    logger.exception("activation hook %r failed", hook)
+
+    async def _fire_deactivation_hooks(self, pvs: list[str], client_id: str) -> None:
+        for hook, exclude in self._deactivation_hooks:
+            if client_id in exclude:
+                continue
+            relevant = self._filter_deactivated_for_hook(pvs, exclude)
+            if relevant:
+                try:
+                    await hook(relevant)
+                except Exception:
+                    logger.exception("deactivation hook %r failed", hook)
+
+    def _filter_newly_active_for_hook(self, pvs: list[str], exclude: set[str]) -> list[str]:
+        """Return PVs that just became active from the hook's perspective.
+
+        A PV is "newly active" for a hook if it now has exactly one
+        subscriber that is NOT in the hook's exclude set (meaning the
+        subscribe that just happened was the first external one).
+        """
+        result = []
+        for pv in pvs:
+            subs = self._registry.subscribers(pv)
+            external = subs - exclude
+            if len(external) == 1:
+                result.append(pv)
+        return result
+
+    def _filter_deactivated_for_hook(self, pvs: list[str], exclude: set[str]) -> list[str]:
+        """Return PVs that are deactivated from the hook's perspective.
+
+        A PV is "deactivated" for a hook when it has zero subscribers
+        outside the hook's exclude set.
+        """
+        result = []
+        for pv in pvs:
+            subs = self._registry.subscribers(pv)
+            external = subs - exclude
+            if not external:
+                result.append(pv)
+        return result

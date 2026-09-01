@@ -13,6 +13,7 @@ from canopy.vole.buffer.store import PVStore
 from canopy.vole.api.v1.router import router as v1_router
 from canopy.vole.services.notifier import ChangeNotifier
 from canopy.vole.services.hare_ingest import HareIngestService
+from canopy.vole.services.grace_manager import GraceManager
 from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.eviction_service import EvictionService
 from canopy.vole.services.alignment_service import AlignmentService
@@ -51,6 +52,10 @@ async def vole_lifespan():
     gateway.bind_ingest(ingest)
     logger.info("Vole connected to Hare for live data ingestion")
 
+    grace = GraceManager(ingest, service, config)
+    broker.add_deactivation_hook(grace.on_pv_deactivated, exclude_clients={HareIngestService.CLIENT_ID})
+    broker.add_activation_hook(grace.on_pv_activated, exclude_clients={HareIngestService.CLIENT_ID})
+
     mark_started()
     logger.info(
         "Vole started: max_points=%d, global_bytes_max=%d",
@@ -60,6 +65,9 @@ async def vole_lifespan():
     try:
         yield
     finally:
+        broker.remove_deactivation_hook(grace.on_pv_deactivated)
+        broker.remove_activation_hook(grace.on_pv_activated)
+        await grace.shutdown()
         await ingest.stop()
         gateway.bind_ingest(None)
         gateway.bind_notifier(None)

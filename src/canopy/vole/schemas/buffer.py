@@ -58,3 +58,11 @@ class HeartbeatDTO(CanopyModel):
     ring_count: int
     total_points: int
     total_bytes: int
+
+
+class PVSubscribeRequestDTO(CanopyModel):
+    pvs: list[str]
+
+
+class PVSubscribeResultDTO(CanopyModel):
+    subscribed: list[str] = Field(default_factory=list)

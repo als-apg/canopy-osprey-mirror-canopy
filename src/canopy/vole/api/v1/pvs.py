@@ -6,8 +6,15 @@ from fastapi import Path, Query, Security, APIRouter
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access
 from canopy.core.time_parse import now_ns, parse_time
-from canopy.vole.dependencies import BufferServiceDep
-from canopy.vole.schemas.buffer import PVSeriesDTO, AlignedPVDTO, AlignedResultDTO
+from canopy.epics.pv_protocol import validate_pv_name
+from canopy.vole.dependencies import BufferServiceDep, IngestServiceDep
+from canopy.vole.schemas.buffer import (
+    PVSeriesDTO,
+    AlignedPVDTO,
+    AlignedResultDTO,
+    PVSubscribeResultDTO,
+    PVSubscribeRequestDTO,
+)
 
 AlignMode = Literal["last", "nearest", "linear", "none"]
 IndexMode = Literal["union", "intersection", "grid", "first_input"]
@@ -56,6 +63,19 @@ async def multi_pv_aligned_read(
     )
 
 
+@router.post("/subscribe", dependencies=[Security(require_read_access)])
+async def subscribe_pvs(
+    body: PVSubscribeRequestDTO,
+    ingest: IngestServiceDep,
+):
+    if not body.pvs:
+        raise BadRequest("'pvs' must contain at least one PV name")
+    for pv in body.pvs:
+        validate_pv_name(pv)
+    subscribed = await ingest.subscribe(body.pvs)
+    return PVSubscribeResultDTO(subscribed=subscribed)
+
+
 @router.get("/{pv:path}", dependencies=[Security(require_read_access)])
 async def single_pv_read(
     pv: Annotated[str, Path(description="PV name; URL-encode if it contains special characters")],
@@ -80,3 +100,13 @@ async def single_pv_read(
 
     samples = await service.read_window(pv, t0_ns, t1_ns, align=align, max_points=max_points)
     return PVSeriesDTO(pv=pv, count=len(samples), samples=samples)
+
+
+@router.post("/subscribe/{pv:path}", dependencies=[Security(require_read_access)])
+async def single_subscribe_pv(
+    pv: Annotated[str, Path(description="PV name; URL-encode if it contains special characters")],
+    ingest: IngestServiceDep,
+):
+    validate_pv_name(pv)
+    subscribed = await ingest.subscribe([pv])
+    return PVSubscribeResultDTO(subscribed=subscribed)

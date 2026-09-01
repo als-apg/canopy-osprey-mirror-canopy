@@ -121,3 +121,98 @@ Returns multiple PVs aligned to a shared time index using Vole's alignment servi
 |--------|------|-----------|
 | 400 | `bad_request` | Empty `pvs`, missing `from`, `from` > `to`, or `index="grid"` without `gridDtNs` |
 | 404 | `pv_not_buffered` | Any requested PV is not currently buffered |
+
+---
+
+## Subscribe (Multi-PV)
+
+```
+POST /vole/v1/pvs/subscribe
+```
+
+Tells Vole to start buffering the given PVs. This is the REST alternative to opening a
+Hare WebSocket — useful for dashboards or batch readers that want warm buffers without
+maintaining a persistent connection.
+
+### Request body
+
+```json
+{
+  "pvs": ["QUAD:LI21:301:BDES", "QUAD:LI21:301:BACT"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pvs` | array of strings | yes | PV names to subscribe (at least one) |
+
+### Response
+
+```json
+{
+  "subscribed": ["QUAD:LI21:301:BDES", "QUAD:LI21:301:BACT"]
+}
+```
+
+`subscribed` lists what Vole is actually buffering. A name dropped by Hare's
+subscription caps is absent from it, so compare against the request rather than
+assuming every PV was accepted.
+
+### Errors
+
+| Status | Code | Condition |
+|--------|------|-----------|
+| 400 | `bad_request` | Empty `pvs` list |
+| 400 | `invalid_pv_name` | Any PV name is empty, over-long, or contains whitespace / control characters |
+| 401 | `unauthorized` | Missing or invalid API key |
+| 503 | `ingest_unavailable` | Live ingestion is not wired up (Hare not connected) |
+
+---
+
+## Subscribe (Single-PV)
+
+```
+POST /vole/v1/pvs/subscribe/{pv}
+```
+
+Convenience endpoint that subscribes a single PV by path parameter.
+
+### Parameters
+
+| Parameter | In   | Type   | Required | Description |
+|-----------|------|--------|----------|-------------|
+| `pv`      | path | string | yes      | PV name (URL-encode special characters) |
+
+### Response
+
+```json
+{
+  "subscribed": ["QUAD:LI21:301:BDES"]
+}
+```
+
+`subscribed` is empty if Hare declined the PV (e.g. its subscription cap is reached).
+
+### Errors
+
+| Status | Code | Condition |
+|--------|------|-----------|
+| 400 | `invalid_pv_name` | The PV name is empty, over-long, or contains whitespace / control characters |
+| 401 | `unauthorized` | Missing or invalid API key |
+| 503 | `ingest_unavailable` | Live ingestion is not wired up (Hare not connected) |
+
+---
+
+## Subscription lifecycle
+
+When a PV is subscribed via the endpoints above, Vole registers with Hare for live
+updates and begins buffering data. The buffer remains active as long as at least one
+external Hare client is subscribed to the PV.
+
+When all external subscribers disconnect, a **grace period** begins (default: 60 seconds,
+configurable via `CANOPY_VOLE__BUFFER_GRACE_SECONDS`). If a new subscriber arrives before
+the timer expires, the timer is cancelled and the buffer stays warm. If the grace period
+elapses with no reconnection, Vole unsubscribes from Hare and drops the ring buffer.
+
+This provides tolerance for page refreshes and brief disconnections without leaking
+stale buffers indefinitely.

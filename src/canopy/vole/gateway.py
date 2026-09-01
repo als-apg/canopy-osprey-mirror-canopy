@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Awaitable
 
+from canopy.vole.errors import IngestUnavailable
 from canopy.contracts.sample import Sample
 from canopy.vole.schemas.buffer import VoleStatsDTO
 from canopy.vole.services.notifier import ChangeNotifier
@@ -45,6 +46,12 @@ def get_service() -> BufferService:
     if _service is None:
         raise RuntimeError("Vole gateway accessed before app startup bound a service")
     return _service
+
+
+def get_ingest() -> HareIngestService:
+    if _ingest is None:
+        raise IngestUnavailable("Vole live ingestion is not available (Hare not connected)")
+    return _ingest
 
 
 # --- writes -------------------------------------------------------------- #
@@ -109,9 +116,7 @@ async def stats() -> VoleStatsDTO:
 
 async def subscribe_live(pvs: list[str]) -> None:
     """Subscribe Vole to live updates from Hare for these PVs."""
-    if _ingest is None:
-        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
-    await _ingest.subscribe(pvs)
+    await get_ingest().subscribe(pvs)
 
 
 async def subscribe_latest(pvs: list[str]) -> None:
@@ -120,19 +125,16 @@ async def subscribe_latest(pvs: list[str]) -> None:
     Used by scalar formula subscriptions that only need read_latest —
     avoids accumulating a full ring buffer per PV.
     """
-    if _ingest is None:
-        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
+    ingest = get_ingest()
     service = get_service()
     for pv in pvs:
         await service.seed(pv, [], max_points=1)
-    await _ingest.subscribe(pvs)
+    await ingest.subscribe(pvs)
 
 
 async def unsubscribe_live(pvs: list[str]) -> None:
     """Unsubscribe from live updates for these PVs."""
-    if _ingest is None:
-        raise RuntimeError("Vole gateway accessed before app startup bound ingest")
-    await _ingest.unsubscribe(pvs)
+    await get_ingest().unsubscribe(pvs)
 
 
 # --- change notifications ------------------------------------------------ #

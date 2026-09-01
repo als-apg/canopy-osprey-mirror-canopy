@@ -63,6 +63,7 @@ class ErrorCode(StrEnum):
     PV_NOT_BUFFERED = auto()
     BUFFER_AT_CAPACITY = auto()
     WINDOW_TOO_LARGE = auto()
+    INGEST_UNAVAILABLE = auto()
 
     # Beaver
     WIDGET_NOT_FOUND = auto()

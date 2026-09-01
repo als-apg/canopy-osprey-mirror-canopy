@@ -53,11 +53,29 @@ This guarantees that the ring's contents are always sorted, enabling efficient t
 
 ### Buffer lifecycle
 
-- **Created** on first access (via auto-provisioning or explicit seed)
+- **Created** on first access (via auto-provisioning, explicit seed, or client subscribe)
 - **Appended** as live data flows from Hare
 - **Read** by Fox for formula evaluation (updates LRU access time)
+- **Grace period** — when all external subscribers disconnect, a configurable timer starts (default: 60s); resubscription cancels it
+- **Dropped** when the grace period expires without reconnection, or explicitly via the gateway
 - **Evicted** when global memory pressure requires it (LRU, entire ring removed)
-- **Dropped** explicitly via the gateway when no longer needed
+
+## Client-initiated subscriptions
+
+In addition to auto-provisioning (triggered by Fox formula evaluation), clients can explicitly subscribe PVs via the REST API:
+
+```
+POST /vole/v1/pvs/subscribe          # body: {"pvs": ["PV:A", "PV:B"]}
+POST /vole/v1/pvs/subscribe/{pv}     # single PV by path
+```
+
+This is useful for dashboards or batch readers that want pre-warmed buffers without maintaining a Hare WebSocket connection. See the [REST API docs](rest_api.md#subscribe-multi-pv) for full details.
+
+### Grace period
+
+When the last external Hare subscriber disconnects from a PV, Vole doesn't drop the buffer immediately. Instead, a **grace period** starts (configurable via `CANOPY_VOLE__BUFFER_GRACE_SECONDS`, default 60s). If a subscriber reconnects before the timer fires, the buffer stays warm. Otherwise, Vole unsubscribes from Hare and drops the ring.
+
+This tolerates page refreshes, brief network blips, and tab switches without losing buffered data.
 
 ## Change notifications
 

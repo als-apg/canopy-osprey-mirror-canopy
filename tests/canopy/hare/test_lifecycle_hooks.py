@@ -1,0 +1,197 @@
+"""Tests for PVBroker activation/deactivation lifecycle hooks."""
+
+from tests.canopy.hare.conftest import FakeWebSocket
+from canopy.hare.services.broker import PVBroker
+
+
+class TestActivationHooks:
+    async def test_activation_hook_fires_on_first_subscriber(self, broker: PVBroker) -> None:
+        activated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            activated.append(pvs)
+
+        broker.add_activation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A", "PV:B"])
+
+        assert activated == [["PV:A", "PV:B"]]
+
+    async def test_activation_hook_not_fired_for_already_active_pv(self, broker: PVBroker) -> None:
+        activated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            activated.append(pvs)
+
+        broker.add_activation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        broker.add_client("c2", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.subscribe("c2", ["PV:A"])
+
+        assert activated == [["PV:A"]]
+
+    async def test_activation_hook_excluded_client(self, broker: PVBroker) -> None:
+        activated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            activated.append(pvs)
+
+        broker.add_activation_hook(hook, exclude_clients={"c1"})
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+
+        assert activated == []
+
+    async def test_remove_activation_hook(self, broker: PVBroker) -> None:
+        activated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            activated.append(pvs)
+
+        broker.add_activation_hook(hook)
+        broker.remove_activation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+
+        assert activated == []
+
+
+class TestDeactivationHooks:
+    async def test_deactivation_hook_fires_on_last_unsubscribe(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.unsubscribe("c1", ["PV:A"])
+
+        assert deactivated == [["PV:A"]]
+
+    async def test_deactivation_hook_fires_on_remove_client(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A", "PV:B"])
+        await broker.remove_client("c1")
+
+        assert len(deactivated) == 1
+        assert set(deactivated[0]) == {"PV:A", "PV:B"}
+
+    async def test_deactivation_not_fired_when_other_subscribers_remain(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        broker.add_client("c2", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.subscribe("c2", ["PV:A"])
+        await broker.remove_client("c1")
+
+        assert deactivated == []
+
+    async def test_unsubscribe_of_unheld_pv_does_not_fire_deactivation(self, broker: PVBroker) -> None:
+        """A REST-warmed buffer is held only by `vole-internal`, so its external
+        subscriber count is already zero — one unsubscribe frame from an
+        unrelated client must not be enough to kill it."""
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook, exclude_clients={"vole-internal"})
+        broker.add_client("vole-internal", FakeWebSocket())
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("vole-internal", ["PV:A"])
+
+        await broker.unsubscribe("c1", ["PV:A"])
+
+        assert deactivated == []
+
+    async def test_repeated_unsubscribe_fires_deactivation_once(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.unsubscribe("c1", ["PV:A"])
+        await broker.unsubscribe("c1", ["PV:A"])
+
+        assert deactivated == [["PV:A"]]
+
+    async def test_deactivation_hook_excluded_client(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook, exclude_clients={"c1"})
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.remove_client("c1")
+
+        assert deactivated == []
+
+    async def test_remove_deactivation_hook(self, broker: PVBroker) -> None:
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook)
+        broker.remove_deactivation_hook(hook)
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("c1", ["PV:A"])
+        await broker.remove_client("c1")
+
+        assert deactivated == []
+
+    async def test_deactivation_fires_when_only_excluded_client_remains(self, broker: PVBroker) -> None:
+        """When the hook excludes vole-internal, disconnecting the external
+        client should fire the hook even though vole-internal is still subscribed."""
+        deactivated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            deactivated.append(pvs)
+
+        broker.add_deactivation_hook(hook, exclude_clients={"vole-internal"})
+        broker.add_client("vole-internal", FakeWebSocket())
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("vole-internal", ["PV:A"])
+        await broker.subscribe("c1", ["PV:A"])
+
+        await broker.remove_client("c1")
+
+        assert deactivated == [["PV:A"]]
+
+    async def test_activation_fires_when_first_non_excluded_subscribes(self, broker: PVBroker) -> None:
+        """When the hook excludes vole-internal, the activation should fire
+        when the first external client subscribes, not when vole-internal does."""
+        activated: list[list[str]] = []
+
+        async def hook(pvs: list[str]) -> None:
+            activated.append(pvs)
+
+        broker.add_activation_hook(hook, exclude_clients={"vole-internal"})
+        broker.add_client("vole-internal", FakeWebSocket())
+        broker.add_client("c1", FakeWebSocket())
+        await broker.subscribe("vole-internal", ["PV:A"])
+
+        assert activated == []
+
+        await broker.subscribe("c1", ["PV:A"])
+
+        assert activated == [["PV:A"]]

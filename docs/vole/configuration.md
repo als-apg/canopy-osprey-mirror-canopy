@@ -10,6 +10,7 @@ Vole is configured through environment variables with the prefix `CANOPY_VOLE__`
 | `CANOPY_VOLE__GLOBAL_BYTES_MAX` | int | `4294967296` (4 GB) | Global memory ceiling in bytes. When exceeded, LRU eviction removes entire rings until under budget. |
 | `CANOPY_VOLE__DEFAULT_ALIGN` | string | `"last"` | Default alignment mode for time-window reads. Options: `last`, `linear`, `nearest`, `none`. |
 | `CANOPY_VOLE__DEFAULT_INDEX` | string | `"union"` | Default index mode for multi-PV reads. Options: `union`, `intersection`, `grid`, `first_input`. |
+| `CANOPY_VOLE__BUFFER_GRACE_SECONDS` | int | `60` | Seconds to wait after the last external subscriber disconnects before dropping a PV's buffer. |
 
 ## Example .env
 
@@ -18,6 +19,7 @@ CANOPY_VOLE__MAX_POINTS=1000000
 CANOPY_VOLE__GLOBAL_BYTES_MAX=8589934592
 CANOPY_VOLE__DEFAULT_ALIGN=linear
 CANOPY_VOLE__DEFAULT_INDEX=union
+CANOPY_VOLE__BUFFER_GRACE_SECONDS=120
 ```
 
 ## Tuning guidance
