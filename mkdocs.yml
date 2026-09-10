@@ -86,14 +86,25 @@ markdown_extensions:
 # Page Tree
 nav:
   - Home: index.md
-  - Fox:
-    - fox/index.md
-    - REST API: fox/rest_api.md
-    - WebSocket Subscriptions: fox/websocket.md
-  - Vole:
-    - vole/index.md
-    - REST API: vole/rest_api.md
-    - Configuration: vole/configuration.md
+  - Getting Started: getting_started.md
+  - Modules:
+    - modules/index.md
+    - Hare:
+      - hare/index.md
+      - REST API: hare/rest_api.md
+      - WebSocket Stream: hare/websocket.md
+    - Fox:
+      - fox/index.md
+      - REST API: fox/rest_api.md
+      - WebSocket Subscriptions: fox/websocket.md
+    - Vole:
+      - vole/index.md
+      - REST API: vole/rest_api.md
+      - Configuration: vole/configuration.md
+  - Deployment:
+    - deployment/index.md
+    - Docker Compose: deployment/docker.md
+    - Facility Deployment: deployment/facilities.md
   - How To:
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
     - Custom directory adapter: how_to/custom_directory_adapter.md
