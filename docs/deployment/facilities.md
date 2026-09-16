@@ -75,6 +75,12 @@ repo):
 }
 ```
 
+`CANOPY_API_KEYS` sits in `_shared` so it applies to whichever facility block
+this instance uses. Because each instance has its own `APP_SECRETS_<INSTANCE>`
+secret, that still means one distinct set of tokens per instance — generate
+them fresh rather than copying DEV's. See the
+[API keys runbook](api-keys.md).
+
 Per-instance adjustments to the template:
 
 - `API_PORT`, the DB/Redis host ports in the URLs, and the DB name follow the

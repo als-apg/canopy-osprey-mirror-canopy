@@ -57,6 +57,8 @@ CANOPY_API_KEYS="<token>:<scope>[+<scope>][,<token>:<scope>...]"
   accept `?api_key=<token>` for clients that cannot set headers.
 - If `CANOPY_API_KEYS` is unset, no keys exist and every gated endpoint
   returns `401`.
+- `dev:read+write` is fine on a laptop. For deployed instances, see the
+  [API keys runbook](deployment/api-keys.md).
 
 ## Run the API
 

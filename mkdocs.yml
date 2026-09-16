@@ -105,6 +105,7 @@ nav:
     - deployment/index.md
     - Docker Compose: deployment/docker.md
     - Facility Deployment: deployment/facilities.md
+    - API Keys: deployment/api-keys.md
   - How To:
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
     - Custom directory adapter: how_to/custom_directory_adapter.md
