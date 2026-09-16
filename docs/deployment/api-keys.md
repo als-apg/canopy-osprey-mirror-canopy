@@ -27,9 +27,17 @@ is a configuration change plus a restart.** For a facility instance that means
 editing a GitHub secret and re-running the deploy workflow.
 
 !!! warning "Unset means locked, not open"
-    If `CANOPY_API_KEYS` is empty or unset, no keys exist and every gated
-    endpoint returns `401`. The failure mode is closed, but it is quiet — see
-    [Verifying](#verifying-a-deployment) for how to confirm keys actually loaded.
+    If `CANOPY_API_KEYS` is empty or unset and the database registry holds no
+    keys, no keys exist and every gated endpoint returns `401`. The failure mode
+    is closed, but it is quiet — see [Verifying](#verifying-a-deployment) for how
+    to confirm keys actually loaded.
+
+!!! note "Running without a database"
+    Env keys are resolved before the database is consulted, so a valid env key
+    works with no Postgres at all. An **unknown** token, however, falls through to
+    the database registry, so with no database reachable it returns `503`
+    `key_store_unavailable` rather than `401` — the store genuinely cannot say
+    whether the token is valid.
 
 ## Generating a token
 
@@ -143,7 +151,7 @@ Before declaring an instance provisioned:
 The startup log reports what loaded, without ever printing a token:
 
 ```
-Registered 2 API key(s) from CANOPY_API_KEYS (2 read, 1 write)
+Registered 2 API key(s) from CANOPY_API_KEYS (2 read, 1 write, 0 admin)
 ```
 
 A malformed entry is skipped with a warning naming its position (e.g.
