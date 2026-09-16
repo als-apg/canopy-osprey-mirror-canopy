@@ -1,3 +1,4 @@
+import logging
 from typing import Protocol, Annotated
 from dataclasses import dataclass
 
@@ -12,6 +13,8 @@ from canopy.core.errors import (
     InsufficientReadAccess,
     InsufficientWriteAccess,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,22 +46,48 @@ class EnvKeyRegistry:
         CANOPY_API_KEYS="ro:read,rw:read+write"         # two keys
 
     Stop-gap until a persistent module brings up Postgres-backed keys.
+
+    A typo'd entry is skipped rather than fatal, so parsing logs a warning for
+    each one it drops — an unreported skip means a deployed instance rejects a
+    client for a reason nothing on the box explains. Entries are identified by
+    position, never by content: the token is the secret.
     """
 
     def __init__(self, raw: str = "") -> None:
         self._keys: dict[str, APIKey] = {}
-        for entry in (e.strip() for e in raw.split(",") if e.strip()):
+        for position, entry in enumerate((e.strip() for e in raw.split(",") if e.strip()), start=1):
             try:
                 token, scopes = entry.split(":", 1)
             except ValueError:
+                logger.warning(
+                    "Skipping malformed CANOPY_API_KEYS entry #%d: expected '<token>:<scope>[+<scope>]'", position
+                )
                 continue
             token = token.strip()
+            if not token:
+                logger.warning("Skipping CANOPY_API_KEYS entry #%d: empty token", position)
+                continue
             scope_set = {s.strip() for s in scopes.split("+")}
+            if unknown := scope_set - {"read", "write"}:
+                logger.warning(
+                    "CANOPY_API_KEYS entry #%d has unrecognized scope(s) %s; only 'read' and 'write' grant access",
+                    position,
+                    sorted(unknown),
+                )
             self._keys[token] = APIKey(
                 token=token,
                 read="read" in scope_set,
                 write="write" in scope_set,
             )
+        if self._keys:
+            logger.info(
+                "Registered %d API key(s) from CANOPY_API_KEYS (%d read, %d write)",
+                len(self._keys),
+                sum(1 for key in self._keys.values() if key.read),
+                sum(1 for key in self._keys.values() if key.write),
+            )
+        else:
+            logger.warning("No API keys registered from CANOPY_API_KEYS: every gated endpoint will return 401")
 
     def get(self, token: str) -> APIKey | None:
         return self._keys.get(token)
