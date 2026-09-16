@@ -34,7 +34,13 @@ from canopy.analytics.app import app as analytics_app
 from canopy.analytics.app import analytics_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
-from canopy.core.security import get_registry
+from canopy.core.config import get_settings
+from canopy.core.security import EnvKeyRegistry, bind_key_registry
+from canopy.core.keys.registry import (
+    DbKeyRegistry,
+    CachingKeyRegistry,
+    ChainedKeyRegistry,
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -57,9 +63,23 @@ API_MODULES = (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Compose per-module lifespans. Mounted sub-apps don't run their own."""
-    # Parse keys before anything can serve, so a bad CANOPY_API_KEYS surfaces in
-    # the startup log instead of as an unexplained 401 on the first request.
-    get_registry()
+    # Env keys first, then the database: the handful of long-lived credentials in
+    # the deployment secret keep working when Postgres is unreachable, including on
+    # a cold start when the cache has nothing stale to serve. Parsed before anything
+    # can serve, so a bad CANOPY_API_KEYS surfaces in the startup log instead of as
+    # an unexplained 401 on the first request.
+    settings = get_settings()
+    bind_key_registry(
+        ChainedKeyRegistry(
+            EnvKeyRegistry(settings.api_keys),
+            CachingKeyRegistry(
+                DbKeyRegistry(),
+                ttl_s=settings.api_key_cache_ttl_s,
+                negative_ttl_s=settings.api_key_negative_cache_ttl_s,
+                max_stale_s=settings.api_key_max_stale_s,
+            ),
+        )
+    )
     async with (
         mole_lifespan(),
         hare_lifespan(),

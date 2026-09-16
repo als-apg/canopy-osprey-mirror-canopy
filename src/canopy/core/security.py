@@ -10,6 +10,7 @@ from canopy.core.config import get_settings
 from canopy.core.errors import (
     ErrorCode,
     InvalidAPIKey,
+    KeyStoreUnavailable,
     InsufficientReadAccess,
     InsufficientWriteAccess,
 )
@@ -19,33 +20,48 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class APIKey:
+    """A resolved key. `name` identifies the holding client class — it is what
+    request logs and analytics may record; the `token` never is."""
+
     token: str
     read: bool
     write: bool
+    admin: bool = False
+    name: str = "unknown"
+    id: str | None = None
 
 
 class KeyRegistry(Protocol):
     """Strategy for resolving an API key token to an `APIKey` record (or None).
 
-    `EnvKeyRegistry` is the v1 implementation. A future Postgres-backed
-    registry will implement the same Protocol; routes and dependencies do
-    not change.
+    `EnvKeyRegistry` resolves from the environment; the registries in
+    `canopy.core.keys.registry` resolve from Postgres and layer caching on top.
+    Routes and dependencies are identical either way.
+
+    `get` is async because a persistent implementation has to await the database;
+    an in-memory one simply doesn't await anything.
     """
 
-    def get(self, token: str) -> APIKey | None: ...
+    async def get(self, token: str) -> APIKey | None: ...
 
 
 class EnvKeyRegistry:
     """In-memory registry built from a comma-separated env-var entry list.
 
     Format: ``"<token>:<scope>[+<scope>]*[,<token>:<scope>...]"``. Scopes are
-    ``read`` and ``write``. Examples:
+    ``read``, ``write`` and ``admin``. Examples:
 
         CANOPY_API_KEYS=""                              # empty registry
         CANOPY_API_KEYS="dev:read+write"                # one key, full access
         CANOPY_API_KEYS="ro:read,rw:read+write"         # two keys
+        CANOPY_API_KEYS="ops:admin"                     # key management only
 
-    Stop-gap until a persistent module brings up Postgres-backed keys.
+    Env keys are no longer a stop-gap: they are the statically stable layer in
+    front of the Postgres-backed registry. Keys defined here keep working when the
+    database is unreachable — including on a cold start, when there is nothing
+    cached to fall back on — so a deployment keeps a small, long-lived set here
+    (a read key for displays, an admin key for ops) and manages everything else in
+    the database, where revocation is immediate.
 
     A typo'd entry is skipped rather than fatal, so parsing logs a warning for
     each one it drops — an unreported skip means a deployed instance rejects a
@@ -70,11 +86,12 @@ class EnvKeyRegistry:
                 logger.warning("Skipping CANOPY_API_KEYS entry #%d: empty token", position)
                 continue
             scope_set = {s.strip() for s in scopes.split("+")}
-            if unknown := scope_set - {"read", "write"}:
+            if unknown := scope_set - {"read", "write", "admin"}:
                 logger.warning(
-                    "Skipping CANOPY_API_KEYS entry #%d: %d unrecognized scope(s); only 'read' and 'write' are valid",
+                    "Skipping CANOPY_API_KEYS entry #%d: unrecognized scope(s) %s; "
+                    "only 'read', 'write' and 'admin' are valid",
                     position,
-                    len(unknown),
+                    sorted(unknown),
                 )
                 continue
             if token in self._keys:
@@ -83,18 +100,23 @@ class EnvKeyRegistry:
                 token=token,
                 read="read" in scope_set,
                 write="write" in scope_set,
+                admin="admin" in scope_set,
+                # Env keys have no app name of their own; position identifies them in
+                # logs without ever revealing the token.
+                name=f"env:{position}",
             )
         if self._keys:
             logger.info(
-                "Registered %d API key(s) from CANOPY_API_KEYS (%d read, %d write)",
+                "Registered %d API key(s) from CANOPY_API_KEYS (%d read, %d write, %d admin)",
                 len(self._keys),
                 sum(1 for key in self._keys.values() if key.read),
                 sum(1 for key in self._keys.values() if key.write),
+                sum(1 for key in self._keys.values() if key.admin),
             )
         else:
-            logger.warning("No API keys registered from CANOPY_API_KEYS: every gated endpoint will return 401")
+            logger.info("No API keys registered from CANOPY_API_KEYS; relying on the database registry")
 
-    def get(self, token: str) -> APIKey | None:
+    async def get(self, token: str) -> APIKey | None:
         return self._keys.get(token)
 
 
@@ -118,10 +140,10 @@ def get_registry() -> KeyRegistry:
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def get_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey:
+async def get_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey:
     if not token:
         raise InvalidAPIKey("Missing X-API-Key header")
-    key = get_registry().get(token)
+    key = await get_registry().get(token)
     if key is None:
         raise InvalidAPIKey("Invalid API key")
     return key
@@ -130,17 +152,21 @@ def get_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKe
 APIKeyDep = Annotated[APIKey, Security(get_api_key)]
 
 
-def get_optional_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey | None:
+async def get_optional_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey | None:
     """Resolve the API key if one was sent and is valid; otherwise ``None``.
 
     Never raises: for endpoints (analytics ingestion) that accept anonymous
     requests but attach key metadata when available. An *invalid* token also
     resolves to ``None`` rather than 401 so a stale key can't break a client's
-    fire-and-forget calls.
+    fire-and-forget calls — including when the token is merely unrecognized by
+    the env layer and the database registry behind it is unreachable.
     """
     if not token:
         return None
-    return get_registry().get(token)
+    try:
+        return await get_registry().get(token)
+    except KeyStoreUnavailable:
+        return None
 
 
 OptionalAPIKeyDep = Annotated[APIKey | None, Security(get_optional_api_key)]
@@ -168,7 +194,15 @@ async def ws_get_api_key(websocket: WebSocket) -> APIKey:
             code=status.WS_1008_POLICY_VIOLATION,
             reason=f"{ErrorCode.INVALID_API_KEY.value}: missing X-API-Key",
         )
-    key = get_registry().get(token)
+    try:
+        key = await get_registry().get(token)
+    except KeyStoreUnavailable:
+        # A handshake can't return JSON, so translate to a close reason that names
+        # the real cause: the store is down, the token isn't necessarily bad.
+        raise WebSocketException(
+            code=status.WS_1011_INTERNAL_ERROR,
+            reason=f"{ErrorCode.KEY_STORE_UNAVAILABLE.value}: API key store unavailable",
+        )
     if key is None:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
