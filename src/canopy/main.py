@@ -36,6 +36,7 @@ from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
 from canopy.core.config import get_settings
 from canopy.core.security import EnvKeyRegistry, bind_key_registry
+from canopy.core.keys.routes import router as api_keys_router
 from canopy.core.keys.registry import (
     DbKeyRegistry,
     CachingKeyRegistry,
@@ -116,6 +117,8 @@ app.add_middleware(
 )
 
 register_canopy_error_handler(app)
+
+app.include_router(api_keys_router)
 
 app.mount("/mole", mole_app)
 app.mount("/hare", hare_app)

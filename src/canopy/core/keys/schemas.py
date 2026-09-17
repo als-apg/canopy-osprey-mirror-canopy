@@ -24,3 +24,12 @@ class ApiKeyCreateResultDTO(ApiKeyDTO):
     """Creation response — the only place a plaintext token is ever returned."""
 
     token: str
+
+
+class NewApiKeyDTO(CanopyModel):
+    """Request body for minting a key. At least one scope must be set."""
+
+    app_name: str
+    read: bool = False
+    write: bool = False
+    admin: bool = False
