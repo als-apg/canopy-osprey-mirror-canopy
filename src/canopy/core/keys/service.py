@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from canopy.core.errors import BadRequest, ApiKeyNotFound
+from canopy.core.errors import BadRequest, ApiKeyNotFound, ApiKeySelfDeactivation
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token, mint_token
 from canopy.core.keys.schemas import ApiKeyDTO, ApiKeyCreateResultDTO
@@ -97,9 +97,25 @@ class ApiKeyService:
     async def count(self, active_only: bool = False) -> int:
         return await self.repo.count(active_only)
 
-    async def deactivate_key(self, key_id: str) -> ApiKeyDTO:
+    async def deactivate_key(
+        self,
+        key_id: str,
+        *,
+        acting_key_id: str | None = None,
+        force: bool = False,
+    ) -> ApiKeyDTO:
         """Soft-delete a key. Idempotent-adjacent: deactivating an already inactive
-        key is a no-op rather than an error, so a retried revocation still succeeds."""
+        key is a no-op rather than an error, so a retried revocation still succeeds.
+
+        ``acting_key_id`` is the id of the key that authenticated this call (``None``
+        for the CLI, which has no HTTP request to guard). Deactivating the key you're
+        making the request with would lock an operator out mid-session, so it's
+        refused unless ``force`` is set.
+        """
+        if not force and acting_key_id is not None and key_id == acting_key_id:
+            raise ApiKeySelfDeactivation(
+                "Refusing to deactivate the API key authenticating this request; pass force=true to override"
+            )
         api_key = await self._find(key_id)
         if api_key is None:
             raise ApiKeyNotFound(f"No API key with id '{key_id}'")

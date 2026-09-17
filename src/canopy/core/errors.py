@@ -24,7 +24,9 @@ class ErrorCode(StrEnum):
     INVALID_API_KEY = auto()
     INSUFFICIENT_READ_ACCESS = auto()
     INSUFFICIENT_WRITE_ACCESS = auto()
+    INSUFFICIENT_ADMIN_ACCESS = auto()
     API_KEY_NOT_FOUND = auto()
+    API_KEY_SELF_DEACTIVATION = auto()
     KEY_STORE_UNAVAILABLE = auto()
 
     # Mole
@@ -149,9 +151,27 @@ class InsufficientWriteAccess(CanopyError):
     error_code = ErrorCode.INSUFFICIENT_WRITE_ACCESS
 
 
+class InsufficientAdminAccess(CanopyError):
+    status_code = 403
+    error_code = ErrorCode.INSUFFICIENT_ADMIN_ACCESS
+
+
 class ApiKeyNotFound(CanopyError):
     status_code = 404
     error_code = ErrorCode.API_KEY_NOT_FOUND
+
+
+class ApiKeySelfDeactivation(CanopyError):
+    """Refused an admin key's request to deactivate itself over HTTP.
+
+    Locking yourself out is recoverable via the CLI (it talks to the database
+    directly), but that recovery path is out-of-band from a running deployment —
+    worth a deliberate ``force=true`` rather than a request that happened to name
+    the wrong id.
+    """
+
+    status_code = 400
+    error_code = ErrorCode.API_KEY_SELF_DEACTIVATION
 
 
 class KeyStoreUnavailable(CanopyError):

@@ -12,6 +12,7 @@ from canopy.core.errors import (
     InvalidAPIKey,
     KeyStoreUnavailable,
     InsufficientReadAccess,
+    InsufficientAdminAccess,
     InsufficientWriteAccess,
 )
 
@@ -183,6 +184,21 @@ def require_write_access(key: APIKeyDep) -> APIKey:
         raise InsufficientWriteAccess("API key does not have write access")
     return key
 
+
+def require_admin_access(key: APIKeyDep) -> APIKey:
+    """Gate for key management and other operational (not data-plane) actions.
+
+    Orthogonal to ``read``/``write``, not a level above them — an admin key that
+    cannot itself read a PV is the better credential for a provisioning tool.
+    """
+    if not key.admin:
+        raise InsufficientAdminAccess("API key does not have admin access")
+    return key
+
+
+AdminKeyDep = Annotated[APIKey, Security(require_admin_access)]
+
+# No WebSocket variant of require_admin_access: nothing about key management streams.
 
 # WebSocket variants raise WebSocketException because handshake errors must close the connection, not return JSON.
 
