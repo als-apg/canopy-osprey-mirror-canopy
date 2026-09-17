@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 
 from canopy.core.errors import KeyStoreUnavailable
 from canopy.core.security import APIKey, EnvKeyRegistry
+from canopy.core.keys.tokens import hash_token
 from canopy.core.keys.registry import CachingKeyRegistry, ChainedKeyRegistry
 
 TOKEN = "cnpy_token"
@@ -164,6 +165,32 @@ class TestStoreOutage:
             await registry.get(f"cnpy_guess{i}")
 
         assert len(registry._cache) <= 10
+
+    async def test_pruning_drops_entries_past_their_horizon(self, clock):
+        store = FakeStore()
+        registry = CachingKeyRegistry(store, negative_ttl_s=5, max_entries=1)
+
+        stale_key = hash_token("cnpy_stale")
+        await registry.get("cnpy_stale")  # cached negative, about to age out
+        assert stale_key in registry._cache
+
+        clock.advance(6)  # past negative_ttl_s: eligible for pruning, but not pruned yet
+        assert stale_key in registry._cache
+
+        await registry.get("cnpy_fresh")  # cache is full: forces _prune before storing
+        assert stale_key not in registry._cache, "a negative past its horizon must not survive a prune"
+
+    async def test_invalidate_forces_a_fresh_lookup(self, clock):
+        store = FakeStore({TOKEN: a_key()})
+        registry = CachingKeyRegistry(store, ttl_s=60)
+        await registry.get(TOKEN)
+        assert store.calls == 1
+
+        store.keys.clear()  # deactivated in the database
+        registry.invalidate(TOKEN)
+
+        assert await registry.get(TOKEN) is None, "revocation via invalidate() must not wait out the TTL"
+        assert store.calls == 2
 
 
 class TestChaining:

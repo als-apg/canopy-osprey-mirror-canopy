@@ -8,12 +8,14 @@ rotation, and the plaintext token is never persisted.
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from canopy.core.errors import ApiKeyNotFound
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token
 from canopy.core.keys.service import ApiKeyService
 from canopy.core.keys.registry import DbKeyRegistry
+from canopy.core.keys.repositories import ApiKeyRepository
 from tests.canopy.core.keys.conftest import db_backed_registry
 
 
@@ -122,6 +124,20 @@ class TestLastUsed:
         session.expire_all()
         row = (await session.execute(select(ApiKey).where(ApiKey.id == created.id))).scalar_one()
         assert row.last_used_at is not None, "rotation needs this to answer 'is the old key still in use?'"
+
+    async def test_a_failed_stamp_does_not_fail_the_lookup(self, session, session_maker, monkeypatch):
+        """Attribution is a nicety; a key that resolves must keep resolving even if
+        the ``last_used_at`` write itself fails."""
+        created = await mint(session, "trace")
+
+        async def broken_touch(self, key_id: str) -> None:
+            raise OperationalError("UPDATE core.api_key", {}, Exception("connection refused"))
+
+        monkeypatch.setattr(ApiKeyRepository, "touch_last_used", broken_touch)
+
+        resolved = await DbKeyRegistry().get(created.token)
+        assert resolved is not None
+        assert resolved.name == "trace"
 
 
 class TestThroughAGatedRoute:

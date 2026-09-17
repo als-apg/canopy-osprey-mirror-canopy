@@ -41,6 +41,13 @@ class TestCreateKey:
         assert resp.status_code == 400
         assert resp.json()["code"] == "bad_request"
 
+    async def test_empty_app_name_is_rejected(self, session, session_maker, keys_client):
+        with db_backed_registry(env="admin-env-key:admin"):
+            resp = keys_client.post("/v1/api-keys", json={"appName": "  ", "read": True}, headers=ADMIN_HEADERS)
+
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "bad_request"
+
 
 class TestListAndCount:
     async def test_list_never_exposes_a_token(self, session, session_maker, keys_client):
@@ -66,6 +73,44 @@ class TestListAndCount:
 
         assert all_count.json() == 2
         assert active_count.json() == 1
+
+    async def test_list_active_only_excludes_deactivated_keys(self, session, session_maker, keys_client):
+        deactivated = await mint(session, "old-trace", read=True)
+        await mint(session, "trace", read=True)
+        await ApiKeyService(session).deactivate_key(deactivated.id)
+        await session.commit()
+
+        with db_backed_registry(env="admin-env-key:admin"):
+            resp = keys_client.get("/v1/api-keys?activeOnly=true", headers=ADMIN_HEADERS)
+
+        assert resp.status_code == 200
+        app_names = [key["appName"] for key in resp.json()]
+        assert app_names == ["trace"]
+
+    async def test_list_filters_by_app_name(self, session, session_maker, keys_client):
+        await mint(session, "trace", read=True)
+        outgoing = await mint(session, "other-app", read=True)
+        incoming = await mint(session, "other-app", read=True)
+
+        with db_backed_registry(env="admin-env-key:admin"):
+            resp = keys_client.get("/v1/api-keys?appName=other-app", headers=ADMIN_HEADERS)
+
+        assert resp.status_code == 200
+        ids = {key["id"] for key in resp.json()}
+        assert ids == {outgoing.id, incoming.id}
+
+    async def test_list_filters_by_app_name_and_active_only(self, session, session_maker, keys_client):
+        outgoing = await mint(session, "other-app", read=True)
+        incoming = await mint(session, "other-app", read=True)
+        await ApiKeyService(session).deactivate_key(outgoing.id)
+        await session.commit()
+
+        with db_backed_registry(env="admin-env-key:admin"):
+            resp = keys_client.get("/v1/api-keys?appName=other-app&activeOnly=true", headers=ADMIN_HEADERS)
+
+        assert resp.status_code == 200
+        ids = {key["id"] for key in resp.json()}
+        assert ids == {incoming.id}
 
 
 class TestDeactivate:
