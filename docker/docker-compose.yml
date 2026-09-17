@@ -23,7 +23,7 @@ services:
       CANOPY_EPICS__BACKEND: ${CANOPY_EPICS__BACKEND:-simulation}
       CANOPY_DEBUG: ${CANOPY_DEBUG:-true}
       CANOPY_LOG_LEVEL: ${CANOPY_LOG_LEVEL:-INFO}
-      CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
+      CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write@*}
       CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:canopy@postgres:5432/canopy}
       CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
       CANOPY_SQUIRREL__RESTORE_HOOKS: ${CANOPY_SQUIRREL__RESTORE_HOOKS:-}
@@ -71,7 +71,7 @@ services:
       CANOPY_EPICS__BACKEND: ${CANOPY_EPICS__BACKEND:-simulation}
       CANOPY_DEBUG: ${CANOPY_DEBUG:-true}
       CANOPY_LOG_LEVEL: ${CANOPY_LOG_LEVEL:-INFO}
-      CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
+      CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write@*}
       CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:canopy@postgres:5432/canopy}
       CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
       CANOPY_SQUIRREL__RESTORE_HOOKS: ${CANOPY_SQUIRREL__RESTORE_HOOKS:-}

@@ -20,6 +20,9 @@ cannot itself read a PV is a better credential for a provisioning tool than one
 that can do everything. A `write` key cannot mint or revoke keys; only `admin`
 can.
 
+Independently, every key also carries a **module scope** — see
+[Module scoping](#module-scoping) below.
+
 Clients send the token in the `X-API-Key` header. WebSocket endpoints also
 accept `?api_key=<token>` for browsers that cannot set headers on a WebSocket
 handshake — that parameter exists purely as a compatibility workaround and is
@@ -62,7 +65,7 @@ rather than a special break-glass case.
 ### Local development / Docker Compose
 
 `.env` / `docker/.env` carry `CANOPY_API_KEYS`; `docker-compose.yml` defaults it
-to `dev:read+write` when unset. Fine for a laptop, never for a shared host.
+to `dev:read+write@*` when unset. Fine for a laptop, never for a shared host.
 Everything else — the working set of keys for local testing — is easiest to
 manage through the CLI once `CANOPY_DATABASE_URL` points somewhere real:
 
@@ -96,7 +99,7 @@ The env layer's two long-lived keys still live in the per-instance
 ```json
 {
   "_shared": {
-    "CANOPY_API_KEYS": "<display-read-token>:read,<ops-admin-token>:admin"
+    "CANOPY_API_KEYS": "<display-read-token>:read@*,<ops-admin-token>:admin@*"
   }
 }
 ```
@@ -137,6 +140,46 @@ curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
     would lock that session out mid-use. Pass `?force=true` to override, or use
     `scripts/deactivate_key.py`, which has no such guard (it isn't a request
     that can lock itself out).
+
+### Module scoping
+
+A key can be restricted to one or more mounted sub-apps — `mole`, `hare`,
+`raccoon`, `vole`, `fox`, `beaver`, `squirrel`, `magpie`, `jobs`, `converter`
+— or `core`, for the parent app's own routes (`/health`, `/v1/api-keys`).
+Minting a key via the CLI or `POST /v1/api-keys` without naming any modules
+grants every module, an explicit default of `["*"]` at that layer. There is no
+such default for the env layer — see below.
+
+This constrains which **surface** a key can call, not which **data** it can
+see through that surface — a `squirrel`-scoped key can reach every route
+`squirrel` exposes, the same as an unscoped key would. Facility-level data
+scoping is a separate, Squirrel-side mechanism and is not expressible here.
+
+Set it with `-m`/`--module` (repeatable) on `scripts/create_key.py`, or the
+`modules` field on `POST /v1/api-keys`:
+
+```bash
+uv run python scripts/create_key.py trace -r -m fox -m vole
+```
+
+```bash
+curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
+  -d '{"appName": "trace", "read": true, "modules": ["fox", "vole"]}' \
+  http://localhost:<API_PORT>/v1/api-keys
+```
+
+For an env-layer key, the `@<module>[+<module>]` suffix is **required** — an
+entry with no `@` at all is skipped as malformed, the same as an empty token.
+Use `@*` for every module:
+
+```bash
+CANOPY_API_KEYS="trace:read@fox+vole,ops:admin@*"
+```
+
+A key that resolves but isn't scoped to the module a route belongs to gets
+`403` `insufficient_module_access` — checked before the `read`/`write`/`admin`
+scope check, so an out-of-scope, no-access key is still reported as
+out-of-scope, not out-of-read.
 
 ### Why `admin`, not `write`
 
@@ -184,7 +227,7 @@ window is the length of your deploy pipeline.
 
 Before declaring an instance provisioned:
 
-- [ ] `CANOPY_API_KEYS` does **not** contain the `dev:read+write` default.
+- [ ] `CANOPY_API_KEYS` does **not** contain the `dev:read+write@*` default.
 - [ ] Tokens are freshly generated per instance — not shared between DEV and a
       facility, and not shared with another SLAC app.
 - [ ] Only one `admin` key exists in the env layer (for ops), and it is not
@@ -199,7 +242,7 @@ The startup log reports what the env layer loaded, without ever printing a
 token:
 
 ```
-Registered 2 API key(s) from CANOPY_API_KEYS (1 read, 0 write, 1 admin)
+Registered 2 API key(s) from CANOPY_API_KEYS (1 read, 0 write, 1 admin, 0 module-scoped)
 ```
 
 An empty env layer is not itself a problem — it just means every key comes
@@ -236,12 +279,11 @@ curl -H "X-API-Key: <admin-token>" http://localhost:<API_PORT>/v1/api-keys
 ```
 
 A key with the wrong scope returns `403` with code `insufficient_read_access`,
-`insufficient_write_access`, or `insufficient_admin_access` — distinguishing
-"unknown token" (`401`) from "known token, not allowed here" (`403`).
+`insufficient_write_access`, `insufficient_admin_access`, or (see
+[Module scoping](#module-scoping)) `insufficient_module_access` —
+distinguishing "unknown token" (`401`) from "known token, not allowed here"
+(`403`).
 
 ## Known limitations
 
 - Keys have no expiration (`expires_at`) — nothing enforces one today.
-- A key is not scoped to a specific module: a key with `read` works against
-  Mole, Hare, Vole, Fox, and every other sub-app alike. Per-module scoping
-  (e.g. a Squirrel-only key) is a planned, purely additive follow-up.
