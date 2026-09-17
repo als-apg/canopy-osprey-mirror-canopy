@@ -11,8 +11,14 @@ from canopy.contracts.sample import AlarmSeverity
 from canopy.squirrel.adapters.epics_io import EpicsIO, _to_epics_value
 
 
-def _pv(addr: str, value: Any, severity=AlarmSeverity.NO_ALARM, ts_ns: int = 1_000_000_000) -> PVValue:
-    return PVValue(pv=addr, value=value, severity=severity, ts_ns=ts_ns)
+def _pv(
+    addr: str,
+    value: Any,
+    severity=AlarmSeverity.NO_ALARM,
+    ts_ns: int = 1_000_000_000,
+    alarm_status: int | None = None,
+) -> PVValue:
+    return PVValue(pv=addr, value=value, severity=severity, ts_ns=ts_ns, alarm_status=alarm_status)
 
 
 class FakeConnector:
@@ -43,6 +49,19 @@ def test_maps_severity_code_and_aware_timestamp():
     assert ev.timestamp.tzinfo is not None
     assert ev.connected is True
     assert ev.units is None and ev.precision is None  # v1 leaves these unset
+
+
+def test_maps_alarm_status():
+    ev = _to_epics_value(_pv("X", 42.0, AlarmSeverity.MAJOR, alarm_status=3))
+    assert ev.status == 3
+
+
+def test_absent_alarm_status_stays_none():
+    assert _to_epics_value(_pv("X", 42.0)).status is None
+
+
+def test_zero_alarm_status_is_preserved():
+    assert _to_epics_value(_pv("X", 42.0, alarm_status=0)).status == 0
 
 
 def test_zero_timestamp_becomes_none():
