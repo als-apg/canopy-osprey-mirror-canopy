@@ -76,37 +76,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # APP_SECRETS_DEV is the ONLY config source for the DEV deploy (no env files
-  # are committed), so a missing/malformed secret must fail here with a clear
-  # message, not as a health-check timeout after a full deploy attempt. Same
-  # script as deploy.yml's validate-secrets, for the one auto-deployed instance.
-  validate-dev-secrets:
+  dispatch-dev-deploy:
+    name: Trigger dev deployment
+    needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    env:
-      APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
     steps:
-      - name: Checkout validation script
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Mint deployment repo token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          sparse-checkout: .github/scripts
-          persist-credentials: false
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: swapps-deployment
 
-      - name: Validate APP_SECRETS_DEV
-        run: SECRET_NAME=APP_SECRETS_DEV SECRET_VALUE="$APP_SECRETS_DEV" FACILITY=CONTAINER_DEV bash .github/scripts/validate_app_secrets.sh
-
-  # Auto-deploy every push to main to the DEV instance. LCLS/FACET/TESTFAC are
-  # deployed manually via the Deploy workflow (workflow_dispatch).
-  deploy-dev:
-    needs: [build, validate-dev-secrets]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
-    with:
-      component_name: canopy
-      repository_name: canopy
-      tag: ${{ needs.build.outputs.image_tag }}
-      facilities: '["CONTAINER_DEV"]'
-      health_check_path: /health
-      migration_command: 'alembic upgrade head'
-    secrets:
-      APP_SECRETS: ${{ secrets.APP_SECRETS_DEV }}
+      - name: Dispatch deploy
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          IMAGE: ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository_owner }}/swapps-deployment/dispatches" \
+            -f event_type=deploy-image \
+            -f "client_payload[app]=canopy" \
+            -f "client_payload[environment]=dev" \
+            -f "client_payload[image]=$IMAGE"
