@@ -11,7 +11,8 @@ exercised end to end:
 - anything else           -> a scalar
 
 Each PV's phase is a stable function of its name, so values are deterministic per
-process. Severity thresholds let the alarm-styling path be exercised too.
+process. Severity thresholds let the alarm-styling path be exercised too, and every
+value carries the EPICS alarm status code that matches its severity.
 """
 
 import math
@@ -26,6 +27,14 @@ from canopy.contracts.sample import AlarmSeverity
 
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
 _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
+
+# EPICS alarm status code reported alongside each simulated severity.
+_STATUS_FOR_SEVERITY: dict[AlarmSeverity, int] = {
+    AlarmSeverity.NO_ALARM: 0,
+    AlarmSeverity.MINOR: 4,
+    AlarmSeverity.MAJOR: 3,
+    AlarmSeverity.INVALID: 17,
+}
 
 
 class SimulationConnector:
@@ -99,34 +108,80 @@ class SimulationConnector:
             return AlarmSeverity.MINOR
         return AlarmSeverity.NO_ALARM
 
+    @staticmethod
+    def _status_for(severity: AlarmSeverity) -> int:
+        """The EPICS alarm status code a simulated severity is reported with.
+
+        Parameters
+        ----------
+        severity : AlarmSeverity
+            Severity of the generated value.
+
+        Returns
+        -------
+        int
+            NO_ALARM (0) for a healthy value, HIGH (4) for MINOR, HIHI (3) for
+            MAJOR and UDF (17) for INVALID.
+        """
+        return _STATUS_FOR_SEVERITY[severity]
+
     def _value_for(self, pv: str) -> PVValue:
+        """Generate the current value of a simulated PV.
+
+        A PV pinned by a prior `put` is returned verbatim, keeping the
+        name-derived value kind so a write round-trips through a read.
+
+        Parameters
+        ----------
+        pv : str
+            PV name; its suffix selects the value kind.
+
+        Returns
+        -------
+        PVValue
+            The value, its kind, and an alarm severity with the matching status.
+        """
         kind = self._kind_for(pv)
         now = time.time_ns()
         if pv in self._overrides:
-            # A prior `put` pinned this PV's value; return it verbatim (keeping
-            # the name-derived kind) so put -> get round-trips.
             return PVValue(
                 pv=pv,
                 value=self._overrides[pv],
                 value_kind=kind,
                 severity=AlarmSeverity.NO_ALARM,
+                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
                 ts_ns=now,
             )
         if kind is ValueKind.ENUM:
             idx = int(time.monotonic() / 2) % len(_ENUM_CHOICES)
             severity = AlarmSeverity.MAJOR if _ENUM_CHOICES[idx] == "FAULT" else AlarmSeverity.NO_ALARM
-            return PVValue(pv=pv, value=idx, value_kind=kind, severity=severity, ts_ns=now)
+            return PVValue(
+                pv=pv,
+                value=idx,
+                value_kind=kind,
+                severity=severity,
+                alarm_status=self._status_for(severity),
+                ts_ns=now,
+            )
         if kind is ValueKind.WAVEFORM:
             t = 2 * math.pi * 0.1 * time.monotonic() + self._phase(pv)
             n = self._waveform_length
             wf = [round(10.0 * math.sin(t + i * 2 * math.pi / n), 4) for i in range(n)]
-            return PVValue(pv=pv, value=wf, value_kind=kind, severity=AlarmSeverity.NO_ALARM, ts_ns=now)
+            return PVValue(
+                pv=pv,
+                value=wf,
+                value_kind=kind,
+                severity=AlarmSeverity.NO_ALARM,
+                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
+                ts_ns=now,
+            )
         if kind is ValueKind.STRING:
             return PVValue(
                 pv=pv,
                 value=f"sample={self._sine(pv):+.3f}",
                 value_kind=kind,
                 severity=AlarmSeverity.NO_ALARM,
+                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
                 ts_ns=now,
             )
         if kind is ValueKind.TABLE:
@@ -136,9 +191,24 @@ class SimulationConnector:
             vals = [round(base + i, 3) for i in range(n)]
             status = [_ENUM_CHOICES[(i + int(time.monotonic())) % len(_ENUM_CHOICES)] for i in range(n)]
             table = TableValue(labels=["Index", "Value", "Status"], columns=[rows, vals, status])
-            return PVValue(pv=pv, value=table, value_kind=kind, severity=AlarmSeverity.NO_ALARM, ts_ns=now)
+            return PVValue(
+                pv=pv,
+                value=table,
+                value_kind=kind,
+                severity=AlarmSeverity.NO_ALARM,
+                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
+                ts_ns=now,
+            )
         v = self._sine(pv)
-        return PVValue(pv=pv, value=v, value_kind=kind, severity=self._severity_for(abs(v)), ts_ns=now)
+        severity = self._severity_for(abs(v))
+        return PVValue(
+            pv=pv,
+            value=v,
+            value_kind=kind,
+            severity=severity,
+            alarm_status=self._status_for(severity),
+            ts_ns=now,
+        )
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
         return self._value_for(pv)

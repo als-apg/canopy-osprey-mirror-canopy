@@ -52,6 +52,7 @@ async def test_pva_get(pva_server):
         assert value.value == 1.0
         # A server without an explicit timestamp reports secondsPastEpoch=0
         assert value.ts_ns > 0
+        assert value.alarm_status == 0
     finally:
         await conn.close()
 

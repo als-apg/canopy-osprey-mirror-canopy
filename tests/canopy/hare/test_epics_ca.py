@@ -25,13 +25,25 @@ class FakeAug:
     """Stand-in for an aioca augmented value: it *is* the value (via ``tolist()``)
     and carries the CA metadata attributes the connector reads."""
 
-    def __init__(self, value, *, datatype, element_count=None, severity=0, timestamp=1.0, enums=None, ok=True):
+    def __init__(
+        self,
+        value,
+        *,
+        datatype,
+        element_count=None,
+        severity=0,
+        status=0,
+        timestamp=1.0,
+        enums=None,
+        ok=True,
+    ):
         self._value = value
         self.datatype = datatype
         self.element_count = (
             element_count if element_count is not None else (len(value) if isinstance(value, list) else 1)
         )
         self.severity = severity
+        self.status = status
         self.timestamp = timestamp
         self.enums = enums
         self.ok = ok
@@ -93,6 +105,37 @@ def test_waveform_truncated_past_max():
 def test_disconnected_when_not_ok():
     v = _conn()._ca_to_pvvalue("X", FakeAug(0.0, datatype=DBR_DOUBLE, ok=False))
     assert v.connected is False
+
+
+# --- alarm status ----------------------------------------------------------- #
+
+
+def test_alarm_status_carried_from_augmented_value():
+    v = _conn()._ca_to_pvvalue("X", FakeAug(9.5, datatype=DBR_DOUBLE, severity=2, status=3))
+    assert v.alarm_status == 3
+
+
+def test_healthy_value_reports_status_zero():
+    assert _conn()._ca_to_pvvalue("X", FakeAug(1.0, datatype=DBR_DOUBLE)).alarm_status == 0
+
+
+def test_alarm_status_none_when_augmented_value_lacks_it():
+    aug = FakeAug(1.0, datatype=DBR_DOUBLE)
+    del aug.status
+    assert _conn()._ca_to_pvvalue("X", aug).alarm_status is None
+
+
+def test_disconnected_value_has_no_alarm_status():
+    v = _conn()._ca_to_pvvalue("X", FakeAug(0.0, datatype=DBR_DOUBLE, ok=False))
+    assert v.alarm_status is None
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(None, None), (3, 3), ("4", 4), (5.0, 5), ("bogus", None), (object(), None)],
+)
+def test_alarm_status_coercion(raw, expected):
+    assert epics_backend._alarm_status(raw) == expected
 
 
 # --- writes (put) ----------------------------------------------------------- #

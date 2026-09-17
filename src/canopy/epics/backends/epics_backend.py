@@ -87,6 +87,29 @@ def _decode_char_array(values) -> str:
     return raw.split(b"\x00", 1)[0].decode("latin-1", errors="replace")
 
 
+def _alarm_status(raw) -> int | None:
+    """Coerce a backend-supplied EPICS alarm status into an integer code.
+
+    Parameters
+    ----------
+    raw : object
+        The status as reported by aioca (an augmented value's ``status``) or by
+        p4p (``alarm.status``), or ``None`` when the channel carries none.
+
+    Returns
+    -------
+    int | None
+        The integer alarm status code, or ``None`` when ``raw`` is ``None`` or
+        cannot be read as an integer.
+    """
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _pva_get(value, field):
     """``value.get(field)`` that returns None for a missing/odd field."""
     try:
@@ -383,6 +406,23 @@ class EpicsConnector:
         return values, None
 
     def _ca_to_pvvalue(self, pv: str, aug) -> PVValue:
+        """Convert an aioca augmented value into a `PVValue`.
+
+        Parameters
+        ----------
+        pv : str
+            PV name as the caller asked for it, prefix included.
+        aug : object
+            An aioca ``FORMAT_TIME`` augmented value, carrying the value itself
+            plus the ``severity``, ``status``, ``timestamp`` and ``datatype``
+            attributes.
+
+        Returns
+        -------
+        PVValue
+            The classified value, alarm severity and status, and timestamp; a
+            disconnected value when the CA read did not succeed.
+        """
         if not getattr(aug, "ok", True):
             return self._disconnected(pv, f"CA read failed: {getattr(aug, 'errorcode', 'unknown')}")
         raw_ts = getattr(aug, "timestamp", None)
@@ -407,12 +447,29 @@ class EpicsConnector:
             value=value,
             value_kind=kind,
             severity=normalize_severity(getattr(aug, "severity", None)),
+            alarm_status=_alarm_status(getattr(aug, "status", None)),
             ts_ns=ts_ns,
             connected=True,
             error=error,
         )
 
     def _pva_to_pvvalue(self, pv: str, value) -> PVValue:
+        """Convert a p4p Value into a `PVValue`.
+
+        Parameters
+        ----------
+        pv : str
+            PV name as the caller asked for it, prefix included.
+        value : object
+            A p4p ``Value`` whose Normative-Type id selects the classification
+            and whose ``alarm`` / ``timeStamp`` sub-structures carry the alarm
+            severity, alarm status and timestamp.
+
+        Returns
+        -------
+        PVValue
+            The classified value, alarm severity and status, and timestamp.
+        """
         ts_ns = time.time_ns()
         severity = _pva_get(value, "alarm.severity")
         secs = _pva_get(value, "timeStamp.secondsPastEpoch")
@@ -444,6 +501,7 @@ class EpicsConnector:
             value=raw,
             value_kind=kind,
             severity=normalize_severity(severity),
+            alarm_status=_alarm_status(_pva_get(value, "alarm.status")),
             ts_ns=ts_ns,
             connected=True,
             error=error,
