@@ -3,9 +3,11 @@
 import sys
 import json
 import logging
+import logging.config
 from datetime import UTC, datetime
 
 import pytest
+from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 
 from canopy.core.config import get_settings
 from canopy.core.logging import JsonFormatter, configure_logging
@@ -48,6 +50,17 @@ class TestJsonFormatter:
         assert "ValueError: boom" in payload["error"]
         assert "Traceback" in payload["error"]
 
+    def test_reserved_keys_in_extra_are_prefixed_not_overwritten(self):
+        record = _record(extra={"level": "HACKED", "ts": "1999", "logger": "x", "error": "e", "event": "ok"})
+        payload = json.loads(JsonFormatter().format(record))
+        assert payload["level"] == "INFO"
+        assert payload["logger"] == "canopy.test"
+        assert payload["extra_level"] == "HACKED"
+        assert payload["extra_ts"] == "1999"
+        assert payload["extra_error"] == "e"
+        assert "error" not in payload  # no exc_info on this record
+        assert payload["event"] == "ok"
+
 
 @pytest.fixture
 def isolated_logging(monkeypatch):
@@ -83,6 +96,19 @@ class TestConfigureLogging:
         assert payload["message"] == "event line"
         assert payload["event"] == "e1"
 
+    def test_file_log_rotates_at_size_cap(self, isolated_logging, tmp_path):
+        log_path = tmp_path / "logs" / "backend.log"
+        isolated_logging.setenv("CANOPY_LOG_PATH", str(log_path))
+        isolated_logging.setattr("canopy.core.logging._LOG_MAX_BYTES", 1024)
+        get_settings.cache_clear()
+
+        configure_logging()
+        for _ in range(100):
+            logging.getLogger("canopy.test").info("x" * 64)
+
+        assert log_path.with_name("backend.log.1").exists()
+        assert log_path.stat().st_size <= 2048
+
     def test_unwritable_log_path_falls_back_to_stdout(self, isolated_logging, tmp_path):
         blocker = tmp_path / "not-a-dir"
         blocker.write_text("")
@@ -97,3 +123,37 @@ class TestConfigureLogging:
         get_settings.cache_clear()
         configure_logging()
         assert logging.getLogger().level == logging.DEBUG
+
+    def test_unwritable_log_path_warns_through_configured_handlers(self, isolated_logging, tmp_path, capsys):
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("")
+        isolated_logging.setenv("CANOPY_LOG_FORMAT", "json")
+        isolated_logging.setenv("CANOPY_LOG_PATH", str(blocker / "sub" / "backend.log"))
+        get_settings.cache_clear()
+
+        configure_logging()
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out.strip().splitlines()[-1])
+        assert payload["level"] == "WARNING"
+        assert "Could not open log file" in payload["message"]
+        assert captured.err == ""  # not via logging.lastResort
+
+    def test_framework_loggers_are_folded_into_root(self, isolated_logging, tmp_path):
+        log_path = tmp_path / "backend.log"
+        isolated_logging.setenv("CANOPY_LOG_FORMAT", "json")
+        isolated_logging.setenv("CANOPY_LOG_PATH", str(log_path))
+        get_settings.cache_clear()
+        # What uvicorn does before it imports the app.
+        logging.config.dictConfig(UVICORN_LOGGING_CONFIG)
+        assert logging.getLogger("uvicorn.access").propagate is False
+
+        configure_logging()
+        logging.getLogger("uvicorn.access").info('127.0.0.1:1 - "GET /health HTTP/1.1" 200')
+        logging.getLogger("uvicorn.error").info("Started server process [%d]", 1, extra={"color_message": "x"})
+        logging.getLogger("arq").info("Starting worker")
+
+        payloads = [json.loads(line) for line in log_path.read_text().splitlines()]
+        assert [p["logger"] for p in payloads] == ["uvicorn.access", "uvicorn.error", "arq"]
+        assert "color_message" not in payloads[1]
+        assert logging.getLogger("uvicorn.access").handlers == []

@@ -34,6 +34,9 @@ curl -s -X POST http://localhost:8000/analytics/v1/events \
 
 Expect `204`. Add `-H 'X-API-Key: dev'` to see the keyed variant.
 
+The examples use the compose default of port 8000. If you started the stack
+with `API_HOST_PORT` set, use that port instead.
+
 ## 3. Verify each pipeline stage
 
 **Log file** — a JSON line should appear:

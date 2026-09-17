@@ -5,6 +5,9 @@ providers:
     folder: Canopy
     type: file
     disableDeletion: false
-    editable: true
+    # The JSON files under dashboards/ are authoritative. Panels can be tweaked
+    # in the UI for exploring, but Grafana refuses to save a provisioned
+    # dashboard; export the JSON and commit it to change one.
+    allowUiUpdates: false
     options:
       path: /var/lib/grafana/dashboards

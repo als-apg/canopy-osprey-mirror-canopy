@@ -2,13 +2,15 @@
 
 import logging
 
+import pytest
 from fastapi.testclient import TestClient
 
 from canopy.main import app
 from tests.conftest import READ_HEADERS
+from canopy.analytics import gateway
 from canopy.analytics.app import app as analytics_app
 from canopy.analytics.config import AnalyticsConfig
-from canopy.analytics.dependencies import get_analytics_service
+from canopy.analytics.dependencies import get_config, get_analytics_service
 from canopy.analytics.services.analytics_service import AnalyticsService
 
 EVENT = {
@@ -97,3 +99,27 @@ def test_watchdog_returns_heartbeat():
     body = resp.json()
     assert body["module"] == "analytics"
     assert body["uptimeS"] >= 0
+
+
+def test_oversized_event_is_rejected_before_recording(caplog):
+    """The size guard fires before anything reaches the log."""
+    caplog.set_level(logging.INFO, logger="canopy.analytics")
+    analytics_app.dependency_overrides[get_config] = lambda: AnalyticsConfig(max_event_bytes=64)
+    try:
+        with TestClient(app) as client:
+            resp = client.post(
+                "/analytics/v1/events",
+                json={"event": "frontend_error", "properties": {"stack": "x" * 200}},
+            )
+    finally:
+        analytics_app.dependency_overrides.pop(get_config, None)
+    assert resp.status_code == 413
+    assert resp.json()["code"] == "analytics_event_too_large"
+    assert _analytics_records(caplog) == []
+
+
+def test_service_bound_for_app_lifetime_only():
+    with TestClient(app):
+        assert isinstance(gateway.get_service(), AnalyticsService)
+    with pytest.raises(RuntimeError):
+        gateway.get_service()

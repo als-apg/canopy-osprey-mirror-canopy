@@ -98,6 +98,9 @@ class ErrorCode(StrEnum):
     CONFIG_SLUG_CONFLICT = auto()
     INVALID_APP_NAME = auto()
 
+    # Analytics
+    ANALYTICS_EVENT_TOO_LARGE = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.
