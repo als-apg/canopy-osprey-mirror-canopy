@@ -6,6 +6,8 @@ connector. Everything else (list / get / update / delete / compare) runs inline 
 request session.
 """
 
+from datetime import datetime
+
 from fastapi import Query, Security, APIRouter
 
 from canopy.jobs import gateway as jobs_gateway
@@ -31,9 +33,30 @@ async def list_snapshots(
     service: SnapshotServiceDep,
     title: str | None = Query(None),
     tags: list[str] = Query(default=[], description="Filter by tag IDs"),
+    start: datetime | None = Query(None, description="Only snapshots created at or after this ISO-8601 datetime"),
+    end: datetime | None = Query(None, description="Only snapshots created at or before this ISO-8601 datetime"),
 ) -> list[SnapshotSummaryDTO]:
-    """List snapshots, optionally filtered by title and/or tag IDs."""
-    return await service.list_snapshots(title=title, tag_ids=tags or None)
+    """List snapshots, optionally filtered by title, tag IDs and/or creation time.
+
+    Parameters
+    ----------
+    service : SnapshotServiceDep
+        Snapshot domain service resolved from the request.
+    title : str | None
+        Case-insensitive substring match against the snapshot title.
+    tags : list[str]
+        Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+    start : datetime | None
+        Lower bound on creation time, inclusive. A value without an offset is read as UTC.
+    end : datetime | None
+        Upper bound on creation time, inclusive. A value without an offset is read as UTC.
+
+    Returns
+    -------
+    list[SnapshotSummaryDTO]
+        Matching snapshot summaries, newest first.
+    """
+    return await service.list_snapshots(title=title, tag_ids=tags or None, start=start, end=end)
 
 
 @router.post("", dependencies=[Security(require_write_access)])
