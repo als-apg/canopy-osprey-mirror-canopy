@@ -33,7 +33,6 @@ from canopy.contracts.sample import AlarmSeverity
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
 _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
 
-# EPICS alarm status code reported alongside each simulated severity.
 _STATUS_FOR_SEVERITY: dict[AlarmSeverity, int] = {
     AlarmSeverity.NO_ALARM: 0,
     AlarmSeverity.MINOR: 4,
