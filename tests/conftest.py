@@ -9,7 +9,7 @@ from unittest.mock import patch
 patch("pydantic_settings.sources.providers.dotenv.dotenv_values", return_value={}).start()
 
 # Seed an API-key registry before canopy.main imports cache settings.
-os.environ["CANOPY_API_KEYS"] = "test-read:read,test-write:read+write,test-admin:admin"
+os.environ["CANOPY_API_KEYS"] = "test-read:read@*,test-write:read+write@*,test-admin:admin@*"
 
 
 READ_HEADERS = {"X-API-Key": "test-read"}

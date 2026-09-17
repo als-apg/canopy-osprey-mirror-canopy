@@ -2,7 +2,7 @@ import logging
 from typing import Protocol, Annotated
 from dataclasses import field, dataclass
 
-from fastapi import Security, WebSocket, status
+from fastapi import Request, Security, WebSocket, status
 from fastapi.security import APIKeyHeader
 from fastapi.exceptions import WebSocketException
 
@@ -14,7 +14,9 @@ from canopy.core.errors import (
     InsufficientReadAccess,
     InsufficientAdminAccess,
     InsufficientWriteAccess,
+    InsufficientModuleAccess,
 )
+from canopy.core.modules import MODULES, WILDCARD, module_for_root_path
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,10 @@ class APIKey:
     name: str = "unknown"
     id: str | None = None
     token: str = field(default="", repr=False)
+    modules: frozenset[str] = frozenset({WILDCARD})
+
+    def allows_module(self, module: str) -> bool:
+        return WILDCARD in self.modules or module in self.modules
 
 
 class KeyRegistry(Protocol):
@@ -54,13 +60,18 @@ class KeyRegistry(Protocol):
 class EnvKeyRegistry:
     """In-memory registry built from a comma-separated env-var entry list.
 
-    Format: ``"<token>:<scope>[+<scope>]*[,<token>:<scope>...]"``. Scopes are
-    ``read``, ``write`` and ``admin``. Examples:
+    Format: ``"<token>:<scope>[+<scope>]*@<module>[+<module>]*[,...]"``.
+    Scopes are ``read``, ``write`` and ``admin``. The ``@<module>...`` suffix is
+    required — pass ``@*`` for every module. There is no implicit "all modules"
+    default: an entry with no ``@`` at all is skipped as malformed, the same as
+    an empty token. Examples:
 
         CANOPY_API_KEYS=""                              # empty registry
-        CANOPY_API_KEYS="dev:read+write"                # one key, full access
-        CANOPY_API_KEYS="ro:read,rw:read+write"         # two keys
-        CANOPY_API_KEYS="ops:admin"                     # key management only
+        CANOPY_API_KEYS="dev:read+write@*"              # one key, full access
+        CANOPY_API_KEYS="ro:read@*,rw:read+write@*"     # two keys
+        CANOPY_API_KEYS="ops:admin@*"                   # key management only
+        CANOPY_API_KEYS="ops:admin@core"                # admin, core routes only
+        CANOPY_API_KEYS="fox:read+write@squirrel+fox"   # scoped to two modules
 
     Env keys are no longer a stop-gap: they are the statically stable layer in
     front of the Postgres-backed registry. Keys defined here keep working when the
@@ -81,7 +92,7 @@ class EnvKeyRegistry:
             if not entry:
                 continue
             try:
-                token, scopes = entry.split(":", 1)
+                token, rest = entry.split(":", 1)
             except ValueError:
                 logger.warning(
                     "Skipping malformed CANOPY_API_KEYS entry #%d: expected '<token>:<scope>[+<scope>]'", position
@@ -91,6 +102,7 @@ class EnvKeyRegistry:
             if not token:
                 logger.warning("Skipping CANOPY_API_KEYS entry #%d: empty token", position)
                 continue
+            scopes, has_at, modules_part = rest.partition("@")
             scope_set = {s.strip() for s in scopes.split("+")}
             if unknown := scope_set - {"read", "write", "admin"}:
                 logger.warning(
@@ -98,6 +110,28 @@ class EnvKeyRegistry:
                     "only 'read', 'write' and 'admin' are valid",
                     position,
                     len(unknown),
+                )
+                continue
+            if not has_at:
+                logger.warning(
+                    "Skipping CANOPY_API_KEYS entry #%d: missing '@<module>' suffix; use '@*' for every module",
+                    position,
+                )
+                continue
+            module_set = {m.strip() for m in modules_part.split("+") if m.strip()}
+            if not module_set:
+                logger.warning("Skipping CANOPY_API_KEYS entry #%d: empty '@' module list", position)
+                continue
+            if unknown_modules := module_set - MODULES - {WILDCARD}:
+                logger.warning(
+                    "CANOPY_API_KEYS entry #%d has unrecognized module(s) %s; ignoring them",
+                    position,
+                    sorted(unknown_modules),
+                )
+            module_set -= unknown_modules
+            if not module_set:
+                logger.warning(
+                    "Skipping CANOPY_API_KEYS entry #%d: no recognized modules remained after filtering", position
                 )
                 continue
             if token in self._keys:
@@ -110,14 +144,16 @@ class EnvKeyRegistry:
                 # Env keys have no app name of their own; position identifies them in
                 # logs without ever revealing the token.
                 name=f"env:{position}",
+                modules=frozenset(module_set),
             )
         if self._keys:
             logger.info(
-                "Registered %d API key(s) from CANOPY_API_KEYS (%d read, %d write, %d admin)",
+                "Registered %d API key(s) from CANOPY_API_KEYS (%d read, %d write, %d admin, %d module-scoped)",
                 len(self._keys),
                 sum(1 for key in self._keys.values() if key.read),
                 sum(1 for key in self._keys.values() if key.write),
                 sum(1 for key in self._keys.values() if key.admin),
+                sum(1 for key in self._keys.values() if WILDCARD not in key.modules),
             )
         else:
             logger.info("No API keys registered from CANOPY_API_KEYS; relying on the database registry")
@@ -165,12 +201,15 @@ def invalidate_key_id(key_id: str) -> None:
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-async def get_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey:
+async def get_api_key(request: Request, token: Annotated[str | None, Security(api_key_header)]) -> APIKey:
     if not token:
         raise InvalidAPIKey("Missing X-API-Key header")
     key = await get_registry().get(token)
     if key is None:
         raise InvalidAPIKey("Invalid API key")
+    module = module_for_root_path(request.scope.get("root_path", ""))
+    if not key.allows_module(module):
+        raise InsufficientModuleAccess(f"API key is not scoped to '{module}'")
     return key
 
 
@@ -247,6 +286,12 @@ async def ws_get_api_key(websocket: WebSocket) -> APIKey:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
             reason=f"{ErrorCode.INVALID_API_KEY.value}: invalid API key",
+        )
+    module = module_for_root_path(websocket.scope.get("root_path", ""))
+    if not key.allows_module(module):
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason=f"{ErrorCode.INSUFFICIENT_MODULE_ACCESS.value}: API key is not scoped to '{module}'",
         )
     return key
 

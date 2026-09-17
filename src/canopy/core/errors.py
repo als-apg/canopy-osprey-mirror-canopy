@@ -25,6 +25,7 @@ class ErrorCode(StrEnum):
     INSUFFICIENT_READ_ACCESS = auto()
     INSUFFICIENT_WRITE_ACCESS = auto()
     INSUFFICIENT_ADMIN_ACCESS = auto()
+    INSUFFICIENT_MODULE_ACCESS = auto()
     API_KEY_NOT_FOUND = auto()
     API_KEY_SELF_DEACTIVATION = auto()
     KEY_STORE_UNAVAILABLE = auto()
@@ -154,6 +155,17 @@ class InsufficientWriteAccess(CanopyError):
 class InsufficientAdminAccess(CanopyError):
     status_code = 403
     error_code = ErrorCode.INSUFFICIENT_ADMIN_ACCESS
+
+
+class InsufficientModuleAccess(CanopyError):
+    """The key resolved, but is not scoped to the module this route belongs to.
+
+    Orthogonal to read/write/admin — a key can have every scope and still be
+    refused here if its ``modules`` set doesn't include this mount.
+    """
+
+    status_code = 403
+    error_code = ErrorCode.INSUFFICIENT_MODULE_ACCESS
 
 
 class ApiKeyNotFound(CanopyError):

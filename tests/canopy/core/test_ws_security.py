@@ -13,19 +13,25 @@ from starlette.websockets import WebSocketDisconnect
 
 from canopy.core import security
 from canopy.core.errors import KeyStoreUnavailable
-from canopy.core.security import APIKey, KeyRegistry, ws_require_read_access
+from canopy.core.security import (
+    APIKey,
+    KeyRegistry,
+    ws_get_api_key,
+    ws_require_read_access,
+)
 
 
 class FakeRegistry:
     """Stands in for the production chain: resolves nothing, or is down."""
 
-    def __init__(self, *, unavailable: bool = False) -> None:
+    def __init__(self, *, unavailable: bool = False, key: APIKey | None = None) -> None:
         self.unavailable = unavailable
+        self.key = key
 
     async def get(self, token: str) -> APIKey | None:
         if self.unavailable:
             raise KeyStoreUnavailable("API key store is unavailable")
-        return None
+        return self.key
 
 
 @pytest.fixture
@@ -35,6 +41,18 @@ def ws_app() -> FastAPI:
     @app.websocket("/ws")
     async def ws_route(websocket: WebSocket, key: APIKey = Security(ws_require_read_access)) -> None:
         await websocket.accept()
+
+    sub_app = FastAPI()
+
+    @sub_app.websocket("/ws")
+    async def sub_ws_route(websocket: WebSocket, key: APIKey = Security(ws_get_api_key)) -> None:
+        await websocket.accept()
+
+    @sub_app.websocket("/ws-read")
+    async def sub_ws_read_route(websocket: WebSocket, key: APIKey = Security(ws_require_read_access)) -> None:
+        await websocket.accept()
+
+    app.mount("/fox", sub_app)
 
     return app
 
@@ -72,3 +90,30 @@ class TestWsAuth:
 
         assert exc_info.value.code == 1011
         assert "key_store_unavailable" in exc_info.value.reason
+
+    def test_out_of_scope_module_closes_with_policy_violation(self, ws_app, bind_fake_registry):
+        squirrel_only = APIKey(token="t", read=True, write=False, modules=frozenset({"squirrel"}))
+        bind_fake_registry(FakeRegistry(key=squirrel_only))
+        client = TestClient(ws_app)
+
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with client.websocket_connect("/fox/ws?api_key=t"):
+                pass
+
+        assert exc_info.value.code == 1008
+        assert "insufficient_module_access" in exc_info.value.reason
+
+    def test_module_check_precedes_scope_check(self, ws_app, bind_fake_registry):
+        # A key with neither read access nor module access must be reported as
+        # out-of-scope, not out-of-read — module access is checked in
+        # ws_get_api_key, upstream of ws_require_read_access.
+        no_access = APIKey(token="t", read=False, write=False, modules=frozenset({"squirrel"}))
+        bind_fake_registry(FakeRegistry(key=no_access))
+        client = TestClient(ws_app)
+
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with client.websocket_connect("/fox/ws-read?api_key=t"):
+                pass
+
+        assert exc_info.value.code == 1008
+        assert "insufficient_module_access" in exc_info.value.reason
