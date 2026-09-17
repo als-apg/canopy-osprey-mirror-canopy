@@ -1,4 +1,4 @@
-"""The ``/v1/api-keys`` HTTP surface: mint, list, count, deactivate.
+"""The ``/api-keys`` HTTP surface: mint, list, count, deactivate.
 
 Integration tests against Postgres (skipped when it is unreachable). Every route
 is gated on the ``admin`` scope — never ``write`` — so these also pin that a
@@ -18,7 +18,7 @@ WRITE_HEADERS = {"X-API-Key": "write-env-key"}
 class TestCreateKey:
     async def test_admin_can_mint_a_key(self, session, session_maker, keys_client):
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.post("/v1/api-keys", json={"appName": "trace", "read": True}, headers=ADMIN_HEADERS)
+            resp = keys_client.post("/api-keys", json={"appName": "trace", "read": True}, headers=ADMIN_HEADERS)
 
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -29,21 +29,21 @@ class TestCreateKey:
 
     async def test_write_key_cannot_mint(self, session, session_maker, keys_client):
         with db_backed_registry(env="admin-env-key:admin,write-env-key:read+write"):
-            resp = keys_client.post("/v1/api-keys", json={"appName": "trace", "read": True}, headers=WRITE_HEADERS)
+            resp = keys_client.post("/api-keys", json={"appName": "trace", "read": True}, headers=WRITE_HEADERS)
 
         assert resp.status_code == 403
         assert resp.json()["code"] == "insufficient_admin_access"
 
     async def test_no_scope_is_rejected(self, session, session_maker, keys_client):
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.post("/v1/api-keys", json={"appName": "trace"}, headers=ADMIN_HEADERS)
+            resp = keys_client.post("/api-keys", json={"appName": "trace"}, headers=ADMIN_HEADERS)
 
         assert resp.status_code == 400
         assert resp.json()["code"] == "bad_request"
 
     async def test_empty_app_name_is_rejected(self, session, session_maker, keys_client):
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.post("/v1/api-keys", json={"appName": "  ", "read": True}, headers=ADMIN_HEADERS)
+            resp = keys_client.post("/api-keys", json={"appName": "  ", "read": True}, headers=ADMIN_HEADERS)
 
         assert resp.status_code == 400
         assert resp.json()["code"] == "bad_request"
@@ -54,7 +54,7 @@ class TestListAndCount:
         created = await mint(session, "trace", read=True)
 
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.get("/v1/api-keys", headers=ADMIN_HEADERS)
+            resp = keys_client.get("/api-keys", headers=ADMIN_HEADERS)
 
         assert resp.status_code == 200
         app_names = [key["appName"] for key in resp.json()]
@@ -68,8 +68,8 @@ class TestListAndCount:
         await session.commit()
 
         with db_backed_registry(env="admin-env-key:admin"):
-            all_count = keys_client.get("/v1/api-keys/count", headers=ADMIN_HEADERS)
-            active_count = keys_client.get("/v1/api-keys/count?activeOnly=true", headers=ADMIN_HEADERS)
+            all_count = keys_client.get("/api-keys/count", headers=ADMIN_HEADERS)
+            active_count = keys_client.get("/api-keys/count?activeOnly=true", headers=ADMIN_HEADERS)
 
         assert all_count.json() == 2
         assert active_count.json() == 1
@@ -81,7 +81,7 @@ class TestListAndCount:
         await session.commit()
 
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.get("/v1/api-keys?activeOnly=true", headers=ADMIN_HEADERS)
+            resp = keys_client.get("/api-keys?activeOnly=true", headers=ADMIN_HEADERS)
 
         assert resp.status_code == 200
         app_names = [key["appName"] for key in resp.json()]
@@ -93,7 +93,7 @@ class TestListAndCount:
         incoming = await mint(session, "other-app", read=True)
 
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.get("/v1/api-keys?appName=other-app", headers=ADMIN_HEADERS)
+            resp = keys_client.get("/api-keys?appName=other-app", headers=ADMIN_HEADERS)
 
         assert resp.status_code == 200
         ids = {key["id"] for key in resp.json()}
@@ -106,7 +106,7 @@ class TestListAndCount:
         await session.commit()
 
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.get("/v1/api-keys?appName=other-app&activeOnly=true", headers=ADMIN_HEADERS)
+            resp = keys_client.get("/api-keys?appName=other-app&activeOnly=true", headers=ADMIN_HEADERS)
 
         assert resp.status_code == 200
         ids = {key["id"] for key in resp.json()}
@@ -118,14 +118,14 @@ class TestDeactivate:
         target = await mint(session, "trace", read=True)
 
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.delete(f"/v1/api-keys/{target.id}", headers=ADMIN_HEADERS)
+            resp = keys_client.delete(f"/api-keys/{target.id}", headers=ADMIN_HEADERS)
 
         assert resp.status_code == 200
         assert resp.json()["isActive"] is False
 
     async def test_unknown_id_is_a_clean_404(self, session, session_maker, keys_client):
         with db_backed_registry(env="admin-env-key:admin"):
-            resp = keys_client.delete("/v1/api-keys/11111111-1111-1111-1111-111111111111", headers=ADMIN_HEADERS)
+            resp = keys_client.delete("/api-keys/11111111-1111-1111-1111-111111111111", headers=ADMIN_HEADERS)
 
         assert resp.status_code == 404
         assert resp.json()["code"] == "api_key_not_found"
@@ -135,8 +135,8 @@ class TestDeactivate:
 
         with db_backed_registry(env="", ttl_s=0):
             self_headers = {"X-API-Key": created.token}
-            refused = keys_client.delete(f"/v1/api-keys/{created.id}", headers=self_headers)
-            forced = keys_client.delete(f"/v1/api-keys/{created.id}?force=true", headers=self_headers)
+            refused = keys_client.delete(f"/api-keys/{created.id}", headers=self_headers)
+            forced = keys_client.delete(f"/api-keys/{created.id}?force=true", headers=self_headers)
 
         assert refused.status_code == 400
         assert refused.json()["code"] == "api_key_self_deactivation"
@@ -152,7 +152,7 @@ class TestDeactivate:
         other = await mint(session, "trace", read=True)
 
         with db_backed_registry(env="", ttl_s=0):
-            resp = keys_client.delete(f"/v1/api-keys/{other.id}", headers={"X-API-Key": actor.token})
+            resp = keys_client.delete(f"/api-keys/{other.id}", headers={"X-API-Key": actor.token})
 
         assert resp.status_code == 200
         assert resp.json()["isActive"] is False

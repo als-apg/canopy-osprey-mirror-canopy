@@ -119,7 +119,7 @@ def gated_client() -> TestClient:
 
 @pytest.fixture
 def keys_client() -> TestClient:
-    """The real ``/v1/api-keys`` router, mounted on a throwaway app.
+    """The real ``/api-keys`` router, mounted on a throwaway app.
 
     Exercises the production routes and error handler without pulling in the
     other nine sub-apps.
