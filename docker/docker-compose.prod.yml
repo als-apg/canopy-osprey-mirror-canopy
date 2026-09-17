@@ -9,6 +9,15 @@
 # writes a sibling .env (IMAGE=<ghcr>:<tag> plus the env rendered from the
 # APP_SECRETS JSON - the only config source; no env files are committed), then
 # runs `docker compose --env-file .env up -d`.
+#
+# Every service logs to stdout continuously and the docker daemon keeps those
+# json-file logs without limit, so cap what is retained per container.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
 
 services:
   api:
@@ -17,6 +26,7 @@ services:
     env_file: .env
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       # python probe: the python:3.12-slim image has no curl.
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT:-8000}/health')\""]
@@ -31,6 +41,7 @@ services:
     env_file: .env
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       # No HTTP endpoint; without this the worker inherits the image's API probe
       # (which under host networking would report the api's health, not its own).

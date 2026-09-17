@@ -33,6 +33,7 @@ essentials:
 | `CANOPY_DATABASE_URL` | Postgres, asyncpg driver: `postgresql+asyncpg://user:pass@host:port/db` |
 | `CANOPY_REDIS_URL` | Redis: `redis://[:password@]host:port/0` |
 | `CANOPY_DEBUG` | Verbose errors in responses; keep `false` in production |
+| `CANOPY_LOG_LEVEL` | Root log level for the API and worker (`DEBUG`, `INFO`, `WARNING`, ...). Default `INFO`; an unknown name falls back to `INFO` |
 | `CANOPY_<MODULE>__<FIELD>` | Per-module tuning (e.g. `CANOPY_VOLE__GLOBAL_BYTES_MAX`) |
 
 The annotated template
