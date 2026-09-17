@@ -12,6 +12,7 @@ from uuid import UUID
 
 from canopy.core.errors import BadRequest, ApiKeyNotFound, ApiKeySelfDeactivation
 from canopy.core.security import invalidate_key_id
+from canopy.core.modules import MODULES, WILDCARD
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token, mint_token
 from canopy.core.keys.schemas import ApiKeyDTO, ApiKeyCreateResultDTO
@@ -28,10 +29,29 @@ def to_dto(api_key: ApiKey) -> ApiKeyDTO:
         read_access=api_key.read_access,
         write_access=api_key.write_access,
         admin_access=api_key.admin_access,
+        modules=api_key.modules,
         created_at=api_key.created_at,
         updated_at=api_key.updated_at,
         last_used_at=api_key.last_used_at,
     )
+
+
+def _normalize_modules(modules: list[str]) -> list[str]:
+    """Validate and canonicalize a requested module list.
+
+    Callers must pass ``[WILDCARD]`` explicitly for "every module" — there is no
+    implicit default here. An empty list is rejected the same way an
+    all-scopes-false key is: it isn't a credential, it's a mistake that will be
+    diagnosed as an outage.
+    """
+    cleaned = {m.strip() for m in modules if m.strip()}
+    if not cleaned:
+        raise BadRequest(f"Cannot create an API key scoped to no modules; pass at least one, or '{WILDCARD}' for all")
+    if unknown := cleaned - MODULES - {WILDCARD}:
+        raise BadRequest(f"Unknown module(s) {sorted(unknown)}; valid modules are {sorted(MODULES)}")
+    if WILDCARD in cleaned:
+        return [WILDCARD]
+    return sorted(cleaned)
 
 
 class ApiKeyService:
@@ -48,18 +68,24 @@ class ApiKeyService:
         read: bool = False,
         write: bool = False,
         admin: bool = False,
+        modules: list[str],
     ) -> ApiKeyCreateResultDTO:
         """Mint a key and return it with its plaintext token — the only time the
         token exists outside the caller's hands. Only its hash is stored.
 
         An existing active key for the same ``app_name`` is *not* an error: that
         overlap is how a rotation works.
+
+        ``modules`` restricts which mounted sub-apps (or ``core``, for key
+        management itself) the key may call. Pass ``[WILDCARD]`` for every module
+        — callers must choose explicitly, there is no implicit default here.
         """
         app_name = app_name.strip()
         if not app_name:
             raise BadRequest("app_name must not be empty")
         if not (read or write or admin):
             raise BadRequest("Cannot create an API key with no access; pass at least one scope")
+        module_list = _normalize_modules(modules)
 
         token = mint_token()
         created = await self.repo.create(
@@ -69,6 +95,7 @@ class ApiKeyService:
                 read_access=read,
                 write_access=write,
                 admin_access=admin,
+                modules=module_list,
             )
         )
         # The token itself is never logged — app_name and id are the audit trail.

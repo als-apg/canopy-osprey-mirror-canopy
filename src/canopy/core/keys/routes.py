@@ -19,7 +19,9 @@ router = APIRouter(prefix="/v1/api-keys", tags=["API Keys"], dependencies=[Secur
 @router.post("")
 async def create_key(data: NewApiKeyDTO, service: ApiKeyServiceDep) -> ApiKeyCreateResultDTO:
     """Mint a key. The plaintext token is returned here, once, and never again."""
-    return await service.create_key(data.app_name, read=data.read, write=data.write, admin=data.admin)
+    return await service.create_key(
+        data.app_name, read=data.read, write=data.write, admin=data.admin, modules=data.modules
+    )
 
 
 @router.get("")
