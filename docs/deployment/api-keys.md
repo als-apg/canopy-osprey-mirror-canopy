@@ -109,7 +109,7 @@ The same operations are available at `/v1/api-keys` on the parent app, gated on
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/v1/api-keys` | Mint a key. Body: `appName`, and any of `read`/`write`/`admin`. Returns the plaintext `token` once. |
-| `GET` | `/v1/api-keys` | List keys (`?activeOnly=true` to filter). Never returns a token. |
+| `GET` | `/v1/api-keys` | List keys (`?activeOnly=true`, `?appName=<name>` to filter). Never returns a token. |
 | `GET` | `/v1/api-keys/count` | Count keys (`?activeOnly=true` to filter). |
 | `DELETE` | `/v1/api-keys/{id}` | Deactivate a key. |
 

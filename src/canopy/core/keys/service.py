@@ -74,8 +74,12 @@ class ApiKeyService:
         logger.info("Created API key id=%s app_name=%s", created.id, created.app_name)
         return ApiKeyCreateResultDTO(token=token, **to_dto(created).model_dump())
 
-    async def list_keys(self, active_only: bool = False) -> list[ApiKeyDTO]:
-        return [to_dto(key) for key in await self.repo.get_all(active_only)]
+    async def list_keys(self, active_only: bool = False, app_name: str | None = None) -> list[ApiKeyDTO]:
+        if app_name is not None:
+            keys = await self.repo.get_by_app_name(app_name, active_only)
+        else:
+            keys = await self.repo.get_all(active_only)
+        return [to_dto(key) for key in keys]
 
     async def _find(self, key_id: str) -> ApiKey | None:
         """Look a key up by id, treating a malformed id as simply absent.

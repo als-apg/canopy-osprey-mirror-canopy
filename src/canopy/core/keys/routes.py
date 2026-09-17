@@ -23,8 +23,12 @@ async def create_key(data: NewApiKeyDTO, service: ApiKeyServiceDep) -> ApiKeyCre
 
 
 @router.get("")
-async def list_keys(service: ApiKeyServiceDep, activeOnly: bool = Query(False)) -> list[ApiKeyDTO]:
-    return await service.list_keys(active_only=activeOnly)
+async def list_keys(
+    service: ApiKeyServiceDep,
+    activeOnly: bool = Query(False),
+    appName: str | None = Query(None, description="Filter to keys for a single app — the overlap during a rotation"),
+) -> list[ApiKeyDTO]:
+    return await service.list_keys(active_only=activeOnly, app_name=appName)
 
 
 @router.get("/count")
