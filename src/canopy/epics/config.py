@@ -4,10 +4,26 @@ Standard EPICS network discovery (``EPICS_CA_ADDR_LIST``, ``EPICS_PVA_ADDR_LIST`
 etc.) is configured via the EPICS library's own environment variables, not here.
 """
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class EpicsConfig(BaseSettings):
+    """Settings for the EPICS connector package.
+
+    Attributes
+    ----------
+    sim_put_error_rate : float
+        Fraction of simulation-backend ``put`` calls that fail, in ``[0.0, 1.0]``.
+        ``0.0`` never fails a write; ``1.0`` fails every one.
+    sim_put_fail_pvs : str
+        Comma-separated PV names whose simulation-backend ``put`` always fails,
+        regardless of ``sim_put_error_rate``.
+    sim_seed : int | None
+        Seed for the simulation backend's failure RNG, so a sequence of writes
+        fails reproducibly. ``None`` seeds from the system entropy source.
+    """
+
     model_config = SettingsConfigDict(
         env_prefix="CANOPY_EPICS__",
         env_nested_delimiter="__",
@@ -24,6 +40,9 @@ class EpicsConfig(BaseSettings):
     sim_default_units: str = ""
     # Element count for simulated waveform PVs (names ending in :WAVEFORM / :WF).
     sim_waveform_length: int = 64
+    sim_put_error_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    sim_put_fail_pvs: str = ""
+    sim_seed: int | None = None
 
     # --- real (epics) backend ---
     ca_timeout_s: float = 5.0

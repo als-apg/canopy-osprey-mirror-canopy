@@ -13,15 +13,20 @@ exercised end to end:
 Each PV's phase is a stable function of its name, so values are deterministic per
 process. Severity thresholds let the alarm-styling path be exercised too, and every
 value carries the EPICS alarm status code that matches its severity.
+
+Writes can be made to fail on demand — for a named set of PVs, or at a configured
+rate drawn from a seeded RNG — so a caller's partial-failure handling can be
+exercised in the dev stack without an IOC.
 """
 
 import math
 import time
 import zlib
+import random
 import asyncio
 from dataclasses import dataclass
 
-from canopy.epics.base import Subscription, EventCallback
+from canopy.epics.base import Subscription, EventCallback, PVWriteFailed
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
 
@@ -37,7 +42,30 @@ _STATUS_FOR_SEVERITY: dict[AlarmSeverity, int] = {
 }
 
 
+def _parse_fail_pvs(raw: str) -> frozenset[str]:
+    """Split a comma-separated PV list into a set of names.
+
+    Parameters
+    ----------
+    raw : str
+        Comma-separated PV names; blanks and surrounding whitespace are dropped.
+
+    Returns
+    -------
+    frozenset[str]
+        The named PVs, empty when `raw` names none.
+    """
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
 class SimulationConnector:
+    """In-process `PVConnector` that generates values instead of talking to an IOC.
+
+    Values written through `put` are held in memory and returned by subsequent reads,
+    standing in for an IOC's record state. Writes can also be made to fail, so a
+    caller's partial-failure handling is reachable without real hardware.
+    """
+
     backend_name = "simulation"
 
     def __init__(
@@ -46,24 +74,62 @@ class SimulationConnector:
         units: str | None = None,
         waveform_length: int = 64,
         max_array_elements: int = 100_000,
+        put_error_rate: float = 0.0,
+        put_fail_pvs: frozenset[str] = frozenset(),
+        seed: int | None = None,
     ) -> None:
+        """Build a simulation connector.
+
+        Parameters
+        ----------
+        update_hz : float, optional
+            Monitor tick rate, in updates per second.
+        units : str | None, optional
+            Engineering units reported by `describe` for scalar and waveform PVs.
+        waveform_length : int, optional
+            Element count of simulated waveform PVs, capped by `max_array_elements`.
+        max_array_elements : int, optional
+            Ceiling on the length of a generated array.
+        put_error_rate : float, optional
+            Fraction of writes to fail, in ``[0.0, 1.0]``.
+        put_fail_pvs : frozenset[str], optional
+            PV names whose writes always fail, whatever `put_error_rate` is.
+        seed : int | None, optional
+            Seed for this instance's private failure RNG. `None` seeds from the
+            system entropy source.
+        """
         self._interval = 1.0 / (update_hz or 5.0)
         self._units = units or None
         self._waveform_length = max(1, min(waveform_length, max_array_elements))
         self._tasks: set[asyncio.Task] = set()
-        # Values written via `put`, keyed by PV name. Once set, `get`/monitors
-        # return the override instead of the generated value, so a write
-        # round-trips. This is the simulation backend's stand-in for an IOC's
-        # record state.
         self._overrides: dict[str, PVWriteValue] = {}
+        self._put_error_rate = put_error_rate
+        self._put_fail_pvs = frozenset(put_fail_pvs)
+        self._rng = random.Random(seed)
 
     @classmethod
     def from_config(cls, cfg) -> "SimulationConnector":
+        """Build a connector from an `EpicsConfig`.
+
+        Parameters
+        ----------
+        cfg : EpicsConfig
+            Configuration supplying the `sim_*` value-generation and
+            failure-injection settings plus `max_array_elements`.
+
+        Returns
+        -------
+        SimulationConnector
+            A connector wired to that configuration.
+        """
         return cls(
             update_hz=cfg.sim_update_hz,
             units=cfg.sim_default_units or None,
             waveform_length=cfg.sim_waveform_length,
             max_array_elements=cfg.max_array_elements,
+            put_error_rate=cfg.sim_put_error_rate,
+            put_fail_pvs=_parse_fail_pvs(cfg.sim_put_fail_pvs),
+            seed=cfg.sim_seed,
         )
 
     async def start(self) -> None:
@@ -214,10 +280,30 @@ class SimulationConnector:
         return self._value_for(pv)
 
     async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
-        # Record the write so subsequent `get`/monitor ticks reflect it. The
-        # simulation backend never rejects a write (it has no live IOC to fail).
-        # `_overrides` is never evicted, but it's bounded in practice by the small
-        # set of distinct PVs a developer writes to in a dev/test session.
+        """Pin a PV's value so subsequent reads and monitor ticks return it.
+
+        The override is never evicted, which is bounded in practice by the small set
+        of distinct PVs a dev or test session writes to.
+
+        Parameters
+        ----------
+        pv : str
+            PV name to write.
+        value : PVWriteValue
+            Value to hold as this PV's current value.
+        timeout : float | None, optional
+            Accepted for protocol compatibility; the write completes immediately.
+        wait : bool, optional
+            Accepted for protocol compatibility; the write completes immediately.
+
+        Raises
+        ------
+        PVWriteFailed
+            When `pv` is one of the configured always-failing PVs, or when the
+            instance's RNG draws below the configured put error rate.
+        """
+        if pv in self._put_fail_pvs or self._rng.random() < self._put_error_rate:
+            raise PVWriteFailed(f"simulated put failure for {pv}")
         self._overrides[pv] = value
 
     async def describe(self, pv: str) -> PVMeta:

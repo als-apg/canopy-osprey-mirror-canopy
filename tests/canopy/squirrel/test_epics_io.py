@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from canopy.contracts.pv import PVValue
 from canopy.contracts.sample import AlarmSeverity
+from canopy.epics.backends.simulation import SimulationConnector
 from canopy.squirrel.adapters.epics_io import EpicsIO, _to_epics_value
 
 
@@ -118,3 +119,20 @@ async def test_put_many_reports_ok_and_failures():
 
 async def test_put_many_empty_is_empty():
     assert await EpicsIO(FakeConnector()).put_many({}) == {}
+
+
+# --- batch writes over the simulation backend -------------------------------- #
+
+
+async def test_put_many_reports_every_simulated_failure():
+    conn = SimulationConnector(put_error_rate=1.0, seed=1)
+    out = await EpicsIO(conn, chunk_size=2).put_many({"SIM:A": 1, "SIM:B": 2, "SIM:C": 3})
+    assert set(out) == {"SIM:A", "SIM:B", "SIM:C"}
+    assert all(ok is False and "simulated put failure" in err for ok, err in out.values())
+
+
+async def test_put_many_isolates_a_named_failing_pv():
+    conn = SimulationConnector(put_fail_pvs=frozenset({"SIM:B"}))
+    out = await EpicsIO(conn).put_many({"SIM:A": 1, "SIM:B": 2})
+    assert out["SIM:A"] == (True, None)
+    assert out["SIM:B"][0] is False
