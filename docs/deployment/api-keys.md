@@ -103,24 +103,24 @@ env key is still a deploy; rotating anything else is a CLI call.
 
 ## Managing keys over HTTP
 
-The same operations are available at `/api-keys` on the parent app, gated on
+The same operations are available at `/v1/api-keys` on the parent app, gated on
 `admin` (never `write` — see [Scope design](#why-admin-not-write) below):
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api-keys` | Mint a key. Body: `appName`, and any of `read`/`write`/`admin`. Returns the plaintext `token` once. |
-| `GET` | `/api-keys` | List keys (`?activeOnly=true`, `?appName=<name>` to filter). Never returns a token. |
-| `GET` | `/api-keys/count` | Count keys (`?activeOnly=true` to filter). |
-| `DELETE` | `/api-keys/{id}` | Deactivate a key. |
+| `POST` | `/v1/api-keys` | Mint a key. Body: `appName`, and any of `read`/`write`/`admin`. Returns the plaintext `token` once. |
+| `GET` | `/v1/api-keys` | List keys (`?activeOnly=true`, `?appName=<name>` to filter). Never returns a token. |
+| `GET` | `/v1/api-keys/count` | Count keys (`?activeOnly=true` to filter). |
+| `DELETE` | `/v1/api-keys/{id}` | Deactivate a key. |
 
 ```bash
 curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
   -d '{"appName": "trace", "read": true}' \
-  http://localhost:<API_PORT>/api-keys
+  http://localhost:<API_PORT>/v1/api-keys
 ```
 
 !!! note "Deactivating the key you're using"
-    `DELETE /api-keys/{id}` refuses to deactivate the key that authenticated
+    `DELETE /v1/api-keys/{id}` refuses to deactivate the key that authenticated
     the request itself — `400` `api_key_self_deactivation` — since doing so
     would lock that session out mid-use. Pass `?force=true` to override, or use
     `scripts/deactivate_key.py`, which has no such guard (it isn't a request
@@ -141,13 +141,13 @@ write.
 
 Overlapping keys make rotation zero-downtime:
 
-1. **Mint** the new key (`scripts/create_key.py` or `POST /api-keys`). Both
+1. **Mint** the new key (`scripts/create_key.py` or `POST /v1/api-keys`). Both
    old and new tokens are now valid.
 2. **Roll clients over** to the new token.
 3. **Deactivate** the old key (`scripts/deactivate_key.py` or
-   `DELETE /api-keys/{id}`).
+   `DELETE /v1/api-keys/{id}`).
 
-`last_used_at` (visible via `GET /api-keys`) is what turns "is it safe to
+`last_used_at` (visible via `GET /v1/api-keys`) is what turns "is it safe to
 deactivate the old key yet?" from a guess into a query — check it before step 3
 rather than picking an arbitrary overlap window.
 
@@ -218,7 +218,7 @@ curl -H "X-API-Key: <token>" http://localhost:<API_PORT>/hare/v1/health/summary
 curl -H "X-API-Key: not-a-real-token" http://localhost:<API_PORT>/hare/v1/health/summary
 
 # Admin-gated key management — 200 with the admin token, 403 with anything else:
-curl -H "X-API-Key: <admin-token>" http://localhost:<API_PORT>/api-keys
+curl -H "X-API-Key: <admin-token>" http://localhost:<API_PORT>/v1/api-keys
 ```
 
 A key with the wrong scope returns `403` with code `insufficient_read_access`,

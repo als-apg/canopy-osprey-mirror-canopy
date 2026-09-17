@@ -1,7 +1,7 @@
 """HTTP surface for API key management — mint, list, count, deactivate.
 
 Cross-module (owned by no sub-app), so it lives on the parent app at
-``/api-keys`` rather than inside a mount. Every route gates on ``admin``,
+``/v1/api-keys`` rather than inside a mount. Every route gates on ``admin``,
 never ``write``: ``write`` is held by every client that can set a live
 setpoint — the largest, least-controlled population of keys — and letting one
 mint credentials that outlive its own rotation is the wrong default.
@@ -13,7 +13,7 @@ from canopy.core.security import AdminKeyDep, require_admin_access
 from canopy.core.keys.schemas import ApiKeyDTO, NewApiKeyDTO, ApiKeyCreateResultDTO
 from canopy.core.keys.dependencies import ApiKeyServiceDep
 
-router = APIRouter(prefix="/api-keys", tags=["API Keys"], dependencies=[Security(require_admin_access)])
+router = APIRouter(prefix="/v1/api-keys", tags=["API Keys"], dependencies=[Security(require_admin_access)])
 
 
 @router.post("")
