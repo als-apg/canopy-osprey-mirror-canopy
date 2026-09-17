@@ -34,6 +34,7 @@ essentials:
 | `CANOPY_REDIS_URL` | Redis: `redis://[:password@]host:port/0` |
 | `CANOPY_DEBUG` | Verbose errors in responses; keep `false` in production |
 | `CANOPY_LOG_LEVEL` | Root log level for the API and worker (`DEBUG`, `INFO`, `WARNING`, ...). Default `INFO`; an unknown name falls back to `INFO` |
+| `CANOPY_SQUIRREL__RESTORE_HOOKS` | Comma-separated restore hooks (`magnet_trim`, `write_to_con`); empty means none run. Must reach the **worker**, which performs restores. Verify with `GET /squirrel/v1/health/restore-hooks` |
 | `CANOPY_<MODULE>__<FIELD>` | Per-module tuning (e.g. `CANOPY_VOLE__GLOBAL_BYTES_MAX`) |
 
 The annotated template
