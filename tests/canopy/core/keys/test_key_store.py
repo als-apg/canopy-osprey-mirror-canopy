@@ -6,43 +6,21 @@ works, a deactivated key stops working, two keys for one app overlap during a
 rotation, and the plaintext token is never persisted.
 """
 
-from contextlib import contextmanager
-
 import pytest
 from sqlalchemy import select
 
-from canopy.core import security
 from canopy.core.errors import ApiKeyNotFound
-from canopy.core.security import EnvKeyRegistry, bind_key_registry
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token
 from canopy.core.keys.service import ApiKeyService
-from canopy.core.keys.registry import (
-    DbKeyRegistry,
-    CachingKeyRegistry,
-    ChainedKeyRegistry,
-)
+from canopy.core.keys.registry import DbKeyRegistry
+from tests.canopy.core.keys.conftest import db_backed_registry
 
 
 async def mint(session, app_name="trace", *, read=True, write=False, admin=False):
     key = await ApiKeyService(session).create_key(app_name, read=read, write=write, admin=admin)
     await session.commit()
     return key
-
-
-@contextmanager
-def db_backed_registry(ttl_s: float = 60.0):
-    """Bind the production registry chain, then put the previous one back.
-
-    The bound registry is process-global, so restoring it keeps these tests from
-    leaking a database-backed registry into everything that runs after them.
-    """
-    previous = security._registry
-    bind_key_registry(ChainedKeyRegistry(EnvKeyRegistry(""), CachingKeyRegistry(DbKeyRegistry(), ttl_s=ttl_s)))
-    try:
-        yield
-    finally:
-        security._registry = previous
 
 
 class TestMintAndResolve:

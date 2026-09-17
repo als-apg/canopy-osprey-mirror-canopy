@@ -12,6 +12,7 @@ swapping the session maker on the ``core.db`` module — the same seam
 """
 
 import os
+from contextlib import contextmanager
 
 import pytest
 import asyncpg
@@ -23,10 +24,22 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import canopy.core.keys.models  # noqa: F401 — register core tables on Base.metadata
-from canopy.core import db
+from canopy.core import db, security
 from canopy.core.db import Base
 from canopy.core.errors import register_canopy_error_handler
-from canopy.core.security import APIKey, require_read_access, require_write_access
+from canopy.core.security import (
+    APIKey,
+    EnvKeyRegistry,
+    bind_key_registry,
+    require_read_access,
+    require_write_access,
+)
+from canopy.core.keys.routes import router as api_keys_router
+from canopy.core.keys.registry import (
+    DbKeyRegistry,
+    CachingKeyRegistry,
+    ChainedKeyRegistry,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "CANOPY_TEST_DATABASE_URL", "postgresql+asyncpg://canopy:canopy@localhost:5432/canopy_test"
@@ -102,3 +115,34 @@ def gated_client() -> TestClient:
         return {"name": key.name}
 
     return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def keys_client() -> TestClient:
+    """The real ``/v1/api-keys`` router, mounted on a throwaway app.
+
+    Exercises the production routes and error handler without pulling in the
+    other nine sub-apps.
+    """
+    app = FastAPI()
+    register_canopy_error_handler(app)
+    app.include_router(api_keys_router)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+@contextmanager
+def db_backed_registry(ttl_s: float = 60.0, env: str = ""):
+    """Bind the production registry chain, then put the previous one back.
+
+    The bound registry is process-global, so restoring it keeps these tests from
+    leaking a database-backed registry into everything that runs after them.
+    ``env`` lets a test authenticate its own requests with a static key (e.g. an
+    admin key to call the management routes) alongside the database-backed one
+    under test.
+    """
+    previous = security._registry
+    bind_key_registry(ChainedKeyRegistry(EnvKeyRegistry(env), CachingKeyRegistry(DbKeyRegistry(), ttl_s=ttl_s)))
+    try:
+        yield
+    finally:
+        security._registry = previous

@@ -89,10 +89,10 @@ class EnvKeyRegistry:
             scope_set = {s.strip() for s in scopes.split("+")}
             if unknown := scope_set - {"read", "write", "admin"}:
                 logger.warning(
-                    "Skipping CANOPY_API_KEYS entry #%d: unrecognized scope(s) %s; "
+                    "Skipping CANOPY_API_KEYS entry #%d: %d unrecognized scope(s); "
                     "only 'read', 'write' and 'admin' are valid",
                     position,
-                    sorted(unknown),
+                    len(unknown),
                 )
                 continue
             if token in self._keys:
