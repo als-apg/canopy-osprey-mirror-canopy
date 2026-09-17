@@ -95,7 +95,12 @@ class RestoreRequestDTO(CanopyModel):
 
 
 class RestoreResultDTO(CanopyModel):
-    """Result of a restore operation. ``failures`` rows are ``{pvId, pvName, error}``."""
+    """Result of a restore operation.
+
+    ``failures`` rows are ``{pvId, pvName, error, phase}``, where ``phase`` names the
+    stage that failed: ``"Setpoints"`` for a primary write or a hook-derivation error,
+    otherwise the class name of the restore hook whose write failed.
+    """
 
     total_pvs: int
     success_count: int
