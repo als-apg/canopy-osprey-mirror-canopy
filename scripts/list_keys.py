@@ -17,7 +17,7 @@ import argparse
 from canopy.core.db import session_scope, dispose_engine
 from canopy.core.keys.service import ApiKeyService
 
-_HEADERS = ("id", "app name", "active", "read", "write", "admin", "created", "last used")
+_HEADERS = ("id", "app name", "active", "read", "write", "admin", "modules", "created", "last used")
 
 
 async def main() -> int:
@@ -43,6 +43,7 @@ async def main() -> int:
             str(key.read_access),
             str(key.write_access),
             str(key.admin_access),
+            "+".join(key.modules),
             key.created_at.strftime("%Y-%m-%d %H:%M"),
             key.last_used_at.strftime("%Y-%m-%d %H:%M") if key.last_used_at else "never",
         )

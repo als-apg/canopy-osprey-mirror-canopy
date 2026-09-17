@@ -11,8 +11,8 @@ import logging
 from uuid import UUID
 
 from canopy.core.errors import BadRequest, ApiKeyNotFound, ApiKeySelfDeactivation
-from canopy.core.security import invalidate_key_id
 from canopy.core.modules import MODULES, WILDCARD
+from canopy.core.security import invalidate_key_id
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token, mint_token
 from canopy.core.keys.schemas import ApiKeyDTO, ApiKeyCreateResultDTO

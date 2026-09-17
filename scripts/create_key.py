@@ -12,6 +12,7 @@ Run::
     uv run python scripts/create_key.py "Trace Display" -r
     uv run python scripts/create_key.py operator-tools -r -w
     uv run python scripts/create_key.py ops -a
+    uv run python scripts/create_key.py trace -r -m mole -m fox   # scoped to two modules
 
     # In a container (local Docker Compose, or a facility instance where the
     # database is only reachable from the running api container):
@@ -24,6 +25,7 @@ import argparse
 
 from canopy.core.db import session_scope, dispose_engine
 from canopy.core.errors import CanopyError
+from canopy.core.modules import WILDCARD
 from canopy.core.keys.service import ApiKeyService
 
 
@@ -33,12 +35,24 @@ async def main() -> int:
     parser.add_argument("-r", "--read", action="store_true", help="Grant read access")
     parser.add_argument("-w", "--write", action="store_true", help="Grant write access (PV puts, snapshots, configs)")
     parser.add_argument("-a", "--admin", action="store_true", help="Grant admin access (API key management)")
+    parser.add_argument(
+        "-m",
+        "--module",
+        action="append",
+        dest="modules",
+        metavar="MODULE",
+        help="Restrict the key to this module (repeatable). Omit for access to every module.",
+    )
     args = parser.parse_args()
 
     try:
         async with session_scope() as session:
             key = await ApiKeyService(session).create_key(
-                args.app_name, read=args.read, write=args.write, admin=args.admin
+                args.app_name,
+                read=args.read,
+                write=args.write,
+                admin=args.admin,
+                modules=args.modules or [WILDCARD],
             )
             await session.commit()
     except CanopyError as exc:
@@ -54,6 +68,7 @@ async def main() -> int:
     print(f"  App name:  {key.app_name}")
     print(f"  ID:        {key.id}")
     print(f"  Access:    {', '.join(scopes)}")
+    print(f"  Modules:   {', '.join(key.modules)}")
     print(f"  Created:   {key.created_at}")
     print(f"  Token:     {key.token}")
     print()
