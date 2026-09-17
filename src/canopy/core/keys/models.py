@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime
+from sqlalchemy import ARRAY, String, Boolean, DateTime, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from canopy.core.db import Base, UUIDMixin, TimestampMixin
+from canopy.core.modules import WILDCARD
 
 CORE_SCHEMA = "core"
 
@@ -40,3 +41,13 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
     write_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     admin_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Which mounted sub-apps (plus "core" for the parent app's own routes) this
+    # key may call. {"*"} — the default, matching every key minted before this
+    # column existed — means every module. Not indexed: the lookup is always by
+    # `token_hash`, and the filter runs in Python against the cached record.
+    modules: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        nullable=False,
+        default=lambda: [WILDCARD],
+        server_default=text(f"'{{{WILDCARD}}}'::text[]"),
+    )

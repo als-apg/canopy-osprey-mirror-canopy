@@ -281,7 +281,7 @@ class TestChaining:
     async def test_env_keys_work_while_the_store_is_down(self, clock):
         store = FakeStore()
         store.broken = True
-        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read"), CachingKeyRegistry(store))
+        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read@*"), CachingKeyRegistry(store))
 
         key = await registry.get("envkey")
         assert key is not None and key.read
@@ -289,13 +289,13 @@ class TestChaining:
 
     async def test_db_keys_resolve_when_env_misses(self, clock):
         store = FakeStore({TOKEN: a_key(name="from-db")})
-        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read"), CachingKeyRegistry(store))
+        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read@*"), CachingKeyRegistry(store))
 
         key = await registry.get(TOKEN)
         assert key is not None and key.name == "from-db"
 
     async def test_unknown_token_resolves_to_none(self, clock):
-        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read"), CachingKeyRegistry(FakeStore()))
+        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read@*"), CachingKeyRegistry(FakeStore()))
         assert await registry.get(OTHER) is None
 
     async def test_env_keys_still_work_if_the_store_is_ordered_first(self, clock):
@@ -306,7 +306,7 @@ class TestChaining:
         """
         store = FakeStore()
         store.broken = True
-        registry = ChainedKeyRegistry(CachingKeyRegistry(store), EnvKeyRegistry("envkey:read"))
+        registry = ChainedKeyRegistry(CachingKeyRegistry(store), EnvKeyRegistry("envkey:read@*"))
 
         key = await registry.get("envkey")
         assert key is not None and key.read
@@ -315,7 +315,7 @@ class TestChaining:
         # Not 401: no layer could confirm the token is bad, so don't claim it is.
         store = FakeStore()
         store.broken = True
-        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read"), CachingKeyRegistry(store))
+        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read@*"), CachingKeyRegistry(store))
 
         with pytest.raises(KeyStoreUnavailable):
             await registry.get(OTHER)

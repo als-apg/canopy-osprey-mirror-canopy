@@ -51,6 +51,7 @@ def _to_api_key(row: ApiKey) -> APIKey:
         admin=row.admin_access,
         name=row.app_name,
         id=row.id,
+        modules=frozenset(row.modules),
     )
 
 
