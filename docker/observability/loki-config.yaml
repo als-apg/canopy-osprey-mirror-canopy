@@ -1,0 +1,42 @@
+# Single-instance Loki with filesystem storage.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+# Dev-only defaults: no retention (data lives until the canopy-loki-data volume
+# is removed) and no limits beyond the line cap below. Pointing this at a
+# shared host means adding a compactor block with retention_enabled plus a
+# limits_config.retention_period.
+limits_config:
+  # canopy-api already rejects analytics events over
+  # CANOPY_ANALYTICS__MAX_EVENT_BYTES (64 KiB by default), well under this cap.
+  # Truncate rather than drop anything that still exceeds it (a long backend
+  # traceback, say) so the line's existence survives even if its tail does not.
+  max_line_size: 256KB
+  max_line_size_truncate: true

@@ -1,0 +1,64 @@
+{
+  "uid": "canopy-frontend-errors",
+  "title": "Canopy Error Reporting",
+  "tags": ["canopy", "errors"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Frontend error events",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "canopy-loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({app=\"canopy\", type=\"analytics\"} | json | event=~\"frontend_error|error\" [$__interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend errors by logger",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "loki", "uid": "canopy-loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (logger) (count_over_time({app=\"canopy\", level=~\"ERROR|CRITICAL\"} | json [$__interval]))",
+          "legendFormat": "{{logger}}"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent frontend error events",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "loki", "uid": "canopy-loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{app=\"canopy\", type=\"analytics\"} | json | event=~\"frontend_error|error\""
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent backend errors",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "loki", "uid": "canopy-loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{app=\"canopy\", level=~\"ERROR|CRITICAL\"}"
+        }
+      ]
+    }
+  ]
+}

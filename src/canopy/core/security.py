@@ -95,6 +95,22 @@ def get_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKe
 APIKeyDep = Annotated[APIKey, Security(get_api_key)]
 
 
+def get_optional_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey | None:
+    """Resolve the API key if one was sent and is valid; otherwise ``None``.
+
+    Never raises: for endpoints (analytics ingestion) that accept anonymous
+    requests but attach key metadata when available. An *invalid* token also
+    resolves to ``None`` rather than 401 so a stale key can't break a client's
+    fire-and-forget calls.
+    """
+    if not token:
+        return None
+    return _get_registry().get(token)
+
+
+OptionalAPIKeyDep = Annotated[APIKey | None, Security(get_optional_api_key)]
+
+
 def require_read_access(key: APIKeyDep) -> APIKey:
     if not key.read:
         raise InsufficientReadAccess("API key does not have read access")

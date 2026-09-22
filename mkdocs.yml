@@ -108,6 +108,9 @@ nav:
   - How To:
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
     - Custom directory adapter: how_to/custom_directory_adapter.md
+  - Observability:
+    - observability/index.md
+    - Setup guide: observability/setup_guide.md
   - API Reference:
     - Fox: api_reference/fox.md
     - Vole: api_reference/vole.md

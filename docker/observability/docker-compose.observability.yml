@@ -1,0 +1,53 @@
+# Observability overlay: Loki (log store) + Promtail (log shipper) + Grafana
+# (dashboards, auto-provisioned). Layer it on the base stack from the repo root:
+#
+#   docker compose -f docker/docker-compose.yml \
+#                  -f docker/observability/docker-compose.observability.yml up -d
+#
+# Relative paths below resolve against docker/ (the first -f file's directory).
+# The api/worker containers write JSON logs to /tmp/canopy-logs (bind-mounted
+# in the base compose); Promtail tails that same host directory.
+# See docs/observability/ for the full guide.
+
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: canopy-loki
+    command: -config.file=/etc/loki/config.yaml
+    ports:
+      - "${LOKI_HOST_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
+      - canopy-loki-data:/loki
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: canopy-promtail
+    command: -config.file=/etc/promtail/config.yaml
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /tmp/canopy-logs:/tmp/canopy-logs:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: canopy-grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - canopy-grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+volumes:
+  canopy-loki-data:
+  canopy-grafana-data:
