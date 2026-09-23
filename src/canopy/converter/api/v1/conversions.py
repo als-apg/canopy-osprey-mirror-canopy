@@ -1,6 +1,6 @@
 import json
 from uuid import uuid4
-from typing import Literal, Annotated
+from typing import Annotated
 from pathlib import Path
 
 from fastapi import File, Form, Security, APIRouter, UploadFile
@@ -28,22 +28,20 @@ from canopy.converter.schemas.conversions import (
     ScreenConversionResultDTO,
 )
 from canopy.converter.adapters.fox_validation import validate_formulas
-from canopy.converter.services.conversion_service import ConversionResult
+from canopy.converter.services.conversion_service import ScreenKind, SUFFIX_KIND, SCREEN_KINDS, ConversionResult
 
 router = APIRouter(tags=["Converter / Conversions"])
 
-_SUFFIX_KIND: dict[str, Literal["edl", "ui"]] = {".edl": "edl", ".ui": "ui"}
 
-
-def _resolve_kind(kind: str | None, filename: str | None) -> Literal["edl", "ui"]:
+def _resolve_kind(kind: str | None, filename: str | None) -> ScreenKind:
     """Prefer the explicit ``kind`` form field; else infer from the filename suffix."""
-    if kind in ("edl", "ui"):
+    if kind in SCREEN_KINDS:
         return kind  # type: ignore[return-value]
     if filename:
-        guessed = _SUFFIX_KIND.get(Path(filename).suffix.lower())
+        guessed = SUFFIX_KIND.get(Path(filename).suffix.lower())
         if guessed is not None:
             return guessed
-    raise UnsupportedInput("Could not determine screen kind; pass kind=edl|ui or upload a .edl/.ui file")
+    raise UnsupportedInput("Could not determine screen kind; pass kind=edl|ui|bob or upload a .edl/.ui/.bob file")
 
 
 async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
@@ -79,12 +77,12 @@ async def create_conversion(
     service: ConversionServiceDep,
     config: ConverterConfigDep,
     fox_validate: FoxValidateDep,
-    file: Annotated[UploadFile, File(description="A legacy .edl or .ui screen")],
-    kind: Annotated[Literal["edl", "ui"] | None, Form()] = None,
+    file: Annotated[UploadFile, File(description="A legacy .edl, .ui or .bob screen")],
+    kind: Annotated[ScreenKind | None, Form()] = None,
 ) -> ScreenConversionResultDTO:
     """Convert one uploaded legacy screen to Canopy Screen IR (synchronous).
 
-    ``kind`` may be omitted when the filename carries a ``.edl``/``.ui`` suffix.
+    ``kind`` may be omitted when the filename carries a ``.edl``/``.ui``/``.bob`` suffix.
     The screen is validated against the Screen IR schema before it is returned.
     """
     data = await _read_upload(file, config.max_upload_bytes)
@@ -100,8 +98,8 @@ async def validate_conversion(
     service: ConversionServiceDep,
     config: ConverterConfigDep,
     fox_validate: FoxValidateDep,
-    file: Annotated[UploadFile, File(description="A legacy .edl or .ui screen")],
-    kind: Annotated[Literal["edl", "ui"] | None, Form()] = None,
+    file: Annotated[UploadFile, File(description="A legacy .edl, .ui or .bob screen")],
+    kind: Annotated[ScreenKind | None, Form()] = None,
 ) -> ValidateResultDTO:
     """Dry-run a conversion and return only diagnostics (the IR is discarded).
 
@@ -136,7 +134,7 @@ def _looks_like_archive(data: bytes) -> bool:
 @router.post("/conversions/batch", dependencies=[Security(require_read_access)])
 async def create_batch_conversion(
     config: ConverterConfigDep,
-    file: Annotated[UploadFile, File(description="A .zip or .tar.gz of legacy .edl/.ui screens")],
+    file: Annotated[UploadFile, File(description="A .zip or .tar.gz of legacy .edl/.ui/.bob screens")],
 ) -> JobCreatedDTO:
     """Convert a folder of legacy screens asynchronously.
 

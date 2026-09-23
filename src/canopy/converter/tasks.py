@@ -28,7 +28,7 @@ from canopy.converter.config import ConverterConfig, get_converter_config
 from canopy.converter.errors import ConverterError
 from canopy.converter.adapters.edm_env import apply_edm_colors
 from canopy.converter.adapters.beaver_registry import build_registry
-from canopy.converter.services.conversion_service import ConversionService
+from canopy.converter.services.conversion_service import SUFFIX_KIND, ConversionService
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,6 @@ logger = logging.getLogger(__name__)
 # enqueuing; result keys are written here and fetched by the screen route.
 INPUT_KEY = "canopy:converter:input:{token}"
 RESULT_KEY = "canopy:converter:result:{job_id}:{index}"
-
-_SUFFIX_KIND = {".edl": "edl", ".ui": "ui"}
 
 _service: ConversionService | None = None
 
@@ -61,7 +59,7 @@ def result_key(job_id: str, index: int) -> str:
 
 
 def _kind_for(name: str) -> str | None:
-    return _SUFFIX_KIND.get(PurePosixPath(name).suffix.lower())
+    return SUFFIX_KIND.get(PurePosixPath(name).suffix.lower())
 
 
 def _is_safe_path(name: str) -> bool:
@@ -159,7 +157,7 @@ async def _convert_entry(
     """Convert one archive entry into a manifest row, isolating its failures."""
     kind = _kind_for(path)
     if kind is None:
-        return {"path": path, "status": "skipped", "warnings": ["not a .edl/.ui screen"]}
+        return {"path": path, "status": "skipped", "warnings": ["not a .edl/.ui/.bob screen"]}
     try:
         result = await anyio.to_thread.run_sync(lambda: service.convert(raw, kind=kind))
     except ConverterError as exc:

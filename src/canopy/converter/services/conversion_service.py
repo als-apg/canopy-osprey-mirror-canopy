@@ -9,7 +9,7 @@ unknown widgets, hoisted formulas) for the API layer.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 from dataclasses import dataclass
 from collections.abc import Iterator
 
@@ -66,8 +66,17 @@ class ConversionResult:
     stats: ConversionStats
 
 
+ScreenKind = Literal["edl", "ui", "bob"]
+"""Legacy screen formats the converter accepts."""
+
+SCREEN_KINDS: tuple[ScreenKind, ...] = get_args(ScreenKind)
+
+SUFFIX_KIND: dict[str, ScreenKind] = {".edl": "edl", ".ui": "ui", ".bob": "bob"}
+"""Lower-case file suffix -> screen kind."""
+
+
 class ConversionService:
-    """Converts ``.edl``/``.ui`` bytes to validated Screen IR + diagnostics."""
+    """Converts ``.edl``/``.ui``/``.bob`` bytes to validated Screen IR + diagnostics."""
 
     def __init__(self, registry: RegistryClient | None = None) -> None:
         # One registry instance, reused across requests (the adapters would
@@ -75,12 +84,14 @@ class ConversionService:
         # BeaverGatewayRegistry here behind the ``use_beaver_gateway`` flag.
         self._registry: RegistryClient = registry or VendoredRegistry()
 
-    def convert(self, data: bytes, *, kind: Literal["edl", "ui"]) -> ConversionResult:
+    def convert(self, data: bytes, *, kind: ScreenKind) -> ConversionResult:
+        # Reject an unsupported kind here rather than by catching convert_bytes'
+        # ValueError: its parsers (e.g. the .bob XML reader) also raise ValueError for
+        # malformed input on a *known* kind, which is a 422, not a 415.
+        if kind not in SCREEN_KINDS:
+            raise UnsupportedInput(f"Unsupported screen kind {kind!r}; expected one of {', '.join(SCREEN_KINDS)}")
         try:
             screen = convert_bytes(data, kind=kind, registry=self._registry)
-        except ValueError as exc:
-            # convert_bytes raises ValueError for an unsupported kind/suffix.
-            raise UnsupportedInput(str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - any parse/build failure on a known kind
             # The catch stays broad on purpose: pydmconverter raises bare ValueError
             # *and* KeyError for legitimately malformed input, the same types a server

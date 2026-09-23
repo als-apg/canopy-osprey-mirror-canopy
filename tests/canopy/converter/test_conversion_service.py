@@ -70,3 +70,37 @@ def test_unexpected_failure_maps_to_conversion_failed_and_logs(monkeypatch, capl
         with pytest.raises(ConversionFailed):
             ConversionService().convert(b"data", kind="edl")
     assert any(r.levelno >= logging.ERROR and r.exc_info for r in caplog.records)
+
+
+# A minimal synthetic Phoebus Display Builder screen: a static label and a PV readback.
+_BOB = b"""<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Synthetic</name>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <x>10</x>
+    <y>10</y>
+    <text>Hello</text>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Readback</name>
+    <x>10</x>
+    <y>40</y>
+    <pv_name>SYN:PV</pv_name>
+  </widget>
+</display>
+"""
+
+
+def test_convert_bob_bytes_produces_validated_ir():
+    result = ConversionService().convert(_BOB, kind="bob")
+    assert result.screen["schemaVersion"] == "1.0"
+    assert result.stats.widget_count >= 2
+    assert result.unknown_widgets == []
+    types = {c["type"] for c in result.screen["root"]["children"]}
+    assert {"text-label", "pv-label"} <= types
+
+
+def test_malformed_bob_maps_to_conversion_failed():
+    with pytest.raises(ConversionFailed):
+        ConversionService().convert(b"<display><widget", kind="bob")
