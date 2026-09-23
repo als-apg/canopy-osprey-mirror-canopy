@@ -12,6 +12,8 @@ from collections.abc import Callable
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from canopy.core.errors import BadRequest
+from canopy.core.time_parse import to_utc
 from canopy.squirrel.errors import SnapshotNotFound
 from canopy.squirrel.data.models import Snapshot
 from canopy.squirrel.restore_hooks import (
@@ -80,30 +82,6 @@ def _sanitize_for_json(value: Any) -> Any:
     return value
 
 
-def normalize_datetime_bound(value: datetime | None) -> datetime | None:
-    """Coerce a listing bound to the timezone-aware UTC form ``Snapshot.created_at`` stores.
-
-    ``created_at`` is a ``timestamptz``, and asyncpg refuses to compare it against a naive
-    bind parameter, so a value that arrived without an offset is read as UTC and one that
-    arrived with an offset is converted to UTC.
-
-    Parameters
-    ----------
-    value : datetime | None
-        A bound as parsed from the request.
-
-    Returns
-    -------
-    datetime | None
-        ``None`` when ``value`` is ``None``, otherwise a timezone-aware UTC datetime.
-    """
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
 class SnapshotService:
     """Snapshot operations with EPICS integration. Owns no transaction — the caller
     (request dep or worker ``session_scope``) commits."""
@@ -156,21 +134,26 @@ class SnapshotService:
         tag_ids : list[str] | None
             Tag IDs; a snapshot matches when it holds a PV carrying any of them.
         start : datetime | None
-            Lower bound on creation time, inclusive.
+            Lower bound on creation time, inclusive. Converted with ``to_utc``, because
+            ``created_at`` is a ``timestamptz`` and asyncpg refuses a naive bind parameter.
         end : datetime | None
-            Upper bound on creation time, inclusive.
+            Upper bound on creation time, inclusive. Converted the same way as ``start``.
 
         Returns
         -------
         list[SnapshotSummaryDTO]
             Matching snapshot summaries, newest first.
+
+        Raises
+        ------
+        BadRequest
+            When both bounds are given and ``start`` is after ``end``.
         """
-        snapshots = await self.snapshot_repo.search(
-            title=title,
-            tag_ids=tag_ids,
-            start=normalize_datetime_bound(start),
-            end=normalize_datetime_bound(end),
-        )
+        start = to_utc(start) if start is not None else None
+        end = to_utc(end) if end is not None else None
+        if start is not None and end is not None and start > end:
+            raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
+        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids, start=start, end=end)
 
         # One grouped query for all value counts (avoids N+1).
         snapshot_ids = [snap.id for snap in snapshots]

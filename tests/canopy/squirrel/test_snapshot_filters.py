@@ -1,30 +1,87 @@
-"""Unit tests for the snapshot listing datetime bounds — no database involved."""
+"""Snapshot listing datetime bounds at the service layer — no database involved."""
 
 from datetime import UTC, datetime, timezone, timedelta
 
-from canopy.squirrel.services.snapshot_service import normalize_datetime_bound
+import pytest
+
+from canopy.core.errors import BadRequest
+from canopy.squirrel.services.snapshot_service import SnapshotService
 
 
-def test_none_bound_stays_none():
-    assert normalize_datetime_bound(None) is None
+class _RecordingSnapshotRepo:
+    """Stands in for ``SnapshotRepository``: records ``search`` calls and returns no rows."""
+
+    def __init__(self) -> None:
+        self.searches: list[dict] = []
+
+    async def search(self, **kwargs) -> list:
+        self.searches.append(kwargs)
+        return []
+
+    async def get_value_counts_batch(self, snapshot_ids: list[str]) -> dict[str, int]:
+        return {}
 
 
-def test_naive_bound_is_read_as_utc():
-    assert normalize_datetime_bound(datetime(2026, 1, 1, 12, 0)) == datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+class _NoMetaPvs:
+    """Stands in for ``MetaPvRepository`` with no active meta PVs."""
+
+    async def get(self, active: bool) -> list:
+        return []
 
 
-def test_utc_bound_is_unchanged():
-    value = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-    assert normalize_datetime_bound(value) == value
+@pytest.fixture
+def repo() -> _RecordingSnapshotRepo:
+    return _RecordingSnapshotRepo()
 
 
-def test_offset_bound_is_converted_to_utc():
-    value = datetime(2026, 1, 1, 12, 0, tzinfo=timezone(timedelta(hours=-7)))
-    bound = normalize_datetime_bound(value)
-    assert bound == datetime(2026, 1, 1, 19, 0, tzinfo=UTC)
-    assert bound.utcoffset() == timedelta(0)
+@pytest.fixture
+def service(repo) -> SnapshotService:
+    """A service whose repositories never touch a session."""
+    svc = SnapshotService(session=None, restore_hook=object())
+    svc.snapshot_repo = repo
+    svc.meta_pv_repo = _NoMetaPvs()
+    return svc
 
 
-def test_every_bound_is_timezone_aware():
-    for value in (datetime(2026, 1, 1), datetime(2026, 1, 1, tzinfo=timezone(timedelta(hours=2)))):
-        assert normalize_datetime_bound(value).tzinfo is not None
+async def test_bounds_reach_the_repository_as_aware_utc(service, repo):
+    await service.list_snapshots(
+        start=datetime(2026, 1, 1, 12, 0),
+        end=datetime(2026, 1, 2, 5, 0, tzinfo=timezone(timedelta(hours=-7))),
+    )
+
+    assert repo.searches[0]["start"] == datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    assert repo.searches[0]["end"] == datetime(2026, 1, 2, 12, 0, tzinfo=UTC)
+
+
+async def test_omitted_bounds_stay_none(service, repo):
+    await service.list_snapshots()
+
+    assert repo.searches[0]["start"] is None
+    assert repo.searches[0]["end"] is None
+
+
+async def test_start_after_end_is_a_bad_request(service, repo):
+    with pytest.raises(BadRequest, match="must not be after end"):
+        await service.list_snapshots(
+            start=datetime(2026, 7, 1, tzinfo=UTC),
+            end=datetime(2026, 5, 1, tzinfo=UTC),
+        )
+
+    assert repo.searches == []
+
+
+async def test_start_after_end_is_compared_as_instants(service, repo):
+    await service.list_snapshots(
+        start=datetime(2026, 1, 1, 18, 0, tzinfo=UTC),
+        end=datetime(2026, 1, 1, 12, 0, tzinfo=timezone(timedelta(hours=-7))),
+    )
+
+    assert len(repo.searches) == 1
+
+
+async def test_equal_bounds_are_allowed(service, repo):
+    instant = datetime(2026, 1, 1, tzinfo=UTC)
+
+    await service.list_snapshots(start=instant, end=instant)
+
+    assert repo.searches[0]["start"] == repo.searches[0]["end"] == instant

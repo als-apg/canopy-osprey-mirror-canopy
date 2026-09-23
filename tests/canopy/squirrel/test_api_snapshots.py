@@ -132,6 +132,19 @@ async def test_list_rejects_malformed_datetime(client: AsyncClient):
     assert (await client.get("/v1/snapshots?end=not-a-date", headers=READ_HEADERS)).status_code == 422
 
 
+async def test_list_rejects_date_only_bounds(client: AsyncClient):
+    for query in ("start=2026-01-01", "end=2026-01-31"):
+        r = await client.get(f"/v1/snapshots?{query}", headers=READ_HEADERS)
+        assert r.status_code == 422, r.text
+        assert "not a bare date" in r.text
+
+
+async def test_list_rejects_start_after_end(client: AsyncClient):
+    r = await client.get("/v1/snapshots?start=2026-07-01T00:00:00Z&end=2026-05-01T00:00:00Z", headers=READ_HEADERS)
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "bad_request"
+
+
 async def test_get_snapshot_with_values(client: AsyncClient, db_session: AsyncSession):
     pv = await _seed_pv(db_session)
     sid = await _seed_snapshot(db_session, "with-values", pv=pv, value=7.0)
