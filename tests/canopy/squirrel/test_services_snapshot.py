@@ -211,6 +211,37 @@ async def test_restore_attributes_hook_write_failure_to_the_hook(db_session: Asy
     assert "QUAD:LI21:201:BCON" in failure["error"]
 
 
+async def test_restore_runs_later_hooks_after_an_earlier_hook_fails(db_session: AsyncSession):
+    """A failed TRIM still leaves BCON recording the value that was restored."""
+    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
+    io.fail_writes.add("QUAD:LI21:201:CTRL")
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    io.writes.clear()
+    result = await svc.restore_snapshot(summary.id)
+    assert io.writes == {"QUAD:LI21:201:BDES": 3.0, "QUAD:LI21:201:BCON": 3.0}
+    assert result.failure_count == 1
+    assert result.failures[0]["phase"] == "MagnetTrimHook"
+    assert "QUAD:LI21:201:CTRL" in result.failures[0]["error"]
+
+
+async def test_restore_lists_every_hook_failure_under_the_first_phase(db_session: AsyncSession):
+    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
+    io.fail_writes.update({"QUAD:LI21:201:CTRL", "QUAD:LI21:201:BCON"})
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    result = await svc.restore_snapshot(summary.id)
+    assert result.failure_count == 1
+    failure = result.failures[0]
+    assert failure["phase"] == "MagnetTrimHook"
+    assert "QUAD:LI21:201:CTRL" in failure["error"]
+    assert "QUAD:LI21:201:BCON" in failure["error"]
+
+
 async def test_restore_attributes_primary_failure_to_setpoints(db_session: AsyncSession):
     await _seed_pv(db_session, "A:SP")
     io = FakeEpicsIO({"A:SP": _ev(5.0)})

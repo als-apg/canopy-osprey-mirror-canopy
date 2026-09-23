@@ -447,8 +447,9 @@ class SnapshotService:
         before anything is written; a hook error drops that PV from the write set so the
         system is never left half-restored. The setpoints go out as one batch, then each
         hook's extras as a batch of its own, restricted to the PVs whose setpoint write
-        succeeded. A failed extra write is attributed to its primary address, which stays
-        counted as a failure.
+        succeeded; one hook's failed write does not stop a later hook's writes for the
+        same PV. A failed extra write marks its primary address failed, with ``phase``
+        naming the first hook that failed and ``error`` listing every hook failure.
 
         Parameters
         ----------
@@ -466,7 +467,8 @@ class SnapshotService:
         -------
         RestoreResultDTO
             Totals plus a ``{pvId, pvName, error, phase}`` row per failed PV, where
-            ``phase`` is ``"Setpoints"`` or the class name of the hook that failed.
+            ``phase`` is ``"Setpoints"`` or the class name of the first hook that failed
+            (``MagnetTrimHook`` for the ``magnet_trim`` provider, and so on).
         """
         logger.info("Restoring snapshot: %s", snapshot_id)
         start_time = datetime.now(UTC)
@@ -538,9 +540,9 @@ class SnapshotService:
                 results.update(await self.epics.put_many(original_values))
         writes_done = len(original_values)
 
-        for address, (success, _error) in results.items():
-            if not success:
-                failure_phase[address] = PRIMARY_PHASE
+        setpoint_ok = {address for address, (success, _error) in results.items() if success}
+        for address in results.keys() - setpoint_ok:
+            failure_phase[address] = PRIMARY_PHASE
 
         for hook, derived in zip(self.restore_hooks, derived_per_hook, strict=True):
             phase = type(hook).__name__
@@ -550,8 +552,7 @@ class SnapshotService:
             derived_writes = 0
             for primary_addr, extras in derived.items():
                 derived_writes += len(extras)
-                primary_ok, _ = results.get(primary_addr, (False, None))
-                if not primary_ok:
+                if primary_addr not in setpoint_ok:
                     continue
                 for extra_addr, extra_val in extras:
                     extra_values[extra_addr] = extra_val
@@ -574,11 +575,10 @@ class SnapshotService:
                 if ok:
                     continue
                 primary_addr = primary_by_extra[extra_addr]
-                results[primary_addr] = (
-                    False,
-                    f"Primary write succeeded but {phase} write failed for {extra_addr}: {err or 'unknown error'}",
-                )
-                failure_phase[primary_addr] = phase
+                message = f"Primary write succeeded but {phase} write failed for {extra_addr}: {err or 'unknown error'}"
+                earlier_ok, earlier_error = results[primary_addr]
+                results[primary_addr] = (False, message if earlier_ok else f"{earlier_error}; {message}")
+                failure_phase.setdefault(primary_addr, phase)
 
         for addr, err in hook_errors.items():
             results[addr] = (False, err)
