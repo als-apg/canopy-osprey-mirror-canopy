@@ -218,14 +218,126 @@ class PvRepository(BaseRepository[Pv]):
         )
         return result.scalar_one_or_none()
 
+    async def find_by_readback_without_setpoint(self, readback_address: str) -> Pv | None:
+        """Find a setpoint-less PV by its readback address.
+
+        Parameters
+        ----------
+        readback_address : str
+            Readback address to match.
+
+        Returns
+        -------
+        Pv | None
+            A PV whose ``setpoint_address`` is NULL and whose ``readback_address`` equals
+            ``readback_address``, or ``None`` when no such PV exists.
+        """
+        result = await self.session.execute(
+            select(Pv)
+            .options(selectinload(Pv.tags).selectinload(Tag.group))
+            .where(Pv.setpoint_address.is_(None), Pv.readback_address == readback_address)
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    async def find_by_config_only(self, config_address: str) -> Pv | None:
+        """Find a config-only PV by its config address.
+
+        Parameters
+        ----------
+        config_address : str
+            Config address to match.
+
+        Returns
+        -------
+        Pv | None
+            A PV whose ``setpoint_address`` and ``readback_address`` are both NULL and whose
+            ``config_address`` equals ``config_address``, or ``None`` when no such PV exists.
+        """
+        result = await self.session.execute(
+            select(Pv)
+            .options(selectinload(Pv.tags).selectinload(Tag.group))
+            .where(
+                Pv.setpoint_address.is_(None),
+                Pv.readback_address.is_(None),
+                Pv.config_address == config_address,
+            )
+            .limit(1)
+        )
+        return result.scalars().first()
+
     async def get_existing_setpoints(self, setpoint_addresses: list[str]) -> set[str]:
-        """Return the subset of ``setpoint_addresses`` that already exist."""
+        """Return the subset of ``setpoint_addresses`` that already exist.
+
+        Parameters
+        ----------
+        setpoint_addresses : list[str]
+            Setpoint addresses to look up.
+
+        Returns
+        -------
+        set[str]
+            The addresses already registered as a PV setpoint.
+        """
         if not setpoint_addresses:
             return set()
         existing: set[str] = set()
         for i in range(0, len(setpoint_addresses), PARAM_BATCH_SIZE):
             batch = setpoint_addresses[i : i + PARAM_BATCH_SIZE]
             result = await self.session.execute(select(Pv.setpoint_address).where(Pv.setpoint_address.in_(batch)))
+            existing.update({row[0] for row in result.all() if row[0]})
+        return existing
+
+    async def get_existing_readbacks_without_setpoint(self, readback_addresses: list[str]) -> set[str]:
+        """Return the subset of ``readback_addresses`` already held by a setpoint-less PV.
+
+        Parameters
+        ----------
+        readback_addresses : list[str]
+            Readback addresses to look up.
+
+        Returns
+        -------
+        set[str]
+            The addresses carried by an existing PV whose ``setpoint_address`` is NULL.
+        """
+        if not readback_addresses:
+            return set()
+        existing: set[str] = set()
+        for i in range(0, len(readback_addresses), PARAM_BATCH_SIZE):
+            batch = readback_addresses[i : i + PARAM_BATCH_SIZE]
+            result = await self.session.execute(
+                select(Pv.readback_address).where(Pv.setpoint_address.is_(None), Pv.readback_address.in_(batch))
+            )
+            existing.update({row[0] for row in result.all() if row[0]})
+        return existing
+
+    async def get_existing_config_only(self, config_addresses: list[str]) -> set[str]:
+        """Return the subset of ``config_addresses`` already held by a config-only PV.
+
+        Parameters
+        ----------
+        config_addresses : list[str]
+            Config addresses to look up.
+
+        Returns
+        -------
+        set[str]
+            The addresses carried by an existing PV whose ``setpoint_address`` and
+            ``readback_address`` are both NULL.
+        """
+        if not config_addresses:
+            return set()
+        existing: set[str] = set()
+        for i in range(0, len(config_addresses), PARAM_BATCH_SIZE):
+            batch = config_addresses[i : i + PARAM_BATCH_SIZE]
+            result = await self.session.execute(
+                select(Pv.config_address).where(
+                    Pv.setpoint_address.is_(None),
+                    Pv.readback_address.is_(None),
+                    Pv.config_address.in_(batch),
+                )
+            )
             existing.update({row[0] for row in result.all() if row[0]})
         return existing
 
