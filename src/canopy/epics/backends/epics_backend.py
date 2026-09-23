@@ -21,10 +21,12 @@ from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, caput, cainfo, cam
 from p4p.client.asyncio import Context as P4PContext
 
 from canopy.epics.base import (
+    ALARM_STATUS_CODES,
     Subscription,
     EventCallback,
     PVWriteFailed,
     normalize_severity,
+    alarm_status_from_name,
 )
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
@@ -88,19 +90,18 @@ def _decode_char_array(values) -> str:
 
 
 def _alarm_status(raw) -> int | None:
-    """Coerce a backend-supplied EPICS alarm status into an integer code.
+    """Coerce a backend-supplied integer alarm field into an ``int``.
 
     Parameters
     ----------
     raw : object
-        The status as reported by aioca (an augmented value's ``status``) or by
-        p4p (``alarm.status``), or ``None`` when the channel carries none.
+        An integer alarm field, such as an aioca augmented value's ``status`` or a
+        p4p ``alarm.severity``, or ``None`` when the channel carries none.
 
     Returns
     -------
     int | None
-        The integer alarm status code, or ``None`` when ``raw`` is ``None`` or
-        cannot be read as an integer.
+        The integer, or ``None`` when ``raw`` is ``None`` or cannot be read as one.
     """
     if raw is None:
         return None
@@ -116,6 +117,34 @@ def _pva_get(value, field):
         return value.get(field)
     except Exception:
         return None
+
+
+def _pva_alarm_status(value) -> int | None:
+    """Read a p4p Value's alarm as the ``menuAlarmStat`` code Channel Access reports.
+
+    A PV Access ``alarm.status`` is the Normative Types category (NO_STATUS, DEVICE,
+    DRIVER, RECORD, ...), not the Channel Access code, so a HIHI record reads as
+    DEVICE there. QSRV carries the ``menuAlarmStat`` name in ``alarm.message``
+    instead, and that is what the code is taken from.
+
+    Parameters
+    ----------
+    value : object
+        A p4p ``Value`` with an ``alarm`` sub-structure.
+
+    Returns
+    -------
+    int | None
+        The code named by ``alarm.message``; ``NO_ALARM`` when the message names
+        nothing but severity and category are both zero; otherwise ``None``, since
+        a free-text message says nothing about which status applies.
+    """
+    code = alarm_status_from_name(_pva_get(value, "alarm.message"))
+    if code is not None:
+        return code
+    if _alarm_status(_pva_get(value, "alarm.severity")) == 0 and _alarm_status(_pva_get(value, "alarm.status")) == 0:
+        return ALARM_STATUS_CODES["NO_ALARM"]
+    return None
 
 
 def _pva_kind_and_id(value) -> tuple[ValueKind, str]:
@@ -463,12 +492,13 @@ class EpicsConnector:
         value : object
             A p4p ``Value`` whose Normative-Type id selects the classification
             and whose ``alarm`` / ``timeStamp`` sub-structures carry the alarm
-            severity, alarm status and timestamp.
+            and timestamp.
 
         Returns
         -------
         PVValue
-            The classified value, alarm severity and status, and timestamp.
+            The classified value, alarm severity, the alarm status as its
+            ``menuAlarmStat`` code (see ``_pva_alarm_status``), and timestamp.
         """
         ts_ns = time.time_ns()
         severity = _pva_get(value, "alarm.severity")
@@ -501,7 +531,7 @@ class EpicsConnector:
             value=raw,
             value_kind=kind,
             severity=normalize_severity(severity),
-            alarm_status=_alarm_status(_pva_get(value, "alarm.status")),
+            alarm_status=_pva_alarm_status(value),
             ts_ns=ts_ns,
             connected=True,
             error=error,

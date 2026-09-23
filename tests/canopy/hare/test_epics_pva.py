@@ -13,6 +13,7 @@ from p4p.server.thread import SharedPV
 from canopy.epics.base import PVWriteFailed
 from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
+from canopy.epics.backends import epics_backend
 from canopy.epics.backends.epics_backend import EpicsConnector
 
 PV_NAME = "CANOPY:TEST:PVA"
@@ -55,6 +56,34 @@ async def test_pva_get(pva_server):
         assert value.alarm_status == 0
     finally:
         await conn.close()
+
+
+@pytest.mark.parametrize("message,expected", [("HIHI", 3), ("LOLO", 5), ("pump tripped", None)])
+async def test_pva_alarm_status_comes_from_the_alarm_message(pva_server, message, expected):
+    pva_server.post(9.5, severity=2, message=message)
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics", pva_timeout_s=5.0))
+    await conn.start()
+    try:
+        value = await conn.get(f"pva://{PV_NAME}")
+        assert value.value == 9.5
+        assert value.alarm_status == expected
+    finally:
+        await conn.close()
+
+
+@pytest.mark.parametrize(
+    "alarm,expected",
+    [
+        ({"alarm.severity": 2, "alarm.status": 1, "alarm.message": "HIHI"}, 3),
+        ({"alarm.severity": 1, "alarm.status": 1, "alarm.message": "LOW_ALARM"}, 6),
+        ({"alarm.severity": 0, "alarm.status": 0, "alarm.message": ""}, 0),
+        ({"alarm.severity": 2, "alarm.status": 1, "alarm.message": ""}, None),
+        ({"alarm.severity": 2, "alarm.status": 1, "alarm.message": "pump tripped"}, None),
+        ({}, None),
+    ],
+)
+def test_pva_alarm_status_reads_the_message_not_the_category(alarm, expected):
+    assert epics_backend._pva_alarm_status(alarm) == expected
 
 
 async def test_pva_monitor_delivers_updates(pva_server):
