@@ -28,6 +28,13 @@ class SquirrelConfig(BaseSettings):
             "applied in the order given; empty means no hook runs."
         ),
     )
+    restore_hook: str = Field(
+        default="",
+        description=(
+            "Retired singular form of restore_hooks. Never applied: it is read only so a "
+            "leftover CANOPY_SQUIRREL__RESTORE_HOOK is reported instead of silently ignored."
+        ),
+    )
 
     # EPICS batch I/O for snapshot create (reads) / restore (writes) over the
     # canopy.epics connector: in-flight concurrency, progress-chunk size, per-op

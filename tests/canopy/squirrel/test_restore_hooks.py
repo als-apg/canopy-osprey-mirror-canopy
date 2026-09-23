@@ -84,10 +84,14 @@ def test_con_bare_address_stays_bare():
 # --- registry --------------------------------------------------------------- #
 
 
-def _reset_registry(monkeypatch, restore_hooks: str):
+def _reset_registry(monkeypatch, restore_hooks: str, legacy_restore_hook: str = ""):
     monkeypatch.setattr(registry, "_hooks", [])
     monkeypatch.setattr(registry, "_hook_providers", None)
-    monkeypatch.setattr(registry, "get_squirrel_config", lambda: SquirrelConfig(restore_hooks=restore_hooks))
+    monkeypatch.setattr(
+        registry,
+        "get_squirrel_config",
+        lambda: SquirrelConfig(restore_hooks=restore_hooks, restore_hook=legacy_restore_hook),
+    )
 
 
 def test_registry_empty_when_unset(monkeypatch):
@@ -126,6 +130,26 @@ def test_registry_caches_on_the_provider_list(monkeypatch):
     assert registry.get_restore_hooks() is registry.get_restore_hooks()
 
 
+def test_registry_warns_that_the_legacy_variable_is_ignored(monkeypatch, caplog):
+    _reset_registry(monkeypatch, "", legacy_restore_hook="magnet_trim")
+    with caplog.at_level(logging.WARNING, logger=registry.__name__):
+        hooks = registry.get_restore_hooks()
+    assert hooks == []
+    assert registry.LEGACY_SETTING_WARNING in caplog.text
+
+
+def test_registry_is_quiet_without_the_legacy_variable(monkeypatch, caplog):
+    _reset_registry(monkeypatch, "magnet_trim")
+    with caplog.at_level(logging.WARNING, logger=registry.__name__):
+        registry.get_restore_hooks()
+    assert caplog.text == ""
+
+
+def test_legacy_variable_is_read_from_the_environment(monkeypatch):
+    monkeypatch.setenv("CANOPY_SQUIRREL__RESTORE_HOOK", "magnet_trim")
+    assert SquirrelConfig().restore_hook == "magnet_trim"
+
+
 # --- describe --------------------------------------------------------------- #
 
 
@@ -136,8 +160,16 @@ def test_describe_disabled_when_unset(monkeypatch):
         "configured": [],
         "loaded": [],
         "unknown": [],
+        "warnings": [],
         "available": ["magnet_trim", "write_to_con"],
     }
+
+
+def test_describe_reports_the_legacy_variable(monkeypatch):
+    _reset_registry(monkeypatch, "", legacy_restore_hook="magnet_trim")
+    described = registry.describe_restore_hooks()
+    assert described["status"] == "disabled"
+    assert described["warnings"] == [registry.LEGACY_SETTING_WARNING]
 
 
 def test_describe_active_when_all_known(monkeypatch):

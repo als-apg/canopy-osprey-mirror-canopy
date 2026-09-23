@@ -57,6 +57,29 @@ def _configured_providers(config: SquirrelConfig) -> list[str]:
     return list(dict.fromkeys(config.restore_hooks_list))
 
 
+LEGACY_SETTING_WARNING = (
+    "CANOPY_SQUIRREL__RESTORE_HOOK (singular) is set but no longer read; "
+    "list the providers in CANOPY_SQUIRREL__RESTORE_HOOKS instead"
+)
+
+
+def _config_warnings(config: SquirrelConfig) -> list[str]:
+    """Return operator-facing problems with a config that would otherwise pass silently.
+
+    Parameters
+    ----------
+    config : SquirrelConfig
+        The squirrel configuration to inspect.
+
+    Returns
+    -------
+    list[str]
+        ``LEGACY_SETTING_WARNING`` when the retired singular variable is set, since
+        it no longer selects anything; empty otherwise.
+    """
+    return [LEGACY_SETTING_WARNING] if config.restore_hook.strip() else []
+
+
 def get_restore_hooks() -> list[RestoreHook]:
     """Return the configured hook singletons, built once per provider list.
 
@@ -84,6 +107,8 @@ def get_restore_hooks() -> list[RestoreHook]:
 
     _hooks = hooks
     _hook_providers = providers
+    for warning in _config_warnings(config):
+        logger.warning(warning)
     logger.info("Restore hooks initialized: %s", [type(hook).__name__ for hook in hooks])
     return _hooks
 
@@ -102,9 +127,12 @@ def describe_restore_hooks() -> dict[str, Any]:
         every configured key is registered, ``"unknown"`` when none is, ``"partial"``
         when some are. ``configured`` — the configured keys in order. ``loaded`` —
         those that will run. ``unknown`` — those that match no provider.
+        ``warnings`` — configuration problems that change nothing but deserve
+        attention, such as the retired singular variable still being set.
         ``available`` — every registered provider key, sorted.
     """
-    configured = _configured_providers(get_squirrel_config())
+    config = get_squirrel_config()
+    configured = _configured_providers(config)
     loaded = [name for name in configured if name in RESTORE_HOOK_PROVIDERS]
     unknown = [name for name in configured if name not in RESTORE_HOOK_PROVIDERS]
 
@@ -122,5 +150,6 @@ def describe_restore_hooks() -> dict[str, Any]:
         "configured": configured,
         "loaded": loaded,
         "unknown": unknown,
+        "warnings": _config_warnings(config),
         "available": sorted(RESTORE_HOOK_PROVIDERS),
     }
