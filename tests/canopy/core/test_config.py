@@ -3,7 +3,8 @@
 from canopy.core.config import Settings, get_settings
 
 
-def test_log_level_defaults_to_info():
+def test_log_level_defaults_to_info(monkeypatch):
+    monkeypatch.delenv("CANOPY_LOG_LEVEL", raising=False)
     assert Settings().log_level == "INFO"
 
 
