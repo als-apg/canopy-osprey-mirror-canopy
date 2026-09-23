@@ -7,32 +7,46 @@ from pydantic import ValidationError
 
 from canopy.epics.base import PVWriteFailed
 from canopy.epics.config import EpicsConfig
+from canopy.epics.backends import simulation
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.backends.simulation import SimulationConnector, _parse_fail_pvs
 
 
-def test_status_matches_severity():
-    assert SimulationConnector._status_for(AlarmSeverity.NO_ALARM) == 0
-    assert SimulationConnector._status_for(AlarmSeverity.MINOR) == 4
-    assert SimulationConnector._status_for(AlarmSeverity.MAJOR) == 3
-    assert SimulationConnector._status_for(AlarmSeverity.INVALID) == 17
+@pytest.mark.parametrize(
+    "v,severity,status",
+    [
+        (9.5, AlarmSeverity.MAJOR, 3),
+        (-9.5, AlarmSeverity.MAJOR, 5),
+        (8.0, AlarmSeverity.MINOR, 4),
+        (-8.0, AlarmSeverity.MINOR, 6),
+        (7.0, AlarmSeverity.NO_ALARM, 0),
+        (-7.0, AlarmSeverity.NO_ALARM, 0),
+        (0.0, AlarmSeverity.NO_ALARM, 0),
+    ],
+)
+def test_scalar_alarm_status_follows_severity_and_sign(v, severity, status):
+    assert SimulationConnector._alarm_for(v) == (severity, status)
 
 
-def test_every_severity_has_a_status():
-    assert {SimulationConnector._status_for(s) for s in AlarmSeverity} == {0, 3, 4, 17}
-
-
-async def test_scalar_get_carries_status_matching_its_severity():
+async def test_scalar_get_carries_the_alarm_for_its_value():
     conn = SimulationConnector.from_config(EpicsConfig())
     value = await conn.get("SIM:X")
-    assert value.alarm_status == SimulationConnector._status_for(value.severity)
+    assert (value.severity, value.alarm_status) == SimulationConnector._alarm_for(value.value)
 
 
 async def test_every_value_kind_carries_a_status():
     conn = SimulationConnector.from_config(EpicsConfig())
     for pv in ("SIM:X", "SIM:STATE:ENUM", "SIM:TRACE:WAVEFORM", "SIM:MSG:STR", "SIM:DATA:TABLE"):
         value = await conn.get(pv)
-        assert value.alarm_status == SimulationConnector._status_for(value.severity), pv
+        assert isinstance(value.alarm_status, int), pv
+        assert (value.alarm_status == 0) == (value.severity is AlarmSeverity.NO_ALARM), pv
+
+
+@pytest.mark.parametrize("clock,severity,status", [(6.0, AlarmSeverity.MAJOR, 7), (0.0, AlarmSeverity.NO_ALARM, 0)])
+def test_enum_fault_reports_state_alarm(monkeypatch, clock, severity, status):
+    monkeypatch.setattr(simulation.time, "monotonic", lambda: clock)
+    value = SimulationConnector()._value_for("SIM:STATE:ENUM")
+    assert (value.severity, value.alarm_status) == (severity, status)
 
 
 async def test_written_value_reports_no_alarm_status():
@@ -74,6 +88,21 @@ async def test_named_pv_fails_even_at_rate_zero():
     assert "SIM:BAD" in str(excinfo.value)
     await conn.put("SIM:GOOD", 1.0)
     assert (await conn.get("SIM:GOOD")).value == 1.0
+
+
+@pytest.mark.parametrize(
+    "configured,written",
+    [
+        ("SIM:BAD", "ca://SIM:BAD"),
+        ("SIM:BAD", "pva://SIM:BAD"),
+        ("ca://SIM:BAD", "SIM:BAD"),
+        ("PVA://SIM:BAD", "ca://SIM:BAD"),
+    ],
+)
+async def test_named_pv_matches_regardless_of_protocol_prefix(configured, written):
+    conn = SimulationConnector(put_fail_pvs=frozenset({configured}))
+    with pytest.raises(PVWriteFailed):
+        await conn.put(written, 1.0)
 
 
 async def _put_outcomes(conn: SimulationConnector, count: int = 20) -> list[bool]:
@@ -130,6 +159,20 @@ def test_failure_injection_defaults_to_off():
     assert cfg.sim_put_error_rate == 0.0
     assert cfg.sim_put_fail_pvs == ""
     assert cfg.sim_seed is None
+
+
+def test_empty_env_values_keep_the_defaults(monkeypatch):
+    for name in ("SIM_PUT_ERROR_RATE", "SIM_PUT_FAIL_PVS", "SIM_SEED"):
+        monkeypatch.setenv(f"CANOPY_EPICS__{name}", "")
+    cfg = EpicsConfig()
+    assert cfg.sim_put_error_rate == 0.0
+    assert cfg.sim_put_fail_pvs == ""
+    assert cfg.sim_seed is None
+
+
+def test_seed_is_read_from_the_environment(monkeypatch):
+    monkeypatch.setenv("CANOPY_EPICS__SIM_SEED", "42")
+    assert EpicsConfig().sim_seed == 42
 
 
 @pytest.mark.parametrize("raw,expected", [("", set()), ("A", {"A"}), (" A , B ,,", {"A", "B"}), (",", set())])

@@ -11,6 +11,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class EpicsConfig(BaseSettings):
     """Settings for the EPICS connector package.
 
+    An empty environment value (``CANOPY_EPICS__SIM_SEED=``, as the ``.env``
+    templates show it) is ignored and leaves the field at its default, rather than
+    failing validation for a typed field.
+
     Attributes
     ----------
     sim_put_error_rate : float
@@ -18,7 +22,8 @@ class EpicsConfig(BaseSettings):
         ``0.0`` never fails a write; ``1.0`` fails every one.
     sim_put_fail_pvs : str
         Comma-separated PV names whose simulation-backend ``put`` always fails,
-        regardless of ``sim_put_error_rate``.
+        regardless of ``sim_put_error_rate``. A ``ca://`` / ``pva://`` prefix is
+        ignored when matching.
     sim_seed : int | None
         Seed for the simulation backend's failure RNG, so a sequence of writes
         fails reproducibly. ``None`` seeds from the system entropy source.
@@ -28,6 +33,7 @@ class EpicsConfig(BaseSettings):
         env_prefix="CANOPY_EPICS__",
         env_nested_delimiter="__",
         env_file=".env",
+        env_ignore_empty=True,
         extra="ignore",
     )
 

@@ -12,7 +12,8 @@ exercised end to end:
 
 Each PV's phase is a stable function of its name, so values are deterministic per
 process. Severity thresholds let the alarm-styling path be exercised too, and every
-value carries the EPICS alarm status code that matches its severity.
+value carries the EPICS alarm status an IOC would report with it: HIHI / HIGH above
+the thresholds, LOLO / LOW below them, and STATE for the enum's fault choice.
 
 Writes can be made to fail on demand — for a named set of PVs, or at a configured
 rate drawn from a seeded RNG — so a caller's partial-failure handling can be
@@ -26,19 +27,20 @@ import random
 import asyncio
 from dataclasses import dataclass
 
-from canopy.epics.base import Subscription, EventCallback, PVWriteFailed
+from canopy.epics.base import (
+    ALARM_STATUS_CODES,
+    Subscription,
+    EventCallback,
+    PVWriteFailed,
+)
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
+from canopy.epics.pv_protocol import strip_protocol_prefix
 
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
 _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
 
-_STATUS_FOR_SEVERITY: dict[AlarmSeverity, int] = {
-    AlarmSeverity.NO_ALARM: 0,
-    AlarmSeverity.MINOR: 4,
-    AlarmSeverity.MAJOR: 3,
-    AlarmSeverity.INVALID: 17,
-}
+_NO_ALARM_STATUS = ALARM_STATUS_CODES["NO_ALARM"]
 
 
 def _parse_fail_pvs(raw: str) -> frozenset[str]:
@@ -92,7 +94,8 @@ class SimulationConnector:
         put_error_rate : float, optional
             Fraction of writes to fail, in ``[0.0, 1.0]``.
         put_fail_pvs : frozenset[str], optional
-            PV names whose writes always fail, whatever `put_error_rate` is.
+            PV names whose writes always fail, whatever `put_error_rate` is. Matched
+            without their ``ca://`` / ``pva://`` prefix, on both sides.
         seed : int | None, optional
             Seed for this instance's private failure RNG. `None` seeds from the
             system entropy source.
@@ -103,7 +106,7 @@ class SimulationConnector:
         self._tasks: set[asyncio.Task] = set()
         self._overrides: dict[str, PVWriteValue] = {}
         self._put_error_rate = put_error_rate
-        self._put_fail_pvs = frozenset(put_fail_pvs)
+        self._put_fail_pvs = frozenset(strip_protocol_prefix(name) for name in put_fail_pvs)
         self._rng = random.Random(seed)
 
     @classmethod
@@ -174,21 +177,27 @@ class SimulationConnector:
         return AlarmSeverity.NO_ALARM
 
     @staticmethod
-    def _status_for(severity: AlarmSeverity) -> int:
-        """The EPICS alarm status code a simulated severity is reported with.
+    def _alarm_for(v: float) -> tuple[AlarmSeverity, int]:
+        """The severity and alarm status an IOC would report with a simulated scalar.
 
         Parameters
         ----------
-        severity : AlarmSeverity
-            Severity of the generated value.
+        v : float
+            The generated value.
 
         Returns
         -------
-        int
-            NO_ALARM (0) for a healthy value, HIGH (4) for MINOR, HIHI (3) for
-            MAJOR and UDF (17) for INVALID.
+        tuple[AlarmSeverity, int]
+            MAJOR with HIHI or LOLO past the outer threshold, MINOR with HIGH or LOW
+            past the inner one, NO_ALARM otherwise. The status direction follows the
+            sign of ``v``.
         """
-        return _STATUS_FOR_SEVERITY[severity]
+        severity = SimulationConnector._severity_for(abs(v))
+        if severity is AlarmSeverity.MAJOR:
+            return severity, ALARM_STATUS_CODES["HIHI" if v > 0 else "LOLO"]
+        if severity is AlarmSeverity.MINOR:
+            return severity, ALARM_STATUS_CODES["HIGH" if v > 0 else "LOW"]
+        return severity, _NO_ALARM_STATUS
 
     def _value_for(self, pv: str) -> PVValue:
         """Generate the current value of a simulated PV.
@@ -214,18 +223,21 @@ class SimulationConnector:
                 value=self._overrides[pv],
                 value_kind=kind,
                 severity=AlarmSeverity.NO_ALARM,
-                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
+                alarm_status=_NO_ALARM_STATUS,
                 ts_ns=now,
             )
         if kind is ValueKind.ENUM:
             idx = int(time.monotonic() / 2) % len(_ENUM_CHOICES)
-            severity = AlarmSeverity.MAJOR if _ENUM_CHOICES[idx] == "FAULT" else AlarmSeverity.NO_ALARM
+            if _ENUM_CHOICES[idx] == "FAULT":
+                severity, status = AlarmSeverity.MAJOR, ALARM_STATUS_CODES["STATE"]
+            else:
+                severity, status = AlarmSeverity.NO_ALARM, _NO_ALARM_STATUS
             return PVValue(
                 pv=pv,
                 value=idx,
                 value_kind=kind,
                 severity=severity,
-                alarm_status=self._status_for(severity),
+                alarm_status=status,
                 ts_ns=now,
             )
         if kind is ValueKind.WAVEFORM:
@@ -237,7 +249,7 @@ class SimulationConnector:
                 value=wf,
                 value_kind=kind,
                 severity=AlarmSeverity.NO_ALARM,
-                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
+                alarm_status=_NO_ALARM_STATUS,
                 ts_ns=now,
             )
         if kind is ValueKind.STRING:
@@ -246,7 +258,7 @@ class SimulationConnector:
                 value=f"sample={self._sine(pv):+.3f}",
                 value_kind=kind,
                 severity=AlarmSeverity.NO_ALARM,
-                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
+                alarm_status=_NO_ALARM_STATUS,
                 ts_ns=now,
             )
         if kind is ValueKind.TABLE:
@@ -261,17 +273,17 @@ class SimulationConnector:
                 value=table,
                 value_kind=kind,
                 severity=AlarmSeverity.NO_ALARM,
-                alarm_status=self._status_for(AlarmSeverity.NO_ALARM),
+                alarm_status=_NO_ALARM_STATUS,
                 ts_ns=now,
             )
         v = self._sine(pv)
-        severity = self._severity_for(abs(v))
+        severity, status = self._alarm_for(v)
         return PVValue(
             pv=pv,
             value=v,
             value_kind=kind,
             severity=severity,
-            alarm_status=self._status_for(severity),
+            alarm_status=status,
             ts_ns=now,
         )
 
@@ -298,10 +310,11 @@ class SimulationConnector:
         Raises
         ------
         PVWriteFailed
-            When `pv` is one of the configured always-failing PVs, or when the
-            instance's RNG draws below the configured put error rate.
+            When `pv`, ignoring any ``ca://`` / ``pva://`` prefix, is one of the
+            configured always-failing PVs, or when the instance's RNG draws below the
+            configured put error rate.
         """
-        if pv in self._put_fail_pvs or self._rng.random() < self._put_error_rate:
+        if strip_protocol_prefix(pv) in self._put_fail_pvs or self._rng.random() < self._put_error_rate:
             raise PVWriteFailed(f"simulated put failure for {pv}")
         self._overrides[pv] = value
 
