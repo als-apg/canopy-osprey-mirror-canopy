@@ -31,7 +31,9 @@
   },
 
   "qtPropMap": {
-    "channel": { "to": "pv", "transform": "stripProtocol" }
+    "channel": { "to": "pv", "transform": "stripProtocol" },
+    "onColor": { "to": "onColor" },
+    "offColor": { "to": "offColor" }
   },
 
   "inspectorSchema": {

@@ -41,10 +41,19 @@
 
   "qtPropMap": {
     "channel": { "to": "pv", "transform": "stripProtocol" },
+    "readbackChannel": { "to": "readbackPV", "transform": "stripProtocol" },
     "pressValue": { "to": "pressValue" },
     "releaseValue": { "to": "releaseValue" },
     "text": { "to": "label" },
-    "fontSize": { "to": "fontSize" }
+    "onLabel": { "to": "onLabel" },
+    "offLabel": { "to": "offLabel" },
+    "buttonType": { "to": "buttonType" },
+    "fontSize": { "to": "fontSize" },
+    "labelType": { "to": "labelType" },
+    "onColor": { "to": "onColor" },
+    "offColor": { "to": "offColor" },
+    "foregroundColor": { "to": "foregroundColor" },
+    "backgroundColor": { "to": "backgroundColor" }
   },
 
   "inspectorSchema": {

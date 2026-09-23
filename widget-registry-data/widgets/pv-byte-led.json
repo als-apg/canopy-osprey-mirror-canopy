@@ -39,7 +39,9 @@
     "channel": { "to": "pv", "transform": "stripProtocol" },
     "numBits": { "to": "numBits" },
     "shift": { "to": "shift" },
-    "orientation": { "to": "orientation", "transform": "qtOrientation" }
+    "orientation": { "to": "orientation", "transform": "qtOrientation" },
+    "onColor": { "to": "onColor" },
+    "offColor": { "to": "offColor" }
   },
 
   "inspectorSchema": {
