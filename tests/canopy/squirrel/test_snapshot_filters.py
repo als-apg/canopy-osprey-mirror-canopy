@@ -37,7 +37,7 @@ def repo() -> _RecordingSnapshotRepo:
 @pytest.fixture
 def service(repo) -> SnapshotService:
     """A service whose repositories never touch a session."""
-    svc = SnapshotService(session=None, restore_hook=object())
+    svc = SnapshotService(session=None)
     svc.snapshot_repo = repo
     svc.meta_pv_repo = _NoMetaPvs()
     return svc
