@@ -5,14 +5,32 @@ is private implementation. Each function is a thin facade over ``FormulaService`
 
 ``bind()`` wires the service singleton at app startup; ``get_service()`` is exposed
 for ``dependencies.py``. Tests can re-bind a fake service freely.
+
+``make_offline_validator()`` builds a standalone service for processes that only
+parse formulas (the canopy_mcp lint pass): it never reads data, so it needs no
+Vole and no app startup.
 """
 
 from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
+from canopy.fox.config import FoxConfig
+from canopy.fox.ports import NullDataSource
 from canopy.fox.services.formula_service import FormulaService
+from canopy.fox.services.parser import Parser
 from canopy.fox.services.subscription_manager import SubscriptionManager
 
 _service: FormulaService | None = None
 _sub_manager: SubscriptionManager | None = None
+
+
+def make_offline_validator(config: FoxConfig | None = None) -> FormulaService:
+    """A ``FormulaService`` for parse-only use, independent of the bound singleton.
+
+    Its data source raises on any read, so only ``validate()`` is meaningful;
+    ``evaluate()`` fails with ``FormulaInputMissing``.
+    """
+    config = config or FoxConfig()
+    parser = Parser(max_expression_len=config.max_expression_len)
+    return FormulaService(NullDataSource(), parser, config)
 
 
 def bind(service: FormulaService | None) -> None:
