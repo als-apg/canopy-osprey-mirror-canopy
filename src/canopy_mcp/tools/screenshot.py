@@ -26,7 +26,9 @@ from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
 from playwright.async_api import Error as PlaywrightError
 
-from canopy_mcp.store import DraftStore, InvalidDraftId
+from canopy_mcp.config import get_settings
+from canopy_mcp.store import DraftNotFound, DraftStore, InvalidDraftId
+from canopy_mcp.tools import drafts
 from canopy_mcp.server import mcp
 from canopy_mcp.browser import Browser, BrowserNotStarted, get_browser
 from canopy_mcp.urls import embed_path
@@ -74,17 +76,48 @@ def png_size(data: bytes) -> tuple[int, int]:
     return width, height
 
 
+MAX_VIEWPORT = 8192
+
+
+def viewport_for(size: Any, default: dict[str, int]) -> dict[str, int]:
+    """The viewport to render a screen of ``size`` (its ``metadata.size``) in.
+
+    Never smaller than ``default`` on either axis, so a small screen renders
+    as before; never larger than :data:`MAX_VIEWPORT`; a missing or malformed
+    size is ``default``. A screen wider or taller than the default viewport
+    would otherwise be clipped at the viewport edge, since the viewer sizes
+    the screen root to the document and the element screenshot cannot reach
+    past what was laid out.
+    """
+    out = dict(default)
+    if not isinstance(size, dict):
+        return out
+    for axis in ("width", "height"):
+        value = size.get(axis)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        out[axis] = max(out[axis], min(int(value), MAX_VIEWPORT))
+    return out
+
+
 async def capture(
     browser: Browser,
     draft_id: str,
     macros: dict[str, str] | None = None,
     *,
+    size: dict[str, Any] | None = None,
     settle_timeout_s: float = SETTLE_TIMEOUT_S,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Render ``draft_id`` and return ``(png, {width, height, pv})``."""
+    """Render ``draft_id`` and return ``(png, {width, height, pv})``.
+
+    ``size`` is the screen's ``metadata.size``; the page is sized to fit it.
+    """
     url = embed_url(browser.base_url, draft_id, macros)
     async with browser.context() as context:
         page = await context.new_page()
+        viewport = viewport_for(size, browser.viewport)
+        if viewport != browser.viewport:
+            await page.set_viewport_size(viewport)
         response = await page.goto(url, wait_until="load", timeout=NAVIGATION_TIMEOUT_MS)
         if response is not None and not response.ok:
             raise ToolError(f"viewer answered HTTP {response.status} for {url}")
@@ -95,6 +128,19 @@ async def capture(
         data = await root.screenshot(type="png") if root is not None else await page.screenshot(type="png")
     width, height = png_size(data)
     return data, {"width": width, "height": height, "pv": pv_state(status)}
+
+
+def _draft_size(draft_id: str) -> dict[str, Any] | None:
+    """``metadata.size`` of draft ``draft_id``, or ``None`` when it has none or does not exist."""
+    try:
+        doc, _ = drafts.get_store(get_settings()).read(draft_id)
+    except (DraftNotFound, InvalidDraftId, OSError, ValueError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    meta = doc.get("metadata")
+    size = meta.get("size") if isinstance(meta, dict) else None
+    return size if isinstance(size, dict) else None
 
 
 @mcp.tool
@@ -109,7 +155,7 @@ async def screenshot(id: str, macros: dict[str, str] | None = None) -> ToolResul
     """
     try:
         browser = get_browser()
-        data, info = await capture(browser, id, macros)
+        data, info = await capture(browser, id, macros, size=_draft_size(id))
     except InvalidDraftId as exc:
         raise ToolError(str(exc)) from exc
     except BrowserNotStarted as exc:

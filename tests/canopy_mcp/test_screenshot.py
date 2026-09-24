@@ -29,6 +29,7 @@ from canopy_mcp.tools.screenshot import (
     pv_state,
     png_size,
     embed_url,
+    viewport_for,
 )
 
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
@@ -79,6 +80,21 @@ def test_embed_url_rejects_invalid_ids(bad: str) -> None:
 )
 def test_pv_state(status: str | None, pv: str) -> None:
     assert pv_state(status) == pv
+
+
+@pytest.mark.parametrize(
+    ("size", "expected"),
+    [
+        (None, {"width": 1280, "height": 800}),
+        ({"width": 640, "height": 400}, {"width": 1280, "height": 800}),
+        ({"width": 2410, "height": 900}, {"width": 2410, "height": 900}),
+        ({"width": 2410}, {"width": 2410, "height": 800}),
+        ({"width": 99999, "height": True}, {"width": 8192, "height": 800}),
+        ({"width": "wide", "height": 1000.0}, {"width": 1280, "height": 1000}),
+    ],
+)
+def test_viewport_for_fits_the_screen(size, expected) -> None:
+    assert viewport_for(size, {"width": 1280, "height": 800}) == expected
 
 
 def test_png_size_reads_ihdr() -> None:
