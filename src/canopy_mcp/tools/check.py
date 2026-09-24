@@ -1,0 +1,120 @@
+"""The ``check`` tool: every check pass over one Screen-IR document.
+
+A document is checked either as given (``screen``) or as stored (``draft_id``
+alone). A given document may also name a ``draft_id``: its refs then resolve in
+that draft's directory, as they will once it is saved there, and the stored
+copy is not read. The result groups findings by pass:
+
+* ``schema`` -- the vendored Screen-IR JSON Schema (:mod:`canopy_mcp.check.schema`);
+* ``semantic`` -- the semantic pass plus draft-ref resolution
+  (:mod:`canopy_mcp.check.semantic`, :mod:`canopy_mcp.check.refs`);
+* ``lint`` -- catalog props, in-process Fox formulas and Raccoon PV lookup
+  (:mod:`canopy_mcp.check.lint`);
+* ``skipped`` -- checks that could not run, e.g. ``{check: 'raccoon', reason}``.
+
+Every finding carries ``nodeId``, ``code``, ``path`` (and ``docId`` for a node
+of an embedded document). Write tools call :func:`run_check` directly and gate
+on the error-severity findings it returns.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+import httpx
+from fastmcp.exceptions import ToolError
+
+from canopy_mcp.catalog import Catalog, CatalogError, ensure_catalog
+from canopy_mcp.check.findings import Finding
+from canopy_mcp.check.lint import check_lint
+from canopy_mcp.check.refs import check_refs
+from canopy_mcp.check.schema import check_schema
+from canopy_mcp.check.semantic import check_semantic
+from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.server import mcp
+from canopy_mcp.store import DraftStore
+from canopy_mcp.tools._common import read_draft, validate_id
+
+
+@dataclass
+class CheckResult:
+    """Findings per pass, and the checks that could not run."""
+
+    schema: list[Finding] = field(default_factory=list)
+    semantic: list[Finding] = field(default_factory=list)
+    lint: list[Finding] = field(default_factory=list)
+    skipped: list[dict[str, str]] = field(default_factory=list)
+
+    @property
+    def findings(self) -> list[Finding]:
+        """Every finding, schema then semantic then lint."""
+        return [*self.schema, *self.semantic, *self.lint]
+
+    @property
+    def errors(self) -> list[Finding]:
+        """The error-severity findings (what a write refuses on)."""
+        return [f for f in self.findings if f.severity == "error"]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": [f.to_dict() for f in self.schema],
+            "semantic": [f.to_dict() for f in self.semantic],
+            "lint": [f.to_dict() for f in self.lint],
+            "skipped": [dict(s) for s in self.skipped],
+        }
+
+
+async def run_check(
+    screen: Any = None,
+    draft_id: str | None = None,
+    *,
+    store: DraftStore | None = None,
+    catalog: Catalog | None = None,
+    client: httpx.AsyncClient | None = None,
+    settings: Settings | None = None,
+) -> CheckResult:
+    """Run every pass on ``screen``, or on the stored draft ``draft_id`` when no screen is given.
+
+    Raises :class:`ToolError` when neither argument is given, the id is invalid,
+    the stored draft does not exist (or is not JSON), or the widget catalog
+    cannot be loaded.
+    """
+    if screen is None and draft_id is None:
+        raise ToolError("check needs a screen document or a draft_id")
+    settings = settings or get_settings()
+    store = store or DraftStore(settings.drafts_dir)
+    if draft_id is not None:
+        validate_id(draft_id)
+    if screen is None:
+        screen, _ = read_draft(store, draft_id)  # type: ignore[arg-type]
+    if catalog is None:
+        try:
+            catalog = await ensure_catalog(settings, client)
+        except CatalogError as exc:
+            raise ToolError(f"widget catalog unavailable: {exc}") from exc
+
+    result = CheckResult()
+    result.schema = check_schema(screen)
+    result.semantic = check_semantic(screen) + check_refs(screen, store, draft_id)
+    lint = await check_lint(screen, catalog, client=client, settings=settings)
+    result.lint = lint.findings
+    result.skipped = lint.skipped
+    return result
+
+
+@mcp.tool
+async def check(screen: dict[str, Any] | None = None, draft_id: str | None = None) -> dict[str, Any]:
+    """Check a Screen-IR document without saving it: schema, semantic, ref and lint findings.
+
+    Pass exactly one source: ``screen`` (a document) or ``draft_id`` (a stored
+    draft). With ``screen``, ``draft_id`` is optional and only sets the
+    directory its ``embedded-display``/``open_display`` refs resolve in.
+
+    Returns ``{schema, semantic, lint, skipped}``: each finding has ``nodeId``,
+    ``code``, ``path`` (JSON pointer), ``severity``, ``message`` and, for a node
+    inside an embedded screen, ``docId``. ``skipped`` lists checks that could
+    not run (e.g. the PV directory was unreachable), so an empty finding list
+    there is not proof the PVs exist. Errors block saving; warnings do not.
+    """
+    return (await run_check(screen, draft_id)).to_dict()

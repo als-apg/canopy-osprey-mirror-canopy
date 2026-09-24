@@ -1,0 +1,235 @@
+{
+  "text-label": {
+    "consumes": [
+      "text",
+      "label",
+      "foregroundColor",
+      "backgroundColor",
+      "borderColor",
+      "fontSize",
+      "fontFamily"
+    ],
+    "verbatim": false
+  },
+  "pv-label": {
+    "consumes": [
+      "pv",
+      "text",
+      "format",
+      "precision",
+      "showUnits",
+      "precisionFromPV",
+      "foregroundColor",
+      "backgroundColor",
+      "borderColor",
+      "fontSize",
+      "fontFamily"
+    ],
+    "verbatim": false
+  },
+  "pv-text-input": {
+    "consumes": [
+      "pv",
+      "confirmOnWrite",
+      "confirmMessage"
+    ],
+    "verbatim": false
+  },
+  "pv-button": {
+    "consumes": [
+      "pv",
+      "readbackPV",
+      "buttonType",
+      "label",
+      "onLabel",
+      "offLabel",
+      "pressValue",
+      "releaseValue"
+    ],
+    "verbatim": false
+  },
+  "regular-button": {
+    "consumes": [
+      "label",
+      "pressValue",
+      "releaseValue"
+    ],
+    "verbatim": false
+  },
+  "related-display-button": {
+    "consumes": [
+      "label",
+      "file",
+      "macros"
+    ],
+    "verbatim": false
+  },
+  "shell-command-button": {
+    "consumes": [
+      "label",
+      "command",
+      "showIcon"
+    ],
+    "verbatim": false
+  },
+  "pv-checkbox": {
+    "consumes": [
+      "pv",
+      "label"
+    ],
+    "verbatim": false
+  },
+  "pv-enum-combobox": {
+    "consumes": [
+      "pv"
+    ],
+    "verbatim": false
+  },
+  "pv-slider": {
+    "consumes": [
+      "pv",
+      "min",
+      "max",
+      "orientation",
+      "showValue",
+      "increment",
+      "showScale",
+      "limitsFromPV"
+    ],
+    "verbatim": false
+  },
+  "pv-progress-bar": {
+    "consumes": [
+      "pv",
+      "min",
+      "max",
+      "orientation"
+    ],
+    "verbatim": false
+  },
+  "pv-byte-led": {
+    "consumes": [
+      "pv",
+      "numBits",
+      "shift",
+      "bigEndian",
+      "onColor",
+      "offColor"
+    ],
+    "verbatim": false
+  },
+  "pv-led": {
+    "consumes": [
+      "pv",
+      "bit",
+      "onColor",
+      "offColor"
+    ],
+    "verbatim": false
+  },
+  "image-view": {
+    "consumes": [
+      "src",
+      "stretchMode"
+    ],
+    "verbatim": false
+  },
+  "frame": {
+    "consumes": [],
+    "verbatim": false
+  },
+  "qwidget-container": {
+    "consumes": [],
+    "verbatim": false
+  },
+  "group-box": {
+    "consumes": [
+      "title"
+    ],
+    "verbatim": false
+  },
+  "scroll-area": {
+    "consumes": [],
+    "verbatim": false
+  },
+  "tabs": {
+    "consumes": [],
+    "verbatim": false
+  },
+  "rectangle": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "ellipse": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "arc": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "line": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "polygon": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "group": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-toggle": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-radio-group": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-spinbox": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-tabs": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-meter": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-gauge": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-tank": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "pv-thermometer": {
+    "consumes": [],
+    "verbatim": true
+  },
+  "waveform-plot": {
+    "consumes": [
+      "title",
+      "curves",
+      "yAxes",
+      "xLabels"
+    ],
+    "verbatim": false
+  },
+  "absolute-canvas": {
+    "consumes": [],
+    "verbatim": false
+  },
+  "embedded-display": {
+    "consumes": [
+      "file",
+      "macros"
+    ],
+    "verbatim": false
+  }
+}
