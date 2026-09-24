@@ -12,9 +12,11 @@ Keys are defined entirely by one environment variable:
 CANOPY_API_KEYS="<token>:<scope>[+<scope>][,<token>:<scope>...]"
 ```
 
-- Scopes are `read` and `write`. `read` covers GET requests and WebSocket
-  connections; `write` covers the endpoints that change something —
-  setting a PV, saving a snapshot, storing a config.
+- Scopes are `read` and `write`. `read` covers everything that doesn't change
+  state — GET requests, WebSocket connections, and the POST-based conversion
+  and validation endpoints (converter, fox, beaver) that compute a result
+  without persisting anything. `write` covers the endpoints that change
+  something — setting a PV, saving a snapshot, storing a config.
 - Clients send the token in the `X-API-Key` header. WebSocket endpoints also
   accept `?api_key=<token>` for clients that cannot set headers.
 - The variable is parsed **once, at process startup**, into an in-memory
@@ -151,8 +153,14 @@ registered with whatever scope it did recognize. Check for these after any
 change to the secret:
 
 ```bash
-docker logs canopy-<instance>-api --tail 50 | grep -i "api key"
+docker logs canopy-<instance>-api --since 10m | grep CANOPY_API_KEYS
 ```
+
+The container's healthcheck hits `/health` every 10s, so a plain `--tail 50`
+scrolls the startup summary out of view within minutes of boot — use
+`--since` (anchored to the deploy time) instead, or reach for Actions ->
+`Container Host Maintenance` -> `app-logs` (raise `log_tail`) if you're
+working from CI rather than the host.
 
 Then confirm end to end, from a client's point of view:
 
@@ -167,7 +175,7 @@ curl -H "X-API-Key: <token>" http://localhost:<API_PORT>/hare/v1/health/summary
 curl -H "X-API-Key: not-a-real-token" http://localhost:<API_PORT>/hare/v1/health/summary
 ```
 
-A key with the wrong scope returns `401` with code `insufficient_read_access`
+A key with the wrong scope returns `403` with code `insufficient_read_access`
 or `insufficient_write_access`, which distinguishes "unknown token" from
 "known token, not allowed here".
 
