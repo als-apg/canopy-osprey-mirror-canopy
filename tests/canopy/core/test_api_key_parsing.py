@@ -7,7 +7,9 @@ its presence is part of the deployment contract, not an implementation detail.
 
 import logging
 
-from canopy.core.security import EnvKeyRegistry
+import canopy.core.security as security
+from canopy.core.config import get_settings
+from canopy.core.security import EnvKeyRegistry, get_registry, bind_key_registry
 
 
 class TestEnvKeyRegistryParsing:
@@ -91,3 +93,25 @@ class TestEnvKeyRegistryParsing:
             EnvKeyRegistry("")
 
         assert "every gated endpoint will return 401" in caplog.text
+
+
+class TestKeyRegistryBinding:
+    def teardown_method(self):
+        security._registry = None
+
+    def test_get_registry_does_not_clobber_a_bound_registry(self):
+        fake = EnvKeyRegistry("fake:read")
+        bind_key_registry(fake)
+
+        assert get_registry() is fake
+
+    def test_get_registry_builds_default_when_unbound(self, monkeypatch):
+        monkeypatch.setenv("CANOPY_API_KEYS", "viewer:read")
+        get_settings.cache_clear()
+        security._registry = None
+
+        registry = get_registry()
+
+        assert registry.get("viewer") is not None
+
+        get_settings.cache_clear()

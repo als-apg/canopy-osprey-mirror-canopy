@@ -102,12 +102,13 @@ _registry: KeyRegistry | None = None
 
 
 def bind_key_registry(registry: KeyRegistry) -> None:
-    """Wire a registry. Called once at app startup; tests can re-bind freely."""
+    """Wire a registry directly. Tests use this to install a fake; app startup uses `get_registry` instead."""
     global _registry
     _registry = registry
 
 
-def _get_registry() -> KeyRegistry:
+def get_registry() -> KeyRegistry:
+    """Return the bound registry, building the default from settings on first use."""
     global _registry
     if _registry is None:
         _registry = EnvKeyRegistry(get_settings().api_keys)
@@ -120,7 +121,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 def get_api_key(token: Annotated[str | None, Security(api_key_header)]) -> APIKey:
     if not token:
         raise InvalidAPIKey("Missing X-API-Key header")
-    key = _get_registry().get(token)
+    key = get_registry().get(token)
     if key is None:
         raise InvalidAPIKey("Invalid API key")
     return key
@@ -139,7 +140,7 @@ def get_optional_api_key(token: Annotated[str | None, Security(api_key_header)])
     """
     if not token:
         return None
-    return _get_registry().get(token)
+    return get_registry().get(token)
 
 
 OptionalAPIKeyDep = Annotated[APIKey | None, Security(get_optional_api_key)]
@@ -167,7 +168,7 @@ async def ws_get_api_key(websocket: WebSocket) -> APIKey:
             code=status.WS_1008_POLICY_VIOLATION,
             reason=f"{ErrorCode.INVALID_API_KEY.value}: missing X-API-Key",
         )
-    key = _get_registry().get(token)
+    key = get_registry().get(token)
     if key is None:
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
