@@ -24,6 +24,18 @@ dependencies = [
     "python-multipart>=0.0.32",
 ]
 
+[project.optional-dependencies]
+# canopy_mcp: the panel-builder MCP server shipped in the same wheel. Kept out of
+# the core dependencies so canopy-api and canopy-worker images stay lean.
+mcp = [
+    "fastmcp>=2.10",
+    "starlette>=0.40",
+    "httpx>=0.27",
+    "websockets>=13",
+    "jsonschema>=4.21,<5",
+    "playwright>=1.45",
+]
+
 [dependency-groups]
 dev = [
     "pre-commit",
@@ -50,7 +62,10 @@ build-backend = "hatchling.build"
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/canopy"]
+# canopy_mcp is a second package of the same wheel, not a uv workspace member:
+# docker/Dockerfile.dev syncs from pyproject.toml + uv.lock before any member
+# directory exists.
+packages = ["src/canopy", "src/canopy_mcp"]
 
 [tool.ruff]
 extend-exclude = ["__init__.py"]
@@ -70,6 +85,9 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "live: needs a running canopy stack; skipped unless CANOPY_LIVE=1",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
@@ -88,7 +106,39 @@ exclude_lines = [
 ]
 
 [tool.importlinter]
-root_package = "canopy"
+root_packages = ["canopy", "canopy_mcp"]
+
+# canopy_mcp is a client of the canopy backend, never a dependency of it.
+[[tool.importlinter.contracts]]
+name = "canopy never imports canopy_mcp"
+type = "forbidden"
+source_modules = ["canopy"]
+forbidden_modules = ["canopy_mcp"]
+
+# canopy_mcp talks to canopy over HTTP. It may use the shared kernel
+# (canopy.core, canopy.contracts) and, for the fox formula checks, the fox
+# gateway; every other module is off limits.
+[[tool.importlinter.contracts]]
+name = "canopy_mcp reaches canopy modules only through the fox gateway"
+type = "forbidden"
+source_modules = ["canopy_mcp"]
+forbidden_modules = [
+    "canopy.fox",
+    "canopy.mole",
+    "canopy.hare",
+    "canopy.vole",
+    "canopy.raccoon",
+    "canopy.beaver",
+    "canopy.jobs",
+    "canopy.converter",
+    "canopy.squirrel",
+    "canopy.magpie",
+    "canopy.analytics",
+    "canopy.epics",
+]
+ignore_imports = [
+    "canopy_mcp.fox -> canopy.fox.gateway",
+]
 
 # The converter must reach peer modules only through their public gateway —
 # never their services/api/internals. The shared kernel (canopy.core,
