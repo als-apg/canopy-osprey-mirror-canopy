@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Literal, get_args
-from dataclasses import dataclass
+from dataclasses import field, dataclass
 from collections.abc import Iterator
 
 from pydmconverter.react import convert_bytes
@@ -52,6 +52,14 @@ class ConversionStats:
 
 
 @dataclass(frozen=True)
+class DroppedProps:
+    """Legacy properties of one converted node that the IR could not carry."""
+
+    node_id: str
+    props: list[str]
+
+
+@dataclass(frozen=True)
 class ConversionResult:
     """Domain result of a single screen conversion.
 
@@ -64,6 +72,7 @@ class ConversionResult:
     unknown_widgets: list[UnknownWidget]
     formulas: list[ConvertedFormula]
     stats: ConversionStats
+    dropped_props: list[DroppedProps] = field(default_factory=list)
 
 
 ScreenKind = Literal["edl", "ui", "bob"]
@@ -115,8 +124,11 @@ class ConversionService:
         unknown_counts: dict[str, int] = {}
         rule_count = 0
         node_count = 0
+        dropped: list[DroppedProps] = []
         for node in _walk(screen.root):
             node_count += 1
+            if node.dropped_props:
+                dropped.append(DroppedProps(node_id=node.id, props=list(node.dropped_props)))
             warnings.extend(node.warnings)
             rule_count += len(node.rules)
             if node.type == _UNKNOWN_WIDGET_TYPE:
@@ -140,6 +152,7 @@ class ConversionService:
             unknown_widgets=unknown,
             formulas=formulas,
             stats=stats,
+            dropped_props=dropped,
         )
 
 

@@ -21,6 +21,7 @@ from canopy.converter.dependencies import (
 )
 from canopy.converter.schemas.conversions import (
     BatchScreenDTO,
+    DroppedPropsDTO,
     UnknownWidgetDTO,
     FormulaSummaryDTO,
     ValidateResultDTO,
@@ -69,6 +70,7 @@ def _to_dto(result: ConversionResult, warnings: list[str]) -> ScreenConversionRe
             macro_count=result.stats.macro_count,
             rule_count=result.stats.rule_count,
         ),
+        dropped_props=[DroppedPropsDTO(node_id=d.node_id, props=list(d.props)) for d in result.dropped_props],
     )
 
 

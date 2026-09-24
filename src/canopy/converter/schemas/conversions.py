@@ -23,6 +23,13 @@ class ConversionStatsDTO(CanopyModel):
     rule_count: int
 
 
+class DroppedPropsDTO(CanopyModel):
+    """Legacy properties of one converted node that the Screen IR could not carry."""
+
+    node_id: str
+    props: list[str]
+
+
 class ScreenConversionResultDTO(CanopyModel):
     """Result of converting one legacy screen to Canopy Screen IR.
 
@@ -35,6 +42,7 @@ class ScreenConversionResultDTO(CanopyModel):
     unknown_widgets: list[UnknownWidgetDTO] = []
     formulas: list[FormulaSummaryDTO] = []
     stats: ConversionStatsDTO
+    dropped_props: list[DroppedPropsDTO] = []
 
 
 class ValidateResultDTO(CanopyModel):
