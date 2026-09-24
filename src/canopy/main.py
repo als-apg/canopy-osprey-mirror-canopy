@@ -24,6 +24,7 @@ from canopy.beaver.app import app as beaver_app
 from canopy.beaver.app import beaver_lifespan
 from canopy.magpie.app import app as magpie_app
 from canopy.magpie.app import magpie_lifespan
+from canopy.core.config import get_settings
 from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
@@ -34,7 +35,6 @@ from canopy.analytics.app import app as analytics_app
 from canopy.analytics.app import analytics_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
-from canopy.core.config import get_settings
 from canopy.core.security import EnvKeyRegistry, bind_key_registry
 from canopy.core.keys.routes import router as api_keys_router
 from canopy.core.keys.registry import (
