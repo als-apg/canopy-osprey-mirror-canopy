@@ -138,6 +138,12 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI request dependency: a session that commits once on success and rolls
     back on error. Background/worker code that needs its own transaction boundaries
     should use ``session_scope`` instead.
+
+    Declare it as ``Depends(get_session, scope="function")``. FastAPI's default
+    ``"request"`` scope runs the code after ``yield`` only once the response has been
+    sent, so the client would get its 200 before the commit lands (a read-after-write
+    race) and a failed commit would never reach it. Function scope commits before the
+    response starts.
     """
     async with session_scope() as session:
         yield session

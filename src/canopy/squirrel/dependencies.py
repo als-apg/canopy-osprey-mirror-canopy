@@ -1,7 +1,8 @@
 """Typed ``Annotated[..., Depends(...)]`` aliases for Squirrel's API layer.
 
 Each service is built per request from a ``get_session`` dependency (which commits on
-success, rolls back on error).
+success, rolls back on error). It is function-scoped so the commit lands before the
+response is sent.
 ``SnapshotService`` is constructed without an ``EpicsIO``: the read endpoints never touch
 EPICS (snapshot create/restore run in the worker, which injects the connector).
 """
@@ -16,7 +17,7 @@ from canopy.squirrel.services.pv_service import PvService
 from canopy.squirrel.services.tag_service import TagService
 from canopy.squirrel.services.snapshot_service import SnapshotService
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
 def get_snapshot_service(session: SessionDep) -> SnapshotService:
