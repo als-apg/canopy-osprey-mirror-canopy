@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "a/reasons",
+  "metadata": {
+    "title": "reasons",
+    "source": {
+      "type": "native"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "a-reasons-root",
+    "type": "group",
+    "props": {},
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 10,
+      "height": 10
+    },
+    "children": [
+      {
+        "id": "r-absolute",
+        "type": "embedded-display",
+        "props": {
+          "file": "/srv/screens/y.screen.json"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      },
+      {
+        "id": "r-above",
+        "type": "embedded-display",
+        "props": {
+          "file": "../../y.screen.json"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      },
+      {
+        "id": "r-invalid",
+        "type": "embedded-display",
+        "props": {
+          "file": "bad name.screen.json"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      },
+      {
+        "id": "r-missing",
+        "type": "pv-button",
+        "props": {
+          "actions": [
+            {
+              "type": "open_display",
+              "file": "nowhere.screen.json",
+              "target": "replace"
+            }
+          ]
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      },
+      {
+        "id": "r-ok",
+        "type": "embedded-display",
+        "props": {
+          "file": "sub/x.screen.json"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,230 @@
+"""Semantic checks the JSON Schema cannot express.
+
+Ported from the SDK validator (``canopy-sdk-js`` ``screen-ir/src/validate.ts``)
+and extended with the panel-builder codes. Every check tolerates malformed
+input — anything of the wrong type is skipped, since the schema pass already
+reports it.
+
+Codes: ``macro_default``, ``unresolved_formula``, ``duplicate_node_id`` and
+``open_webpage`` are errors; ``inert_in_osprey``, ``warning`` and
+``unknown_widget`` are warnings. Draft-ref codes live in ``check.refs``.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator
+from typing import Any
+
+from canopy_mcp.check.findings import Finding, node_id, pointer
+
+FOX_PREFIX = "fox://"
+UNKNOWN_WIDGET_TYPE = "unknown-widget"
+
+#: Control types that write to the machine; OSPREY embeds are read-only, so
+#: these render but do nothing there.
+INERT_IN_OSPREY_TYPES: frozenset[str] = frozenset(
+    {
+        "pv-button",
+        "pv-toggle",
+        "pv-slider",
+        "pv-text-input",
+        "pv-checkbox",
+        "pv-enum-combobox",
+        "pv-spinbox",
+        "pv-radio-group",
+    }
+)
+
+# http(s) absolute URLs and root-relative paths (what actionHost.openWindow allows).
+_SAFE_URL = re.compile(r"^(?:https?://|/)", re.IGNORECASE)
+
+Path = tuple[str | int, ...]
+
+
+def check_semantic(doc: Any) -> list[Finding]:
+    """All semantic findings for ``doc``, in document order per check."""
+    if not isinstance(doc, dict):
+        return []
+    findings: list[Finding] = []
+    findings += _macro_defaults(doc)
+    nodes = list(iter_nodes(doc))
+    findings += _duplicate_ids(nodes)
+    findings += _fox_refs(doc, nodes)
+    for path, node in nodes:
+        findings += _node_checks(path, node)
+    return findings
+
+
+def iter_nodes(doc: Any) -> Iterator[tuple[Path, dict[str, Any]]]:
+    """Depth-first ``(path, node)`` over ``root`` and its ``children``."""
+    root = doc.get("root") if isinstance(doc, dict) else None
+    stack: list[tuple[Path, Any]] = [(("root",), root)]
+    while stack:
+        path, node = stack.pop()
+        if not isinstance(node, dict):
+            continue
+        yield path, node
+        children = node.get("children")
+        if isinstance(children, list):
+            for i in range(len(children) - 1, -1, -1):
+                stack.append(((*path, "children", i), children[i]))
+
+
+def _macro_defaults(doc: dict[str, Any]) -> list[Finding]:
+    kind = doc.get("kind") or "screen"
+    macros = doc.get("macros")
+    out: list[Finding] = []
+    if not isinstance(macros, list):
+        return out
+    for i, macro in enumerate(macros):
+        if not isinstance(macro, dict):
+            continue
+        name = macro.get("name")
+        has_default = macro.get("default") is not None
+        if kind == "screen" and not has_default:
+            msg = f"macro '{name}' needs a default on a screen (kind='screen')"
+        elif kind == "template" and has_default:
+            msg = f"macro '{name}' must not declare a default on a template"
+        else:
+            continue
+        out.append(Finding(None, "macro_default", pointer(("macros", i)), "error", msg))
+    return out
+
+
+def _duplicate_ids(nodes: list[tuple[Path, dict[str, Any]]]) -> list[Finding]:
+    seen: dict[str, Path] = {}
+    out: list[Finding] = []
+    for path, node in nodes:
+        nid = node_id(node)
+        if nid is None:
+            continue
+        if nid in seen:
+            out.append(
+                Finding(
+                    nid,
+                    "duplicate_node_id",
+                    pointer((*path, "id")),
+                    "error",
+                    f"node id '{nid}' is already used at {pointer(seen[nid])}",
+                )
+            )
+        else:
+            seen[nid] = path
+    return out
+
+
+def _fox_name(ref: str) -> str:
+    return ref[len(FOX_PREFIX) :] if ref.startswith(FOX_PREFIX) else ref
+
+
+def _fox_refs(doc: dict[str, Any], nodes: list[tuple[Path, dict[str, Any]]]) -> list[Finding]:
+    formulas = doc.get("formulas")
+    names = {
+        f["name"]
+        for f in (formulas if isinstance(formulas, list) else [])
+        if isinstance(f, dict) and isinstance(f.get("name"), str)
+    }
+    out: list[Finding] = []
+
+    def require(ref: str, nid: str | None, where: Path, what: str) -> None:
+        name = _fox_name(ref)
+        if name not in names:
+            out.append(
+                Finding(
+                    nid,
+                    "unresolved_formula",
+                    pointer(where),
+                    "error",
+                    f"{what} references formula '{name}' but no formulas[] entry declares it",
+                )
+            )
+
+    for path, node in nodes:
+        nid = node_id(node)
+        props = node.get("props")
+        if isinstance(props, dict):
+            for key, value in props.items():
+                if isinstance(value, str) and value.startswith(FOX_PREFIX):
+                    require(value, nid, (*path, "props", key), f"prop '{key}'")
+        rules = node.get("rules")
+        if not isinstance(rules, list):
+            continue
+        for r, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                continue
+            rpath = (*path, "rules", r)
+            if isinstance(rule.get("formula"), str):
+                require(rule["formula"], nid, (*rpath, "formula"), f"rule '{rule.get('id')}'")
+            pvs = rule.get("pvs")
+            for p, pv in enumerate(pvs if isinstance(pvs, list) else []):
+                name = pv.get("name") if isinstance(pv, dict) else None
+                if isinstance(name, str) and name.startswith(FOX_PREFIX):
+                    require(name, nid, (*rpath, "pvs", p, "name"), f"rule '{rule.get('id')}' pv")
+    return out
+
+
+def _node_checks(path: Path, node: dict[str, Any]) -> list[Finding]:
+    nid = node_id(node)
+    ntype = node.get("type")
+    props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    out: list[Finding] = []
+
+    if ntype in INERT_IN_OSPREY_TYPES:
+        out.append(
+            Finding(
+                nid,
+                "inert_in_osprey",
+                pointer((*path, "type")),
+                "warning",
+                f"'{ntype}' writes to the machine; it is inert when embedded in OSPREY",
+            )
+        )
+
+    actions = props.get("actions")
+    for a, action in enumerate(actions if isinstance(actions, list) else []):
+        if not isinstance(action, dict):
+            continue
+        apath = (*path, "props", "actions", a)
+        atype = action.get("type")
+        if atype == "write_pv":
+            out.append(
+                Finding(
+                    nid,
+                    "inert_in_osprey",
+                    pointer(apath),
+                    "warning",
+                    "write_pv action is inert when embedded in OSPREY",
+                )
+            )
+        elif atype == "open_webpage":
+            url = action.get("url")
+            if not isinstance(url, str) or not _SAFE_URL.match(url.strip()):
+                out.append(
+                    Finding(
+                        nid,
+                        "open_webpage",
+                        pointer((*apath, "url")),
+                        "error",
+                        f"open_webpage URL {url!r} is not http(s) or a root-relative path",
+                    )
+                )
+
+    warnings = node.get("warnings")
+    for w, text in enumerate(warnings if isinstance(warnings, list) else []):
+        out.append(Finding(nid, "warning", pointer((*path, "warnings", w)), "warning", str(text)))
+
+    if ntype == UNKNOWN_WIDGET_TYPE:
+        original = props.get("originalClass")
+        original = original if isinstance(original, str) else None
+        out.append(
+            Finding(
+                nid,
+                "unknown_widget",
+                pointer((*path, "type")),
+                "warning",
+                f"widget class {original!r} has no Screen-IR equivalent; placeholder rendered",
+                original_class=original,
+            )
+        )
+    return out
