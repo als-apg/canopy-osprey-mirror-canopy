@@ -1,0 +1,119 @@
+"""The ``screenshot`` tool: render a draft in the server's own viewer and return a PNG.
+
+The draft is loaded at ``/embed/drafts/<id>?<macros>`` on this process, so it
+renders exactly as the agent's browser would see it, in the pv mode the
+server serves in ``config.json``. Before capturing, the page gets one shared,
+bounded wait (:data:`SETTLE_TIMEOUT_S`) for two things:
+
+* ``document.fonts.ready``, so text is not captured in a fallback face;
+* ``window.__canopy.pvStatus`` reaching a settled value (``connected``,
+  ``disconnected`` or ``mock``). The viewer starts it at ``idle`` and moves
+  through ``connecting``, so "anything but connecting" would capture a page
+  that has not tried to connect yet.
+
+If the wait runs out the screenshot is still taken: a screen whose PVs never
+connect is exactly what the agent needs to see. ``pv`` then reports
+``disconnected``, as it does for ``mock``: only a live Hare connection is
+``connected``. Nothing is written to disk; the PNG goes back inline.
+"""
+
+import struct
+from typing import Any
+from urllib.parse import quote, urlencode
+
+from fastmcp.tools import ToolResult
+from fastmcp.exceptions import ToolError
+from fastmcp.utilities.types import Image
+from playwright.async_api import Error as PlaywrightError
+
+from canopy_mcp.store import DraftStore, InvalidDraftId
+from canopy_mcp.server import mcp
+from canopy_mcp.browser import Browser, BrowserNotStarted, get_browser
+from canopy_mcp.urls import embed_path
+
+# One budget for fonts + PV status, so the whole call stays under 5 s.
+SETTLE_TIMEOUT_S = 4.0
+NAVIGATION_TIMEOUT_MS = 10_000
+SCREEN_ROOT_SELECTOR = "[data-testid='screen-root']"
+SETTLED_STATUSES = ("connected", "disconnected", "mock")
+
+# Bounded inside the page, so an unsettled page never leaves a pending call behind.
+_SETTLE_JS = """
+async ({ settled, timeoutMs }) => {
+  const deadline = Date.now() + timeoutMs;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await Promise.race([document.fonts.ready, sleep(timeoutMs)]);
+  const done = () => settled.includes(window.__canopy && window.__canopy.pvStatus);
+  while (!done() && Date.now() < deadline) await sleep(25);
+}
+"""
+_STATUS_JS = "() => (window.__canopy && window.__canopy.pvStatus) || null"
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def embed_url(base_url: str, draft_id: str, macros: dict[str, str] | None = None) -> str:
+    """The embed URL of ``draft_id`` on ``base_url``, macros as query parameters."""
+    DraftStore.validate_id(draft_id)
+    url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"))
+    if macros:
+        url += "?" + urlencode({str(name): str(value) for name, value in macros.items()})
+    return url
+
+
+def pv_state(status: str | None) -> str:
+    """Map the viewer's ``pvStatus`` onto the tool's ``connected|disconnected``."""
+    return "connected" if status == "connected" else "disconnected"
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    """``(width, height)`` from a PNG's IHDR chunk."""
+    if len(data) < 24 or not data.startswith(PNG_SIGNATURE) or data[12:16] != b"IHDR":
+        raise ValueError("not a PNG")
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
+async def capture(
+    browser: Browser,
+    draft_id: str,
+    macros: dict[str, str] | None = None,
+    *,
+    settle_timeout_s: float = SETTLE_TIMEOUT_S,
+) -> tuple[bytes, dict[str, Any]]:
+    """Render ``draft_id`` and return ``(png, {width, height, pv})``."""
+    url = embed_url(browser.base_url, draft_id, macros)
+    async with browser.context() as context:
+        page = await context.new_page()
+        response = await page.goto(url, wait_until="load", timeout=NAVIGATION_TIMEOUT_MS)
+        if response is not None and not response.ok:
+            raise ToolError(f"viewer answered HTTP {response.status} for {url}")
+        # Out of time: capture what is there; pv reports the unsettled status.
+        await page.evaluate(_SETTLE_JS, {"settled": list(SETTLED_STATUSES), "timeoutMs": int(settle_timeout_s * 1000)})
+        status = await page.evaluate(_STATUS_JS)
+        root = await page.query_selector(SCREEN_ROOT_SELECTOR)
+        data = await root.screenshot(type="png") if root is not None else await page.screenshot(type="png")
+    width, height = png_size(data)
+    return data, {"width": width, "height": height, "pv": pv_state(status)}
+
+
+@mcp.tool
+async def screenshot(id: str, macros: dict[str, str] | None = None) -> ToolResult:
+    """Render draft ``id`` in the viewer and return it as a PNG image.
+
+    ``macros`` are passed to the screen as ``$(NAME)`` values. Also returns
+    ``{width, height, pv}``; ``pv`` is ``connected`` only when the viewer
+    reached live PVs, otherwise ``disconnected`` (including mock mode), so
+    blank values in the image may just mean no PV data. Use it after each
+    edit to check layout; nothing is saved to disk.
+    """
+    try:
+        browser = get_browser()
+        data, info = await capture(browser, id, macros)
+    except InvalidDraftId as exc:
+        raise ToolError(str(exc)) from exc
+    except BrowserNotStarted as exc:
+        raise ToolError(str(exc)) from exc
+    except PlaywrightError as exc:
+        raise ToolError(f"screenshot failed: {exc}") from exc
+    return ToolResult(content=[Image(data=data, format="png"), info], structured_content=info)

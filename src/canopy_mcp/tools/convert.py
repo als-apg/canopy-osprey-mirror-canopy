@@ -1,0 +1,297 @@
+"""The ``convert_legacy`` tool: a legacy panel and its sub-screens into drafts, plus a work queue.
+
+One call converts the parent file and the sub-screens its converted IR embeds
+or opens, each through ``POST /converter/v1/conversions`` (synchronous, one
+file per request), and writes them as drafts beside each other:
+
+* **Paths.** ``path`` and every ``siblings`` source path must be absolute after
+  ``~`` expansion; otherwise the call refuses, naming the key, before any
+  conversion is posted.
+* **Ref matching by key.** Each ref of the converted PARENT is matched to a
+  source by key (:mod:`canopy_mcp.refs`): a ``siblings`` entry, else the default
+  source ``realpath(dirname(path)/key.<kind>)`` when that file exists. A ref that
+  is absolute, climbs above the drafts root, is not a valid draft id, or has no
+  source is simply not written. Only the parent's refs are followed.
+* **Placement and stamping.** The parent is written at ``id``, each sibling at
+  ``normalize(dirname(id)/key)``; each document's ``id`` is set to its draft id
+  and ``metadata.title`` to the source file stem (the last id segment for
+  ``content``), so the output is byte-deterministic.
+* **Revs, all or nothing.** Converted documents skip the FR4 check gate (the
+  converter schema-validated them). A draft whose bytes are identical is reused
+  untouched; any other existing draft needs ``overwrite=true`` and its current
+  rev in ``base_revs``, else the WHOLE call refuses before any write and lists
+  the conflicting ids.
+* **Queue.** For every draft written or reused: ``check(draftId)`` findings
+  limited to :data:`QUEUE_CODES`, plus the conversion's ``droppedProps`` as
+  ``dropped_prop`` items. The ref classification above emits nothing itself.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+import httpx
+from fastmcp.exceptions import ToolError
+
+from canopy_mcp.check.refs import dirname, iter_refs, resolve_ref
+from canopy_mcp.client import make_client
+from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.refs import SOURCE_KINDS, ir_ref_key, sibling_key, source_kind
+from canopy_mcp.server import mcp
+from canopy_mcp.store import DraftStore, RevConflict, doc_rev
+from canopy_mcp.tools import drafts
+from canopy_mcp.tools._common import refused, validate_id
+from canopy_mcp.tools.check import run_check
+from canopy_mcp.urls import draft_url
+
+CONVERSIONS_PATH = "/converter/v1/conversions"
+CONVERT_TIMEOUT_S = 60.0
+KINDS = frozenset(SOURCE_KINDS.values())
+
+# The check codes that go to the queue; inert_in_osprey and lint findings stay in check only.
+QUEUE_CODES: tuple[str, ...] = ("warning", "unknown_widget", "unresolved_ref", "nested_ref_base")
+
+
+@dataclass
+class _Unit:
+    """One file to convert and the draft it becomes."""
+
+    draft_id: str
+    kind: str
+    filename: str
+    data: bytes
+    title: str
+    doc: dict[str, Any] = field(default_factory=dict)
+    dropped: list[dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def from_file(cls, draft_id: str, kind: str, path: str) -> _Unit:
+        """The unit for the legacy source at ``path`` (read now), titled by its file stem."""
+        return cls(draft_id, kind, os.path.basename(path), _read_source(path), PurePosixPath(path).stem)
+
+
+def _expand(raw: Any) -> str | None:
+    """``raw`` after ``~`` expansion when that is absolute, else ``None``."""
+    if not isinstance(raw, str) or not raw:
+        return None
+    expanded = os.path.expanduser(raw)
+    return expanded if os.path.isabs(expanded) else None
+
+
+def _read_source(path: str) -> bytes:
+    try:
+        return Path(path).read_bytes()
+    except OSError as exc:
+        raise ToolError(f"cannot read legacy source {path!r}: {exc}") from exc
+
+
+def _kind_of(kind: str | None, path: str | None) -> str:
+    if kind is None and path is not None:
+        kind = SOURCE_KINDS.get(PurePosixPath(path).suffix.lower())
+    if kind not in KINDS:
+        raise ToolError(f"kind must be one of {sorted(KINDS)} (or inferable from the path suffix), got {kind!r}")
+    return kind
+
+
+async def _post(client: httpx.AsyncClient, unit: _Unit) -> None:
+    """Convert ``unit`` through the backend and keep its IR and dropped props."""
+    try:
+        response = await client.post(
+            CONVERSIONS_PATH,
+            files={"file": (unit.filename, unit.data, "application/octet-stream")},
+            data={"kind": unit.kind},
+        )
+    except httpx.HTTPError as exc:
+        raise ToolError(f"conversion of {unit.filename!r} failed: {exc!r}") from exc
+    if response.status_code != 200:
+        raise ToolError(f"conversion of {unit.filename!r} failed: HTTP {response.status_code}: {response.text[:500]}")
+    body = response.json()
+    screen = body.get("screen")
+    if not isinstance(screen, dict):
+        raise ToolError(f"conversion of {unit.filename!r} returned no screen document")
+    screen["id"] = unit.draft_id
+    metadata = screen.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = screen["metadata"] = {}
+    metadata["title"] = unit.title
+    unit.doc = screen
+    unit.dropped = [
+        {"draftId": unit.draft_id, "nodeId": d.get("nodeId"), "code": "dropped_prop", "props": list(d.get("props", []))}
+        for d in body.get("droppedProps") or []
+        if isinstance(d, dict)
+    ]
+
+
+def _sibling_sources(siblings: dict[str, str]) -> dict[str, str]:
+    """``{key: absolute source path}`` for every relative ``siblings`` key (paths already checked)."""
+    out: dict[str, str] = {}
+    for raw, source in siblings.items():
+        key = sibling_key(raw)
+        if key is None:
+            continue  # an absolute key never matches a written ref
+        expanded = _expand(source)
+        assert expanded is not None
+        if key in out and out[key] != expanded:
+            raise ToolError(f"siblings keys that normalize to {key!r} name different source files")
+        out[key] = expanded
+    return out
+
+
+def _siblings_of(parent: _Unit, parent_id: str, path: str | None, kind: str, sources: dict[str, str]) -> list[_Unit]:
+    """The sibling units the parent's refs resolve to (first appearance order, de-duplicated)."""
+    units: list[_Unit] = []
+    seen = {parent_id}
+    base = dirname(parent_id)
+    for _node_id, _path, raw, _embedded in iter_refs(parent.doc):
+        target, reason = resolve_ref(raw, base)
+        if reason is not None or target is None or target in seen:
+            continue  # absolute, above_root, invalid_id: not written (check reports it)
+        key = ir_ref_key(raw)
+        assert key is not None
+        source = sources.get(key)
+        if source is None and path is not None:
+            candidate = os.path.realpath(os.path.join(os.path.dirname(path), f"{key}.{kind}"))
+            source = candidate if os.path.isfile(candidate) else None
+        if source is None:
+            continue  # missing: not written (check reports it)
+        seen.add(target)
+        units.append(_Unit.from_file(target, source_kind(source, kind), source))
+    return units
+
+
+async def _queue(units: list[_Unit], store: DraftStore, settings: Settings) -> list[dict[str, Any]]:
+    queue: list[dict[str, Any]] = []
+    for unit in units:
+        result = await run_check(draft_id=unit.draft_id, store=store, settings=settings)
+        queue.extend({"draftId": unit.draft_id, **f.to_dict()} for f in result.findings if f.code in QUEUE_CODES)
+        queue.extend(unit.dropped)
+    return queue
+
+
+@mcp.tool
+async def convert_legacy(
+    id: str,
+    path: str | None = None,
+    content: str | None = None,
+    kind: str | None = None,
+    siblings: dict[str, str] | None = None,
+    overwrite: bool = False,
+    base_revs: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Convert a legacy panel (``.bob``, ``.opi``, ``.edl``, ``.ui``) and the sub-screens it references into drafts.
+
+    Give ``id`` (the parent's draft id, e.g. ``bts/BTSView``) and either
+    ``path`` (an absolute file path; ``~`` is expanded) or ``content`` (the
+    file text), with ``kind`` ``bob|edl|ui`` (inferred from ``path``'s suffix
+    when omitted). ``siblings`` maps a sub-screen ref AS WRITTEN in the legacy
+    file (e.g. ``embedded/_KnobDevice.bob``) to its absolute source path; a ref
+    with no entry is looked for beside ``path`` as ``<ref>.<kind>``. Only the
+    parent's refs are followed. Each sub-screen is written at
+    ``dirname(id)/<ref>``; refs that are absolute, climb above the drafts root,
+    are not valid draft ids or have no source are not written and show up in
+    ``queue`` as ``unresolved_ref`` with that ``reason``.
+
+    Converted drafts are written without the check gate. Re-running is safe:
+    identical drafts are reused. An existing draft with different content needs
+    ``overwrite=true`` and ``base_revs={draftId: rev}``; otherwise the whole
+    call refuses, lists ``conflicts`` and writes nothing. Relative paths refuse
+    naming the offending key.
+
+    Returns ``{draftId, rev, url, drafts, queue}``: ``drafts`` lists every
+    draft written or reused with its ``rev``; ``queue`` is the work left for
+    you, every item carrying ``draftId`` (and ``docId`` for a node of an
+    embedded screen): ``check(draftId)`` findings with code ``warning``
+    (converter notes; clear one with ``patch_node`` ``set:{warnings:[]}``),
+    ``unknown_widget`` (with ``originalClass``; replace with ``remove_node`` +
+    ``add_node``), ``unresolved_ref`` and ``nested_ref_base``, plus
+    ``dropped_prop`` items ``{nodeId, props}`` naming legacy properties the IR
+    could not carry. ``dropped_prop`` names mix source vocabulary (``.bob`` /
+    ``.edl`` attribute names dropped by the source adapters) and Qt vocabulary
+    (Qt property names dropped by the IR builder, the ``.ui`` path). Running
+    ``check(draftId)`` re-measures the same queue.
+    """
+    settings = get_settings()
+    store = drafts.get_store(settings)
+    validate_id(id)
+    if (path is None) == (content is None):
+        raise ToolError("give exactly one of path (an absolute file path) or content (the legacy file text)")
+    siblings = siblings or {}
+    base_revs = base_revs or {}
+    if not isinstance(siblings, dict) or not all(isinstance(k, str) for k in siblings):
+        raise ToolError("siblings must map a ref as written to an absolute source path")
+
+    # Refuse relative paths before anything is read or posted.
+    relative = []
+    abs_path: str | None = None
+    if path is not None:
+        abs_path = _expand(path)
+        if abs_path is None:
+            relative.append("path")
+    relative.extend(key for key, source in siblings.items() if _expand(source) is None)
+    if relative:
+        return refused(
+            id,
+            "relative_path",
+            f"refused: {', '.join(map(repr, relative))} must be an absolute path (after ~ expansion); nothing was converted",
+            keys=relative,
+        )
+
+    kind = _kind_of(kind, abs_path)
+    sources = _sibling_sources(siblings)
+    if abs_path is not None:
+        parent = _Unit.from_file(id, kind, abs_path)
+    else:
+        last = id.rsplit("/", 1)[-1]
+        parent = _Unit(id, kind, f"{last}.{kind}", str(content).encode("utf-8"), last)
+
+    async with make_client(settings, timeout=CONVERT_TIMEOUT_S) as client:
+        await _post(client, parent)
+        units = [parent, *_siblings_of(parent, id, abs_path, kind, sources)]
+        for unit in units[1:]:
+            await _post(client, unit)
+
+    # Decide every draft's fate before writing any.
+    to_write: dict[str, tuple[dict[str, Any], str | None]] = {}
+    revs: dict[str, str] = {}
+    conflicts: list[str] = []
+    for unit in units:
+        new_rev = doc_rev(unit.doc)
+        current = store.rev(unit.draft_id)
+        if current is None:
+            to_write[unit.draft_id] = (unit.doc, None)
+        elif current == new_rev:
+            revs[unit.draft_id] = current  # identical bytes: reuse, do not rewrite
+        elif overwrite and base_revs.get(unit.draft_id) == current:
+            to_write[unit.draft_id] = (unit.doc, current)
+        else:
+            conflicts.append(unit.draft_id)
+    if conflicts:
+        return _conflict(id, conflicts, overwrite)
+    if to_write:
+        try:
+            revs.update(await store.write_many(to_write))
+        except RevConflict as exc:
+            return _conflict(id, exc.conflicts, overwrite)
+
+    return {
+        "draftId": id,
+        "rev": revs[id],
+        "url": draft_url(settings, id),
+        "drafts": [
+            {"draftId": u.draft_id, "rev": revs[u.draft_id], "url": draft_url(settings, u.draft_id)} for u in units
+        ],
+        "queue": await _queue(units, store, settings),
+    }
+
+
+def _conflict(draft_id: str, conflicts: list[str], overwrite: bool) -> dict[str, Any]:
+    how = "pass base_revs with each draft's current rev" if overwrite else "pass overwrite=true and base_revs"
+    return refused(
+        draft_id,
+        "conflict",
+        f"refused: {len(conflicts)} existing draft(s) differ from the conversion; {how}. Nothing was written.",
+        conflicts=conflicts,
+    )
