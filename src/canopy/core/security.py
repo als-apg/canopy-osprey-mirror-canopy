@@ -55,7 +55,9 @@ class EnvKeyRegistry:
 
     def __init__(self, raw: str = "") -> None:
         self._keys: dict[str, APIKey] = {}
-        for position, entry in enumerate((e.strip() for e in raw.split(",") if e.strip()), start=1):
+        for position, entry in enumerate((e.strip() for e in raw.split(",")), start=1):
+            if not entry:
+                continue
             try:
                 token, scopes = entry.split(":", 1)
             except ValueError:
@@ -70,10 +72,11 @@ class EnvKeyRegistry:
             scope_set = {s.strip() for s in scopes.split("+")}
             if unknown := scope_set - {"read", "write"}:
                 logger.warning(
-                    "CANOPY_API_KEYS entry #%d has unrecognized scope(s) %s; only 'read' and 'write' grant access",
+                    "Skipping CANOPY_API_KEYS entry #%d: %d unrecognized scope(s); only 'read' and 'write' are valid",
                     position,
-                    sorted(unknown),
+                    len(unknown),
                 )
+                continue
             self._keys[token] = APIKey(
                 token=token,
                 read="read" in scope_set,

@@ -145,9 +145,10 @@ Registered 2 API key(s) from CANOPY_API_KEYS (2 read, 1 write)
 ```
 
 A malformed entry is skipped with a warning naming its position (e.g.
-`Skipping malformed CANOPY_API_KEYS entry #2`), and an unrecognized scope —
-`read+wrote`, say — warns rather than silently granting nothing. Check for
-these after any change to the secret:
+`Skipping malformed CANOPY_API_KEYS entry #2`), and an entry with an
+unrecognized scope — `read+wrote`, say — is skipped the same way rather than
+registered with whatever scope it did recognize. Check for these after any
+change to the secret:
 
 ```bash
 docker logs canopy-<instance>-api --tail 50 | grep -i "api key"

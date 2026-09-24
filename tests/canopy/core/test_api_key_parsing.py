@@ -36,10 +36,8 @@ class TestEnvKeyRegistryParsing:
         assert registry.get("operator") is not None
         assert registry.get("malformed") is None
 
-        # Misspelled scope registers the key but grants only what it recognized.
-        typo = registry.get("typo")
-        assert typo is not None
-        assert (typo.read, typo.write) == (True, False)
+        # A misspelled scope is skipped entirely, not registered with a subset of scopes.
+        assert registry.get("typo") is None
 
         warnings = caplog.text
         assert "entry #2" in warnings  # malformed
@@ -51,6 +49,26 @@ class TestEnvKeyRegistryParsing:
             EnvKeyRegistry("s3cret-no-colon,another-s3cret:read+wrote")
 
         assert "s3cret" not in caplog.text
+
+    def test_separator_typo_does_not_escalate_scope_or_leak_token(self, caplog):
+        # A space instead of a comma folds two entries into one malformed scope
+        # string. The bad entry must be dropped outright, not registered with
+        # whatever scope substring happened to parse out of it.
+        with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
+            registry = EnvKeyRegistry("ro-s3cret:read rw-s3cret:read+write")
+
+        assert registry.get("ro-s3cret") is None
+        assert "s3cret" not in caplog.text
+
+    def test_position_numbers_match_raw_comma_fields(self, caplog):
+        # A doubled comma produces an empty field between "a:read" and
+        # "b:read+wrote" — the empty field must still consume a position
+        # number, so the misspelled scope is reported as entry #3, not #2.
+        with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
+            EnvKeyRegistry("a:read,,b:read+wrote")
+
+        assert "entry #3" in caplog.text
+        assert "entry #2" not in caplog.text
 
     def test_startup_summary_is_logged(self, caplog):
         with caplog.at_level(logging.INFO, logger="canopy.core.security"):
