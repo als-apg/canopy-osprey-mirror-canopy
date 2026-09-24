@@ -60,6 +60,16 @@ class TestEnvKeyRegistryParsing:
         assert registry.get("ro-s3cret") is None
         assert "s3cret" not in caplog.text
 
+    def test_duplicate_token_warns_and_last_entry_wins(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
+            registry = EnvKeyRegistry("tok:read+write,other:read,tok:read")
+
+        tok = registry.get("tok")
+        assert tok is not None
+        assert (tok.read, tok.write) == (True, False)
+
+        assert "entry #3" in caplog.text
+
     def test_position_numbers_match_raw_comma_fields(self, caplog):
         # A doubled comma produces an empty field between "a:read" and
         # "b:read+wrote" — the empty field must still consume a position

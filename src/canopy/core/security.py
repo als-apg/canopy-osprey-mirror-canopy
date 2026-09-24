@@ -77,6 +77,8 @@ class EnvKeyRegistry:
                     len(unknown),
                 )
                 continue
+            if token in self._keys:
+                logger.warning("CANOPY_API_KEYS entry #%d duplicates an earlier token; the later entry wins", position)
             self._keys[token] = APIKey(
                 token=token,
                 read="read" in scope_set,
