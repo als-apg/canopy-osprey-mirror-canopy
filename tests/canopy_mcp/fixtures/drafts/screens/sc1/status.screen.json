@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "sc1/status",
+  "metadata": {
+    "title": "SC1 status",
+    "source": { "type": "hand-written" },
+    "size": { "width": 320, "height": 160 }
+  },
+  "macros": [{ "name": "P", "default": "SC1:DEV" }],
+  "root": {
+    "id": "root",
+    "type": "absolute-canvas",
+    "props": { "width": 320, "height": 160 },
+    "geometry": { "x": 0, "y": 0, "width": 320, "height": 160 },
+    "children": [
+      {
+        "id": "frame",
+        "type": "rectangle",
+        "props": {},
+        "geometry": { "x": 10, "y": 10, "width": 300, "height": 140 }
+      },
+      {
+        "id": "title",
+        "type": "text-label",
+        "props": { "text": "Vacuum status" },
+        "geometry": { "x": 20, "y": 20, "width": 200, "height": 20 }
+      },
+      {
+        "id": "pressure",
+        "type": "pv-label",
+        "props": { "pv": "${P}:PRESSURE", "precision": 3, "showUnits": true },
+        "geometry": { "x": 20, "y": 60, "width": 160, "height": 20 }
+      },
+      {
+        "id": "valve",
+        "type": "pv-led",
+        "props": { "pv": "${P}:VALVE" },
+        "geometry": { "x": 200, "y": 60, "width": 20, "height": 20 }
+      }
+    ]
+  }
+}
