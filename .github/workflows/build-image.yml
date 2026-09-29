@@ -38,11 +38,11 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set deployable image tag
         id: vars
-        # Matches the bare short-sha tag produced by `type=sha,prefix=` below,
-        # which is the tag pushed to GHCR on main and consumed by deploy-dev.
+        # Matches the bare short-sha tag produced by `type=sha,prefix=` below.
         run: echo "image_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -76,10 +76,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # APP_SECRETS_DEV is the ONLY config source for the DEV deploy (no env files
-  # are committed), so a missing/malformed secret must fail here with a clear
-  # message, not as a health-check timeout after a full deploy attempt. Same
-  # script as deploy.yml's validate-secrets, for the one auto-deployed instance.
+  # Keep the existing Software Factory DEV deployment. The Kubernetes DEV
+  # deployment is an additional target, not a replacement.
   validate-dev-secrets:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -95,8 +93,6 @@ jobs:
       - name: Validate APP_SECRETS_DEV
         run: SECRET_NAME=APP_SECRETS_DEV SECRET_VALUE="$APP_SECRETS_DEV" FACILITY=CONTAINER_DEV bash .github/scripts/validate_app_secrets.sh
 
-  # Auto-deploy every push to main to the DEV instance. LCLS/FACET/TESTFAC are
-  # deployed manually via the Deploy workflow (workflow_dispatch).
   deploy-dev:
     needs: [build, validate-dev-secrets]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -110,3 +106,19 @@ jobs:
       migration_command: 'alembic upgrade head'
     secrets:
       APP_SECRETS: ${{ secrets.APP_SECRETS_DEV }}
+
+  dispatch-swapps-dev:
+    name: Deploy Kubernetes dev
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: slaclab/swapps-ci-helpers/.github/workflows/dispatch-swapps-deployment.yml@73e6ba924aac5f822b050bd6bed12b0e45c64034
+    with:
+      app: canopy
+      environment: dev
+      image: ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}
+      deployment-owner: slaclab
+      deployment-repo: swapps-deployment
+      deploy-ref: refs/heads/main
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
