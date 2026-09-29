@@ -57,6 +57,8 @@ def test_docs_ui_lists_main_and_module_specs() -> None:
         )
     ]
     assert '"urls.primaryName": "Canopy"' in response.text
+    assert "swagger-ui-standalone-preset.js" in response.text
+    assert 'layout: "StandaloneLayout"' in response.text
 
 
 def test_docs_ui_respects_root_path_for_specs() -> None:
@@ -69,6 +71,7 @@ def test_docs_ui_respects_root_path_for_specs() -> None:
     assert urls[0] == {"url": "/api/canopy/openapi.json", "name": "Canopy"}
     assert urls[1] == {"url": "/api/canopy/mole/openapi.json", "name": "Mole"}
     assert "    url: " not in response.text
+    assert 'layout: "StandaloneLayout"' in response.text
 
 
 def test_unhandled_exception_returns_slug_envelope() -> None:

@@ -128,6 +128,7 @@ async def docs_ui(request: Request) -> HTMLResponse:
 <body>
 <div id="swagger-ui"></div>
 <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
 <script>
 const ui = SwaggerUIBundle({{
     dom_id: "#swagger-ui",
@@ -135,8 +136,9 @@ const ui = SwaggerUIBundle({{
     "urls.primaryName": "Canopy",
     presets: [
         SwaggerUIBundle.presets.apis,
-        SwaggerUIBundle.SwaggerUIStandalonePreset
+        SwaggerUIStandalonePreset
     ],
+    layout: "StandaloneLayout",
 }});
 </script>
 </body>
