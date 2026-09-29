@@ -74,7 +74,7 @@ Once running, you have:
 |-----|------------|
 | <http://localhost:8000/> | Service info (name, version) |
 | <http://localhost:8000/health> | Liveness check |
-| <http://localhost:8000/docs> | API index linking to all module docs |
+| <http://localhost:8000/docs> | API index listing route patterns, Swagger UI, and OpenAPI schemas |
 | <http://localhost:8000/hare/docs> | Interactive Swagger UI for Hare (every module serves its own at `/<module>/docs`) |
 | `ws://localhost:8000/hare/v1/ws/pvs` | Live PV stream |
 

@@ -111,13 +111,30 @@ async def health() -> dict[str, str]:
 @app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
 async def docs_index(request: Request) -> HTMLResponse:
     root_path = request.scope.get("root_path", "").rstrip("/")
-    module_links = "".join(
-        ('<li><a href="{href}">{name} API</a><p>{description}</p></li>').format(
-            href=escape(f"{root_path}/{path}/docs", quote=True),
+    module_rows = "".join(
+        (
+            '<tr><th scope="row">{name}</th><td>{description}</td>'
+            "<td><code>/{path}/v1/...</code></td>"
+            '<td><a href="{docs_href}">Swagger UI</a></td>'
+            '<td><a href="{schema_href}">OpenAPI JSON</a></td></tr>'
+        ).format(
             name=escape(name),
             description=escape(description),
+            path=escape(path),
+            docs_href=escape(f"{root_path}/{path}/docs", quote=True),
+            schema_href=escape(f"{root_path}/{path}/openapi.json", quote=True),
         )
         for path, name, description in API_MODULES
+    )
+    meta_row = (
+        '<tr><th scope="row">Canopy service</th>'
+        "<td>Service information and liveness</td>"
+        "<td><code>/</code>, <code>/health</code></td>"
+        '<td><a href="{docs_href}">API index</a></td>'
+        '<td><a href="{schema_href}">OpenAPI JSON</a></td></tr>'
+    ).format(
+        docs_href=escape(f"{root_path}/docs", quote=True),
+        schema_href=escape(f"{root_path}/openapi.json", quote=True),
     )
     return HTMLResponse(
         "<!doctype html>"
@@ -126,14 +143,17 @@ async def docs_index(request: Request) -> HTMLResponse:
         "<title>Canopy API documentation</title>"
         "<style>"
         "body{font:16px system-ui,sans-serif;line-height:1.5;margin:3rem auto;"
-        "max-width:56rem;padding:0 1.5rem;color:#202633}"
-        "h1{margin-bottom:.25rem}ul{list-style:none;padding:0}"
-        "li{border:1px solid #d0d7de;border-radius:.5rem;margin:1rem 0;padding:1rem}"
-        "li p{margin:.25rem 0 0;color:#57606a}"
+        "max-width:72rem;padding:0 1.5rem;color:#202633}"
+        "h1{margin-bottom:.25rem}table{border-collapse:collapse;width:100%;margin-top:1.5rem}"
+        "th,td{border:1px solid #d0d7de;padding:.75rem;text-align:left}"
+        "thead{background:#f6f8fa}tbody th{white-space:nowrap}"
+        "code{white-space:nowrap}"
         "</style></head><body>"
         "<main><h1>Canopy API documentation</h1>"
-        "<p>Choose a service to view its API and interactive documentation.</p>"
-        f"<ul>{module_links}</ul></main></body></html>"
+        "<p>API routes, interactive documentation, and OpenAPI schemas for each service.</p>"
+        "<table><thead><tr><th>Service</th><th>Description</th><th>API routes</th>"
+        "<th>Interactive docs</th><th>OpenAPI schema</th></tr></thead>"
+        f"<tbody>{meta_row}{module_rows}</tbody></table></main></body></html>"
     )
 
 

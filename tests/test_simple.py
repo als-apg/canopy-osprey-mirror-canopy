@@ -33,6 +33,9 @@ def test_docs_index_links_to_each_module() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
+    assert "Canopy service" in response.text
+    assert "<code>/</code>, <code>/health</code>" in response.text
+    assert 'href="/openapi.json"' in response.text
     for module in (
         "mole",
         "hare",
@@ -47,6 +50,8 @@ def test_docs_index_links_to_each_module() -> None:
         "analytics",
     ):
         assert f'href="/{module}/docs"' in response.text
+        assert f'href="/{module}/openapi.json"' in response.text
+        assert f"<code>/{module}/v1/...</code>" in response.text
 
 
 def test_docs_index_respects_root_path() -> None:
@@ -54,7 +59,10 @@ def test_docs_index_respects_root_path() -> None:
     response = client.get("/docs")
 
     assert response.status_code == 200
+    assert 'href="/api/canopy/docs"' in response.text
     assert 'href="/api/canopy/mole/docs"' in response.text
+    assert 'href="/api/canopy/mole/openapi.json"' in response.text
+    assert 'href="/api/canopy/openapi.json"' in response.text
 
 
 def test_unhandled_exception_returns_slug_envelope() -> None:
