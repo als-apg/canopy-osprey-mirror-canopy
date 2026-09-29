@@ -42,8 +42,7 @@ jobs:
 
       - name: Set deployable image tag
         id: vars
-        # Matches the bare short-sha tag produced by `type=sha,prefix=` below,
-        # which is the tag pushed to GHCR on main and consumed by deploy-dev.
+        # Matches the bare short-sha tag produced by `type=sha,prefix=` below.
         run: echo "image_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -77,8 +76,39 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  dispatch-dev-deploy:
-    name: Trigger dev deployment
+  # Keep the existing Software Factory DEV deployment. The Kubernetes DEV
+  # deployment is an additional target, not a replacement.
+  validate-dev-secrets:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      APP_SECRETS_DEV: ${{ secrets.APP_SECRETS_DEV }}
+    steps:
+      - name: Checkout validation script
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Validate APP_SECRETS_DEV
+        run: SECRET_NAME=APP_SECRETS_DEV SECRET_VALUE="$APP_SECRETS_DEV" FACILITY=CONTAINER_DEV bash .github/scripts/validate_app_secrets.sh
+
+  deploy-dev:
+    needs: [build, validate-dev-secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: slaclab/software-factory/.github/workflows/container-deploy.yml@main
+    with:
+      component_name: canopy
+      repository_name: canopy
+      tag: ${{ needs.build.outputs.image_tag }}
+      facilities: '["CONTAINER_DEV"]'
+      health_check_path: /health
+      migration_command: 'alembic upgrade head'
+    secrets:
+      APP_SECRETS: ${{ secrets.APP_SECRETS_DEV }}
+
+  dispatch-swapps-dev:
+    name: Deploy Kubernetes dev
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
