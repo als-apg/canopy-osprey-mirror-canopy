@@ -35,9 +35,10 @@ def test_docs_ui_lists_main_and_module_specs() -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    urls_line = next(line.strip() for line in response.text.splitlines() if line.strip().startswith('"urls": '))
-    urls = json.loads(urls_line.removeprefix('"urls": ').rstrip(","))
+    urls_line = next(line.strip() for line in response.text.splitlines() if line.strip().startswith("urls: "))
+    urls = json.loads(urls_line.removeprefix("urls: ").rstrip(","))
 
+    assert "    url: " not in response.text
     assert urls[0] == {"url": "/openapi.json", "name": "Canopy"}
     assert urls[1:] == [
         {"url": f"/{module}/openapi.json", "name": name}
@@ -63,9 +64,11 @@ def test_docs_ui_respects_root_path_for_specs() -> None:
     response = client.get("/docs")
 
     assert response.status_code == 200
-    assert "url: '/api/canopy/openapi.json'" in response.text
-    assert '"urls.primaryName": "Canopy"' in response.text
-    assert '"url": "/api/canopy/mole/openapi.json", "name": "Mole"' in response.text
+    urls_line = next(line.strip() for line in response.text.splitlines() if line.strip().startswith("urls: "))
+    urls = json.loads(urls_line.removeprefix("urls: ").rstrip(","))
+    assert urls[0] == {"url": "/api/canopy/openapi.json", "name": "Canopy"}
+    assert urls[1] == {"url": "/api/canopy/mole/openapi.json", "name": "Mole"}
+    assert "    url: " not in response.text
 
 
 def test_unhandled_exception_returns_slug_envelope() -> None:

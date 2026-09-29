@@ -1,9 +1,10 @@
+import json
 import logging
+from html import escape
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.middleware.cors import CORSMiddleware
 
 from canopy import __version__
@@ -115,13 +116,31 @@ async def docs_ui(request: Request) -> HTMLResponse:
         {"url": f"{root_path}/openapi.json", "name": "Canopy"},
         *[{"url": f"{root_path}/{path}/openapi.json", "name": name} for path, name in API_MODULES],
     ]
-    return get_swagger_ui_html(
-        openapi_url=f"{root_path}/openapi.json",
-        title=f"{app.title} - Swagger UI",
-        swagger_ui_parameters={
-            "urls": specs,
-            "urls.primaryName": "Canopy",
-        },
+    serialized_specs = json.dumps(specs).replace("<", "\\u003c")
+    return HTMLResponse(
+        f"""<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<title>{escape(f"{app.title} - Swagger UI")}</title>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+const ui = SwaggerUIBundle({{
+    dom_id: "#swagger-ui",
+    urls: {serialized_specs},
+    "urls.primaryName": "Canopy",
+    presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIBundle.SwaggerUIStandalonePreset
+    ],
+}});
+</script>
+</body>
+</html>"""
     )
 
 
