@@ -23,6 +23,8 @@ Modules without a guide here yet are documented by their interactive API docs
 (below) and their design pages on the
 [GitHub wiki](https://github.com/slaclab/Canopy/wiki).
 
+The API index at `/docs` links to the Swagger UI for every mounted module.
+
 ## Conventions every module follows
 
 **URLs.** APIs are versioned per module: `/<module>/v1/...`. Each module also

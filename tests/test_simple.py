@@ -27,6 +27,36 @@ def test_root_endpoint() -> None:
     assert "version" in body
 
 
+def test_docs_index_links_to_each_module() -> None:
+    client = TestClient(app)
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    for module in (
+        "mole",
+        "hare",
+        "raccoon",
+        "vole",
+        "fox",
+        "beaver",
+        "squirrel",
+        "magpie",
+        "jobs",
+        "converter",
+        "analytics",
+    ):
+        assert f'href="/{module}/docs"' in response.text
+
+
+def test_docs_index_respects_root_path() -> None:
+    client = TestClient(app, root_path="/api/canopy")
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert 'href="/api/canopy/mole/docs"' in response.text
+
+
 def test_unhandled_exception_returns_slug_envelope() -> None:
     """The fallback exception handler returns the {code, detail} shape."""
     if not any(getattr(r, "path", None) == "/__test/boom" for r in app.routes):
