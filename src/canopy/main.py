@@ -1,9 +1,8 @@
 import logging
-from html import escape
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -26,7 +25,6 @@ from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
-from canopy.core.openapi import build_aggregate_openapi
 from canopy.squirrel.app import app as squirrel_app
 from canopy.squirrel.app import squirrel_lifespan
 from canopy.analytics.app import app as analytics_app
@@ -38,17 +36,17 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 API_MODULES = (
-    ("mole", "Mole", "Archiver data and metadata"),
-    ("hare", "Hare", "Live process-variable access"),
-    ("raccoon", "Raccoon", "PV directory and device discovery"),
-    ("vole", "Vole", "Live PV subscriptions"),
-    ("fox", "Fox", "Expression evaluation"),
-    ("beaver", "Beaver", "Widgets and screens"),
-    ("squirrel", "Squirrel", "PV catalog, tags, and snapshots"),
-    ("magpie", "Magpie", "Application configuration"),
-    ("jobs", "Jobs", "Background job status"),
-    ("converter", "Converter", "Screen conversion"),
-    ("analytics", "Analytics", "Frontend event ingestion"),
+    ("mole", "Mole"),
+    ("hare", "Hare"),
+    ("raccoon", "Raccoon"),
+    ("vole", "Vole"),
+    ("fox", "Fox"),
+    ("beaver", "Beaver"),
+    ("squirrel", "Squirrel"),
+    ("magpie", "Magpie"),
+    ("jobs", "Jobs"),
+    ("converter", "Converter"),
+    ("analytics", "Analytics"),
 )
 
 
@@ -111,86 +109,19 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
-async def docs_index(request: Request) -> HTMLResponse:
+async def docs_ui(request: Request) -> HTMLResponse:
     root_path = request.scope.get("root_path", "").rstrip("/")
-    aggregate_docs_href = escape(f"{root_path}/docs/all", quote=True)
-    module_rows = "".join(
-        (
-            '<tr><th scope="row">{name}</th><td>{description}</td>'
-            "<td><code>/{path}/v1/...</code></td>"
-            '<td><a href="{docs_href}">Swagger UI</a></td>'
-            '<td><a href="{schema_href}">OpenAPI JSON</a></td></tr>'
-        ).format(
-            name=escape(name),
-            description=escape(description),
-            path=escape(path),
-            docs_href=escape(f"{root_path}/{path}/docs", quote=True),
-            schema_href=escape(f"{root_path}/{path}/openapi.json", quote=True),
-        )
-        for path, name, description in API_MODULES
-    )
-    meta_row = (
-        '<tr><th scope="row">Canopy service</th>'
-        "<td>Service information and liveness</td>"
-        "<td><code>/</code>, <code>/health</code></td>"
-        '<td><a href="{docs_href}">API index</a></td>'
-        '<td><a href="{schema_href}">OpenAPI JSON</a></td></tr>'
-    ).format(
-        docs_href=escape(f"{root_path}/docs", quote=True),
-        schema_href=escape(f"{root_path}/openapi.json", quote=True),
-    )
-    aggregate_row = (
-        '<tr><th scope="row">All APIs</th>'
-        "<td>Combined OpenAPI definition for Canopy and all modules</td>"
-        "<td><code>/</code>, <code>/health</code>, <code>/&lt;module&gt;/v1/...</code></td>"
-        '<td><a href="{docs_href}">Aggregate Swagger UI</a></td>'
-        '<td><a href="{schema_href}">Aggregate OpenAPI JSON</a></td></tr>'
-    ).format(
-        docs_href=escape(f"{root_path}/docs/all", quote=True),
-        schema_href=escape(f"{root_path}/openapi-aggregate.json", quote=True),
-    )
-    return HTMLResponse(
-        "<!doctype html>"
-        '<html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        "<title>Canopy API documentation</title>"
-        "<style>"
-        "body{font:16px system-ui,sans-serif;line-height:1.5;margin:3rem auto;"
-        "max-width:72rem;padding:0 1.5rem;color:#202633}"
-        "h1{margin-bottom:.25rem}table{border-collapse:collapse;width:100%;margin-top:1.5rem}"
-        "th,td{border:1px solid #d0d7de;padding:.75rem;text-align:left}"
-        "thead{background:#f6f8fa}tbody th{white-space:nowrap}"
-        "code{white-space:nowrap}"
-        "</style></head><body>"
-        "<main><h1>Canopy API documentation</h1>"
-        "<p>API routes, interactive documentation, and OpenAPI schemas for each service.</p>"
-        f'<p><a href="{aggregate_docs_href}">Explore all APIs in one Swagger UI</a></p>'
-        "<table><thead><tr><th>Service</th><th>Description</th><th>API routes</th>"
-        "<th>Interactive docs</th><th>OpenAPI schema</th></tr></thead>"
-        f"<tbody>{aggregate_row}{meta_row}{module_rows}</tbody></table></main></body></html>"
-    )
-
-
-@app.get("/openapi-aggregate.json", include_in_schema=False)
-async def aggregate_openapi(request: Request) -> JSONResponse:
-    module_specs = {
-        path: next(route.app for route in app.routes if getattr(route, "path", None) == f"/{path}").openapi()
-        for path, _, _ in API_MODULES
-    }
-    schema = build_aggregate_openapi(
-        app.openapi(),
-        module_specs,
-        request.scope.get("root_path", "").rstrip("/"),
-    )
-    return JSONResponse(schema)
-
-
-@app.get("/docs/all", include_in_schema=False, response_class=HTMLResponse)
-async def aggregate_docs(request: Request) -> HTMLResponse:
-    root_path = request.scope.get("root_path", "").rstrip("/")
+    specs = [
+        {"url": f"{root_path}/openapi.json", "name": "Canopy"},
+        *[{"url": f"{root_path}/{path}/openapi.json", "name": name} for path, name in API_MODULES],
+    ]
     return get_swagger_ui_html(
-        openapi_url=f"{root_path}/openapi-aggregate.json",
-        title=f"{app.title} - Aggregate API docs",
+        openapi_url=f"{root_path}/openapi.json",
+        title=f"{app.title} - Swagger UI",
+        swagger_ui_parameters={
+            "urls": specs,
+            "urls.primaryName": "Canopy",
+        },
     )
 
 
