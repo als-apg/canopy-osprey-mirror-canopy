@@ -25,6 +25,8 @@ Modules without a guide here yet are documented by their interactive API docs
 
 The API index at `/docs` lists each service's API route pattern, Swagger UI,
 and OpenAPI schema URL. The core Canopy row documents `/` and `/health`.
+For a combined interactive reference, use `/docs/all`; its generated schema is
+available at `/openapi-aggregate.json`.
 
 ## Conventions every module follows
 

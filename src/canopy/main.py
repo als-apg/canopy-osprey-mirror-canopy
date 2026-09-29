@@ -3,7 +3,8 @@ from html import escape
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.middleware.cors import CORSMiddleware
 
 from canopy import __version__
@@ -25,6 +26,7 @@ from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
+from canopy.core.openapi import build_aggregate_openapi
 from canopy.squirrel.app import app as squirrel_app
 from canopy.squirrel.app import squirrel_lifespan
 from canopy.analytics.app import app as analytics_app
@@ -111,6 +113,7 @@ async def health() -> dict[str, str]:
 @app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
 async def docs_index(request: Request) -> HTMLResponse:
     root_path = request.scope.get("root_path", "").rstrip("/")
+    aggregate_docs_href = escape(f"{root_path}/docs/all", quote=True)
     module_rows = "".join(
         (
             '<tr><th scope="row">{name}</th><td>{description}</td>'
@@ -136,6 +139,16 @@ async def docs_index(request: Request) -> HTMLResponse:
         docs_href=escape(f"{root_path}/docs", quote=True),
         schema_href=escape(f"{root_path}/openapi.json", quote=True),
     )
+    aggregate_row = (
+        '<tr><th scope="row">All APIs</th>'
+        "<td>Combined OpenAPI definition for Canopy and all modules</td>"
+        "<td><code>/</code>, <code>/health</code>, <code>/&lt;module&gt;/v1/...</code></td>"
+        '<td><a href="{docs_href}">Aggregate Swagger UI</a></td>'
+        '<td><a href="{schema_href}">Aggregate OpenAPI JSON</a></td></tr>'
+    ).format(
+        docs_href=escape(f"{root_path}/docs/all", quote=True),
+        schema_href=escape(f"{root_path}/openapi-aggregate.json", quote=True),
+    )
     return HTMLResponse(
         "<!doctype html>"
         '<html lang="en"><head><meta charset="utf-8">'
@@ -151,9 +164,33 @@ async def docs_index(request: Request) -> HTMLResponse:
         "</style></head><body>"
         "<main><h1>Canopy API documentation</h1>"
         "<p>API routes, interactive documentation, and OpenAPI schemas for each service.</p>"
+        f'<p><a href="{aggregate_docs_href}">Explore all APIs in one Swagger UI</a></p>'
         "<table><thead><tr><th>Service</th><th>Description</th><th>API routes</th>"
         "<th>Interactive docs</th><th>OpenAPI schema</th></tr></thead>"
-        f"<tbody>{meta_row}{module_rows}</tbody></table></main></body></html>"
+        f"<tbody>{aggregate_row}{meta_row}{module_rows}</tbody></table></main></body></html>"
+    )
+
+
+@app.get("/openapi-aggregate.json", include_in_schema=False)
+async def aggregate_openapi(request: Request) -> JSONResponse:
+    module_specs = {
+        path: next(route.app for route in app.routes if getattr(route, "path", None) == f"/{path}").openapi()
+        for path, _, _ in API_MODULES
+    }
+    schema = build_aggregate_openapi(
+        app.openapi(),
+        module_specs,
+        request.scope.get("root_path", "").rstrip("/"),
+    )
+    return JSONResponse(schema)
+
+
+@app.get("/docs/all", include_in_schema=False, response_class=HTMLResponse)
+async def aggregate_docs(request: Request) -> HTMLResponse:
+    root_path = request.scope.get("root_path", "").rstrip("/")
+    return get_swagger_ui_html(
+        openapi_url=f"{root_path}/openapi-aggregate.json",
+        title=f"{app.title} - Aggregate API docs",
     )
 
 
