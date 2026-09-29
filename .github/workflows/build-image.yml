@@ -111,25 +111,14 @@ jobs:
     name: Deploy Kubernetes dev
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mint deployment repo token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: swapps-deployment
-
-      - name: Dispatch deploy
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          IMAGE: ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}
-        run: |
-          set -euo pipefail
-          gh api "repos/${{ github.repository_owner }}/swapps-deployment/dispatches" \
-            -f event_type=deploy-image \
-            -f "client_payload[app]=canopy" \
-            -f "client_payload[environment]=dev" \
-            -f "client_payload[image]=$IMAGE"
+    uses: slaclab/swapps-ci-helpers/.github/workflows/dispatch-swapps-deployment.yml@73e6ba924aac5f822b050bd6bed12b0e45c64034
+    with:
+      app: canopy
+      environment: dev
+      image: ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}
+      deployment-owner: slaclab
+      deployment-repo: swapps-deployment
+      deploy-ref: refs/heads/main
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
