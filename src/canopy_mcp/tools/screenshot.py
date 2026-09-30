@@ -55,12 +55,15 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 def embed_url(base_url: str, draft_id: str, macros: dict[str, str] | None = None) -> str:
-    """The embed URL of ``draft_id`` on ``base_url``, macros as query parameters."""
+    """The embed URL of ``draft_id`` on ``base_url``, macros as query parameters.
+
+    Pins the viewer's zoom to 100 %: the embed route opens large panels fitted
+    to the frame, and a screenshot must capture the panel at its authored size.
+    """
     DraftStore.validate_id(draft_id)
     url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"))
-    if macros:
-        url += "?" + urlencode({str(name): str(value) for name, value in macros.items()})
-    return url
+    query = {"_canopyZoom": "100", **{str(name): str(value) for name, value in (macros or {}).items()}}
+    return url + "?" + urlencode(query)
 
 
 def pv_state(status: str | None) -> str:

@@ -55,9 +55,9 @@ STUB_INDEX = f"""<!doctype html>
 
 
 def test_embed_url_carries_macros_as_query() -> None:
-    assert embed_url("http://h:1/", "bts/view") == "http://h:1/embed/drafts/bts/view"
+    assert embed_url("http://h:1/", "bts/view") == "http://h:1/embed/drafts/bts/view?_canopyZoom=100"
     assert embed_url("http://h:1", "a", {"P": "SR:C01", "N": "a b&c"}) == (
-        "http://h:1/embed/drafts/a?P=SR%3AC01&N=a+b%26c"
+        "http://h:1/embed/drafts/a?_canopyZoom=100&P=SR%3AC01&N=a+b%26c"
     )
 
 
