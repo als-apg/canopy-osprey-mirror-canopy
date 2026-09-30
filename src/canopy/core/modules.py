@@ -34,11 +34,21 @@ MODULES: frozenset[str] = frozenset(
 )
 
 
-def module_for_root_path(root_path: str) -> str:
-    """Map a request's ``scope["root_path"]`` to its module scope.
+def tag_module(app, module: str) -> None:
+    """Attach ``module`` to an ASGI app instance, read back via ``request.app.state``
+    / ``websocket.app.state`` in ``canopy.core.security``.
 
-    A mounted sub-app's ``root_path`` is its mount point (``"/hare"``); the
-    parent app's own routes have an empty ``root_path``, which maps to ``core``.
-    Verified to hold for both HTTP and WebSocket scopes.
+    Deliberately not derived from the URL: a mounted sub-app's own
+    ``scope["root_path"]`` is *proxy prefix + mount path* (Starlette appends the
+    mount to whatever root_path it was already given), so behind a path-prefixed
+    ingress (``uvicorn --root-path /canopy``) parsing it back apart is fragile —
+    it would have returned ``canopy/hare`` instead of ``hare``. Each app carries
+    its own module tag instead, independent of how anything in front of it
+    rewrites the path.
     """
-    return root_path.strip("/") or "core"
+    app.state.canopy_module = module
+
+
+def module_for_app(app) -> str:
+    """The module tag ``tag_module`` attached to this ASGI app instance."""
+    return app.state.canopy_module

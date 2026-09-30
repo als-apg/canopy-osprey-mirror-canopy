@@ -13,6 +13,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from canopy.core import security
 from canopy.core.errors import KeyStoreUnavailable
+from canopy.core.modules import tag_module
 from canopy.core.security import (
     APIKey,
     KeyRegistry,
@@ -37,12 +38,14 @@ class FakeRegistry:
 @pytest.fixture
 def ws_app() -> FastAPI:
     app = FastAPI()
+    tag_module(app, "core")
 
     @app.websocket("/ws")
     async def ws_route(websocket: WebSocket, key: APIKey = Security(ws_require_read_access)) -> None:
         await websocket.accept()
 
     sub_app = FastAPI()
+    tag_module(sub_app, "fox")
 
     @sub_app.websocket("/ws")
     async def sub_ws_route(websocket: WebSocket, key: APIKey = Security(ws_get_api_key)) -> None:

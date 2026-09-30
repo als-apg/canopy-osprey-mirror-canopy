@@ -27,6 +27,7 @@ import canopy.core.keys.models  # noqa: F401 — register core tables on Base.me
 from canopy.core import db, security
 from canopy.core.db import Base
 from canopy.core.errors import register_canopy_error_handler
+from canopy.core.modules import tag_module
 from canopy.core.security import (
     APIKey,
     EnvKeyRegistry,
@@ -105,6 +106,7 @@ def gated_client() -> TestClient:
     """
     app = FastAPI()
     register_canopy_error_handler(app)
+    tag_module(app, "core")
 
     @app.get("/read")
     async def read_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
@@ -126,6 +128,7 @@ def keys_client() -> TestClient:
     """
     app = FastAPI()
     register_canopy_error_handler(app)
+    tag_module(app, "core")
     app.include_router(api_keys_router)
     return TestClient(app, raise_server_exceptions=False)
 

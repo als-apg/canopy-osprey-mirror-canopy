@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from canopy.core import security
 from canopy.core.errors import register_canopy_error_handler
+from canopy.core.modules import tag_module
 from canopy.core.security import APIKey, require_read_access
 
 
@@ -26,6 +27,7 @@ class FakeRegistry:
 def scoped_app() -> FastAPI:
     app = FastAPI()
     register_canopy_error_handler(app)
+    tag_module(app, "core")
 
     @app.get("/core-route")
     async def core_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
@@ -33,6 +35,7 @@ def scoped_app() -> FastAPI:
 
     fox_app = FastAPI()
     register_canopy_error_handler(fox_app)
+    tag_module(fox_app, "fox")
 
     @fox_app.get("/read")
     async def fox_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
@@ -40,6 +43,7 @@ def scoped_app() -> FastAPI:
 
     squirrel_app = FastAPI()
     register_canopy_error_handler(squirrel_app)
+    tag_module(squirrel_app, "squirrel")
 
     @squirrel_app.get("/read")
     async def squirrel_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:

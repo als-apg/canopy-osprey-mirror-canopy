@@ -16,7 +16,7 @@ from canopy.core.errors import (
     InsufficientWriteAccess,
     InsufficientModuleAccess,
 )
-from canopy.core.modules import JOBS, MODULES, WILDCARD, module_for_root_path
+from canopy.core.modules import JOBS, MODULES, WILDCARD, module_for_app
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ async def get_api_key(request: Request, token: Annotated[str | None, Security(ap
     key = await get_registry().get(token)
     if key is None:
         raise InvalidAPIKey("Invalid API key")
-    module = module_for_root_path(request.scope.get("root_path", ""))
+    module = module_for_app(request.app)
     if not key.allows_module(module):
         raise InsufficientModuleAccess(f"API key is not scoped to '{module}'")
     return key
@@ -289,7 +289,7 @@ async def ws_get_api_key(websocket: WebSocket) -> APIKey:
             code=status.WS_1008_POLICY_VIOLATION,
             reason=f"{ErrorCode.INVALID_API_KEY.value}: invalid API key",
         )
-    module = module_for_root_path(websocket.scope.get("root_path", ""))
+    module = module_for_app(websocket.app)
     if not key.allows_module(module):
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
