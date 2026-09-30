@@ -52,7 +52,7 @@ repo):
 ```json
 {
   "_shared": {
-    "CANOPY_API_KEYS": "<read-write-token>:read+write,<read-only-token>:read"
+    "CANOPY_API_KEYS": "<read-write-token>:read+write@*,<read-only-token>:read@*"
   },
   "CONTAINER_LCLS": {
     "API_PORT": 8080,

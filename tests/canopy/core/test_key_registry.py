@@ -322,7 +322,7 @@ class TestChaining:
 
     async def test_invalidate_key_id_forwards_to_the_caching_layer(self, clock):
         store = FakeStore({TOKEN: a_key()})
-        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read"), CachingKeyRegistry(store))
+        registry = ChainedKeyRegistry(EnvKeyRegistry("envkey:read@*"), CachingKeyRegistry(store))
         await registry.get(TOKEN)
         assert store.calls == 1
 

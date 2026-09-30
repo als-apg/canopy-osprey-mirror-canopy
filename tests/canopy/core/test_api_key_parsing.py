@@ -107,14 +107,17 @@ class TestEnvKeyRegistryParsing:
         assert "relying on the database registry" in caplog.text
         assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
 
-    async def test_missing_at_suffix_is_rejected(self, caplog):
-        # No implicit "all modules" default: every entry must say @* explicitly.
+    async def test_missing_at_suffix_defaults_to_every_module_with_a_warning(self, caplog):
+        # Deprecated, not fatal: an entry written before module scoping existed
+        # must keep granting the same access it always did.
         with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
             registry = EnvKeyRegistry("viewer:read")
 
-        assert await registry.get("viewer") is None
+        viewer = await registry.get("viewer")
+        assert viewer is not None
+        assert viewer.allows_module("fox")
         assert "entry #1" in caplog.text
-        assert "@<module>" in caplog.text
+        assert "deprecated" in caplog.text
 
     async def test_empty_at_suffix_is_rejected(self, caplog):
         with caplog.at_level(logging.WARNING, logger="canopy.core.security"):

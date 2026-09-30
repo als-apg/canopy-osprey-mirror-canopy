@@ -50,7 +50,7 @@ at the repo root documents every setting with its default.
 ### API keys
 
 ```
-CANOPY_API_KEYS="<token>:<scope>[+<scope>][,<token>:<scope>...]"
+CANOPY_API_KEYS="<token>:<scope>[+<scope>][@<module>[+<module>]][,<token>:<scope>...]"
 ```
 
 Issue **separate tokens per client class** with the minimum scope, and generate

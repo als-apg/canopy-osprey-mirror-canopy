@@ -60,11 +60,12 @@ class KeyRegistry(Protocol):
 class EnvKeyRegistry:
     """In-memory registry built from a comma-separated env-var entry list.
 
-    Format: ``"<token>:<scope>[+<scope>]*@<module>[+<module>]*[,...]"``.
-    Scopes are ``read``, ``write`` and ``admin``. The ``@<module>...`` suffix is
-    required — pass ``@*`` for every module. There is no implicit "all modules"
-    default: an entry with no ``@`` at all is skipped as malformed, the same as
-    an empty token. Examples:
+    Format: ``"<token>:<scope>[+<scope>]*[@<module>[+<module>]*][,...]"``.
+    Scopes are ``read``, ``write`` and ``admin``. The ``@<module>...`` suffix
+    restricts the key to those modules; pass ``@*`` for every module. An entry
+    with no ``@`` at all is deprecated but not fatal — it defaults to ``@*``
+    with a warning, so an env var written before module scoping existed keeps
+    granting the same access it always did. Examples:
 
         CANOPY_API_KEYS=""                              # empty registry
         CANOPY_API_KEYS="dev:read+write@*"              # one key, full access
@@ -114,10 +115,11 @@ class EnvKeyRegistry:
                 continue
             if not has_at:
                 logger.warning(
-                    "Skipping CANOPY_API_KEYS entry #%d: missing '@<module>' suffix; use '@*' for every module",
+                    "CANOPY_API_KEYS entry #%d has no '@<module>' suffix; defaulting to '@*' (every module). "
+                    "This default is deprecated — add '@*' explicitly, or scope the key, before it is removed.",
                     position,
                 )
-                continue
+                modules_part = WILDCARD
             module_set = {m.strip() for m in modules_part.split("+") if m.strip()}
             if not module_set:
                 logger.warning("Skipping CANOPY_API_KEYS entry #%d: empty '@' module list", position)
