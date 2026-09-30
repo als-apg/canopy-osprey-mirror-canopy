@@ -16,7 +16,7 @@ from canopy.core.errors import (
     InsufficientWriteAccess,
     InsufficientModuleAccess,
 )
-from canopy.core.modules import JOBS, MODULES, WILDCARD, module_for_app
+from canopy.core.modules import JOBS, WILDCARD, split_modules, module_for_app
 
 logger = logging.getLogger(__name__)
 
@@ -124,14 +124,14 @@ class EnvKeyRegistry:
             if not module_set:
                 logger.warning("Skipping CANOPY_API_KEYS entry #%d: empty '@' module list", position)
                 continue
-            if unknown_modules := module_set - MODULES - {WILDCARD}:
+            known_modules, unknown_modules = split_modules(module_set)
+            if unknown_modules:
                 logger.warning(
                     "CANOPY_API_KEYS entry #%d has %d unrecognized module(s); ignoring them",
                     position,
                     len(unknown_modules),
                 )
-            module_set -= unknown_modules
-            if not module_set:
+            if not known_modules:
                 logger.warning(
                     "Skipping CANOPY_API_KEYS entry #%d: no recognized modules remained after filtering", position
                 )
@@ -146,7 +146,7 @@ class EnvKeyRegistry:
                 # Env keys have no app name of their own; position identifies them in
                 # logs without ever revealing the token.
                 name=f"env:{position}",
-                modules=frozenset(module_set),
+                modules=known_modules,
             )
         if self._keys:
             logger.info(

@@ -34,6 +34,25 @@ MODULES: frozenset[str] = frozenset(
 )
 
 
+def split_modules(modules: set[str]) -> tuple[frozenset[str], frozenset[str]]:
+    """Partition a set of module names into (recognized, unrecognized).
+
+    Shared by ``EnvKeyRegistry`` and the key-management service, which parse
+    the same ``@module+module`` shape but disagree on what to do with an
+    unrecognized name: the env layer warns and drops it (a typo in a static
+    key must not take an otherwise-good entry down), the service layer raises
+    (a typo in an HTTP/CLI request is a mistake the caller can fix on the
+    spot). That difference stays with each caller; this only does the
+    classification. ``WILDCARD`` counts as recognized, and its presence
+    collapses the recognized set down to just ``{WILDCARD}``.
+    """
+    unknown = frozenset(modules) - MODULES - {WILDCARD}
+    known = frozenset(modules) - unknown
+    if WILDCARD in known:
+        known = frozenset({WILDCARD})
+    return known, unknown
+
+
 def tag_module(app, module: str) -> None:
     """Attach ``module`` to an ASGI app instance, read back via ``request.app.state``
     / ``websocket.app.state`` in ``canopy.core.security``.

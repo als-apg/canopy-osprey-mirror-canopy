@@ -16,7 +16,7 @@ from canopy.core.errors import (
     ApiKeySelfDeactivation,
     InsufficientModuleAccess,
 )
-from canopy.core.modules import MODULES, WILDCARD
+from canopy.core.modules import MODULES, WILDCARD, split_modules
 from canopy.core.security import invalidate_key_id
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token, mint_token
@@ -52,11 +52,10 @@ def _normalize_modules(modules: list[str]) -> list[str]:
     cleaned = {m.strip() for m in modules if m.strip()}
     if not cleaned:
         raise BadRequest(f"Cannot create an API key scoped to no modules; pass at least one, or '{WILDCARD}' for all")
-    if unknown := cleaned - MODULES - {WILDCARD}:
+    known, unknown = split_modules(cleaned)
+    if unknown:
         raise BadRequest(f"Unknown module(s) {sorted(unknown)}; valid modules are {sorted(MODULES)}")
-    if WILDCARD in cleaned:
-        return [WILDCARD]
-    return sorted(cleaned)
+    return sorted(known)
 
 
 def _require_module_containment(target_modules, acting_modules) -> None:
