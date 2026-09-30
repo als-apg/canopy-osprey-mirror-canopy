@@ -11,6 +11,12 @@ Draft screens are served with ``Cache-Control: no-cache`` and an ETag equal to
 their rev: the viewer polls the manifest every second while a draft is open,
 and a 304 keeps that poll cheap. Hashed build assets never change under the
 same name, so they are cached for a year.
+
+Draft images (anything under the drafts route that is not a screen) also carry
+``Content-Security-Policy: default-src 'none'; sandbox`` and
+``X-Content-Type-Options: nosniff``: they are copied in from legacy trees, so an
+``.svg`` opened directly must not run script and no body may be sniffed into a
+more capable type.
 """
 
 import re
@@ -32,6 +38,8 @@ PREFIX_PATTERN = re.compile(r"(/[A-Za-z0-9._~-]+)*")
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 DRAFT_CACHE_CONTROL = "no-cache"
 SCREENS_PATH = "drafts"
+# Headers on every non-screen draft response (200 and 304).
+IMAGE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff"}
 
 # OSPREY theme id -> the viewer's light/dark mode.
 THEMES: dict[str, str] = {"dark": "dark", "light": "light"}
@@ -74,9 +82,9 @@ def _not_modified(request: Request, etag: str) -> bool:
     return etag in candidates or "*" in candidates
 
 
-def _revved(request: Request, rev: str, make: Any) -> Response:
+def _revved(request: Request, rev: str, make: Any, extra: dict[str, str] | None = None) -> Response:
     etag = _etag(rev)
-    headers = {"ETag": etag, "Cache-Control": DRAFT_CACHE_CONTROL}
+    headers = {"ETag": etag, "Cache-Control": DRAFT_CACHE_CONTROL, **(extra or {})}
     if _not_modified(request, etag):
         return Response(status_code=304, headers=headers)
     response = make()
@@ -138,7 +146,8 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         if rev is None:
             rev = hashlib.sha256(target.read_bytes()).hexdigest()
         media = "application/json" if is_screen else None
-        return _revved(request, rev, lambda: FileResponse(target, media_type=media))
+        extra = None if is_screen else IMAGE_HEADERS
+        return _revved(request, rev, lambda: FileResponse(target, media_type=media), extra)
 
     async def health(request: Request) -> Response:
         return JSONResponse({"status": "ok"})

@@ -17,13 +17,20 @@ import json
 import asyncio
 import hashlib
 import tempfile
-from typing import Any
+from typing import Any, Literal
 from pathlib import Path
 from urllib.parse import unquote
 
 ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*")
 SCREEN_SUFFIX = ".screen.json"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico"})
+MAX_ASSET_BYTES = 5 * 2**20
+ASSET_SEGMENT = re.compile(r"[A-Za-z0-9 ._-]+")
+# Leading signatures of the raster formats a browser or Phoebus decodes; WEBP is the
+# RIFF container with ``WEBP`` at offset 8 and is checked separately.
+_IMAGE_MAGIC = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM", b"\x00\x00\x01\x00")
+
+AssetStatus = Literal["written", "reused", "replaced"]
 
 
 class InvalidDraftId(ValueError):
@@ -32,6 +39,14 @@ class InvalidDraftId(ValueError):
 
 class DraftNotFound(LookupError):
     """No draft is stored under the id."""
+
+
+class AssetRefused(ValueError):
+    """``write_asset`` refused the asset; ``reason`` is invalid_ref, too_large, not_image or conflict."""
+
+    def __init__(self, reason: str, message: str):
+        self.reason = reason
+        super().__init__(message)
 
 
 class RevConflict(Exception):
@@ -57,6 +72,51 @@ def _stat_key(st: os.stat_result) -> tuple[int, int, int]:
 def doc_rev(doc: dict[str, Any]) -> str:
     """The rev ``doc`` will have once written: the sha256 of the bytes the store would write."""
     return _digest(_serialize(doc))
+
+
+def _clean_parts(relpath: str) -> list[str] | None:
+    """``relpath`` split on ``/`` when it is structurally safe, else ``None``.
+
+    Refuses empty paths, backslashes, NUL, a leading ``/`` and any empty, ``.``
+    or ``..`` segment. No percent-decoding happens here.
+    """
+    if not relpath or "\\" in relpath or "\x00" in relpath or relpath.startswith("/"):
+        return None
+    parts = relpath.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return None
+    return parts
+
+
+def asset_relpath_reason(relpath: str) -> Literal["invalid_ref"] | None:
+    """``'invalid_ref'`` when ``relpath`` (draft-id space) cannot name a stored image, else ``None``.
+
+    Every segment must fullmatch ``ASSET_SEGMENT`` and none may end in
+    ``.screen.json``; the last one must carry an ``IMAGE_SUFFIXES`` suffix.
+    """
+    parts = _clean_parts(relpath) if isinstance(relpath, str) else None
+    if parts is None:
+        return "invalid_ref"
+    for part in parts:
+        if not ASSET_SEGMENT.fullmatch(part) or part.lower().endswith(SCREEN_SUFFIX):
+            return "invalid_ref"
+    if Path(parts[-1].lower()).suffix not in IMAGE_SUFFIXES:
+        return "invalid_ref"
+    return None
+
+
+def looks_like_image(data: bytes, suffix: str) -> bool:
+    """Whether ``data`` plausibly is an image for ``suffix`` (lower-case, with the dot).
+
+    ``.svg`` needs ``<`` as its first byte after an optional UTF-8 BOM and
+    whitespace; every other image suffix accepts any known raster signature, since
+    browsers decode by signature, not by name.
+    """
+    if suffix == ".svg":
+        return data.removeprefix(b"\xef\xbb\xbf").lstrip().startswith(b"<")
+    if suffix not in IMAGE_SUFFIXES:
+        return False
+    return data.startswith(_IMAGE_MAGIC) or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")
 
 
 def contained_file(root: Path, relpath: Path | str) -> Path | None:
@@ -164,6 +224,59 @@ class DraftStore:
                 raise RevConflict(conflicts)
             return {draft_id: self._write_file(path, data) for draft_id, (path, data, _) in prepared.items()}
 
+    async def write_asset(self, relpath: str, data: bytes, *, overwrite: bool = False) -> AssetStatus:
+        """Store image ``data`` at ``screens/<relpath>``; returns written, reused or replaced.
+
+        Raises ``AssetRefused`` with ``reason`` checked in this order: invalid_ref
+        (``asset_relpath_reason``), too_large (over ``MAX_ASSET_BYTES``), not_image
+        (``looks_like_image``), conflict (something on disk is in the way: a
+        ``screens/`` or intermediate directory resolving outside the store, a
+        symlink or non-file at the target, or a differing file without
+        ``overwrite``). ``OSError`` propagates -- a dangling ``screens`` link
+        surfaces as the ``FileExistsError`` pathlib raises.
+        """
+        if asset_relpath_reason(relpath) is not None:
+            raise AssetRefused("invalid_ref", f"not a valid asset path: {relpath!r}")
+        if len(data) > MAX_ASSET_BYTES:
+            raise AssetRefused("too_large", f"{len(data)} bytes exceeds the {MAX_ASSET_BYTES}-byte asset limit")
+        suffix = Path(relpath.split("/")[-1].lower()).suffix
+        if not looks_like_image(data, suffix):
+            detail = (
+                "bytes are not an SVG document"
+                if suffix == ".svg"
+                else "bytes carry no PNG/JPEG/GIF/BMP/ICO/WEBP signature"
+            )
+            raise AssetRefused("not_image", detail)
+        target = self.screens / relpath
+        async with self._lock:
+            self.screens.mkdir(parents=True, exist_ok=True)
+            # One level below contained_file's base: a symlinked store root is fine,
+            # a screens/ (or any directory under it) resolving elsewhere is not.
+            base = self.root.resolve(strict=True) / "screens"
+            parent = target.parent.resolve(strict=False)
+            if not parent.is_relative_to(base):
+                raise AssetRefused(
+                    "conflict", f"{relpath}: its directory resolves to {parent}, outside the store's {base}"
+                )
+            if target.is_symlink():
+                raise AssetRefused("conflict", f"{relpath}: a symlink is in the way at screens/{relpath}")
+            if target.exists():
+                if not target.is_file():
+                    what = "a directory" if target.is_dir() else "a non-regular file"
+                    raise AssetRefused("conflict", f"{relpath}: {what} is in the way at screens/{relpath}")
+                same = target.stat().st_size == len(data) and _digest(target.read_bytes()) == _digest(data)
+                if same:
+                    return "reused"
+                if not overwrite:
+                    raise AssetRefused(
+                        "conflict",
+                        f"{relpath}: a different file already exists at screens/{relpath}; overwrite=true replaces it",
+                    )
+                self._write_file(target, data)
+                return "replaced"
+            self._write_file(target, data)
+            return "written"
+
     async def delete(self, draft_id: str, expect_rev: str | None = None) -> None:
         """Remove the draft; when ``expect_rev`` is given it must match the current rev."""
         path = self.path_for(draft_id)
@@ -227,10 +340,8 @@ class DraftStore:
             decoded = nxt
         else:
             return None
-        if not decoded or "\\" in decoded or "\x00" in decoded or decoded.startswith("/"):
-            return None
-        parts = decoded.split("/")
-        if any(part in ("", ".", "..") for part in parts):
+        parts = _clean_parts(decoded)
+        if parts is None:
             return None
         name = parts[-1].lower()
         if not (name.endswith(SCREEN_SUFFIX) or Path(name).suffix in IMAGE_SUFFIXES):

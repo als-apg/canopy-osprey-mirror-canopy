@@ -7,19 +7,19 @@ from pathlib import Path
 import pytest
 from fastmcp.exceptions import ToolError
 
-from canopy_mcp.catalog import build_catalog, set_catalog
-from canopy_mcp.config import Settings
 from canopy_mcp.merge import merge_patch
 from canopy_mcp.tools import drafts
+from canopy_mcp.config import Settings
+from canopy_mcp.catalog import set_catalog, build_catalog
 from canopy_mcp.tools.check import run_check
 from canopy_mcp.tools.drafts import (
     add_node,
-    delete_draft,
     get_screen,
-    list_drafts,
     new_screen,
     patch_node,
+    list_drafts,
     remove_node,
+    delete_draft,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -29,7 +29,7 @@ TWO_UNKNOWN = FIXTURES / "two-unknown.screen.json"
 def _catalog():
     ir_map = {
         t: {"consumes": [], "verbatim": False}
-        for t in ("group", "label", "action-button", "pv-button", "embedded-display")
+        for t in ("group", "label", "action-button", "pv-button", "embedded-display", "image-view")
     }
     return build_catalog([], ir_map)
 
@@ -226,6 +226,17 @@ async def test_sc6_pv_button_writes_with_inert_warning(settings, store):
     assert any(w["code"] == "inert_in_osprey" and w["nodeId"] == "b" for w in out["warnings"])
 
 
+async def test_new_screen_with_absent_image_writes_and_check_lists_it(settings, store):
+    out = await new_screen("x/img", _doc(_node("pic", "image-view", {"src": "images/x.png"})))
+    assert "refused" not in out
+    assert out["rev"] == store.rev("x/img")
+    checked = await _checked("x/img", store)
+    [hit] = [f for f in _all(checked) if f["code"] == "unresolved_ref"]
+    assert hit["nodeId"] == "pic"
+    assert (hit["kind"], hit["reason"], hit["severity"]) == ("image", "missing", "warning")
+    assert "screens/x/images/x.png" in hit["message"]
+
+
 # --- SC7: rev refusals --------------------------------------------------------------
 
 
@@ -345,7 +356,9 @@ async def test_patch_node_refuses_an_introduced_error(settings, store):
     btn = _node("btn", "action-button", {"actions": [{"type": "open_webpage", "url": "https://x"}]})
     first = await new_screen("x/y", _doc(btn))
     before = _file(settings, "x/y").read_bytes()
-    out = await patch_node("x/y", "btn", first["rev"], {"props": {"actions": [{"type": "open_webpage", "url": "javascript:x"}]}})
+    out = await patch_node(
+        "x/y", "btn", first["rev"], {"props": {"actions": [{"type": "open_webpage", "url": "javascript:x"}]}}
+    )
     _assert_refused(out, "open_webpage", "btn")
     assert _file(settings, "x/y").read_bytes() == before
 

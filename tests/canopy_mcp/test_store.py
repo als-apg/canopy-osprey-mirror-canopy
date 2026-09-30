@@ -6,7 +6,16 @@ import asyncio
 
 import pytest
 
-from canopy_mcp.store import DraftStore, RevConflict, DraftNotFound, InvalidDraftId
+from canopy_mcp.store import (
+    MAX_ASSET_BYTES,
+    DraftStore,
+    RevConflict,
+    AssetRefused,
+    DraftNotFound,
+    InvalidDraftId,
+    looks_like_image,
+    asset_relpath_reason,
+)
 
 
 def _doc(title: str = "Motor", **extra) -> dict:
@@ -289,3 +298,211 @@ async def test_resolve_static_refuses_symlink_escape(store, tmp_path):
     (tmp_path / "outside.png").write_bytes(b"\x89PNG")
     (store.root / "screens" / "link.png").symlink_to(tmp_path / "outside.png")
     assert store.resolve_static("screens/link.png") is None
+
+
+# --- write_asset: the single enforcement point for images copied into the store ---
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+GIF = b"GIF89a" + b"\x00" * 32
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+
+
+@pytest.mark.parametrize(
+    "relpath",
+    [
+        "../x.png",
+        "a/../../x.png",
+        "%2e%2e/x.png",
+        "/x.png",
+        "~/x.png",
+        "a/x.bob",
+        "${IMG}.png",
+        "x.screen.json/a.png",
+        "a/X.Screen.Json",
+        "a\\x.png",
+        "a/\x00x.png",
+        "",
+        "a//x.png",
+        "./x.png",
+        "a/x.txt",
+        "a/x",
+    ],
+)
+async def test_write_asset_invalid_ref(store, relpath) -> None:
+    assert asset_relpath_reason(relpath) == "invalid_ref"
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset(relpath, PNG)
+    assert e.value.reason == "invalid_ref"
+    assert isinstance(e.value, ValueError)
+    assert not store.screens.exists()
+
+
+@pytest.mark.parametrize("relpath", ["a/x.png", "Logo.PNG", "a b/c-d_e.1.jpeg", "a/Logo.SVG"])
+def test_asset_relpath_reason_accepts(relpath) -> None:
+    assert asset_relpath_reason(relpath) is None
+
+
+async def test_write_asset_too_large_before_byte_check(store) -> None:
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.png", b"x" * (6 * 2**20))
+    assert e.value.reason == "too_large"
+    assert not (store.screens / "a" / "x.png").exists()
+
+
+async def test_write_asset_at_limit_is_written(store) -> None:
+    data = PNG + b"\x00" * (MAX_ASSET_BYTES - len(PNG))
+    assert await store.write_asset("a/x.png", data) == "written"
+
+
+@pytest.mark.parametrize(
+    "data,message",
+    [
+        (b"VAR=1\x00OTHER=2", "PNG/JPEG/GIF/BMP/ICO/WEBP"),
+        (b"just some text " * 7, "PNG/JPEG/GIF/BMP/ICO/WEBP"),
+    ],
+)
+async def test_write_asset_not_image(store, data, message) -> None:
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.png", data)
+    assert e.value.reason == "not_image"
+    assert message in str(e.value)
+    assert not (store.screens / "a" / "x.png").exists()
+
+
+async def test_write_asset_svg_not_image_message(store) -> None:
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.svg", PNG)
+    assert e.value.reason == "not_image"
+    assert "not an SVG document" in str(e.value)
+
+
+@pytest.mark.parametrize(
+    "relpath,data",
+    [
+        ("a/x.png", PNG),
+        ("a/x.jpg", JPEG),
+        ("a/x.gif", GIF),
+        ("a/x.svg", SVG),
+        ("a/x.svg", b"\xef\xbb\xbf \n\t<?xml version='1.0'?><svg/>"),
+        ("a/x.jpg", PNG),  # a mislabeled PNG is still an image
+        ("a/Logo.SVG", SVG),
+        ("Logo.PNG", PNG),
+        ("a/x.bmp", b"BM" + b"\x00" * 16),
+        ("a/x.ico", b"\x00\x00\x01\x00" + b"\x00" * 16),
+        ("a/x.webp", b"RIFF\x10\x00\x00\x00WEBPVP8 " + b"\x00" * 8),
+    ],
+)
+async def test_write_asset_written(store, relpath, data) -> None:
+    assert await store.write_asset(relpath, data) == "written"
+    assert (store.screens / relpath).read_bytes() == data
+    assert store.resolve_static(f"screens/{relpath}") == (store.screens / relpath).resolve()
+
+
+def test_looks_like_image_union() -> None:
+    assert looks_like_image(PNG, ".png")
+    assert looks_like_image(JPEG, ".png")  # extension/format match is not policed
+    assert not looks_like_image(b"RIFF\x00\x00\x00\x00WAVE", ".webp")
+    assert not looks_like_image(SVG, ".png")
+    assert not looks_like_image(b"", ".png")
+    assert not looks_like_image(b"   ", ".svg")
+    assert not looks_like_image(PNG, ".txt")
+
+
+async def test_write_asset_reused_replaced_conflict(store) -> None:
+    assert await store.write_asset("a/x.png", PNG) == "written"
+    assert await store.write_asset("a/x.png", PNG) == "reused"
+    same_size = PNG[:-1] + b"\x01"
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.png", same_size)
+    assert e.value.reason == "conflict"
+    assert "overwrite=true" in str(e.value)
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.png", PNG + b"more")
+    assert e.value.reason == "conflict"
+    assert (store.screens / "a" / "x.png").read_bytes() == PNG
+    assert await store.write_asset("a/x.png", same_size, overwrite=True) == "replaced"
+    assert (store.screens / "a" / "x.png").read_bytes() == same_size
+    assert await store.write_asset("a/x.png", same_size, overwrite=True) == "reused"
+
+
+async def test_write_asset_symlinked_leaf_is_conflict(store, tmp_path) -> None:
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(PNG)
+    (store.screens / "a").mkdir(parents=True)
+    (store.screens / "a" / "x.png").symlink_to(outside)
+    for overwrite in (False, True):
+        with pytest.raises(AssetRefused) as e:
+            await store.write_asset("a/x.png", PNG, overwrite=overwrite)
+        assert e.value.reason == "conflict"
+        assert "symlink" in str(e.value)
+    assert (store.screens / "a" / "x.png").is_symlink()
+    assert outside.read_bytes() == PNG
+
+
+async def test_write_asset_directory_at_target_is_conflict(store) -> None:
+    (store.screens / "a" / "x.png").mkdir(parents=True)
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.png", PNG, overwrite=True)
+    assert e.value.reason == "conflict"
+    assert "directory" in str(e.value)
+
+
+async def test_write_asset_screens_symlinked_outside_is_conflict(store, tmp_path) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    store.root.mkdir()
+    store.screens.symlink_to(elsewhere)
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("a/x.png", PNG)
+    assert e.value.reason == "conflict"
+    assert str(elsewhere.resolve()) in str(e.value)
+    assert list(elsewhere.iterdir()) == []
+
+
+async def test_write_asset_intermediate_symlinked_outside_is_conflict(store, tmp_path) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    store.screens.mkdir(parents=True)
+    (store.screens / "bts").symlink_to(elsewhere)
+    with pytest.raises(AssetRefused) as e:
+        await store.write_asset("bts/sub/x.png", PNG)
+    assert e.value.reason == "conflict"
+    assert list(elsewhere.iterdir()) == []
+
+
+async def test_write_asset_dangling_screens_link_is_oserror(store, tmp_path) -> None:
+    store.root.mkdir()
+    store.screens.symlink_to(tmp_path / "gone")
+    with pytest.raises(FileExistsError):
+        await store.write_asset("a/x.png", PNG)
+    assert not (tmp_path / "gone").exists()
+
+
+async def test_write_asset_symlinked_root_writes_and_serves(tmp_path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    store = DraftStore(link)
+    assert await store.write_asset("bts/logo.png", PNG) == "written"
+    assert (real / "screens" / "bts" / "logo.png").read_bytes() == PNG
+    served = store.resolve_static("screens/bts/logo.png")
+    assert served is not None and served.read_bytes() == PNG
+
+
+async def test_write_asset_holds_the_store_lock(store) -> None:
+    async with store._lock:
+        task = asyncio.ensure_future(store.write_asset("a/x.png", PNG))
+        await asyncio.sleep(0.01)
+        assert not task.done()
+        assert not (store.screens / "a" / "x.png").exists()
+    assert await task == "written"
+
+
+def test_resolve_static_still_decodes_and_serves_screens(store) -> None:
+    path = store.screens / "a" / "v.screen.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}")
+    assert store.resolve_static("screens/a/v%2escreen.json") == path.resolve()
+    assert store.resolve_static("screens/%2e%2e/a/v.screen.json") is None
