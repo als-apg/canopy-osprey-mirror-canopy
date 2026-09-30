@@ -10,6 +10,12 @@ added without either updating this set or failing CI.
 
 WILDCARD = "*"
 
+JOBS = "jobs"
+"""Any module-scoped key is implicitly allowed here: a job's status poll
+(``GET /jobs/v1/{id}``) carries no data beyond what the enqueuing route
+(squirrel, converter, ...) already returned, so gating it behind an explicit
+``+jobs`` would just break polling for every module that hands out job ids."""
+
 MODULES: frozenset[str] = frozenset(
     {
         "core",

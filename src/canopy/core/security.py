@@ -16,7 +16,7 @@ from canopy.core.errors import (
     InsufficientWriteAccess,
     InsufficientModuleAccess,
 )
-from canopy.core.modules import MODULES, WILDCARD, module_for_root_path
+from canopy.core.modules import JOBS, MODULES, WILDCARD, module_for_root_path
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class APIKey:
     modules: frozenset[str] = frozenset({WILDCARD})
 
     def allows_module(self, module: str) -> bool:
-        return WILDCARD in self.modules or module in self.modules
+        return module == JOBS or WILDCARD in self.modules or module in self.modules
 
 
 class KeyRegistry(Protocol):

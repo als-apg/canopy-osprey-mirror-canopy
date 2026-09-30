@@ -141,6 +141,14 @@ class TestEnvKeyRegistryParsing:
         assert trace.allows_module("vole")
         assert not trace.allows_module("squirrel")
 
+    async def test_jobs_module_is_implicitly_allowed_for_any_scope(self):
+        # A squirrel- or converter-only key must still be able to poll the job
+        # it just enqueued at GET /jobs/v1/{id}, which lives under its own mount.
+        registry = EnvKeyRegistry("trace:read@squirrel")
+
+        trace = await registry.get("trace")
+        assert trace.allows_module("jobs")
+
     def test_unknown_module_warns_by_position_and_still_loads(self, caplog):
         with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
             EnvKeyRegistry("trace:read@fox+not-a-module")
