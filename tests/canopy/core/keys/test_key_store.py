@@ -35,6 +35,8 @@ class TestMintAndResolve:
         assert (resolved.read, resolved.write, resolved.admin) == (True, True, False)
         assert resolved.name == "operator-tools"
         assert resolved.id == created.id
+        assert resolved.token == "", "a resolved DB key must not carry the plaintext token"
+        assert created.token not in repr(resolved)
 
     async def test_admin_only_key_grants_no_read_or_write(self, session, session_maker):
         created = await mint(session, "ops", read=False, write=False, admin=True)

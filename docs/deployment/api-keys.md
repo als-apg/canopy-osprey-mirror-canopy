@@ -8,7 +8,8 @@ credential layers behind the scenes fit together.
 
 Every key carries three independent scopes:
 
-- **`read`** — GET requests and WebSocket connections.
+- **`read`** — GET requests and WebSocket connections, plus the handful of
+  POSTs that only read (Converter's conversions, Fox's evaluate/validate).
 - **`write`** — endpoints that change something: setting a PV, saving a
   snapshot, storing a config.
 - **`admin`** — key management (this page's own HTTP surface) and other
@@ -83,6 +84,9 @@ its hash is stored. These scripts talk to the database directly, so they work
 with only `CANOPY_DATABASE_URL` set: no existing key is needed to bootstrap the
 first one, which is what makes them the right tool for a fresh instance.
 
+Without a local `uv` environment, run the same commands inside the `api`
+container instead: `docker compose run --rm api python scripts/create_key.py ...`.
+
 ### Facility instances
 
 The env layer's two long-lived keys still live in the per-instance
@@ -98,8 +102,16 @@ The env layer's two long-lived keys still live in the per-instance
 ```
 
 Everything else for that instance — per-tool keys, CI keys — is minted with
-the CLI against the instance's database, not through the secret. Rotating an
-env key is still a deploy; rotating anything else is a CLI call.
+the CLI against the instance's database, not through the secret. The CLI ships
+in the image (`Dockerfile.prod` copies `scripts/`), so run it in the running
+`api` container rather than from a workstation — the facility host's Postgres
+is bound to `127.0.0.1` and isn't reachable from outside it:
+
+```bash
+docker compose run --rm api python scripts/create_key.py "<app>" -r
+```
+
+Rotating an env key is still a deploy; rotating anything else is a CLI call.
 
 ## Managing keys over HTTP
 
@@ -196,7 +208,9 @@ malformed entry, an empty token, or an unrecognized scope (`read+wrote`, say)
 each warn and name their position, never their content:
 
 ```bash
-docker logs canopy-<instance>-api --since 10m | grep CANOPY_API_KEYS
+# docker-compose.prod.yml sets no container_name; `compose logs` resolves the
+# service name for you rather than requiring you to guess the container's.
+docker compose logs api --since 10m | grep CANOPY_API_KEYS
 ```
 
 The container's healthcheck hits `/health` every 10s, so a plain `--tail 50`

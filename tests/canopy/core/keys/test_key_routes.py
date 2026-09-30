@@ -48,6 +48,14 @@ class TestCreateKey:
         assert resp.status_code == 400
         assert resp.json()["code"] == "bad_request"
 
+    async def test_overlong_app_name_is_a_422_not_a_500(self, session, session_maker, keys_client):
+        # The column is String(255); without a schema-level cap this fails at flush
+        # with StringDataRightTruncation instead of a clean validation error.
+        with db_backed_registry(env="admin-env-key:admin"):
+            resp = keys_client.post("/v1/api-keys", json={"appName": "x" * 256, "read": True}, headers=ADMIN_HEADERS)
+
+        assert resp.status_code == 422
+
 
 class TestListAndCount:
     async def test_list_never_exposes_a_token(self, session, session_maker, keys_client):
@@ -143,6 +151,18 @@ class TestDeactivate:
 
         assert forced.status_code == 200
         assert forced.json()["isActive"] is False
+
+    async def test_self_deactivation_is_refused_for_an_uppercase_id(self, session, session_maker, keys_client):
+        """`_find` normalizes any UUID form Postgres accepts, so a request against
+        the caller's own id in a different case must still trip the guard."""
+        created = await mint(session, "ops-tool", admin=True)
+
+        with db_backed_registry(env="", ttl_s=0):
+            self_headers = {"X-API-Key": created.token}
+            refused = keys_client.delete(f"/v1/api-keys/{created.id.upper()}", headers=self_headers)
+
+        assert refused.status_code == 400
+        assert refused.json()["code"] == "api_key_self_deactivation"
 
     @pytest.mark.parametrize("target_scope", ["read"])
     async def test_deactivating_a_different_key_is_unaffected_by_the_guard(

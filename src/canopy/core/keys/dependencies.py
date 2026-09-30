@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from canopy.core.db import get_session
 from canopy.core.keys.service import ApiKeyService
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
 def get_api_key_service(session: SessionDep) -> ApiKeyService:

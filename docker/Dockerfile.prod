@@ -40,6 +40,10 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY alembic.ini ./
 COPY migrations/ ./migrations/
 
+# Facility ops mint keys via `compose run --rm api python scripts/create_key.py ...`,
+# so the bootstrap CLI has to ship in the image too.
+COPY scripts/ ./scripts/
+
 RUN useradd --create-home --shell /bin/bash --no-log-init appuser \
     && chown -R appuser:appuser /app
 USER appuser

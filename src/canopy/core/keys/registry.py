@@ -14,33 +14,38 @@ testable without a database and reusable over any inner registry.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from time import monotonic
 from dataclasses import dataclass
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import TimeoutError as SATimeoutError
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from canopy.core.db import session_scope
+from canopy.core.config import Settings
 from canopy.core.errors import KeyStoreUnavailable
-from canopy.core.security import APIKey, KeyRegistry
+from canopy.core.security import APIKey, KeyRegistry, EnvKeyRegistry
 from canopy.core.keys.models import ApiKey
-from canopy.core.keys.tokens import hash_token
+from canopy.core.keys.tokens import TOKEN_PREFIX, MINTED_TOKEN_LEN, hash_token
 from canopy.core.keys.repositories import ApiKeyRepository
 
 logger = logging.getLogger(__name__)
 
 # What "the store is unreachable" actually looks like. asyncpg surfaces a refused
-# connection as a bare OSError raised by asyncio's `create_connection`, which
-# SQLAlchemy never wraps — catching only SQLAlchemyError lets a real outage escape
-# as a 500 with a traceback instead of taking the serve-stale path. TimeoutError
-# subclasses OSError, so connect timeouts are covered too. Deliberately not
-# `Exception`: a bug in this module must not be reported as a database outage.
-STORE_ERRORS = (SQLAlchemyError, OSError)
+# connection as a bare OSError raised by asyncio's `create_connection`; SQLAlchemy
+# never wraps it. TimeoutError subclasses OSError, so connect timeouts are covered
+# too. OperationalError/InterfaceError/SATimeoutError are SQLAlchemy's own
+# connection-level failures (lost connection, pool exhaustion) — not the broader
+# `SQLAlchemyError`, which also covers schema/query bugs that must not be reported
+# as a database outage and served stale for up to an hour.
+STORE_ERRORS = (OperationalError, InterfaceError, SATimeoutError, OSError)
 
 
-def _to_api_key(row: ApiKey, token: str) -> APIKey:
+def _to_api_key(row: ApiKey) -> APIKey:
+    # No token=: nothing downstream reads it back, so a DB-backed key is never
+    # carried through the cache in plaintext.
     return APIKey(
-        token=token,
         read=row.read_access,
         write=row.write_access,
         admin=row.admin_access,
@@ -68,7 +73,7 @@ class DbKeyRegistry:
             row = await repo.get_by_token_hash(token_hash, active_only=True)
             if row is None:
                 return None
-            key = _to_api_key(row, token)
+            key = _to_api_key(row)
             try:
                 await repo.touch_last_used(row.id)
                 await session.commit()
@@ -90,8 +95,9 @@ class CachingKeyRegistry:
 
     Three behaviours worth stating outright, because they are the auth contract:
 
-    * **Revocation latency equals ``ttl_s``.** A key deactivated in the database
-      keeps working until its cached entry expires.
+    * **Revocation latency equals ``ttl_s``, except locally.** The process that runs
+      the deactivate calls ``invalidate_key_id`` and stops accepting the key at once;
+      other replicas keep it working until their cached entry expires.
     * **The store going down does not take auth down.** If the inner registry
       raises, a cached key is served up to ``max_stale_s`` past its fetch. Canopy
       has ten mounted sub-apps of which seven need no database at all; a Postgres
@@ -108,15 +114,31 @@ class CachingKeyRegistry:
         negative_ttl_s: float = 5.0,
         max_stale_s: float = 3600.0,
         max_entries: int = 10_000,
+        store_error_backoff_s: float = 5.0,
     ) -> None:
         self._inner = inner
         self._ttl_s = ttl_s
         self._negative_ttl_s = negative_ttl_s
         self._max_stale_s = max_stale_s
         self._max_entries = max_entries
+        self._store_error_backoff_s = store_error_backoff_s
         self._cache: dict[str, _CacheEntry] = {}
+        # Set once the inner registry raises, so the *next* request in the backoff
+        # window serves stale immediately instead of paying the same failed round
+        # trip (pool timeout, connect timeout) all over again.
+        self._store_down_until: float = 0.0
+        # One in-flight fetch per token: N concurrent requests for the same cold or
+        # expired token would otherwise each open a session and hit the row, which
+        # is how a reconnect storm exhausts the pool.
+        self._inflight: dict[str, asyncio.Task[APIKey | None]] = {}
 
     async def get(self, token: str) -> APIKey | None:
+        # Minted tokens have a fixed shape; anything else (a scanner, a misconfigured
+        # client) can be rejected before it costs a session + SELECT on the shared
+        # pool, and without ever touching the store, so it can't 503 during an outage.
+        if not token.startswith(TOKEN_PREFIX) or len(token) != MINTED_TOKEN_LEN:
+            return None
+
         # Keyed by hash so a long-lived process dict never holds plaintext tokens.
         cache_key = hash_token(token)
         now = monotonic()
@@ -127,15 +149,30 @@ class CachingKeyRegistry:
             if now - entry.fetched_at < ttl:
                 return entry.key
 
+        if now < self._store_down_until:
+            return self._serve_stale(entry, now, exc=None)
+
+        task = self._inflight.get(cache_key)
+        if task is not None:
+            return await task
+
+        task = self._inflight[cache_key] = asyncio.ensure_future(self._fetch(token, cache_key, entry, now))
+        try:
+            return await task
+        finally:
+            self._inflight.pop(cache_key, None)
+
+    async def _fetch(self, token: str, cache_key: str, entry: _CacheEntry | None, now: float) -> APIKey | None:
         try:
             key = await self._inner.get(token)
         except STORE_ERRORS as exc:
+            self._store_down_until = monotonic() + self._store_error_backoff_s
             return self._serve_stale(entry, now, exc)
 
         self._store(cache_key, key, now)
         return key
 
-    def _serve_stale(self, entry: _CacheEntry | None, now: float, exc: Exception) -> APIKey:
+    def _serve_stale(self, entry: _CacheEntry | None, now: float, exc: Exception | None) -> APIKey:
         if entry is not None and entry.key is not None and now - entry.fetched_at <= self._max_stale_s:
             logger.warning(
                 "API key store unavailable; serving cached key for app_name=%s (%.0fs stale)",
@@ -143,7 +180,8 @@ class CachingKeyRegistry:
                 now - entry.fetched_at,
             )
             return entry.key
-        logger.error("API key store unavailable with no usable cached entry: %s", exc)
+        if exc is not None:
+            logger.error("API key store unavailable with no usable cached entry: %s", exc)
         raise KeyStoreUnavailable("API key store is unavailable") from exc
 
     def _store(self, cache_key: str, key: APIKey | None, now: float) -> None:
@@ -165,10 +203,16 @@ class CachingKeyRegistry:
             if now - entry.fetched_at > horizon:
                 del self._cache[cache_key]
 
-    def invalidate(self, token: str) -> None:
-        """Drop a token's cached entry so a revocation takes effect immediately in
-        this process. Used by the CLI/API path after a deactivate."""
-        self._cache.pop(hash_token(token), None)
+    def invalidate_key_id(self, key_id: str) -> None:
+        """Drop a key's cached entry, by id, so a revocation takes effect
+        immediately in this process rather than waiting out ``ttl_s``.
+
+        Keyed by id rather than token: the deactivate paths (the DELETE route, the
+        CLI) only ever have the row's id, never the plaintext token.
+        """
+        for cache_key, entry in list(self._cache.items()):
+            if entry.key is not None and entry.key.id == key_id:
+                del self._cache[cache_key]
 
 
 class ChainedKeyRegistry:
@@ -190,6 +234,14 @@ class ChainedKeyRegistry:
     def __init__(self, *registries: KeyRegistry) -> None:
         self._registries = registries
 
+    def invalidate_key_id(self, key_id: str) -> None:
+        """Forward to every inner registry that caches (currently only
+        `CachingKeyRegistry`) so a revocation drops out of the chain immediately."""
+        for registry in self._registries:
+            invalidate = getattr(registry, "invalidate_key_id", None)
+            if invalidate is not None:
+                invalidate(key_id)
+
     async def get(self, token: str) -> APIKey | None:
         unavailable: KeyStoreUnavailable | None = None
         for registry in self._registries:
@@ -203,3 +255,17 @@ class ChainedKeyRegistry:
         if unavailable is not None:
             raise unavailable
         return None
+
+
+def build_key_registry(settings: Settings) -> KeyRegistry:
+    """The one place that assembles the env + database chain, shared by
+    `canopy.main`'s lifespan and `security.get_registry`'s lazy fallback."""
+    return ChainedKeyRegistry(
+        EnvKeyRegistry(settings.api_keys),
+        CachingKeyRegistry(
+            DbKeyRegistry(),
+            ttl_s=settings.api_key_cache_ttl_s,
+            negative_ttl_s=settings.api_key_negative_cache_ttl_s,
+            max_stale_s=settings.api_key_max_stale_s,
+        ),
+    )

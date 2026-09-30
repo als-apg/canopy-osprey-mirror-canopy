@@ -13,8 +13,9 @@ Run::
     uv run python scripts/create_key.py operator-tools -r -w
     uv run python scripts/create_key.py ops -a
 
-    # In a container:
-    docker exec canopy-<instance>-api python scripts/create_key.py "<app>" -r
+    # In a container (local Docker Compose, or a facility instance where the
+    # database is only reachable from the running api container):
+    docker compose run --rm api python scripts/create_key.py "<app>" -r
 """
 
 import sys

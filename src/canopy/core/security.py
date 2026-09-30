@@ -1,6 +1,6 @@
 import logging
 from typing import Protocol, Annotated
-from dataclasses import dataclass
+from dataclasses import field, dataclass
 
 from fastapi import Security, WebSocket, status
 from fastapi.security import APIKeyHeader
@@ -22,14 +22,19 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class APIKey:
     """A resolved key. `name` identifies the holding client class — it is what
-    request logs and analytics may record; the `token` never is."""
+    request logs and analytics may record; the `token` never is.
 
-    token: str
+    `token` is only populated by ``EnvKeyRegistry``; ``DbKeyRegistry`` leaves it
+    empty since nothing downstream reads it back. Excluded from `repr` regardless,
+    so a stray ``logger.debug("%s", key)`` can never print it.
+    """
+
     read: bool
     write: bool
     admin: bool = False
     name: str = "unknown"
     id: str | None = None
+    token: str = field(default="", repr=False)
 
 
 class KeyRegistry(Protocol):
@@ -131,11 +136,30 @@ def bind_key_registry(registry: KeyRegistry) -> None:
 
 
 def get_registry() -> KeyRegistry:
-    """Return the bound registry, building the default from settings on first use."""
+    """Return the bound registry, building the default from settings on first use.
+
+    Shares `build_key_registry` with `canopy.main`'s lifespan (imported locally to
+    avoid a cycle: that module imports `APIKey`/`KeyRegistry` from here) so a
+    sub-app served without the lifespan running — a standalone mount, a
+    `TestClient` used without its context manager — still gets the full env +
+    database chain.
+    """
     global _registry
     if _registry is None:
-        _registry = EnvKeyRegistry(get_settings().api_keys)
+        from canopy.core.keys.registry import build_key_registry
+
+        _registry = build_key_registry(get_settings())
     return _registry
+
+
+def invalidate_key_id(key_id: str) -> None:
+    """Drop a deactivated key's cached entry, if the bound registry caches at all,
+    so revocation is immediate rather than waiting out the cache TTL. A no-op for
+    registries that don't cache (an `EnvKeyRegistry` alone, or a fake in tests).
+    """
+    invalidate = getattr(get_registry(), "invalidate_key_id", None)
+    if invalidate is not None:
+        invalidate(key_id)
 
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

@@ -127,4 +127,14 @@ class TestKeyRegistryBinding:
 
         assert await registry.get("viewer") is not None
 
+    async def test_get_registry_default_also_checks_the_database(self, monkeypatch):
+        # The lazy default must be the full env+database chain, not env alone.
+        monkeypatch.setenv("CANOPY_API_KEYS", "")
+        get_settings.cache_clear()
+        security._registry = None
+
+        registry = get_registry()
+
+        assert hasattr(registry, "invalidate_key_id"), "must be the env+database chain, not env alone"
+
         get_settings.cache_clear()

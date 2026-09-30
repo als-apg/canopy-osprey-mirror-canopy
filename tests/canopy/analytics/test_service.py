@@ -19,11 +19,17 @@ def test_record_never_raises_even_if_logging_fails(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("read", "write", "expected"),
-    [(True, False, "read"), (False, True, "write"), (True, True, "read+write")],
+    ("read", "write", "admin", "expected"),
+    [
+        (True, False, False, "read"),
+        (False, True, False, "write"),
+        (True, True, False, "read+write"),
+        (False, False, True, "admin"),
+        (True, False, True, "read+admin"),
+    ],
 )
-def test_scopes_rendering(read, write, expected):
-    assert _scopes(APIKey(token="t", read=read, write=write)) == expected
+def test_scopes_rendering(read, write, admin, expected):
+    assert _scopes(APIKey(token="t", read=read, write=write, admin=admin)) == expected
 
 
 def test_scopes_none_for_anonymous():

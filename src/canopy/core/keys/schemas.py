@@ -3,6 +3,8 @@ one shape across both services (``readAccess`` on the wire, via CanopyModel)."""
 
 from datetime import datetime
 
+from pydantic import Field
+
 from canopy.contracts.base import CanopyModel
 
 
@@ -29,7 +31,7 @@ class ApiKeyCreateResultDTO(ApiKeyDTO):
 class NewApiKeyDTO(CanopyModel):
     """Request body for minting a key. At least one scope must be set."""
 
-    app_name: str
+    app_name: str = Field(min_length=1, max_length=255)
     read: bool = False
     write: bool = False
     admin: bool = False

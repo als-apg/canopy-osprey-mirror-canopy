@@ -11,6 +11,7 @@ import logging
 from uuid import UUID
 
 from canopy.core.errors import BadRequest, ApiKeyNotFound, ApiKeySelfDeactivation
+from canopy.core.security import invalidate_key_id
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token, mint_token
 from canopy.core.keys.schemas import ApiKeyDTO, ApiKeyCreateResultDTO
@@ -116,14 +117,16 @@ class ApiKeyService:
         making the request with would lock an operator out mid-session, so it's
         refused unless ``force`` is set.
         """
-        if not force and acting_key_id is not None and key_id == acting_key_id:
-            raise ApiKeySelfDeactivation(
-                "Refusing to deactivate the API key authenticating this request; pass force=true to override"
-            )
         api_key = await self._find(key_id)
         if api_key is None:
             raise ApiKeyNotFound(f"No API key with id '{key_id}'")
+        if not force and acting_key_id is not None and api_key.id == acting_key_id:
+            raise ApiKeySelfDeactivation(
+                "Refusing to deactivate the API key authenticating this request; pass force=true to override"
+            )
         if not api_key.is_active:
             return to_dto(api_key)
+        deactivated = await self.repo.deactivate(api_key)
+        invalidate_key_id(api_key.id)
         logger.info("Deactivated API key id=%s app_name=%s", api_key.id, api_key.app_name)
-        return to_dto(await self.repo.deactivate(api_key))
+        return to_dto(deactivated)

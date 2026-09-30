@@ -13,6 +13,10 @@ import secrets
 
 TOKEN_PREFIX = "cnpy_"
 
+# `secrets.token_urlsafe(32)` always renders to 43 base64url characters (32 bytes
+# -> ceil(32*8/6) chars, no padding), so a minted token's length is fixed.
+MINTED_TOKEN_LEN = len(TOKEN_PREFIX) + 43
+
 
 def mint_token() -> str:
     """Return a fresh plaintext token. Shown once, never stored."""
