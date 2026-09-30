@@ -23,7 +23,15 @@
     "required": ["pv"],
     "properties": {
       "pv": { "type": "string", "format": "pv-channel" },
+      "readbackPV": {
+        "type": "string",
+        "format": "pv-channel",
+        "description": "State source for toggle/on-off labeling (EDM indicatorPv); pv stays the write channel."
+      },
       "label": { "type": "string" },
+      "onLabel": { "type": "string" },
+      "offLabel": { "type": "string" },
+      "buttonType": { "type": "string", "enum": ["push", "toggle"], "default": "push" },
       "kind": {
         "type": "string",
         "enum": ["primary", "secondary", "tertiary", "danger", "ghost"],
@@ -35,6 +43,29 @@
       "fontSize": {
         "type": "number",
         "title": "Font Size (px)"
+      },
+      "labelType": {
+        "type": "string",
+        "enum": ["literal", "pvState"],
+        "default": "literal",
+        "description": "pvState renders the readback PV's current enum string as the face text (EDM menu-button behavior)."
+      },
+      "onColor": { "type": "string" },
+      "offColor": { "type": "string" },
+      "foregroundColor": { "type": "string" },
+      "backgroundColor": { "type": "string" },
+      "transparent": {
+        "type": "boolean",
+        "default": false,
+        "description": "Paint no button chrome; the label and press/release handlers stay."
+      },
+      "onImage": {
+        "type": "string",
+        "description": "Face image while on: an asset ref in the image-view.src convention (relative to the screen)."
+      },
+      "offImage": {
+        "type": "string",
+        "description": "Face image while off: an asset ref in the image-view.src convention (relative to the screen)."
       }
     }
   },
@@ -53,13 +84,17 @@
     "onColor": { "to": "onColor" },
     "offColor": { "to": "offColor" },
     "foregroundColor": { "to": "foregroundColor" },
-    "backgroundColor": { "to": "backgroundColor" }
+    "backgroundColor": { "to": "backgroundColor" },
+    "flat": { "to": "transparent" },
+    "onImage": { "to": "onImage" },
+    "offImage": { "to": "offImage" }
   },
 
   "inspectorSchema": {
     "groups": [
       { "name": "PV", "fields": ["pv", "pressValue", "releaseValue"] },
-      { "name": "Display", "fields": ["label", "kind", "iconOnly"] }
+      { "name": "Display", "fields": ["label", "kind", "iconOnly", "onImage", "offImage"] },
+      { "name": "Behavior", "fields": ["transparent"] }
     ]
   },
 

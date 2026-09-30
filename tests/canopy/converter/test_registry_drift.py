@@ -7,15 +7,18 @@ owns the authoritative copy in ``widget-registry-data/widgets``. If the two
 disagree on a widget's ``qtPropMap``, a screen converted offline carries
 different props than one converted against canopy, and nothing else notices.
 
-For every widget id in the vendored snapshot this test asserts that canopy
-has the same widget, that both ``qtPropMap`` key sets are equal, and that each
-key maps to the same ``to`` target. Parametrised per id so a failure names
-the widget. Both inputs ship with the code, so the test is unconditional.
+The two id sets must be equal in both directions: a widget canopy adds but
+the snapshot lacks converts to ``unknown-widget`` offline, and a vendored id
+canopy dropped lowers to a type the builder cannot render. For every widget
+id in the vendored snapshot this test also asserts that both ``qtPropMap``
+key sets are equal and that each key maps to the same ``to`` target.
+Parametrised per id so a failure names the widget. Both inputs ship with
+the code, so the test is unconditional.
 """
 
 import json
-from importlib import resources
 from pathlib import Path
+from importlib import resources
 
 import pytest
 
@@ -33,6 +36,10 @@ def _vendored_ids() -> list[str]:
     )
 
 
+def _canopy_ids() -> list[str]:
+    return sorted(path.stem for path in _CANOPY_WIDGETS_DIR.glob("*.json"))
+
+
 def _qt_prop_map(text: str) -> dict:
     return json.loads(text).get("qtPropMap") or {}
 
@@ -48,6 +55,15 @@ def test_vendored_snapshot_is_not_empty():
 def test_no_vendored_id_missing_from_canopy():
     missing = [wid for wid in _VENDORED_IDS if not (_CANOPY_WIDGETS_DIR / f"{wid}.json").is_file()]
     assert missing == [], f"vendored widget ids absent from canopy: {missing}"
+
+
+def test_no_canopy_id_missing_from_vendored_snapshot():
+    extra = sorted(set(_canopy_ids()) - set(_VENDORED_IDS))
+    assert extra == [], f"canopy widget ids absent from the vendored snapshot: {extra}"
+
+
+def test_widget_id_sets_are_equal():
+    assert _canopy_ids() == _VENDORED_IDS
 
 
 @pytest.mark.parametrize("widget_id", _VENDORED_IDS)

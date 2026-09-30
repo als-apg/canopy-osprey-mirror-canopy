@@ -43,6 +43,11 @@
       "fontSize": {
         "type": "number",
         "title": "Font Size (px)"
+      },
+      "transparent": {
+        "type": "boolean",
+        "default": false,
+        "description": "Paint no button chrome; the label and press/release handlers stay."
       }
     }
   },
@@ -50,12 +55,14 @@
   "qtPropMap": {
     "text": { "to": "label" },
     "actions": { "to": "actions" },
-    "fontSize": { "to": "fontSize" }
+    "fontSize": { "to": "fontSize" },
+    "flat": { "to": "transparent" }
   },
 
   "inspectorSchema": {
     "groups": [
-      { "name": "Display", "fields": ["label", "kind", "iconOnly"] }
+      { "name": "Display", "fields": ["label", "kind", "iconOnly"] },
+      { "name": "Behavior", "fields": ["transparent"] }
     ]
   },
 

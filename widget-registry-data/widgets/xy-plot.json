@@ -1,0 +1,90 @@
+{
+  "id": "xy-plot",
+  "version": "1.0.0",
+  "displayName": "XY Plot",
+  "description": "An XY scatter/line plot of one or more curves, each pairing an x channel with a y channel.",
+  "category": "plots",
+  "paletteIcon": "xy-plot.svg",
+
+  "reactComponent": {
+    "name": "XYPlot",
+    "module": "@canopy/widgets"
+  },
+
+  "qtMapping": {
+    "class": "PyDMScatterPlot",
+    "extends": "BasePlot",
+    "header": "pydm.widgets.scatterplot"
+  },
+
+  "propSchema": {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "type": "object",
+    "definitions": {
+      "axis": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "label": { "type": "string" },
+          "minRange": { "type": "number" },
+          "maxRange": { "type": "number" },
+          "autoRange": { "type": "boolean" },
+          "logMode": { "type": "boolean" },
+          "grid": { "type": "boolean" },
+          "visible": { "type": "boolean" }
+        }
+      }
+    },
+    "properties": {
+      "title": { "type": "string" },
+      "showLegend": { "type": "boolean", "default": false },
+      "curves": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "x_channel": { "type": "string" },
+            "y_channel": { "type": "string" },
+            "color": { "type": "string" },
+            "lineWidth": { "type": "number" },
+            "symbolSize": { "type": "number" },
+            "lineStyle": { "type": "integer" },
+            "symbol": { "type": ["string", "null"] },
+            "traceType": { "type": "string", "enum": ["none", "line"] },
+            "yAxisName": { "type": "string" }
+          }
+        },
+        "description": "Per-curve config (x_channel, y_channel, color, symbol, traceType, yAxisName, ...)."
+      },
+      "xAxis": { "$ref": "#/definitions/axis" },
+      "yAxes": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/axis" },
+        "description": "Per-axis config; a curve names its axis through yAxisName."
+      }
+    }
+  },
+
+  "qtPropMap": {
+    "title": { "to": "title" },
+    "curves": { "to": "curves", "transform": "parseJsonStrings" },
+    "xAxis": { "to": "xAxis" },
+    "yAxes": { "to": "yAxes", "transform": "parseJsonStrings" },
+    "showLegend": { "to": "showLegend" }
+  },
+
+  "inspectorSchema": {
+    "groups": [
+      { "name": "Display", "fields": ["title", "showLegend"] },
+      { "name": "Curves", "fields": ["curves"] },
+      { "name": "Axes", "fields": ["xAxis", "yAxes"] }
+    ]
+  },
+
+  "defaults": { "width": 400, "height": 300 },
+
+  "supportsPv": false,
+  "supportsRules": true,
+  "supportsChildren": false
+}
