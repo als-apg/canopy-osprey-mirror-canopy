@@ -6,7 +6,7 @@ that draft's directory, as they will once it is saved there, and the stored
 copy is not read. The result groups findings by pass:
 
 * ``schema`` -- the vendored Screen-IR JSON Schema (:mod:`canopy_mcp.check.schema`);
-* ``semantic`` -- the semantic pass plus draft-ref resolution
+* ``semantic`` -- the semantic pass plus draft-ref and image-ref resolution
   (:mod:`canopy_mcp.check.semantic`, :mod:`canopy_mcp.check.refs`);
 * ``lint`` -- catalog props, in-process Fox formulas and Raccoon PV lookup
   (:mod:`canopy_mcp.check.lint`);
@@ -19,22 +19,22 @@ on the error-severity findings it returns.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
+from dataclasses import field, dataclass
 
 import httpx
 from fastmcp.exceptions import ToolError
 
+from canopy_mcp.store import DraftStore
+from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.server import mcp
 from canopy_mcp.catalog import Catalog, CatalogError, ensure_catalog
-from canopy_mcp.check.findings import Finding
 from canopy_mcp.check.lint import check_lint
 from canopy_mcp.check.refs import check_refs
 from canopy_mcp.check.schema import check_schema
-from canopy_mcp.check.semantic import check_semantic
-from canopy_mcp.config import Settings, get_settings
-from canopy_mcp.server import mcp
-from canopy_mcp.store import DraftStore
 from canopy_mcp.tools._common import read_draft, validate_id
+from canopy_mcp.check.findings import Finding
+from canopy_mcp.check.semantic import check_semantic
 
 
 @dataclass
@@ -116,5 +116,18 @@ async def check(screen: dict[str, Any] | None = None, draft_id: str | None = Non
     inside an embedded screen, ``docId``. ``skipped`` lists checks that could
     not run (e.g. the PV directory was unreachable), so an empty finding list
     there is not proof the PVs exist. Errors block saving; warnings do not.
+
+    An ``unresolved_ref`` warning also carries ``kind`` (``screen`` for an
+    ``embedded-display``/``open_display`` ref, ``image`` for ``image-view.src``
+    or ``pv-button.onImage``/``offImage``) and ``reason``. Image refs that are
+    ``http(s):``, ``data:``, ``blob:`` or start with ``/`` are fetched by the
+    browser and not checked; the others report ``missing`` (not in the draft
+    store: ``convert_legacy`` copies images found beside the legacy file, so put
+    the file there and re-port with ``overwrite=true``; a hand-written screen
+    references the image by URL), ``above_root`` (the ref climbs above the
+    drafts root: fix it or use a URL) or ``invalid_ref`` (not a storable asset
+    path -- bad characters, an unexpanded macro, a non-image suffix, or a scheme
+    a browser cannot fetch such as Phoebus ``platform:``: fix it or use an
+    http(s) URL).
     """
     return (await run_check(screen, draft_id)).to_dict()

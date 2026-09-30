@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 
 import pytest
 
-from canopy_mcp.check.refs import RefFinding, check_refs, normalize, resolve_ref
 from canopy_mcp.store import DraftStore, InvalidDraftId
+from canopy_mcp.check.refs import (
+    RefFinding,
+    iter_refs,
+    normalize,
+    check_refs,
+    resolve_ref,
+    iter_image_refs,
+    resolve_image_ref,
+)
 
 FIXTURE_DRAFTS = Path(__file__).parent / "fixtures" / "refs" / "drafts"
 
@@ -87,6 +95,7 @@ def test_one_unresolved_ref_per_reason(fixture_store: DraftStore) -> None:
     for f in findings:
         assert isinstance(f, RefFinding)
         assert f.to_dict()["reason"] == f.reason
+        assert f.to_dict()["kind"] == "screen"
         assert "docId" not in f.to_dict()
 
 
@@ -231,3 +240,141 @@ def test_malformed_input_is_tolerated(store: DraftStore) -> None:
 
 def test_file_prop_on_other_node_types_is_ignored(store: DraftStore) -> None:
     assert check_refs(_doc(_node("img", "image", file="gone.screen.json")), store) == []
+
+
+# --- image refs -------------------------------------------------------------
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+
+def _image(nid: str, src: Any) -> dict[str, Any]:
+    return _node(nid, "image-view", src=src)
+
+
+def _image_findings(findings: list[Any]) -> list[RefFinding]:
+    return [f for f in findings if isinstance(f, RefFinding) and f.kind == "image"]
+
+
+def test_iter_image_refs_yields_image_view_and_pv_button_images_only() -> None:
+    doc = _doc(
+        _image("img", "a.png"),
+        _node("btn", "pv-button", onImage="on.png", offImage="off.png"),
+        _node("lbl", "label", src="nope.png"),
+        _image("empty", ""),
+        _image("nonstr", 3),
+        _embed("e", "x.screen.json"),
+    )
+    assert iter_image_refs(doc) == [
+        ("img", ("root", "children", 0, "props", "src"), "a.png"),
+        ("btn", ("root", "children", 1, "props", "onImage"), "on.png"),
+        ("btn", ("root", "children", 1, "props", "offImage"), "off.png"),
+    ]
+    assert [r[2] for r in iter_refs(doc)] == ["x.screen.json"]  # iter_refs untouched: screens only
+
+
+@pytest.mark.parametrize(
+    ("ref", "base", "expected"),
+    [
+        ("https://x/a.png", "a", (None, "external")),
+        ("HTTPS://x/A.png", "a", (None, "external")),
+        ("http://x/a.png", "a", (None, "external")),
+        ("data:image/png;base64,AAAA", "a", (None, "external")),
+        ("blob:abc", "a", (None, "external")),
+        ("/static/a.png", "a", (None, "external")),
+        ("platform:/plugin/x/icons/a.png", "a", (None, "invalid_ref")),
+        ("file:a.png", "a", (None, "invalid_ref")),
+        ("../../x.png", "a", (None, "above_root")),
+        ("../x.png", "", (None, "above_root")),
+        ("${IMG}.png", "a", (None, "invalid_ref")),
+        ("~/a.png", "a", (None, "invalid_ref")),
+        ("a%20b.png", "a", (None, "invalid_ref")),
+        ("x.bob", "a", (None, "invalid_ref")),
+        ("x.screen.json/a.png", "a", (None, "invalid_ref")),
+        ("images/gone.png", "a", ("a/images/gone.png", None)),
+        ("./images/../logo one.PNG", "a/b", ("a/b/logo one.PNG", None)),
+        ("../x.png", "a", ("x.png", None)),
+        ("x.png", "", ("x.png", None)),
+    ],
+)
+def test_resolve_image_ref(ref: str, base: str, expected: tuple[Any, Any]) -> None:
+    assert resolve_image_ref(ref, base) == expected
+
+
+def test_one_image_message_per_reason_in_top_document(store: DraftStore) -> None:
+    doc = _doc(
+        _image("i-missing", "images/gone.png"),
+        _image("i-above", "../../x.png"),
+        _image("i-macro", "${IMG}.png"),
+        _image("i-platform", "platform:/plugin/x/icons/a.png"),
+        _image("i-https", "https://x/a.png"),
+        _image("i-HTTPS", "HTTPS://x/A.png"),
+        _image("i-data", "data:image/png;base64,AAAA"),
+    )
+    findings = check_refs(doc, store, "a/top")
+    assert findings == _image_findings(findings)
+    got = {f.node_id: f for f in findings}
+    assert set(got) == {"i-missing", "i-above", "i-macro", "i-platform"}
+    assert {nid: f.reason for nid, f in got.items()} == {
+        "i-missing": "missing",
+        "i-above": "above_root",
+        "i-macro": "invalid_ref",
+        "i-platform": "invalid_ref",
+    }
+    for f in findings:
+        d = f.to_dict()
+        assert d["code"] == "unresolved_ref"
+        assert d["severity"] == "warning"
+        assert d["kind"] == "image"
+        assert d["reason"] == f.reason
+        assert d["path"].endswith("/props/src")
+        assert "docId" not in d
+    assert got["i-missing"].message.startswith("image 'images/gone.png' is not in the draft store")
+    assert "looked for screens/a/images/gone.png" in got["i-missing"].message
+    assert "re-port with overwrite=true" in got["i-missing"].message
+    assert "climbs above the drafts root (resolved against 'a/')" in got["i-above"].message
+    assert "is not a valid asset path" in got["i-macro"].message
+    assert "macros are not expanded" in got["i-macro"].message
+    assert ".bmp, .gif, .ico, .jpeg, .jpg, .png, .svg, .webp" in got["i-macro"].message
+    assert "`platform:`" in got["i-platform"].message
+    assert len({f.message for f in findings}) == 4
+
+
+def test_pv_button_on_off_images_are_checked(store: DraftStore) -> None:
+    doc = _doc(_node("btn", "pv-button", onImage="on.png", offImage="https://x/off.png"))
+    [f] = check_refs(doc, store, "a/top")
+    assert (f.node_id, f.path, f.reason, f.kind) == ("btn", "/root/children/0/props/onImage", "missing", "image")
+
+
+async def test_image_written_through_write_asset_is_present(store: DraftStore) -> None:
+    await store.write_asset("a/images/logo.png", PNG)
+    assert check_refs(_doc(_image("i", "images/logo.png")), store, "a/top") == []
+
+
+def test_image_symlinked_outside_the_store_is_missing(store: DraftStore, tmp_path: Path) -> None:
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(PNG)
+    link = store.root / "screens" / "a" / "images" / "logo.png"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside)
+    [f] = check_refs(_doc(_image("i", "images/logo.png")), store, "a/top")
+    assert (f.reason, f.kind) == ("missing", "image")
+
+
+def test_image_refs_in_a_followed_child_resolve_in_its_own_directory(store: DraftStore) -> None:
+    """a/top embeds sub/child; the child's images resolve against a/sub and carry its docId."""
+    _put(store, "a/sub/child", _image("c-missing", "gone.png"), _image("c-ok", "ok.png"))
+    ok = store.root / "screens" / "a" / "sub" / "ok.png"
+    ok.write_bytes(PNG)
+    findings = check_refs(_doc(_embed("e", "sub/child.screen.json")), store, "a/top")
+    [f] = findings
+    d = f.to_dict()
+    assert d["nodeId"] == "c-missing"
+    assert d["docId"] == "a/sub/child"
+    assert (d["code"], d["reason"], d["kind"], d["severity"]) == ("unresolved_ref", "missing", "image", "warning")
+    assert "looked for screens/a/sub/gone.png" in d["message"]
+
+
+def test_image_refs_at_store_root_use_drafts_root_wording(store: DraftStore) -> None:
+    [f] = check_refs(_doc(_image("i", "../x.png")), store, None)
+    assert f.reason == "above_root"
+    assert "resolved against the drafts root" in f.message
