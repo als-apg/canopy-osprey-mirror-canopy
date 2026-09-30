@@ -2,6 +2,7 @@
 
 import pytest
 
+from canopy.core.modules import WILDCARD
 from canopy.core.security import APIKey
 from canopy.analytics.config import AnalyticsConfig
 from canopy.analytics.services import analytics_service as service_module
@@ -29,7 +30,7 @@ def test_record_never_raises_even_if_logging_fails(monkeypatch):
     ],
 )
 def test_scopes_rendering(read, write, admin, expected):
-    assert _scopes(APIKey(token="t", read=read, write=write, admin=admin)) == expected
+    assert _scopes(APIKey(token="t", read=read, write=write, admin=admin, modules=frozenset({WILDCARD}))) == expected
 
 
 def test_scopes_none_for_anonymous():

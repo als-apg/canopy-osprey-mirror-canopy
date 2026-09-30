@@ -33,8 +33,13 @@ class ApiKeyCreateResultDTO(ApiKeyDTO):
 class NewApiKeyDTO(CanopyModel):
     """Request body for minting a key. At least one scope must be set.
 
-    ``modules`` defaults to ``[WILDCARD]`` — every module — but that's an
-    explicit choice a caller is making, not an implicit fallback for omission.
+    ``modules`` defaults to ``[WILDCARD]`` — every module — matching
+    ``scripts/create_key.py``'s CLI default. Deliberately permissive here,
+    at the two entry points a human operator drives directly: the request
+    still runs through ``_normalize_modules``/``_require_module_containment``
+    in ``canopy.core.keys.service``, which reject an empty list and cap a
+    module-scoped admin's mint to its own modules regardless of what a
+    caller passes or omits.
     """
 
     app_name: str = Field(min_length=1, max_length=255)

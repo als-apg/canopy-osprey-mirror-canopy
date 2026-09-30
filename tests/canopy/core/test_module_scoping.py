@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from canopy.core import security
 from canopy.core.errors import register_canopy_error_handler
-from canopy.core.modules import tag_module
+from canopy.core.modules import WILDCARD, tag_module
 from canopy.core.security import APIKey, require_read_access
 
 
@@ -67,7 +67,7 @@ def bind_fake_registry():
 
 class TestModuleScoping:
     def test_wildcard_key_reaches_every_mount_and_the_parent_app(self, scoped_app, bind_fake_registry):
-        bind_fake_registry(APIKey(token="t", read=True, write=False, name="wild"))
+        bind_fake_registry(APIKey(token="t", read=True, write=False, modules=frozenset({WILDCARD}), name="wild"))
         client = TestClient(scoped_app)
 
         assert client.get("/core-route", headers={"X-API-Key": "t"}).status_code == 200

@@ -29,15 +29,19 @@ class APIKey:
     `token` is only populated by ``EnvKeyRegistry``; ``DbKeyRegistry`` leaves it
     empty since nothing downstream reads it back. Excluded from `repr` regardless,
     so a stray ``logger.debug("%s", key)`` can never print it.
+
+    `modules` has no default: every real registry (``EnvKeyRegistry``,
+    ``DbKeyRegistry``) already passes it explicitly, so a future one that
+    forgets to must fail loudly rather than silently granting every module.
     """
 
     read: bool
     write: bool
+    modules: frozenset[str]
     admin: bool = False
     name: str = "unknown"
     id: str | None = None
     token: str = field(default="", repr=False)
-    modules: frozenset[str] = frozenset({WILDCARD})
 
     def allows_module(self, module: str) -> bool:
         return module == JOBS or WILDCARD in self.modules or module in self.modules

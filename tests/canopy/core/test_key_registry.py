@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 from canopy.core.errors import KeyStoreUnavailable
+from canopy.core.modules import WILDCARD
 from canopy.core.security import APIKey, EnvKeyRegistry
 from canopy.core.keys.tokens import MINTED_TOKEN_LEN, hash_token
 from canopy.core.keys.registry import CachingKeyRegistry, ChainedKeyRegistry
@@ -48,7 +49,14 @@ class FakeStore:
 
 
 def a_key(name: str = "trace", id: str = "id-1", **scopes) -> APIKey:
-    return APIKey(token=TOKEN, read=scopes.get("read", True), write=scopes.get("write", False), name=name, id=id)
+    return APIKey(
+        token=TOKEN,
+        read=scopes.get("read", True),
+        write=scopes.get("write", False),
+        modules=frozenset({WILDCARD}),
+        name=name,
+        id=id,
+    )
 
 
 class SlowStore:
