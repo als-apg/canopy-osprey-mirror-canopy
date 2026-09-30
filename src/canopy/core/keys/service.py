@@ -10,7 +10,12 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from canopy.core.errors import BadRequest, ApiKeyNotFound, ApiKeySelfDeactivation
+from canopy.core.errors import (
+    BadRequest,
+    ApiKeyNotFound,
+    ApiKeySelfDeactivation,
+    InsufficientModuleAccess,
+)
 from canopy.core.modules import MODULES, WILDCARD
 from canopy.core.security import invalidate_key_id
 from canopy.core.keys.models import ApiKey
@@ -54,6 +59,22 @@ def _normalize_modules(modules: list[str]) -> list[str]:
     return sorted(cleaned)
 
 
+def _require_module_containment(target_modules, acting_modules) -> None:
+    """Refuse an admin action that reaches outside the acting key's own modules.
+
+    ``acting_modules`` is ``None`` for the CLI scripts, which mint/deactivate
+    straight against the database with no acting key to contain against —
+    that path stays unrestricted, same as before this check existed. Over
+    HTTP an admin key is only ever a delegated admin for its own modules
+    unless it holds ``WILDCARD``, so ``ops:admin@core`` cannot mint or
+    deactivate a key scoped to ``squirrel``.
+    """
+    if acting_modules is None or WILDCARD in acting_modules:
+        return
+    if outside := set(target_modules) - set(acting_modules):
+        raise InsufficientModuleAccess(f"Acting API key is not scoped to module(s) {sorted(outside)}")
+
+
 class ApiKeyService:
     """Create and manage API keys."""
 
@@ -69,6 +90,7 @@ class ApiKeyService:
         write: bool = False,
         admin: bool = False,
         modules: list[str],
+        acting_key_modules: list[str] | None = None,
     ) -> ApiKeyCreateResultDTO:
         """Mint a key and return it with its plaintext token — the only time the
         token exists outside the caller's hands. Only its hash is stored.
@@ -79,6 +101,10 @@ class ApiKeyService:
         ``modules`` restricts which mounted sub-apps (or ``core``, for key
         management itself) the key may call. Pass ``[WILDCARD]`` for every module
         — callers must choose explicitly, there is no implicit default here.
+
+        ``acting_key_modules`` is the module set of the admin key making this
+        request (``None`` for the CLI). A module-scoped admin can only delegate
+        modules it itself holds — it cannot mint a key scoped wider than itself.
         """
         app_name = app_name.strip()
         if not app_name:
@@ -86,6 +112,7 @@ class ApiKeyService:
         if not (read or write or admin):
             raise BadRequest("Cannot create an API key with no access; pass at least one scope")
         module_list = _normalize_modules(modules)
+        _require_module_containment(module_list, acting_key_modules)
 
         token = mint_token()
         created = await self.repo.create(
@@ -134,6 +161,7 @@ class ApiKeyService:
         key_id: str,
         *,
         acting_key_id: str | None = None,
+        acting_key_modules: list[str] | None = None,
         force: bool = False,
     ) -> ApiKeyDTO:
         """Soft-delete a key. Idempotent-adjacent: deactivating an already inactive
@@ -143,10 +171,15 @@ class ApiKeyService:
         for the CLI, which has no HTTP request to guard). Deactivating the key you're
         making the request with would lock an operator out mid-session, so it's
         refused unless ``force`` is set.
+
+        ``acting_key_modules`` (``None`` for the CLI) contains the same delegation
+        check as ``create_key``: a module-scoped admin cannot deactivate a key
+        scoped to a module it does not itself hold.
         """
         api_key = await self._find(key_id)
         if api_key is None:
             raise ApiKeyNotFound(f"No API key with id '{key_id}'")
+        _require_module_containment(api_key.modules, acting_key_modules)
         if not force and acting_key_id is not None and api_key.id == acting_key_id:
             raise ApiKeySelfDeactivation(
                 "Refusing to deactivate the API key authenticating this request; pass force=true to override"

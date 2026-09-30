@@ -109,6 +109,41 @@ class TestCreateKey:
         assert resp.status_code == 403
         assert resp.json()["code"] == "insufficient_module_access"
 
+    async def test_module_scoped_admin_cannot_mint_a_wider_key(self, session, session_maker, keys_client):
+        # A delegated admin scoped to core+squirrel must not be able to hand out
+        # a key that reaches modules it doesn't itself hold, like fox.
+        with db_backed_registry(env="squirrel-admin:admin@core+squirrel"):
+            resp = keys_client.post(
+                "/v1/api-keys",
+                json={"appName": "trace", "read": True, "modules": ["squirrel", "fox"]},
+                headers={"X-API-Key": "squirrel-admin"},
+            )
+
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "insufficient_module_access"
+
+    async def test_module_scoped_admin_can_mint_within_its_own_modules(self, session, session_maker, keys_client):
+        with db_backed_registry(env="squirrel-admin:admin@core+squirrel"):
+            resp = keys_client.post(
+                "/v1/api-keys",
+                json={"appName": "trace", "read": True, "modules": ["squirrel"]},
+                headers={"X-API-Key": "squirrel-admin"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["modules"] == ["squirrel"]
+
+    async def test_wildcard_admin_can_mint_a_key_scoped_to_any_module(self, session, session_maker, keys_client):
+        with db_backed_registry(env="admin-env-key:admin@*"):
+            resp = keys_client.post(
+                "/v1/api-keys",
+                json={"appName": "trace", "read": True, "modules": ["squirrel"]},
+                headers=ADMIN_HEADERS,
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["modules"] == ["squirrel"]
+
 
 class TestListAndCount:
     async def test_list_never_exposes_a_token(self, session, session_maker, keys_client):
@@ -223,6 +258,30 @@ class TestDeactivate:
     ):
         actor = await mint(session, "ops-tool", admin=True)
         other = await mint(session, "trace", read=True)
+
+        with db_backed_registry(env="", ttl_s=0):
+            resp = keys_client.delete(f"/v1/api-keys/{other.id}", headers={"X-API-Key": actor.token})
+
+        assert resp.status_code == 200
+        assert resp.json()["isActive"] is False
+
+    async def test_module_scoped_admin_cannot_deactivate_a_key_outside_its_modules(
+        self, session, session_maker, keys_client
+    ):
+        actor = await mint(session, "squirrel-admin", admin=True, modules=["core", "squirrel"])
+        other = await mint(session, "fox-trace", read=True, modules=["fox"])
+
+        with db_backed_registry(env="", ttl_s=0):
+            resp = keys_client.delete(f"/v1/api-keys/{other.id}", headers={"X-API-Key": actor.token})
+
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "insufficient_module_access"
+
+    async def test_module_scoped_admin_can_deactivate_a_key_within_its_modules(
+        self, session, session_maker, keys_client
+    ):
+        actor = await mint(session, "squirrel-admin", admin=True, modules=["core", "squirrel"])
+        other = await mint(session, "squirrel-trace", read=True, modules=["squirrel"])
 
         with db_backed_registry(env="", ttl_s=0):
             resp = keys_client.delete(f"/v1/api-keys/{other.id}", headers={"X-API-Key": actor.token})

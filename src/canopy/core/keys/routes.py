@@ -17,10 +17,19 @@ router = APIRouter(prefix="/v1/api-keys", tags=["API Keys"], dependencies=[Secur
 
 
 @router.post("")
-async def create_key(data: NewApiKeyDTO, service: ApiKeyServiceDep) -> ApiKeyCreateResultDTO:
+async def create_key(
+    data: NewApiKeyDTO,
+    key: AdminKeyDep,  # reuses the router-level Security() call, doesn't re-resolve the token
+    service: ApiKeyServiceDep,
+) -> ApiKeyCreateResultDTO:
     """Mint a key. The plaintext token is returned here, once, and never again."""
     return await service.create_key(
-        data.app_name, read=data.read, write=data.write, admin=data.admin, modules=data.modules
+        data.app_name,
+        read=data.read,
+        write=data.write,
+        admin=data.admin,
+        modules=data.modules,
+        acting_key_modules=list(key.modules),
     )
 
 
@@ -45,4 +54,4 @@ async def deactivate_key(
     service: ApiKeyServiceDep,
     force: bool = Query(False, description="Deactivate even if this is the key authenticating the request"),
 ) -> ApiKeyDTO:
-    return await service.deactivate_key(key_id, acting_key_id=key.id, force=force)
+    return await service.deactivate_key(key_id, acting_key_id=key.id, acting_key_modules=list(key.modules), force=force)
