@@ -21,18 +21,18 @@ direct-request halves of SC8 (``PUT /hare/v1/pvs/X`` and
 
 from __future__ import annotations
 
-import copy
-import http.client
-import json
 import os
+import copy
+import json
+import time
 import shutil
 import socket
 import threading
-import time
+import http.client
+from typing import Any
+from pathlib import Path
 from collections import Counter
 from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
 
 import httpx
 import pytest
@@ -42,10 +42,10 @@ from mcp.types import ImageContent
 
 from canopy_mcp import catalog as catalog_mod
 from canopy_mcp.app import create_app
+from canopy_mcp.tools import drafts, convert
+from canopy_mcp.config import get_settings
 from canopy_mcp.check.lint import RACCOON_VALIDATE_PATH, check_lint
 from canopy_mcp.check.refs import resolve_ref
-from canopy_mcp.config import get_settings
-from canopy_mcp.tools import convert, drafts
 from tests.canopy_mcp.fixtures.convert import mocks
 
 pytestmark = pytest.mark.live
@@ -315,13 +315,18 @@ async def test_sc3a_btsview_queue(mcp: _Mcp, drafts_dir: Path) -> None:
     for draft_id, title in BTS_TITLES.items():
         assert json.loads(_file(drafts_dir, draft_id).read_text())["metadata"]["title"] == title
 
+    # The six images the panels reference are copied beside their drafts; none fails.
+    assets = result["assets"]
+    assert len(assets) == 6, assets
+    assert {a["status"] for a in assets} <= {"written", "reused"}, assets
+
     queue = result["queue"]
     codes = Counter(item["code"] for item in queue)
-    assert codes == Counter({"dropped_prop": 13, "warning": 5, "unresolved_ref": 3}), codes
+    assert codes == Counter({"dropped_prop": 12, "warning": 2, "unresolved_ref": 3}), codes
     assert codes["unknown_widget"] == 0 and codes["nested_ref_base"] == 0
 
     warnings = Counter(i["draftId"] for i in queue if i["code"] == "warning")
-    assert warnings == Counter({"bts/BTSView": 1, "bts/embedded/_tv": 4})
+    assert warnings == Counter({"bts/BTSView": 1, "bts/embedded/_tv": 1})
 
     unresolved = [i for i in queue if i["code"] == "unresolved_ref"]
     assert {i["draftId"] for i in unresolved} == {"common/KnobPanel"}
@@ -332,16 +337,14 @@ async def test_sc3a_btsview_queue(mcp: _Mcp, drafts_dir: Path) -> None:
 
     dropped = [i for i in queue if i["code"] == "dropped_prop"]
     per_draft = Counter(i["draftId"] for i in dropped)
-    assert per_draft == Counter(
-        {"bts/BTSView": 8, "bts/embedded/_KnobDevice": 2, "bts/embedded/_bpm": 1, "common/KnobPanel": 2}
-    )
+    assert per_draft == Counter({"bts/BTSView": 8, "bts/embedded/_KnobDevice": 2, "common/KnobPanel": 2})
 
     def props(draft_id: str) -> set[str]:
         return {p for i in dropped if i["draftId"] == draft_id for p in i["props"]}
 
     assert props("bts/BTSView") == {"resize", "tooltip", "border_alarm_sensitive", "backgroundColor"}
     assert props("bts/embedded/_KnobDevice") == {"tooltip"}
-    assert props("bts/embedded/_bpm") == {"show_legend", "x_axis"}
+    assert props("bts/embedded/_bpm") == set()
     assert props("common/KnobPanel") == {"resize"}
     assert "style" not in {p for i in dropped for p in i["props"]}
 
@@ -455,7 +458,11 @@ async def test_sc6_invalid_document_writes_nothing_and_names_nodes(mcp: _Mcp, dr
 @pytest.mark.parametrize(
     ("node_id", "code", "doc"),
     [
-        ("twin", "duplicate_node_id", _doc(_node("twin", "text-label", {"text": "a"}), _node("twin", "text-label", {"text": "b"}))),
+        (
+            "twin",
+            "duplicate_node_id",
+            _doc(_node("twin", "text-label", {"text": "a"}), _node("twin", "text-label", {"text": "b"})),
+        ),
         (
             "web",
             "open_webpage",
