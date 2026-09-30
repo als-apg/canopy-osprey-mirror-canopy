@@ -126,9 +126,9 @@ class EnvKeyRegistry:
                 continue
             if unknown_modules := module_set - MODULES - {WILDCARD}:
                 logger.warning(
-                    "CANOPY_API_KEYS entry #%d has unrecognized module(s) %s; ignoring them",
+                    "CANOPY_API_KEYS entry #%d has %d unrecognized module(s); ignoring them",
                     position,
-                    sorted(unknown_modules),
+                    len(unknown_modules),
                 )
             module_set -= unknown_modules
             if not module_set:

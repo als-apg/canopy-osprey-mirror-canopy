@@ -154,7 +154,15 @@ class TestEnvKeyRegistryParsing:
             EnvKeyRegistry("trace:read@fox+not-a-module")
 
         assert "entry #1" in caplog.text
-        assert "not-a-module" in caplog.text
+        assert "1 unrecognized module" in caplog.text
+
+    def test_unknown_module_warning_never_contains_the_module_name(self, caplog):
+        # Same leak class as the scope-warning: a comma typo'd as a space folds
+        # a second entry's secret-shaped fragment into this entry's module list.
+        with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
+            EnvKeyRegistry("roTok:read@* rwTok-SECRET:read+write@*")
+
+        assert "SECRET" not in caplog.text
 
     async def test_unknown_module_alone_is_rejected(self, caplog):
         # Once the one (unrecognized) module is filtered out, nothing valid remains.
