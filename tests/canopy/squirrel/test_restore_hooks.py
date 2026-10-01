@@ -39,6 +39,14 @@ def test_protocol_prefix_is_preserved():
     assert trim_hook.derive_extra_writes("pva://QUAD:LI21:201:BDES", 3.0) == [("pva://QUAD:LI21:201:CTRL", "TRIM")]
 
 
+@pytest.mark.parametrize("prefix", ["PVA://", "CA://", "Pva://"])
+def test_protocol_prefix_is_preserved_in_any_case(prefix):
+    assert trim_hook.derive_extra_writes(f"{prefix}QUAD:LI21:201:BDES", 3.0) == [
+        (f"{prefix}QUAD:LI21:201:CTRL", "TRIM")
+    ]
+    assert con_hook.derive_extra_writes(f"{prefix}QUAD:LI21:201:BDES", 0.5) == [(f"{prefix}QUAD:LI21:201:BCON", 0.5)]
+
+
 def test_bare_address_stays_bare():
     assert trim_hook.derive_extra_writes("BEND:DMP1:400:BDES", 3.0) == [("BEND:DMP1:400:CTRL", "TRIM")]
 

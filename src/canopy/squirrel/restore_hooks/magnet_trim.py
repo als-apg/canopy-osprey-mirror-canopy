@@ -25,8 +25,8 @@ CTRL_SEGMENT = "CTRL"
 def derive_magnet_address(address: str, segment: str) -> str | None:
     """Rewrite a magnet BDES address, swapping its trailing segment for ``segment``.
 
-    The original ``proto://`` prefix, if any, is carried over so downstream put
-    routing is unchanged.
+    The original ``proto://`` prefix, if any, is carried over verbatim (in any case)
+    so downstream put routing is unchanged.
 
     Parameters
     ----------
@@ -45,7 +45,7 @@ def derive_magnet_address(address: str, segment: str) -> str | None:
     RestoreHookError
         When ``address`` is a magnet PV whose trailing segment is not ``BDES``.
     """
-    protocol, stripped = parse_pv_name(address)
+    _protocol, stripped = parse_pv_name(address)
     segments = stripped.split(":")
     if not segments or segments[0] not in MAGNET_PREFIXES:
         return None
@@ -57,10 +57,8 @@ def derive_magnet_address(address: str, segment: str) -> str | None:
         )
 
     segments[-1] = segment
-    derived = ":".join(segments)
-    if address.startswith(f"{protocol}://"):
-        return f"{protocol}://{derived}"
-    return derived
+    prefix = address[: len(address) - len(stripped)]
+    return prefix + ":".join(segments)
 
 
 class MagnetTrimHook(RestoreHook):
