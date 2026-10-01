@@ -145,6 +145,13 @@ async def test_list_rejects_start_after_end(client: AsyncClient):
     assert r.json()["code"] == "bad_request"
 
 
+async def test_list_rejects_bounds_that_overflow_on_utc_conversion(client: AsyncClient):
+    for query in ("start=9999-12-31T23:00:00-05:00", "end=0001-01-01T00:00:00%2B05:00"):
+        r = await client.get(f"/v1/snapshots?{query}", headers=READ_HEADERS)
+        assert r.status_code == 400, r.text
+        assert r.json()["code"] == "bad_request"
+
+
 async def test_get_snapshot_with_values(client: AsyncClient, db_session: AsyncSession):
     pv = await _seed_pv(db_session)
     sid = await _seed_snapshot(db_session, "with-values", pv=pv, value=7.0)

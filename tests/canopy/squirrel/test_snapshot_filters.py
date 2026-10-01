@@ -85,3 +85,17 @@ async def test_equal_bounds_are_allowed(service, repo):
     await service.list_snapshots(start=instant, end=instant)
 
     assert repo.searches[0]["start"] == repo.searches[0]["end"] == instant
+
+
+@pytest.mark.parametrize(
+    ("bound", "value"),
+    [
+        ("start", datetime(9999, 12, 31, 23, 0, tzinfo=timezone(timedelta(hours=-5)))),
+        ("end", datetime(1, 1, 1, 0, 0, tzinfo=timezone(timedelta(hours=5)))),
+    ],
+)
+async def test_bound_overflowing_on_utc_conversion_is_a_bad_request(service, repo, bound, value):
+    with pytest.raises(BadRequest, match=f"{bound} .* out of range"):
+        await service.list_snapshots(**{bound: value})
+
+    assert repo.searches == []

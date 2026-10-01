@@ -82,6 +82,35 @@ def _sanitize_for_json(value: Any) -> Any:
     return value
 
 
+def _utc_bound(name: str, value: datetime | None) -> datetime | None:
+    """Convert a listing bound with ``to_utc``, refusing one that leaves ``datetime``'s range.
+
+    Parameters
+    ----------
+    name : str
+        The query parameter the bound came from, for the error message.
+    value : datetime | None
+        The bound as the client sent it.
+
+    Returns
+    -------
+    datetime | None
+        The bound as an aware UTC datetime, or ``None`` when it was omitted.
+
+    Raises
+    ------
+    BadRequest
+        When the UTC instant falls outside years 1 to 9999, e.g.
+        ``9999-12-31T23:00:00-05:00``.
+    """
+    if value is None:
+        return None
+    try:
+        return to_utc(value)
+    except OverflowError as exc:
+        raise BadRequest(f"{name} ({value.isoformat()}) is out of range once converted to UTC") from exc
+
+
 class SnapshotService:
     """Snapshot operations with EPICS integration. Owns no transaction — the caller
     (request dep or worker ``session_scope``) commits."""
@@ -147,10 +176,11 @@ class SnapshotService:
         Raises
         ------
         BadRequest
-            When both bounds are given and ``start`` is after ``end``.
+            When a bound falls outside ``datetime``'s range once converted to UTC, or
+            both bounds are given and ``start`` is after ``end``.
         """
-        start = to_utc(start) if start is not None else None
-        end = to_utc(end) if end is not None else None
+        start = _utc_bound("start", start)
+        end = _utc_bound("end", end)
         if start is not None and end is not None and start > end:
             raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
         snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids, start=start, end=end)
