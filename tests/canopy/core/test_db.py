@@ -7,12 +7,13 @@ while ``get_session`` (the request dependency) commits once on success. The
 that one request shares one session.
 """
 
-from typing import Annotated
+from typing import Any, Annotated
 
 import httpx
 import pytest
 from fastapi import Depends, FastAPI
 from starlette.types import Send, Scope, ASGIApp, Message, Receive
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.core import db
 
@@ -42,6 +43,31 @@ def fake_session(monkeypatch):
     session = FakeSession()
     monkeypatch.setattr(db, "get_session_maker", lambda: lambda: session)
     return session
+
+
+@pytest.fixture
+def made_sessions(monkeypatch) -> list[FakeSession]:
+    """Swap in a session maker that builds a new ``FakeSession`` per call.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Replaces ``db.get_session_maker``.
+
+    Returns
+    -------
+    list[FakeSession]
+        Every session made, in order.
+    """
+    made: list[FakeSession] = []
+
+    def make_session() -> FakeSession:
+        session = FakeSession()
+        made.append(session)
+        return session
+
+    monkeypatch.setattr(db, "get_session_maker", lambda: make_session)
+    return made
 
 
 async def test_session_scope_does_not_auto_commit(fake_session):
@@ -128,8 +154,8 @@ async def test_session_dep_commits_before_response_starts(fake_session):
 
         Parameters
         ----------
-        session : FakeSession
-            The request session under test.
+        session : AsyncSession
+            The request session under test, ``fake_session`` here.
 
         Returns
         -------
@@ -148,70 +174,61 @@ async def test_session_dep_commits_before_response_starts(fake_session):
     assert fake_session.events == ["handler", "commit", "response"]
 
 
-async def test_session_dep_shares_one_session_per_request(monkeypatch):
-    """A route and its sub-dependency that both take ``SessionDep`` share one session.
+async def _route_and_service_share_a_session(service_session: Any) -> bool:
+    """Request a route taking ``SessionDep`` whose service provider takes ``service_session``.
 
     Parameters
     ----------
-    monkeypatch : pytest.MonkeyPatch
-        Swaps in a session maker that builds a new ``FakeSession`` per call.
+    service_session : Any
+        The annotation the service provider declares its session parameter with.
+
+    Returns
+    -------
+    bool
+        Whether the route and the service provider got the same session.
     """
-    made: list[FakeSession] = []
-
-    def make_session() -> FakeSession:
-        """Build and record a new ``FakeSession``.
-
-        Returns
-        -------
-        FakeSession
-            A fresh session.
-        """
-        session = FakeSession()
-        made.append(session)
-        return session
-
-    monkeypatch.setattr(db, "get_session_maker", lambda: make_session)
     app = FastAPI()
 
-    def get_service(session: db.SessionDep) -> object:
-        """Stand in for a module service provider built on ``SessionDep``.
-
-        Parameters
-        ----------
-        session : FakeSession
-            The request session.
-
-        Returns
-        -------
-        object
-            The session itself, so the route can compare it.
-        """
+    def get_service(session: service_session) -> object:
+        """Stand in for a module service provider, returning its session for comparison."""
         return session
 
     @app.get("/probe")
     async def probe(
         session: db.SessionDep, service_session: Annotated[object, Depends(get_service)]
     ) -> dict[str, bool]:
-        """Report whether the route and the service got the same session.
-
-        Parameters
-        ----------
-        session : FakeSession
-            The route's request session.
-        service_session : FakeSession
-            The session the service provider received.
-
-        Returns
-        -------
-        dict[str, bool]
-            Whether both are the same object.
-        """
+        """Report whether the route and the service provider got the same session."""
         return {"shared": session is service_session}
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/probe")
-
     assert r.status_code == 200, r.text
-    assert r.json() == {"shared": True}
-    assert len(made) == 1
-    assert made[0].commits == 1
+    return r.json()["shared"]
+
+
+async def test_session_dep_shares_one_session_per_request(made_sessions):
+    """A route and its service provider that both take ``SessionDep`` share one session.
+
+    Parameters
+    ----------
+    made_sessions : list[FakeSession]
+        Every session the request made.
+    """
+    assert await _route_and_service_share_a_session(db.SessionDep)
+    assert len(made_sessions) == 1
+    assert made_sessions[0].commits == 1
+
+
+async def test_get_session_declared_without_session_dep_scope_makes_a_second_session(made_sessions):
+    """A provider declaring ``Depends(get_session)`` itself gets a second session and transaction.
+
+    FastAPI reuses a dependency within a request only when it is declared the same
+    way, scope included, so this pins why routes and services take ``SessionDep``.
+
+    Parameters
+    ----------
+    made_sessions : list[FakeSession]
+        Every session the request made.
+    """
+    assert not await _route_and_service_share_a_session(Annotated[AsyncSession, Depends(db.get_session)])
+    assert len(made_sessions) == 2
