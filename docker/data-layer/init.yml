@@ -254,6 +254,8 @@
           - "{{ cfg.container_postgres }}"
           - --restart
           - unless-stopped
+          - --log-driver
+          - json-file
           - --log-opt
           - max-size=50m
           - --log-opt
@@ -289,6 +291,8 @@
           - "{{ cfg.container_redis }}"
           - --restart
           - unless-stopped
+          - --log-driver
+          - json-file
           - --log-opt
           - max-size=50m
           - --log-opt

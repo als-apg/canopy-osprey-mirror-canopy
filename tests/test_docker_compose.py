@@ -9,6 +9,7 @@ yaml = pytest.importorskip("yaml")
 _DOCKER_DIR = Path(__file__).resolve().parents[1] / "docker"
 COMPOSE_FILES = sorted(_DOCKER_DIR.rglob("docker-compose*.yml"))
 DATA_LAYER_PLAYBOOK = _DOCKER_DIR / "data-layer" / "init.yml"
+LOG_CAP = {"driver": "json-file", "options": {"max-size": "50m", "max-file": "3"}}
 
 
 def _load(path: Path) -> dict | list:
@@ -70,6 +71,26 @@ def _docker_run_argvs(playbook: list) -> dict[str, list[str]]:
     return runs
 
 
+def _docker_run_logging(argv: list[str]) -> dict:
+    """Read the log flags of a ``docker run`` argv into a compose ``logging`` mapping.
+
+    Parameters
+    ----------
+    argv : list[str]
+        A ``docker run`` command line.
+
+    Returns
+    -------
+    dict
+        ``driver`` from the last ``--log-driver`` (``None`` when absent, leaving the
+        daemon default) and ``options`` from every ``--log-opt key=value``.
+    """
+    pairs = list(zip(argv, argv[1:]))
+    drivers = [value for flag, value in pairs if flag == "--log-driver"]
+    options = dict(value.split("=", 1) for flag, value in pairs if flag == "--log-opt")
+    return {"driver": drivers[-1] if drivers else None, "options": options}
+
+
 def test_every_compose_file_is_covered():
     names = {path.relative_to(_DOCKER_DIR).as_posix() for path in COMPOSE_FILES}
     assert {
@@ -84,9 +105,7 @@ def test_every_service_caps_its_logs(path: Path):
     services = _load(path)["services"]
     assert services
     for name, service in services.items():
-        options = service.get("logging", {}).get("options", {})
-        assert options.get("max-size"), f"{name} in {path.name} has no logging max-size"
-        assert options.get("max-file"), f"{name} in {path.name} has no logging max-file"
+        assert service.get("logging") == LOG_CAP, f"{name} in {path.name} lacks the json-file log cap"
 
 
 def test_log_level_reaches_the_dev_app_services():
@@ -99,5 +118,4 @@ def test_data_layer_containers_cap_their_logs():
     runs = _docker_run_argvs(_load(DATA_LAYER_PLAYBOOK))
     assert set(runs) == {"Run postgres", "Run redis"}
     for name, argv in runs.items():
-        log_opts = {argv[i + 1].split("=", 1)[0] for i, arg in enumerate(argv[:-1]) if arg == "--log-opt"}
-        assert {"max-size", "max-file"} <= log_opts, f"{name} runs without a json-file log cap"
+        assert _docker_run_logging(argv) == LOG_CAP, f"{name} runs without the json-file log cap"
