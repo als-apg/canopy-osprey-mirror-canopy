@@ -22,6 +22,7 @@ dependencies = [
     "redis>=5.0",
     "PyDMConverter>=1.0.5",
     "python-multipart>=0.0.32",
+    "pymongo>=4.17",
 ]
 
 [project.optional-dependencies]
@@ -87,6 +88,7 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 asyncio_mode = "auto"
 markers = [
     "live: needs a running canopy stack; skipped unless CANOPY_LIVE=1",
+    "mongo: needs Docker and the local mongo:7 image; starts a throwaway MongoDB container",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
