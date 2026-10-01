@@ -21,12 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def _build_magnet_trim(_config: SquirrelConfig) -> RestoreHook:
-    """Build the magnet-trim hook."""
     return MagnetTrimHook()
 
 
 def _build_write_to_con(_config: SquirrelConfig) -> RestoreHook:
-    """Build the write-to-BCON hook."""
     return WriteToConHook()
 
 
