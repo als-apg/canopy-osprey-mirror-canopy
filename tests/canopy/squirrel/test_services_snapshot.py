@@ -179,21 +179,21 @@ async def test_restore_reports_write_failure(db_session: AsyncSession):
 async def test_restore_runs_every_hook_in_order(db_session: AsyncSession):
     await _seed_pv(db_session, "QUAD:LI21:201:BDES")
     io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
-    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
 
     io.writes.clear()
     result = await svc.restore_snapshot(summary.id)
-    assert io.writes == {
-        "QUAD:LI21:201:BDES": 3.0,
-        "QUAD:LI21:201:CTRL": "TRIM",
-        "QUAD:LI21:201:BCON": 3.0,
-    }
+    assert list(io.writes.items()) == [
+        ("QUAD:LI21:201:BDES", 3.0),
+        ("QUAD:LI21:201:BCON", 3.0),
+        ("QUAD:LI21:201:CTRL", "TRIM"),
+    ]
     assert result.success_count == 1 and result.failure_count == 0
 
 
 async def test_restore_attributes_hook_write_failure_to_the_hook(db_session: AsyncSession):
-    """A hook's failed write fails its primary PV, while the other hooks still run."""
+    """A hook's failed write fails its primary PV and names that hook as the phase."""
     pv = await _seed_pv(db_session, "QUAD:LI21:201:BDES")
     io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
     io.fail_writes.add("QUAD:LI21:201:BCON")
@@ -211,35 +211,20 @@ async def test_restore_attributes_hook_write_failure_to_the_hook(db_session: Asy
     assert "QUAD:LI21:201:BCON" in failure["error"]
 
 
-async def test_restore_runs_later_hooks_after_an_earlier_hook_fails(db_session: AsyncSession):
-    """A failed TRIM still leaves BCON recording the value that was restored."""
+async def test_restore_skips_later_hooks_after_an_earlier_hook_fails(db_session: AsyncSession):
+    """A failed BCON write leaves the magnet untrimmed."""
     await _seed_pv(db_session, "QUAD:LI21:201:BDES")
     io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
-    io.fail_writes.add("QUAD:LI21:201:CTRL")
-    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
+    io.fail_writes.add("QUAD:LI21:201:BCON")
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
 
     io.writes.clear()
     result = await svc.restore_snapshot(summary.id)
-    assert io.writes == {"QUAD:LI21:201:BDES": 3.0, "QUAD:LI21:201:BCON": 3.0}
+    assert io.writes == {"QUAD:LI21:201:BDES": 3.0}
     assert result.failure_count == 1
-    assert result.failures[0]["phase"] == "MagnetTrimHook"
-    assert "QUAD:LI21:201:CTRL" in result.failures[0]["error"]
-
-
-async def test_restore_lists_every_hook_failure_under_the_first_phase(db_session: AsyncSession):
-    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
-    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
-    io.fail_writes.update({"QUAD:LI21:201:CTRL", "QUAD:LI21:201:BCON"})
-    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
-    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
-
-    result = await svc.restore_snapshot(summary.id)
-    assert result.failure_count == 1
-    failure = result.failures[0]
-    assert failure["phase"] == "MagnetTrimHook"
-    assert "QUAD:LI21:201:CTRL" in failure["error"]
-    assert "QUAD:LI21:201:BCON" in failure["error"]
+    assert result.failures[0]["phase"] == "WriteToConHook"
+    assert "QUAD:LI21:201:BCON" in result.failures[0]["error"]
 
 
 async def test_restore_attributes_primary_failure_to_setpoints(db_session: AsyncSession):
@@ -269,12 +254,16 @@ async def test_restore_derivation_error_skips_the_pv_and_blames_setpoints(db_ses
 
 
 async def test_restore_progress_reaches_the_total(db_session: AsyncSession):
-    """Progress totals 2 setpoints + 2 trims + 2 BCON writes, skipped extras included."""
+    """Progress totals 2 setpoints + 2 BCON writes + 2 trims.
+
+    Extras skipped after a failed setpoint (BEND) or a failed earlier hook (QUAD's
+    trim, after its BCON write fails) count as done.
+    """
     await _seed_pv(db_session, "QUAD:LI21:201:BDES")
     await _seed_pv(db_session, "BEND:DMP1:400:BDES")
     io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0), "BEND:DMP1:400:BDES": _ev(4.0)})
-    io.fail_writes.add("BEND:DMP1:400:BDES")
-    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
+    io.fail_writes.update({"BEND:DMP1:400:BDES", "QUAD:LI21:201:BCON"})
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
 
     reported: list[tuple[int, int]] = []

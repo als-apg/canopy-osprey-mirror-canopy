@@ -99,10 +99,9 @@ class RestoreResultDTO(CanopyModel):
 
     ``failures`` rows are ``{pvId, pvName, error, phase}``, where ``phase`` names the
     stage that failed: ``"Setpoints"`` for a primary write or a hook-derivation error,
-    otherwise the class name of the first restore hook whose write failed. Class names
-    map to the ``CANOPY_SQUIRREL__RESTORE_HOOKS`` provider keys as ``MagnetTrimHook`` →
-    ``magnet_trim`` and ``WriteToConHook`` → ``write_to_con``; ``error`` lists every
-    hook failure for the PV.
+    otherwise the class name of the restore hook whose write failed; later hooks skip
+    that PV. Class names map to the ``CANOPY_SQUIRREL__RESTORE_HOOKS`` provider keys as
+    ``MagnetTrimHook`` → ``magnet_trim`` and ``WriteToConHook`` → ``write_to_con``.
     """
 
     total_pvs: int
