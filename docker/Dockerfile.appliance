@@ -1,0 +1,108 @@
+# syntax=docker/dockerfile:1
+# CANOPY appliance image: the canopy FastAPI backend (uvicorn canopy.main:app)
+# and the canopy_mcp panel/MCP server (python -m canopy_mcp --http), plus the
+# built canopy-screen-runtime viewer, the built react-trace data browser and the
+# checked-in Beaver widget registry data. One image, two services: compose
+# supplies the command, so there is no CMD.
+#
+# Four repos feed the build, each as a NAMED build context:
+#   canopy     — the canopy repo (pyproject.toml, src/, widget-registry-data/)
+#   pydm-src   — pydm-converter-tool (the .bob adapter; not yet on PyPI)
+#   runtime    — canopy-screen-runtime (pnpm workspace holding apps/viewer)
+#   trace-src  — a react-trace source tree (a `git archive` of one commit)
+#
+# The three `FROM scratch` export stages (`pydm`, `viewer`, `trace`) hold their
+# artifacts at `/`. Built from source with the named contexts alone, every
+# stage builds here. scripts/build-image.sh instead OVERRIDES `pydm` and
+# `viewer` with --build-context pydm=<wheel dir> / viewer=<dist dir> (BuildKit
+# replaces a stage of the same name), and its --no-trace mode passes empty
+# `trace-src` and `trace` contexts, so the image ships an empty /app/trace.
+#
+# Versions: hatch-vcs (canopy) and setuptools_scm (PyDMConverter) cannot read a
+# git worktree's `.git` FILE, and `git describe` output is not PEP 440, so the
+# caller computes both versions on the host and passes them as build-args. The
+# provenance SHAs (CANOPY_SHA, TRACE_SHA, TRACE_LOCK_SHA256, RUNTIME_SHA) are
+# passed the same way and recorded as org.canopy.* labels.
+#
+# Plain pip on python:3.12 (ALS convention). pip ignores canopy's
+# [tool.uv.sources] path link, which is why the PyDMConverter wheel is passed
+# explicitly in the same `pip install` as canopy. pymongo is a core canopy
+# dependency, so the [mcp] extra is the only one needed.
+
+# --- pydm-build: wheel of pydm-converter-tool --------------------------------
+FROM python:3.12 AS pydm-build
+ARG PYDM_VERSION
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYDMCONVERTER=${PYDM_VERSION}
+COPY --from=pydm-src . /src
+RUN pip wheel --no-cache-dir --no-deps -w /out /src
+
+# --- pydm: export stage (overridden by --build-context pydm=<dir>) -----------
+FROM scratch AS pydm
+COPY --from=pydm-build /out /
+
+# --- viewer-build: pnpm build of the canopy-screen-runtime viewer ------------
+FROM node:22 AS viewer-build
+WORKDIR /src
+COPY --from=runtime . /src
+RUN corepack enable && \
+    pnpm install --frozen-lockfile && \
+    pnpm --filter viewer build
+
+# --- viewer: export stage (overridden by --build-context viewer=<dir>) -------
+FROM scratch AS viewer
+COPY --from=viewer-build /src/apps/viewer/dist /
+
+# --- trace-build: pnpm build of react-trace ----------------------------------
+# HUSKY=0 turns react-trace's `prepare: husky` hook into a no-op (there is no
+# .git in an archived tree). --base=./ makes the bundle's asset URLs relative,
+# so canopy can serve it under any mount path.
+FROM node:22 AS trace-build
+ENV HUSKY=0
+WORKDIR /src
+COPY --from=trace-src . /src
+RUN corepack enable && \
+    pnpm install --frozen-lockfile && \
+    pnpm exec tsc -b && \
+    pnpm exec vite build --base=./
+
+# --- trace: export stage (overridden by --build-context trace=<dir>) ---------
+FROM scratch AS trace
+COPY --from=trace-build /src/dist /
+
+# --- runtime: canopy + canopy_mcp + viewer + trace + registry data -----------
+FROM python:3.12
+ARG CANOPY_VERSION
+ARG CANOPY_SHA
+ARG TRACE_SHA
+ARG TRACE_LOCK_SHA256
+ARG RUNTIME_SHA
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CANOPY=${CANOPY_VERSION}
+
+LABEL org.canopy.sha="${CANOPY_SHA}" \
+      org.canopy.trace.sha="${TRACE_SHA}" \
+      org.canopy.trace.lockfile-sha256="${TRACE_LOCK_SHA256}" \
+      org.canopy.runtime.sha="${RUNTIME_SHA}"
+
+WORKDIR /app
+
+COPY --from=pydm / /wheels
+COPY --from=viewer / /app/viewer
+COPY --from=trace / /app/trace
+COPY --from=canopy widget-registry-data /app/widget-registry-data
+
+ENV CANOPY_TRACE_DIST=/app/trace
+
+# The canopy context is bind-mounted for the install only (rw so the build
+# backend may write scratch files; writes are discarded), never copied in.
+# hatch-vcs does not hand setuptools_scm the distribution name, so it ignores
+# the _FOR_CANOPY variable; the generic one is set for this command alone
+# (the PyDMConverter wheel is already built, so nothing else can pick it up).
+RUN --mount=type=bind,from=canopy,target=/ctx/canopy,rw \
+    SETUPTOOLS_SCM_PRETEND_VERSION="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CANOPY}" \
+    pip install --no-cache-dir /wheels/*.whl '/ctx/canopy[mcp]'
+
+# Chromium for canopy_mcp's screenshot tool, at a fixed world-readable path so
+# the browser is visible to whichever uid the container runs as.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN playwright install --with-deps chromium && \
+    chmod -R a+rX ${PLAYWRIGHT_BROWSERS_PATH}
