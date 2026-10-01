@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     panel_id: str | None = None
     # PV source the served viewer uses: live hare, or the mock service.
     pv_mode: Literal["hare", "mock"] = "hare"
+    # Built react-trace (holds index.html); unset means no Trace tab.
+    trace_dist: Path | None = None
+    # Query the Trace tab opens with when the URL carries none (pv=...&range=...).
+    trace_default_query: str = ""
 
 
 @lru_cache

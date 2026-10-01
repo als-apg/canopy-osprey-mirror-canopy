@@ -17,6 +17,12 @@ Draft images (anything under the drafts route that is not a screen) also carry
 ``X-Content-Type-Options: nosniff``: they are copied in from legacy trees, so an
 ``.svg`` opened directly must not run script and no body may be sniffed into a
 more capable type.
+
+The built react-trace is served at exactly ``/trace/`` (its index, with a
+``<base href>`` of ``{prefix}/trace/`` and :data:`TRACE_CSP`), ``/trace/assets/``
+and ``/trace/favicon.svg``. Every other ``/trace`` path, the bare ``/trace``
+included, is a 404 rather than a slash redirect. ``config.json`` names the
+route only when ``trace_dist/index.html`` exists.
 """
 
 import re
@@ -40,6 +46,13 @@ DRAFT_CACHE_CONTROL = "no-cache"
 SCREENS_PATH = "drafts"
 # Headers on every non-screen draft response (200 and 304).
 IMAGE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff"}
+
+TRACE_PATH = "trace/"
+# On the trace index: same-origin, unsandboxed iframe of the viewer.
+TRACE_CSP = (
+    "script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; "
+    "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
+)
 
 # OSPREY theme id -> the viewer's light/dark mode.
 THEMES: dict[str, str] = {"dark": "dark", "light": "light"}
@@ -67,7 +80,17 @@ def inject_base(index_html: str, prefix: str) -> str:
 
 def viewer_config(settings: Settings) -> dict[str, Any]:
     """The viewer's ``config.json``. It never carries a key: the viewer needs none."""
-    return {"pvMode": settings.pv_mode, "screensPath": SCREENS_PATH, "themes": dict(THEMES)}
+    config: dict[str, Any] = {"pvMode": settings.pv_mode, "screensPath": SCREENS_PATH, "themes": dict(THEMES)}
+    if _trace_index(settings) is not None:
+        config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
+    return config
+
+
+def _trace_index(settings: Settings) -> Path | None:
+    """The installed react-trace ``index.html``, or ``None``."""
+    dist = settings.trace_dist
+    page = dist / "index.html" if dist else None
+    return page if page is not None and page.is_file() else None
 
 
 def _etag(rev: str) -> str:
@@ -97,6 +120,10 @@ def _file_under(root: Path, relpath: str) -> Path | None:
     if not relpath or "\x00" in relpath or "\\" in relpath:
         return None
     return contained_file(root, relpath)
+
+
+def _missing() -> Response:
+    return PlainTextResponse("not found", status_code=404)
 
 
 def _screen_rev(store: DraftStore, target: Path) -> str | None:
@@ -149,6 +176,32 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         extra = None if is_screen else IMAGE_HEADERS
         return _revved(request, rev, lambda: FileResponse(target, media_type=media), extra)
 
+    async def trace_index(request: Request) -> Response:
+        page = _trace_index(settings)
+        if page is None:
+            return _missing()
+        prefix = safe_prefix(request.headers.get(PREFIX_HEADER))
+        body = inject_base(page.read_text(encoding="utf-8"), prefix + "/trace")
+        headers = {"Cache-Control": DRAFT_CACHE_CONTROL, "Content-Security-Policy": TRACE_CSP}
+        return Response(body, media_type="text/html", headers=headers)
+
+    async def trace_asset(request: Request) -> Response:
+        trace = settings.trace_dist
+        target = _file_under(trace / "assets", request.path_params["path"]) if trace else None
+        if target is None:
+            return _missing()
+        return FileResponse(target, headers={"Cache-Control": ASSET_CACHE_CONTROL})
+
+    async def trace_favicon(request: Request) -> Response:
+        trace = settings.trace_dist
+        target = _file_under(trace, "favicon.svg") if trace else None
+        if target is None:
+            return _missing()
+        return FileResponse(target, headers={"Cache-Control": DRAFT_CACHE_CONTROL})
+
+    async def not_found(request: Request) -> Response:
+        return _missing()
+
     async def health(request: Request) -> Response:
         return JSONResponse({"status": "ok"})
 
@@ -161,4 +214,10 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         Route("/drafts/manifest.json", manifest, methods=["GET", "HEAD"]),
         Route("/drafts/{path:path}", draft_file, methods=["GET", "HEAD"]),
         Route("/health", health, methods=["GET"]),
+        Route("/trace/", trace_index, methods=["GET", "HEAD"]),
+        Route("/trace/assets/{path:path}", trace_asset, methods=["GET", "HEAD"]),
+        Route("/trace/favicon.svg", trace_favicon, methods=["GET", "HEAD"]),
+        # Claim the rest of /trace so the router never slash-redirects into it.
+        Route("/trace", not_found),
+        Route("/trace/{path:path}", not_found),
     ]
