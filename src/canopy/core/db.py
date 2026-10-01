@@ -6,9 +6,8 @@ architecture is one Postgres with one schema per module — set per model via
 this single ``Base.metadata`` so the one Alembic tree (``migrations/``) can
 autogenerate across modules.
 
-Routes and services take their request session through ``SessionDep``. It is
-function-scoped, so the commit lands before the response is sent, and every
-dependency in a request that uses it shares one session and transaction.
+Routes and services take their request session through ``SessionDep``;
+``get_session`` explains its scope.
 """
 
 from __future__ import annotations
