@@ -55,10 +55,23 @@ STUB_INDEX = f"""<!doctype html>
 
 
 def test_embed_url_carries_macros_as_query() -> None:
-    assert embed_url("http://h:1/", "bts/view") == "http://h:1/embed/drafts/bts/view?_canopyZoom=100"
+    assert embed_url("http://h:1/", "bts/view") == "http://h:1/embed/drafts/bts/view?_canopyZoom=100&_canopyChrome=0"
     assert embed_url("http://h:1", "a", {"P": "SR:C01", "N": "a b&c"}) == (
-        "http://h:1/embed/drafts/a?_canopyZoom=100&P=SR%3AC01&N=a+b%26c"
+        "http://h:1/embed/drafts/a?_canopyZoom=100&P=SR%3AC01&N=a+b%26c&_canopyChrome=0"
     )
+
+
+def test_embed_url_turns_chrome_off_exactly_once() -> None:
+    """A macro cannot turn the workspace chrome back on: the flag appears once, as ``0``."""
+    from urllib.parse import parse_qs, urlsplit
+
+    url = embed_url("http://h:1", "a", {"_canopyChrome": "1", "P": "x"})
+    assert urlsplit(url).path == "/embed/drafts/a"
+    query = parse_qs(urlsplit(url).query)
+    assert query["_canopyChrome"] == ["0"]
+    assert url.count("_canopyChrome=") == 1
+    assert query["P"] == ["x"]
+    assert query["_canopyZoom"] == ["100"]
 
 
 @pytest.mark.parametrize("bad", ["", "../x", "a/../b", "a?b", "/abs", "a//b"])

@@ -59,10 +59,13 @@ def embed_url(base_url: str, draft_id: str, macros: dict[str, str] | None = None
 
     Pins the viewer's zoom to 100 %: the embed route opens large panels fitted
     to the frame, and a screenshot must capture the panel at its authored size.
+    Turns the workspace chrome off (``_canopyChrome=0``) so only the active
+    screen renders; it is set after the macros, so no macro can turn it back on.
     """
     DraftStore.validate_id(draft_id)
     url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"))
     query = {"_canopyZoom": "100", **{str(name): str(value) for name, value in (macros or {}).items()}}
+    query["_canopyChrome"] = "0"
     return url + "?" + urlencode(query)
 
 
