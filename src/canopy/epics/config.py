@@ -11,10 +11,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class EpicsConfig(BaseSettings):
     """Settings for the EPICS connector package.
 
-    A blank ``CANOPY_EPICS__SIM_SEED=`` or ``CANOPY_EPICS__SIM_PUT_ERROR_RATE=``, as
-    the ``.env`` templates show them, leaves that field at its default. Every other
-    field keeps failing on a blank value, so a blank ``CANOPY_EPICS__BACKEND=`` stops
-    startup instead of falling back to the simulation backend.
+    A blank ``CANOPY_EPICS__SIM_SEED=`` (as the ``.env`` templates show it) or
+    ``CANOPY_EPICS__SIM_PUT_ERROR_RATE=`` leaves that field at its default. Every
+    other field keeps failing on a blank value, so a blank ``CANOPY_EPICS__BACKEND=``
+    stops startup instead of falling back to the simulation backend.
 
     Attributes
     ----------
