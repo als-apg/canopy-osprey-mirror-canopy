@@ -30,6 +30,12 @@ class FoxConfig(BaseSettings):
     # Max live formula subscriptions a single client may hold at once.
     max_subscriptions_per_client: int = 1_000
 
+    # --- live subscriptions --- #
+    # A live formula whose inputs have no data yet is retried server-side. Once
+    # that wait lasts this long, the subscriber gets one error frame flagged
+    # ``retryable`` (a result later supersedes it). Shorter waits stay silent.
+    input_wait_notify_s: float = 1.0
+
 
 def get_fox_config() -> FoxConfig:
     return FoxConfig()

@@ -251,6 +251,22 @@ An error occurred for a specific subscription or for the connection.
 
 The `id` field is present when the error is specific to a subscription. Connection-level errors (e.g., unknown message type) omit it.
 
+An error with an `id` does not end the subscription: the server keeps evaluating and a later `result` supersedes it.
+
+When a live formula's inputs have no data yet (`formula_input_missing`, `pv_not_buffered`), the server keeps retrying. If the wait lasts longer than `CANOPY_FOX__INPUT_WAIT_NOTIFY_S` (default 1 s), the subscription gets one error frame with `"retryable": true`. It is sent once per distinct reason, not on every retry, and the first `result` after the inputs arrive replaces it.
+
+```json
+{
+  "type": "error",
+  "id": "a1b2c3d4e5f6",
+  "code": "formula_input_missing",
+  "message": "PV:SENSOR:A has no buffered data",
+  "retryable": true
+}
+```
+
+Subscriptions with identical parameters share one evaluation. A subscriber that joins an evaluation that already produced an outcome receives that latest `result` (or error) immediately after `subscribed`, without waiting for an input to change.
+
 ### pong
 
 Response to a `ping` message with the server timestamp.

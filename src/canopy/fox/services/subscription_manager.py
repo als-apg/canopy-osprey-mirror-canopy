@@ -3,10 +3,20 @@
 Multiple clients subscribing to the same formula share a single eval loop
 (SharedEval). Results are fanned out to all listeners. This deduplicates
 computation when many clients watch the same formula.
+
+Each SharedEval remembers its latest outcome (a result, or an error) and replays
+it to a listener that joins later. Inputs that never change (a supply's on/off
+status, a static setpoint) would otherwise leave a late joiner without any
+result, because the loop only re-evaluates when an input changes.
+
+While inputs have no data yet the loop keeps retrying server-side. Once that
+wait outlasts ``input_wait_notify_s`` the listeners get one error frame with
+``"retryable": true``; the next result supersedes it.
 """
 
 from __future__ import annotations
 
+import time
 import asyncio
 import hashlib
 import logging
@@ -20,6 +30,8 @@ from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.fox.services.formula_service import FormulaService
 
 _RETRIABLE_CODES = frozenset({ErrorCode.FORMULA_INPUT_MISSING, ErrorCode.PV_NOT_BUFFERED})
+# Re-evaluation cadence while an input has no data yet.
+_INPUT_RETRY_DELAY_S = 0.25
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +57,11 @@ class _SharedEval:
     task: asyncio.Task | None = None
     unsub_fns: list[Callable[[], None]] = field(default_factory=list)
     listeners: list[_Listener] = field(default_factory=list)
+    # Latest outcome fanned out, replayed to late joiners: the frame minus its
+    # per-listener ``id``. None until the first result or error is sent.
+    last_frame: dict | None = None
+    # Monotonic time the current run of retryable failures began, or None.
+    waiting_since: float | None = None
 
 
 def _compute_key(spec: FormulaSpec, t0_ns: int, interval_ms: int) -> str:
@@ -68,6 +85,7 @@ class SubscriptionManager:
         *,
         min_interval_ms: int = 50,
         max_subscriptions_per_client: int = 1_000,
+        input_wait_notify_s: float = 1.0,
     ) -> None:
         self._formula_service = formula_service
         self._on_change = on_change_fn
@@ -75,6 +93,7 @@ class SubscriptionManager:
         self._subscribe_latest = subscribe_latest_fn or subscribe_live_fn
         self._min_interval_ms = min_interval_ms
         self._max_subscriptions_per_client = max_subscriptions_per_client
+        self._input_wait_notify_s = input_wait_notify_s
         self._shared_evals: dict[str, _SharedEval] = {}
         self._client_subs: dict[str, dict[str, str]] = {}
 
@@ -124,8 +143,9 @@ class SubscriptionManager:
         key = _compute_key(spec, t0_ns, interval_ms)
         listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
 
-        if key in self._shared_evals:
-            self._shared_evals[key].listeners.append(listener)
+        joined: _SharedEval | None = self._shared_evals.get(key)
+        if joined is not None:
+            joined.listeners.append(listener)
         else:
             shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms)
             shared.listeners.append(listener)
@@ -142,6 +162,8 @@ class SubscriptionManager:
 
         self._client_subs[client_id][sub_id] = key
         logger.debug("Client %s subscribed %s → shared eval %s", client_id, sub_id, key[:8])
+        if joined is not None:
+            await self._replay_last(joined, listener)
 
     async def _start_shared_eval(self, shared: _SharedEval) -> None:
         pvs = list(shared.spec.bindings.values())
@@ -220,8 +242,9 @@ class SubscriptionManager:
         # are still intact, so the subscription keeps producing data instead of
         # being orphaned on a deleted key.
         listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
-        if new_key in self._shared_evals:
-            self._shared_evals[new_key].listeners.append(listener)
+        joined = self._shared_evals.get(new_key)
+        if joined is not None:
+            joined.listeners.append(listener)
         else:
             new_shared = _SharedEval(key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval)
             new_shared.listeners.append(listener)
@@ -240,6 +263,8 @@ class SubscriptionManager:
             del self._shared_evals[key]
 
         subs[sub_id] = new_key
+        if joined is not None:
+            await self._replay_last(joined, listener)
         return True
 
     async def remove_subscription(self, client_id: str, sub_id: str) -> None:
@@ -295,28 +320,60 @@ class SubscriptionManager:
 
         return _on_pv_change
 
-    async def _fan_out(self, shared: _SharedEval, result_data: dict) -> None:
+    async def _replay_last(self, shared: _SharedEval, listener: _Listener) -> None:
+        """Send a joining listener the eval's latest outcome, if there is one.
+
+        Called right after the listener was appended, with no await in between,
+        so a fan-out that runs while this send is in flight queues behind it on
+        the client's send lock and the joiner never sees an older frame last.
+        """
+        if shared.last_frame is None:
+            return
+        try:
+            await listener.send_fn({**shared.last_frame, "id": listener.sub_id})
+        except Exception:
+            # A dead socket is reaped by the next fan-out or by its disconnect.
+            logger.debug("replay to %s/%s failed", listener.client_id, listener.sub_id, exc_info=True)
+
+    async def _broadcast(self, shared: _SharedEval, frame: dict) -> None:
+        """Record ``frame`` as the latest outcome and send it to every listener."""
+        shared.last_frame = frame
         dead: list[_Listener] = []
-        for listener in shared.listeners:
-            msg = {"type": "result", "id": listener.sub_id, "data": result_data}
+        for listener in list(shared.listeners):
             try:
-                await listener.send_fn(msg)
+                await listener.send_fn({**frame, "id": listener.sub_id})
             except Exception:
                 dead.append(listener)
         if dead:
             shared.listeners = [ls for ls in shared.listeners if ls not in dead]
 
+    async def _fan_out(self, shared: _SharedEval, result_data: dict) -> None:
+        shared.waiting_since = None
+        await self._broadcast(shared, {"type": "result", "data": result_data})
+
     async def _fan_out_error(self, shared: _SharedEval, code: str, message: str) -> None:
-        for listener in shared.listeners:
-            msg = {"type": "error", "id": listener.sub_id, "code": code, "message": message}
-            try:
-                await listener.send_fn(msg)
-            except Exception:
-                pass
+        shared.waiting_since = None
+        await self._broadcast(shared, {"type": "error", "code": code, "message": message})
+
+    async def _note_input_wait(self, shared: _SharedEval, exc: CanopyError) -> None:
+        """Handle a retryable failure: the caller retries, the client hears once.
+
+        The first ``input_wait_notify_s`` of a wait stay silent -- on a fresh
+        subscribe the inputs normally land within milliseconds. After that the
+        listeners get one error frame flagged ``retryable``; it is re-sent only
+        if the reason changes, never on every retry.
+        """
+        now = time.monotonic()
+        if shared.waiting_since is None:
+            shared.waiting_since = now
+        if now - shared.waiting_since < self._input_wait_notify_s:
+            return
+        frame = {"type": "error", "code": exc.error_code.value, "message": exc.detail, "retryable": True}
+        if shared.last_frame == frame:
+            return
+        await self._broadcast(shared, frame)
 
     async def _eval_loop(self, shared: _SharedEval) -> None:
-        _INPUT_RETRY_DELAY = 0.25
-
         try:
             while True:
                 await shared.dirty.wait()
@@ -326,7 +383,8 @@ class SubscriptionManager:
                     await self._fan_out(shared, result.model_dump(by_alias=True))
                 except CanopyError as exc:
                     if exc.error_code in _RETRIABLE_CODES:
-                        await asyncio.sleep(_INPUT_RETRY_DELAY)
+                        await self._note_input_wait(shared, exc)
+                        await asyncio.sleep(_INPUT_RETRY_DELAY_S)
                         shared.dirty.set()
                         continue
                     await self._fan_out_error(shared, exc.error_code.value, exc.detail)
@@ -347,7 +405,9 @@ class SubscriptionManager:
                     result = await self._formula_service.evaluate(shared.spec, t0_ns=shared.t0_ns, t1_ns=0)
                     await self._fan_out(shared, result.model_dump(by_alias=True))
                 except CanopyError as exc:
-                    if exc.error_code not in _RETRIABLE_CODES:
+                    if exc.error_code in _RETRIABLE_CODES:
+                        await self._note_input_wait(shared, exc)
+                    else:
                         await self._fan_out_error(shared, exc.error_code.value, exc.detail)
                 except asyncio.CancelledError:
                     raise
