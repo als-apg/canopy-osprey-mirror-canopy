@@ -18,7 +18,7 @@ connect is exactly what the agent needs to see. ``pv`` then reports
 """
 
 import struct
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote, urlencode
 
 from fastmcp.tools import ToolResult
@@ -53,19 +53,36 @@ _STATUS_JS = "() => (window.__canopy && window.__canopy.pvStatus) || null"
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
+THEMES = ("light", "dark")
+Theme = Literal["light", "dark"]
 
-def embed_url(base_url: str, draft_id: str, macros: dict[str, str] | None = None) -> str:
+
+def embed_url(
+    base_url: str,
+    draft_id: str,
+    macros: dict[str, str] | None = None,
+    *,
+    theme: Theme | None = None,
+) -> str:
     """The embed URL of ``draft_id`` on ``base_url``, macros as query parameters.
 
     Pins the viewer's zoom to 100 %: the embed route opens large panels fitted
     to the frame, and a screenshot must capture the panel at its authored size.
     Turns the workspace chrome off (``_canopyChrome=0``) so only the active
     screen renders; it is set after the macros, so no macro can turn it back on.
+    ``theme`` (``light`` or ``dark``) is added as ``theme=`` after the macros
+    too, so a macro named ``theme`` cannot override it; without it the URL
+    carries no theme and the viewer uses its own default.
     """
+    if theme is not None and theme not in THEMES:
+        raise ValueError(f"theme must be one of {', '.join(THEMES)}, not {theme!r}")
     DraftStore.validate_id(draft_id)
     url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"))
     query = {"_canopyZoom": "100", **{str(name): str(value) for name, value in (macros or {}).items()}}
     query["_canopyChrome"] = "0"
+    if theme is not None:
+        query.pop("theme", None)  # re-insert last, replacing any macro of that name
+        query["theme"] = theme
     return url + "?" + urlencode(query)
 
 
@@ -113,12 +130,14 @@ async def capture(
     *,
     size: dict[str, Any] | None = None,
     settle_timeout_s: float = SETTLE_TIMEOUT_S,
+    theme: Theme | None = None,
 ) -> tuple[bytes, dict[str, Any]]:
     """Render ``draft_id`` and return ``(png, {width, height, pv})``.
 
     ``size`` is the screen's ``metadata.size``; the page is sized to fit it.
+    ``theme`` renders the page in ``light`` or ``dark``; see :func:`embed_url`.
     """
-    url = embed_url(browser.base_url, draft_id, macros)
+    url = embed_url(browser.base_url, draft_id, macros, theme=theme)
     async with browser.context() as context:
         page = await context.new_page()
         viewport = viewport_for(size, browser.viewport)
@@ -150,18 +169,22 @@ def _draft_size(draft_id: str) -> dict[str, Any] | None:
 
 
 @mcp.tool
-async def screenshot(id: str, macros: dict[str, str] | None = None) -> ToolResult:
+async def screenshot(id: str, macros: dict[str, str] | None = None, theme: Theme | None = None) -> ToolResult:
     """Render draft ``id`` in the viewer and return it as a PNG image.
 
     ``macros`` are passed to the screen as ``$(NAME)`` values. Also returns
     ``{width, height, pv}``; ``pv`` is ``connected`` only when the viewer
     reached live PVs, otherwise ``disconnected`` (including mock mode), so
     blank values in the image may just mean no PV data. Use it after each
-    edit to check layout; nothing is saved to disk.
+    edit to check layout; nothing is saved to disk. ``theme`` (``light`` or
+    ``dark``) renders the screen in that color scheme; leave it out for the
+    viewer's default.
     """
+    if theme is not None and theme not in THEMES:
+        raise ToolError(f"theme must be one of {', '.join(THEMES)}, not {theme!r}")
     try:
         browser = get_browser()
-        data, info = await capture(browser, id, macros, size=_draft_size(id))
+        data, info = await capture(browser, id, macros, size=_draft_size(id), theme=theme)
     except InvalidDraftId as exc:
         raise ToolError(str(exc)) from exc
     except BrowserNotStarted as exc:

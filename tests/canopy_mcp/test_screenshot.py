@@ -74,6 +74,49 @@ def test_embed_url_turns_chrome_off_exactly_once() -> None:
     assert query["_canopyZoom"] == ["100"]
 
 
+def test_embed_url_has_no_theme_by_default() -> None:
+    """Without a theme the URL is unchanged, so the viewer keeps its own default."""
+    assert "theme=" not in embed_url("http://h:1", "a")
+    assert "theme=" not in embed_url("http://h:1", "a", {"P": "x"}, theme=None)
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_embed_url_adds_theme_once_after_macros(theme: str) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    url = embed_url("http://h:1", "a", {"P": "x"}, theme=theme)
+    query = parse_qs(urlsplit(url).query)
+    assert query["theme"] == [theme]
+    assert url.count("theme=") == 1
+    assert query["P"] == ["x"]
+    assert query["_canopyZoom"] == ["100"]
+    assert query["_canopyChrome"] == ["0"]
+    assert url == f"http://h:1/embed/drafts/a?_canopyZoom=100&P=x&_canopyChrome=0&theme={theme}"
+
+
+def test_macro_named_theme_cannot_override_the_theme() -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    url = embed_url("http://h:1", "a", {"theme": "dark", "P": "x"}, theme="light")
+    query = parse_qs(urlsplit(url).query)
+    assert query["theme"] == ["light"]
+    assert url.count("theme=") == 1
+    assert query["P"] == ["x"]
+
+
+@pytest.mark.parametrize("bad", ["", "blue", "Light"])
+def test_embed_url_rejects_unknown_theme(bad: str) -> None:
+    with pytest.raises(ValueError, match="theme"):
+        embed_url("http://h:1", "a", theme=bad)
+
+
+async def test_tool_rejects_unknown_theme_as_tool_error() -> None:
+    from canopy_mcp.tools.screenshot import screenshot
+
+    with pytest.raises(ToolError, match="theme"):
+        await screenshot("bts/view", theme="blue")
+
+
 @pytest.mark.parametrize("bad", ["", "../x", "a/../b", "a?b", "/abs", "a//b"])
 def test_embed_url_rejects_invalid_ids(bad: str) -> None:
     with pytest.raises(ValueError):
@@ -226,6 +269,12 @@ async def test_stub_page_returns_png_and_pv_disconnected(stub_browser: Browser) 
     assert info == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
 
 
+async def test_capture_with_theme_returns_png(stub_browser: Browser) -> None:
+    data, info = await capture(stub_browser, "bts/view", {"STATUS": "mock"}, theme="light")
+    assert data.startswith(PNG_SIGNATURE)
+    assert info == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
+
+
 async def test_connected_status_is_reported(stub_browser: Browser) -> None:
     _, info = await capture(stub_browser, "bts/view", {"STATUS": "connected"})
     assert info["pv"] == "connected"
@@ -292,6 +341,12 @@ async def test_screenshot_tool_over_mcp_with_lifespan_browser(
         before = sorted(p.relative_to(drafts) for p in drafts.rglob("*"))
         async with Client(f"{server.base_url}/mcp") as client:
             result = await client.call_tool("screenshot", {"id": "bts/view", "macros": {"STATUS": "mock"}})
+            themed = await client.call_tool(
+                "screenshot", {"id": "bts/view", "macros": {"STATUS": "mock"}, "theme": "dark"}
+            )
+            with pytest.raises(ToolError):
+                await client.call_tool("screenshot", {"id": "bts/view", "theme": "blue"})
+        assert themed.structured_content == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
         images = [block for block in result.content if isinstance(block, ImageContent)]
         assert len(images) == 1 and images[0].mimeType == "image/png"
         assert result.structured_content == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
