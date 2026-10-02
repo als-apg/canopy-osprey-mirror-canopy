@@ -23,6 +23,11 @@ The built react-trace is served at exactly ``/trace/`` (its index, with a
 and ``/trace/favicon.svg``. Every other ``/trace`` path, the bare ``/trace``
 included, is a 404 rather than a slash redirect. ``config.json`` names the
 route only when ``trace_dist/index.html`` exists.
+
+``config.json`` always names the saved-views API (``{"views": {"path": "views"}}``):
+``/views`` and ``/views/{id}`` are served by :mod:`canopy_mcp.views` from
+``<drafts_dir>/views/``, beside (never inside) ``screens/``, so a view is
+neither listed in the drafts manifest nor served under ``/drafts``.
 """
 
 import re
@@ -44,6 +49,7 @@ PREFIX_PATTERN = re.compile(r"(/[A-Za-z0-9._~-]+)*")
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 DRAFT_CACHE_CONTROL = "no-cache"
 SCREENS_PATH = "drafts"
+VIEWS_PATH = "views"
 # Headers on every non-screen draft response (200 and 304).
 IMAGE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff"}
 
@@ -80,7 +86,12 @@ def inject_base(index_html: str, prefix: str) -> str:
 
 def viewer_config(settings: Settings) -> dict[str, Any]:
     """The viewer's ``config.json``. It never carries a key: the viewer needs none."""
-    config: dict[str, Any] = {"pvMode": settings.pv_mode, "screensPath": SCREENS_PATH, "themes": dict(THEMES)}
+    config: dict[str, Any] = {
+        "pvMode": settings.pv_mode,
+        "screensPath": SCREENS_PATH,
+        "themes": dict(THEMES),
+        "views": {"path": VIEWS_PATH},
+    }
     if _trace_index(settings) is not None:
         config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
     return config

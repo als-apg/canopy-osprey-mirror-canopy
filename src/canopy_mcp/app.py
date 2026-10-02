@@ -2,7 +2,8 @@
 
 ``/mcp`` is FastMCP's streamable-HTTP route, lifted onto this app (rather than
 mounted) so ``POST /mcp`` answers directly instead of redirecting to
-``/mcp/``. The viewer and draft routes come from :mod:`canopy_mcp.static`; the
+``/mcp/``. The viewer and draft routes come from :mod:`canopy_mcp.static`, the
+saved-view routes (``/views``) from :mod:`canopy_mcp.views`; the
 read-only API forward (two WebSocket relays, 405 elsewhere) from
 :mod:`canopy_mcp.forward`.
 
@@ -39,6 +40,7 @@ from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp, register_all
 from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
+from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.static import build_routes
 from canopy_mcp.forward import build_forward_routes
 
@@ -110,6 +112,7 @@ def create_app(
     settings = settings or get_settings()
     register_all()
     store = DraftStore(settings.drafts_dir)
+    views = ViewStore(settings.drafts_dir)
     mcp_app = mcp.http_app(path=MCP_PATH)
 
     @asynccontextmanager
@@ -122,7 +125,12 @@ def create_app(
             yield
 
     app = Starlette(
-        routes=[*mcp_app.routes, *build_forward_routes(settings), *build_routes(settings, store)],
+        routes=[
+            *mcp_app.routes,
+            *build_forward_routes(settings),
+            *build_routes(settings, store),
+            *build_view_routes(views),
+        ],
         # FastMCP's own middleware (request context, host/origin guard) must
         # wrap its routes here too, since only the routes were lifted.
         middleware=[Middleware(McpProxyGuard), *mcp_app.user_middleware],
@@ -132,6 +140,7 @@ def create_app(
         setattr(app.state, key, getattr(mcp_app.state, key))
     app.state.settings = settings
     app.state.store = store
+    app.state.views = views
     app.state.self_url = self_url.rstrip("/")
     return app
 
