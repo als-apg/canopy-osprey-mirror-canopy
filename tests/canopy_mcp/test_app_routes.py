@@ -146,7 +146,7 @@ def test_config_json(client: TestClient) -> None:
     assert body["screensPath"] == "drafts"
     assert isinstance(body["themes"], dict)
     assert body["views"] == {"path": "views"}
-    assert set(body) == {"pvMode", "screensPath", "themes", "views"}
+    assert set(body) == {"pvMode", "screensPath", "themes", "views", "colorScheme"}
     assert "sekrit-key" not in r.text
     assert not any("key" in k.lower() for k in body)
 
