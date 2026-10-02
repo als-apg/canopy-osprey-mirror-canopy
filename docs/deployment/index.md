@@ -34,6 +34,7 @@ essentials:
 | `CANOPY_REDIS_URL` | Redis: `redis://[:password@]host:port/0` |
 | `CANOPY_DEBUG` | Verbose errors in responses; keep `false` in production |
 | `CANOPY_LOG_LEVEL` | Root log level for the API and worker (`DEBUG`, `INFO`, `WARNING`, ...). Default `INFO`; an unknown name falls back to `INFO` |
+| `CANOPY_SQUIRREL__RESTORE_HOOKS` | Comma-separated restore hooks, applied in order; empty means none run. Once a hook's write fails for a PV, later hooks skip it, so list `write_to_con` before `magnet_trim` to trim a magnet only after its BCON is updated. Must reach the **worker**, which performs restores. Verify with `GET /squirrel/v1/health/restore-hooks`: `worker` is what the worker reported loading at startup, `api` is the API's view, and `matchesApi: false` flags a mismatch |
 | `CANOPY_<MODULE>__<FIELD>` | Per-module tuning (e.g. `CANOPY_VOLE__GLOBAL_BYTES_MAX`) |
 
 The annotated template

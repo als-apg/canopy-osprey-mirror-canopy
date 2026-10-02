@@ -17,12 +17,13 @@ from canopy.squirrel.adapters.epics_io import EpicsValue
 from canopy.squirrel.restore_hooks.base import RestoreHook
 from canopy.squirrel.restore_hooks.magnet_trim import MagnetTrimHook
 from canopy.squirrel.services.snapshot_service import SnapshotService
+from canopy.squirrel.restore_hooks.write_to_con import WriteToConHook
 
 
 class _NoHook(RestoreHook):
-    """Explicit no-op hook so tests don't fall through to the env-configured singleton."""
+    """Explicit no-op hook so tests don't fall through to the env-configured singletons."""
 
-    def derive_extra_writes(self, address: str) -> list[tuple[str, Any]]:
+    def derive_extra_writes(self, address: str, value: Any) -> list[tuple[str, Any]]:
         return []
 
 
@@ -51,6 +52,8 @@ class FakeEpicsIO:
             else:
                 self.writes[addr] = val
                 out[addr] = (True, None)
+        if cb and values:
+            await cb(len(values), len(values), f"Wrote {len(values)}/{len(values)} PVs...")
         return out
 
 
@@ -75,7 +78,7 @@ async def test_create_snapshot_persists_values_via_copy(db_session: AsyncSession
     await _seed_pv(db_session, "A:SP", "A:RB")
     await _seed_pv(db_session, "B:SP")
     io = FakeEpicsIO({"A:SP": _ev(1.0), "A:RB": _ev(0.9), "B:SP": _ev(2.0)})
-    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
 
     summary = await svc.create_snapshot(NewSnapshotDTO(title="snap"))
     assert summary.pv_count == 2
@@ -92,7 +95,7 @@ async def test_create_skips_disconnected_reads(db_session: AsyncSession):
     await _seed_pv(db_session, "OK:SP")
     await _seed_pv(db_session, "DEAD:SP")
     io = FakeEpicsIO({"OK:SP": _ev(1.0)})  # DEAD:SP -> default disconnected EpicsValue
-    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
 
     summary = await svc.create_snapshot(NewSnapshotDTO(title="snap"))
     full = await svc.get_by_id(summary.id)
@@ -110,7 +113,7 @@ async def test_paginated_get_does_not_delete_values(db_session: AsyncSession):
     for i in range(3):
         await _seed_pv(db_session, f"P{i}:SP")
     io = FakeEpicsIO({f"P{i}:SP": _ev(float(i)) for i in range(3)})
-    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="snap"))
     assert summary.pv_count == 3
 
@@ -125,7 +128,7 @@ async def test_paginated_get_does_not_delete_values(db_session: AsyncSession):
 async def test_restore_writes_setpoints_only(db_session: AsyncSession):
     await _seed_pv(db_session, "A:SP", "A:RB")
     io = FakeEpicsIO({"A:SP": _ev(5.0), "A:RB": _ev(4.9)})
-    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
 
     io.writes.clear()
@@ -137,7 +140,7 @@ async def test_restore_writes_setpoints_only(db_session: AsyncSession):
 async def test_restore_magnet_trims_after_primary(db_session: AsyncSession):
     await _seed_pv(db_session, "QUAD:LI21:201:BDES")
     io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
-    svc = SnapshotService(db_session, io, restore_hook=MagnetTrimHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
 
     io.writes.clear()
@@ -151,7 +154,7 @@ async def test_restore_does_not_trim_when_primary_fails(db_session: AsyncSession
     await _seed_pv(db_session, "QUAD:LI21:201:BDES")
     io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
     io.fail_writes.add("QUAD:LI21:201:BDES")
-    svc = SnapshotService(db_session, io, restore_hook=MagnetTrimHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
 
     io.writes.clear()
@@ -164,7 +167,7 @@ async def test_restore_reports_write_failure(db_session: AsyncSession):
     pv = await _seed_pv(db_session, "A:SP")
     io = FakeEpicsIO({"A:SP": _ev(5.0)})
     io.fail_writes.add("A:SP")
-    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
 
     result = await svc.restore_snapshot(summary.id)
@@ -173,11 +176,116 @@ async def test_restore_reports_write_failure(db_session: AsyncSession):
     assert result.failures[0]["pvId"] == pv.id
 
 
+async def test_restore_runs_every_hook_in_order(db_session: AsyncSession):
+    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    io.writes.clear()
+    result = await svc.restore_snapshot(summary.id)
+    assert list(io.writes.items()) == [
+        ("QUAD:LI21:201:BDES", 3.0),
+        ("QUAD:LI21:201:BCON", 3.0),
+        ("QUAD:LI21:201:CTRL", "TRIM"),
+    ]
+    assert result.success_count == 1 and result.failure_count == 0
+
+
+async def test_restore_attributes_hook_write_failure_to_the_hook(db_session: AsyncSession):
+    """A hook's failed write fails its primary PV and names that hook as the phase."""
+    pv = await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
+    io.fail_writes.add("QUAD:LI21:201:BCON")
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook(), WriteToConHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    io.writes.clear()
+    result = await svc.restore_snapshot(summary.id)
+    assert io.writes["QUAD:LI21:201:CTRL"] == "TRIM"
+    assert result.success_count == 0 and result.failure_count == 1
+    failure = result.failures[0]
+    assert failure["pvId"] == pv.id
+    assert failure["pvName"] == "QUAD:LI21:201:BDES"
+    assert failure["phase"] == "WriteToConHook"
+    assert "QUAD:LI21:201:BCON" in failure["error"]
+
+
+async def test_restore_skips_later_hooks_after_an_earlier_hook_fails(db_session: AsyncSession):
+    """A failed BCON write leaves the magnet untrimmed."""
+    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0)})
+    io.fail_writes.add("QUAD:LI21:201:BCON")
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    io.writes.clear()
+    result = await svc.restore_snapshot(summary.id)
+    assert io.writes == {"QUAD:LI21:201:BDES": 3.0}
+    assert result.failure_count == 1
+    assert result.failures[0]["phase"] == "WriteToConHook"
+    assert "QUAD:LI21:201:BCON" in result.failures[0]["error"]
+
+
+async def test_restore_attributes_primary_failure_to_setpoints(db_session: AsyncSession):
+    await _seed_pv(db_session, "A:SP")
+    io = FakeEpicsIO({"A:SP": _ev(5.0)})
+    io.fail_writes.add("A:SP")
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
+
+    result = await svc.restore_snapshot(summary.id)
+    assert result.failures[0]["phase"] == "Setpoints"
+
+
+async def test_restore_derivation_error_skips_the_pv_and_blames_setpoints(db_session: AsyncSession):
+    """A PV a hook cannot derive from is never written, so nothing is left half-restored."""
+    await _seed_pv(db_session, "QUAD:LI21:201:RBV")
+    io = FakeEpicsIO({"QUAD:LI21:201:RBV": _ev(3.0)})
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    io.writes.clear()
+    result = await svc.restore_snapshot(summary.id)
+    assert io.writes == {}
+    assert result.failure_count == 1
+    assert result.failures[0]["phase"] == "Setpoints"
+    assert "not a BDES setpoint" in result.failures[0]["error"]
+
+
+async def test_restore_progress_reaches_the_total(db_session: AsyncSession):
+    """Progress totals 2 setpoints + 2 BCON writes + 2 trims.
+
+    Extras skipped after a failed setpoint (BEND) or a failed earlier hook (QUAD's
+    trim, after its BCON write fails) count as done.
+    """
+    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    await _seed_pv(db_session, "BEND:DMP1:400:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0), "BEND:DMP1:400:BDES": _ev(4.0)})
+    io.fail_writes.update({"BEND:DMP1:400:BDES", "QUAD:LI21:201:BCON"})
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    reported: list[tuple[int, int]] = []
+
+    async def on_progress(current: int, total: int, message: str) -> None:
+        reported.append((current, total))
+
+    await svc.restore_snapshot(summary.id, progress_callback=on_progress)
+
+    totals = {total for _current, total in reported}
+    assert totals == {6}
+    currents = [current for current, _total in reported]
+    assert currents == sorted(currents)
+    assert currents[0] == 0
+    assert reported[-1] == (6, 6)
+
+
 async def test_restore_subset_by_pv_ids(db_session: AsyncSession):
     pv_a = await _seed_pv(db_session, "A:SP")
     await _seed_pv(db_session, "B:SP")
     io = FakeEpicsIO({"A:SP": _ev(1.0), "B:SP": _ev(2.0)})
-    svc = SnapshotService(db_session, io, restore_hook=_NoHook())
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
     summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
 
     io.writes.clear()
@@ -188,9 +296,9 @@ async def test_restore_subset_by_pv_ids(db_session: AsyncSession):
 
 async def test_compare_detects_value_difference(db_session: AsyncSession):
     await _seed_pv(db_session, "A:SP", abs_tol=0.0, rel_tol=0.0)
-    svc1 = SnapshotService(db_session, FakeEpicsIO({"A:SP": _ev(1.0)}), restore_hook=_NoHook())
+    svc1 = SnapshotService(db_session, FakeEpicsIO({"A:SP": _ev(1.0)}), restore_hooks=[_NoHook()])
     s1 = await svc1.create_snapshot(NewSnapshotDTO(title="s1"))
-    svc2 = SnapshotService(db_session, FakeEpicsIO({"A:SP": _ev(2.0)}), restore_hook=_NoHook())
+    svc2 = SnapshotService(db_session, FakeEpicsIO({"A:SP": _ev(2.0)}), restore_hooks=[_NoHook()])
     s2 = await svc2.create_snapshot(NewSnapshotDTO(title="s2"))
 
     cmp = await svc1.compare_snapshots(s1.id, s2.id)

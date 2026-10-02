@@ -26,6 +26,7 @@ services:
       CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
       CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:canopy@postgres:5432/canopy}
       CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      CANOPY_SQUIRREL__RESTORE_HOOKS: ${CANOPY_SQUIRREL__RESTORE_HOOKS:-}
       # JSON logs to a host-visible file so the docker/observability/ overlay's
       # Promtail can tail them. See docs/observability/.
       CANOPY_LOG_FORMAT: ${CANOPY_LOG_FORMAT:-json}
@@ -73,6 +74,7 @@ services:
       CANOPY_API_KEYS: ${CANOPY_API_KEYS:-dev:read+write}
       CANOPY_DATABASE_URL: ${CANOPY_DATABASE_URL:-postgresql+asyncpg://canopy:canopy@postgres:5432/canopy}
       CANOPY_REDIS_URL: ${CANOPY_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      CANOPY_SQUIRREL__RESTORE_HOOKS: ${CANOPY_SQUIRREL__RESTORE_HOOKS:-}
       CANOPY_LOG_FORMAT: ${CANOPY_LOG_FORMAT:-json}
       CANOPY_LOG_PATH: ${CANOPY_WORKER_LOG_PATH:-/tmp/canopy-logs/worker.log}
     volumes:
