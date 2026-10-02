@@ -48,10 +48,10 @@ def _role_rule() -> dict[str, Any]:
         "id": "r-1",
         "name": "alarm colour",
         "targetProperty": "foreground",
-        "default": {"$role": "text.primary", "fallback": "#202020", "fallbackDark": "#e0e0e0"},
+        "default": {"$role": "Text", "fallback": "#202020", "fallbackDark": "#e0e0e0"},
         "pvs": [],
         "conditions": [
-            {"expression": "True", "value": {"$role": "alarm.major", "fallback": "#ff0000"}},
+            {"expression": "True", "value": {"$role": "MAJOR", "fallback": "#ff0000"}},
             {"expression": "False", "value": "#00ff00"},
         ],
     }

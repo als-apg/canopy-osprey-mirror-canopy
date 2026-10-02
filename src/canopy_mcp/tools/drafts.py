@@ -167,7 +167,7 @@ def _contains_color_role(node: Any) -> bool:
         return True
     if isinstance(node, dict):
         return any(_contains_color_role(value) for value in node.values())
-    if isinstance(node, (list, tuple)):
+    if isinstance(node, list | tuple):
         return any(_contains_color_role(value) for value in node)
     return False
 
