@@ -180,7 +180,7 @@ requires-dist = [
     { name = "arq", specifier = ">=0.26" },
     { name = "asteval", specifier = ">=1.0" },
     { name = "asyncpg", specifier = ">=0.29" },
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.121.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.21,<5" },
     { name = "numexpr", specifier = ">=2.8" },
