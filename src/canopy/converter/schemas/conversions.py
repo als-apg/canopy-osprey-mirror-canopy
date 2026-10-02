@@ -30,6 +30,27 @@ class DroppedPropsDTO(CanopyModel):
     props: list[str]
 
 
+class SchemeErrorDTO(CanopyModel):
+    """One problem found while loading the color scheme (``path`` is a JSON pointer, ``""`` for the root)."""
+
+    path: str
+    message: str
+
+
+class SchemeMetaDTO(CanopyModel):
+    """The color scheme a conversion used: the loader's ``SchemeMeta`` without ``flatHash``.
+
+    ``id`` is ``None`` when the configured file does not parse and ``sha256`` is
+    ``None`` when it cannot be read; ``served`` is the scheme actually applied
+    (``canopy-default`` whenever ``errors`` is non-empty).
+    """
+
+    id: str | None
+    sha256: str | None
+    served: str
+    errors: list[SchemeErrorDTO] = []
+
+
 class ScreenConversionResultDTO(CanopyModel):
     """Result of converting one legacy screen to Canopy Screen IR.
 
@@ -43,6 +64,7 @@ class ScreenConversionResultDTO(CanopyModel):
     formulas: list[FormulaSummaryDTO] = []
     stats: ConversionStatsDTO
     dropped_props: list[DroppedPropsDTO] = []
+    scheme: SchemeMetaDTO | None = None
 
 
 class ValidateResultDTO(CanopyModel):
@@ -51,6 +73,7 @@ class ValidateResultDTO(CanopyModel):
     ok: bool
     warnings: list[str] = []
     unknown_widgets: list[UnknownWidgetDTO] = []
+    scheme: SchemeMetaDTO | None = None
 
 
 BatchRowStatus = Literal["succeeded", "failed", "skipped"]

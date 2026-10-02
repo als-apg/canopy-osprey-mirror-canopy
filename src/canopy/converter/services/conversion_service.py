@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Literal, get_args
-from dataclasses import field, dataclass
+from pathlib import Path
+from dataclasses import field, replace, dataclass
 from collections.abc import Iterator
 
 from pydmconverter.react import convert_bytes
@@ -19,6 +20,7 @@ from pydmconverter.ir.model import ScreenIR, WidgetNode
 from pydmconverter.ir.schema import validate_screen_json
 from pydmconverter.ir.registry import RegistryClient, VendoredRegistry
 
+from canopy.core.color_scheme import ColorScheme
 from canopy.converter.errors import ConversionFailed, UnsupportedInput
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,8 @@ class ConversionResult:
 
     ``screen`` is the validated camelCase Screen IR wire dict; the rest are
     out-of-band diagnostics (the IR itself never carries screen-level notes).
+    ``scheme`` is the meta of the color scheme the screen was converted with
+    (``None`` for a scheme-free service).
     """
 
     screen: dict[str, Any]
@@ -73,6 +77,7 @@ class ConversionResult:
     formulas: list[ConvertedFormula]
     stats: ConversionStats
     dropped_props: list[DroppedProps] = field(default_factory=list)
+    scheme: dict[str, Any] | None = None
 
 
 ScreenKind = Literal["edl", "ui", "bob"]
@@ -87,11 +92,39 @@ SUFFIX_KIND: dict[str, ScreenKind] = {".edl": "edl", ".ui": "ui", ".bob": "bob"}
 class ConversionService:
     """Converts ``.edl``/``.ui``/``.bob`` bytes to validated Screen IR + diagnostics."""
 
-    def __init__(self, registry: RegistryClient | None = None) -> None:
+    def __init__(
+        self,
+        registry: RegistryClient | None = None,
+        *,
+        scheme: ColorScheme | None = None,
+        color_def_path: str | Path | None = None,
+    ) -> None:
         # One registry instance, reused across requests (the adapters would
         # otherwise rebuild a VendoredRegistry per call). Phase 2 injects a
         # BeaverGatewayRegistry here behind the ``use_beaver_gateway`` flag.
         self._registry: RegistryClient = registry or VendoredRegistry()
+        # ``scheme`` is the already-loaded ``get_color_scheme`` result, injected by
+        # the app lifespan and the batch worker; the service never loads one itself.
+        # ``None`` keeps the service scheme-free, converting exactly as before.
+        self._scheme = scheme
+        self._color_def_path = color_def_path
+        self._scheme_warning = _scheme_warning(scheme)
+
+    @property
+    def scheme_meta(self) -> dict[str, Any] | None:
+        """The injected scheme's meta (with ``flatHash``), or ``None`` when scheme-free."""
+        return self._scheme.meta if self._scheme is not None else None
+
+    def _convert_kwargs(self) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        # Pass the SchemeResult only when the loader produced one: with
+        # pydmconverter.scheme unavailable an older convert_bytes has no ``scheme``
+        # parameter, so the kwarg is omitted rather than sent as None.
+        if self._scheme is not None and self._scheme.flat_json is not None:
+            kwargs["scheme"] = self._scheme.result
+        if self._color_def_path is not None:
+            kwargs["color_def_path"] = self._color_def_path
+        return kwargs
 
     def convert(self, data: bytes, *, kind: ScreenKind) -> ConversionResult:
         # Reject an unsupported kind here rather than by catching convert_bytes'
@@ -100,7 +133,7 @@ class ConversionService:
         if kind not in SCREEN_KINDS:
             raise UnsupportedInput(f"Unsupported screen kind {kind!r}; expected one of {', '.join(SCREEN_KINDS)}")
         try:
-            screen = convert_bytes(data, kind=kind, registry=self._registry)
+            screen = convert_bytes(data, kind=kind, registry=self._registry, **self._convert_kwargs())
         except Exception as exc:  # noqa: BLE001 - any parse/build failure on a known kind
             # The catch stays broad on purpose: pydmconverter raises bare ValueError
             # *and* KeyError for legitimately malformed input, the same types a server
@@ -116,7 +149,9 @@ class ConversionService:
         if errors:
             raise ConversionFailed("Emitted IR failed schema validation: " + "; ".join(errors[:5]))
 
-        return self._summarize(screen, wire)
+        result = self._summarize(screen, wire)
+        warnings = result.warnings if self._scheme_warning is None else [self._scheme_warning, *result.warnings]
+        return replace(result, warnings=warnings, scheme=self.scheme_meta)
 
     @staticmethod
     def _summarize(screen: ScreenIR, wire: dict[str, Any]) -> ConversionResult:
@@ -154,6 +189,20 @@ class ConversionService:
             stats=stats,
             dropped_props=dropped,
         )
+
+
+def _scheme_warning(scheme: ColorScheme | None) -> str | None:
+    """The one warning every conversion carries after a scheme load error, else ``None``."""
+    if scheme is None:
+        return None
+    errors = scheme.meta.get("errors") or []
+    if not errors:
+        return None
+    first = errors[0]
+    return (
+        f"Color scheme could not be loaded ({len(errors)} error(s)); converted with "
+        f"{scheme.meta.get('served')}. First: {first.get('path') or '<root>'}: {first.get('message')}"
+    )
 
 
 def _walk(node: WidgetNode) -> Iterator[WidgetNode]:
