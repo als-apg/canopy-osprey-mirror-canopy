@@ -2,15 +2,24 @@
 
 Owns the connector, the subscription registry, a latest-value cache, and three
 background loops (consume / flush / heartbeat). Monitors are started and stopped
-on demand: the first subscriber to a PV starts an EPICS monitor, the last to
-leave stops it. Updates are buffered and flushed as diffs every
-``ws_batch_interval_ms`` to the clients subscribed to each PV.
+on demand: the first subscriber to a PV starts an EPICS monitor; once the last
+one leaves, the monitor and its cached value stay warm for
+``monitor_grace_seconds`` and are then released. Updates are buffered and
+flushed as diffs every ``ws_batch_interval_ms`` to the clients subscribed to
+each PV.
+
+A PV without a cached value is seeded with a one-shot get and describe, run
+concurrently. Seeds are shared between clients, bounded by ``seed_concurrency``
+across the broker, and each PV's ``initial`` frame goes out as soon as its own
+seed lands, so an unreachable name delays only itself. A name whose seed came
+back disconnected is remembered for ``negative_cache_ttl_s``.
 """
 
 import time
 import asyncio
 import logging
 from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Awaitable
 
@@ -18,12 +27,25 @@ from canopy.epics.base import PVConnector, Subscription
 from canopy.core.errors import ErrorCode
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
+from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import InvalidPVName, validate_pv_name
 from canopy.hare.services.subscriptions import SubscriptionRegistry
 
 LifecycleHook = Callable[[list[str]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
+
+# Negative-cache size at which expired entries are swept on insert.
+_NEGATIVE_SWEEP_AT = 1024
+
+
+@dataclass(frozen=True)
+class _DeadName:
+    """A name whose seed read came back disconnected, and when to forget it."""
+
+    expires: float
+    value: PVValue
+    meta: PVMeta | None
 
 
 @runtime_checkable
@@ -52,6 +74,14 @@ class PVBroker:
         self._tasks: list[asyncio.Task] = []
         self._activation_hooks: list[tuple[LifecycleHook, set[str]]] = []
         self._deactivation_hooks: list[tuple[LifecycleHook, set[str]]] = []
+        # Seeding: one shared task per PV being seeded, a broker-wide bound on
+        # concurrent seeds, and per-client tasks that deliver landed seeds.
+        self._seed_sem = asyncio.Semaphore(max(1, config.seed_concurrency))
+        self._seeding: dict[str, asyncio.Task] = {}
+        self._deliveries: dict[str, set[asyncio.Task]] = {}
+        self._negative: dict[str, _DeadName] = {}
+        # PVs with no subscriber kept warm until their release task fires.
+        self._grace: dict[str, asyncio.Task] = {}
 
     @property
     def registry(self) -> SubscriptionRegistry:
@@ -104,14 +134,15 @@ class PVBroker:
 
     async def stop(self) -> None:
         self._running = False
-        for task in self._tasks:
+        background = [*self._tasks, *self._grace.values(), *self._seeding.values()]
+        background += [t for tasks in self._deliveries.values() for t in tasks]
+        for task in background:
             task.cancel()
-        for task in self._tasks:
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        await asyncio.gather(*background, return_exceptions=True)
         self._tasks = []
+        self._grace.clear()
+        self._seeding.clear()
+        self._deliveries.clear()
         for pv, sub in list(self._monitors.items()):
             try:
                 await sub.close()
@@ -135,9 +166,10 @@ class PVBroker:
         self._registry.add_client(client_id)
 
     async def remove_client(self, client_id: str) -> None:
+        self._cancel_deliveries(client_id)
         affected_pvs = list(self._registry.client_pvs(client_id))
         deactivated = self._registry.remove_client(client_id)
-        await self._stop_monitors(deactivated)
+        await self._release_monitors(deactivated)
         if affected_pvs:
             await self._fire_deactivation_hooks(affected_pvs, client_id)
         self._channels.pop(client_id, None)
@@ -205,12 +237,19 @@ class PVBroker:
             )
         return accepted
 
-    async def subscribe(self, client_id: str, pvs: list[str]) -> list[str]:
+    async def subscribe(self, client_id: str, pvs: list[str], *, wait_seed: bool = True) -> list[str]:
         """Subscribe a client to PVs; returns the names actually accepted.
 
         Invalid names and names past the caps are dropped rather than raised, so
         callers must use the return value rather than assume the whole request
         was honoured.
+
+        PVs with a cached value are answered in one ``initial`` frame before
+        this returns. The rest are seeded, and each one's ``initial`` frame is
+        sent as soon as its own seed lands. With ``wait_seed`` the call returns
+        once every seed has been delivered; without it, it returns right after
+        registration and the seeds are delivered in the background, which is
+        what keeps a socket's read loop free while a dead name times out.
         """
         pvs, rejected = self._accept_names(pvs)
         if rejected:
@@ -230,22 +269,76 @@ class PVBroker:
             return []
         previously_subscribed = self._registry.client_pvs(client_id)
         newly = self._registry.subscribe(client_id, pvs)
+        self._cancel_release(newly)
         await self._start_monitors(newly)
         new_for_client = [pv for pv in pvs if pv not in previously_subscribed]
         if new_for_client:
             await self._fire_activation_hooks(new_for_client, client_id)
-        # Seed latest value + static metadata for newly-activated PVs so the
-        # subscriber gets an immediate value (and describe info) rather than
-        # waiting for the first monitor tick. Seed concurrently -- but bounded by
-        # a semaphore so a huge batch can't open thousands of connections at once
-        # -- so one slow or unreachable PV can't stall the rest of the batch.
-        sem = asyncio.Semaphore(self._config.seed_concurrency)
 
-        async def _seed(pv: str) -> None:
-            async with sem:
-                await self._seed_pv(pv)
+        to_seed = [pv for pv in pvs if not self._has_seed(pv)]
+        if len(to_seed) < len(pvs):
+            seeding = set(to_seed)
+            await self._send_initial(client_id, [pv for pv in pvs if pv not in seeding])
+        if to_seed:
+            delivery = self._deliver_seeds(client_id, to_seed)
+            if wait_seed:
+                await delivery
+            else:
+                self._track_delivery(client_id, asyncio.create_task(delivery, name=f"seed-delivery:{client_id}"))
+        return pvs
 
-        await asyncio.gather(*(_seed(pv) for pv in newly))
+    # --- seeding --------------------------------------------------------- #
+
+    def _has_seed(self, pv: str) -> bool:
+        """True when ``pv`` can be answered from cache (live or negative)."""
+        if pv in self._latest:
+            return True
+        entry = self._negative.get(pv)
+        if entry is None:
+            return False
+        if entry.expires <= time.monotonic():
+            del self._negative[pv]
+            return False
+        self._latest[pv] = entry.value
+        if entry.meta is not None:
+            self._meta.setdefault(pv, entry.meta)
+        return True
+
+    def _ensure_seed(self, pv: str) -> asyncio.Task:
+        """Return the in-flight seed for ``pv``, starting one if there is none."""
+        task = self._seeding.get(pv)
+        if task is None:
+            task = asyncio.create_task(self._seed_pv(pv), name=f"seed:{pv}")
+            self._seeding[pv] = task
+
+            def _forget(done: asyncio.Task, pv: str = pv) -> None:
+                if self._seeding.get(pv) is done:
+                    del self._seeding[pv]
+
+            task.add_done_callback(_forget)
+        return task
+
+    async def _deliver_seeds(self, client_id: str, pvs: list[str]) -> None:
+        """Send ``client_id`` an ``initial`` frame for each PV as its seed lands.
+
+        PVs whose seeds complete together share one frame. The waits are
+        independent of the seed tasks: cancelling a delivery (the client left)
+        leaves the shared seeds running for other subscribers.
+        """
+        waiting = {self._ensure_seed(pv): pv for pv in pvs}
+        pending = set(waiting)
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            await self._send_initial(client_id, [waiting[task] for task in done])
+
+    async def _send_initial(self, client_id: str, pvs: list[str]) -> None:
+        """Send the cached value + metadata of the PVs the client still holds.
+
+        Always the current cache entry, never a seed's own read: a monitor tick
+        that landed first is newer, and a diff carrying it may already be out.
+        """
+        held = self._registry.client_pvs(client_id)
+        pvs = [pv for pv in pvs if pv in held]
         initial = {pv: self._latest[pv] for pv in pvs if pv in self._latest}
         meta = {pv: self._meta[pv] for pv in pvs if pv in self._meta}
         if initial or meta:
@@ -258,24 +351,89 @@ class PVBroker:
                     "count": len(initial),
                 },
             )
-        return pvs
+
+    def _track_delivery(self, client_id: str, task: asyncio.Task) -> None:
+        self._deliveries.setdefault(client_id, set()).add(task)
+
+        def _done(done: asyncio.Task) -> None:
+            owned = self._deliveries.get(client_id)
+            if owned is not None:
+                owned.discard(done)
+                if not owned:
+                    del self._deliveries[client_id]
+            if not done.cancelled() and done.exception() is not None:
+                logger.error("seed delivery to %s failed", client_id, exc_info=done.exception())
+
+        task.add_done_callback(_done)
+
+    def _cancel_deliveries(self, client_id: str) -> None:
+        current = asyncio.current_task()
+        for task in self._deliveries.pop(client_id, set()):
+            # A delivery whose send failed is dropping its own client; let it
+            # finish that cleanup rather than cancelling it mid-way.
+            if task is not current:
+                task.cancel()
+
+    def _is_held(self, pv: str) -> bool:
+        """True while ``pv`` has a subscriber or is being kept warm."""
+        return pv in self._grace or bool(self._registry.subscribers(pv))
 
     async def _seed_pv(self, pv: str) -> None:
-        """Fetch the seed value + static metadata for one newly-activated PV.
+        """Fetch the seed value + static metadata for one PV, get and describe at once.
 
-        Per-PV failures are logged and swallowed so that one bad PV doesn't sink
-        the concurrent seed of the rest of the batch.
+        Never raises: a failed read becomes a disconnected value (and a negative
+        cache entry), so one bad PV can't sink anything else. A value a monitor
+        delivered while the read was in flight is newer and is kept.
         """
-        if pv not in self._latest:
-            try:
-                self._latest[pv] = await self._connector.get(pv)
-            except Exception as exc:
-                logger.debug("initial get failed for %s: %s", pv, exc)
-        if pv not in self._meta:
-            try:
-                self._meta[pv] = await self._connector.describe(pv)
-            except Exception as exc:
-                logger.debug("describe failed for %s: %s", pv, exc)
+        async with self._seed_sem:
+            need_get = pv not in self._latest
+            need_meta = pv not in self._meta
+            if not (need_get or need_meta):
+                return
+            got, described = await asyncio.gather(
+                self._connector.get(pv) if need_get else _nothing(),
+                self._connector.describe(pv) if need_meta else _nothing(),
+                return_exceptions=True,
+            )
+        if not self._is_held(pv):
+            return  # released while seeding; don't park it in the cache
+
+        meta: PVMeta | None = None
+        if need_meta:
+            if isinstance(described, BaseException):
+                logger.debug("describe failed for %s: %s", pv, described)
+            else:
+                meta = described
+                self._meta.setdefault(pv, meta)
+        if not need_get:
+            return
+        if isinstance(got, BaseException):
+            logger.debug("initial get failed for %s: %s", pv, got)
+            value = PVValue(
+                pv=pv,
+                value=None,
+                severity=AlarmSeverity.INVALID,
+                ts_ns=time.time_ns(),
+                connected=False,
+                error=str(got) or type(got).__name__,
+            )
+        else:
+            value = got
+        self._latest.setdefault(pv, value)
+        if value.connected:
+            self._negative.pop(pv, None)
+        else:
+            self._remember_dead(pv, value, meta)
+
+    def _remember_dead(self, pv: str, value: PVValue, meta: PVMeta | None) -> None:
+        ttl = self._config.negative_cache_ttl_s
+        if ttl <= 0:
+            return
+        now = time.monotonic()
+        if len(self._negative) >= _NEGATIVE_SWEEP_AT:
+            for name in [n for n, e in self._negative.items() if e.expires <= now]:
+                del self._negative[name]
+        self._negative[pv] = _DeadName(expires=now + ttl, value=value, meta=meta)
 
     async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
         if not pvs:
@@ -286,7 +444,7 @@ class PVBroker:
         held = self._registry.client_pvs(client_id)
         released = [pv for pv in pvs if pv in held]
         deactivated = self._registry.unsubscribe(client_id, pvs)
-        await self._stop_monitors(deactivated)
+        await self._release_monitors(deactivated)
         if released:
             await self._fire_deactivation_hooks(released, client_id)
 
@@ -301,16 +459,47 @@ class PVBroker:
             except Exception as exc:
                 logger.error("failed to start monitor for %s: %s", pv, exc)
 
+    async def _release_monitors(self, pvs: Iterable[str]) -> None:
+        """Release PVs that lost their last subscriber, after the grace period."""
+        grace = self._config.monitor_grace_seconds
+        if grace <= 0:
+            await self._stop_monitors(pvs)
+            return
+        for pv in pvs:
+            if pv not in self._grace:
+                self._grace[pv] = asyncio.create_task(self._release_after_grace(pv, grace), name=f"grace:{pv}")
+
+    async def _release_after_grace(self, pv: str, grace: float) -> None:
+        await asyncio.sleep(grace)
+        if self._grace.get(pv) is asyncio.current_task():
+            del self._grace[pv]
+        if self._registry.subscribers(pv):
+            return  # re-subscribed without cancelling us; keep it
+        try:
+            await self._stop_monitors([pv])
+        except Exception:
+            # Nothing awaits this task, so an unlogged error would be invisible.
+            logger.exception("releasing %s after its grace period failed", pv)
+
+    def _cancel_release(self, pvs: Iterable[str]) -> None:
+        """A PV in its grace period got a subscriber again: keep it warm."""
+        for pv in pvs:
+            task = self._grace.pop(pv, None)
+            if task is not None:
+                task.cancel()
+
     async def _stop_monitors(self, pvs: Iterable[str]) -> None:
         for pv in pvs:
+            # Drop the cache before awaiting the close, so a re-subscribe that
+            # lands during it seeds afresh instead of having its value erased.
+            self._latest.pop(pv, None)
+            self._meta.pop(pv, None)
             sub = self._monitors.pop(pv, None)
             if sub is not None:
                 try:
                     await sub.close()
                 except Exception:
                     logger.exception("error closing monitor for %s", pv)
-            self._latest.pop(pv, None)
-            self._meta.pop(pv, None)
 
     # --- event ingestion ------------------------------------------------- #
 
@@ -343,6 +532,8 @@ class PVBroker:
 
     async def _ingest(self, value: PVValue) -> None:
         self._latest[value.pv] = value
+        if value.connected:
+            self._negative.pop(value.pv, None)
         async with self._buffer_lock:
             self._buffer[value.pv] = value
 
@@ -397,9 +588,10 @@ class PVBroker:
         except Exception as exc:
             logger.debug("send to %s failed: %s; dropping client", client_id, exc)
             self._channels.pop(client_id, None)
+            self._cancel_deliveries(client_id)
             affected_pvs = list(self._registry.client_pvs(client_id))
             deactivated = self._registry.remove_client(client_id)
-            await self._stop_monitors(deactivated)
+            await self._release_monitors(deactivated)
             if affected_pvs:
                 await self._fire_deactivation_hooks(affected_pvs, client_id)
 
@@ -443,6 +635,7 @@ class PVBroker:
             "backend": getattr(self._connector, "backend_name", None),
             "clients": len(self._channels),
             "active_monitors": len(self._monitors),
+            "warm_monitors": len(self._grace),
             **self._registry.stats(),
         }
 
@@ -510,3 +703,7 @@ class PVBroker:
             if not external:
                 result.append(pv)
         return result
+
+
+async def _nothing() -> None:
+    return None

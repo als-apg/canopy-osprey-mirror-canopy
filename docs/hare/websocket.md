@@ -109,8 +109,12 @@ The server responds with `pong`.
 
 ### initial
 
-Sent after a `subscribe`, once the new PVs have been seeded. `data` maps PV
-name to its current value; `meta` maps PV name to its static display metadata
+Sent after a `subscribe`. PVs already cached are answered at once in one
+frame; every other PV gets its own `initial` as soon as its seed read lands
+(PVs that land together share a frame), so one `subscribe` can produce several
+`initial` frames, and an `initial` may follow a `diff` for the same PV. It
+always carries the newest cached value. `data` maps PV name to its current
+value; `meta` maps PV name to its static display metadata
 (units, precision, `enumChoices`, limits) — read `meta` once, then rely on
 diffs for the values.
 
@@ -143,9 +147,11 @@ diffs for the values.
 }
 ```
 
-A PV that is valid but has not produced a value yet (e.g. a disconnected
-channel) may be absent from `initial` — its first `diff` arrives when the
-channel connects. If no PV in the batch yields a value or metadata, the
+A PV that is valid but has not produced a value yet may be absent from
+`initial` — its first `diff` arrives when the channel connects. A name that
+does not resolve within the connector timeout gets an `initial` entry with
+`"connected": false`; within `CANOPY_HARE__NEGATIVE_CACHE_TTL_S` a re-subscribe
+gets that entry at once. If no PV in the batch yields a value or metadata, the
 `initial` frame is skipped entirely, so do not treat it as a subscribe
 acknowledgement.
 
@@ -254,7 +260,9 @@ sequenceDiagram
 ```
 
 On disconnect, all of the client's subscriptions are cleaned up
-automatically; monitors for PVs no other client watches are released.
+automatically; monitors for PVs no other client watches are released after
+`CANOPY_HARE__MONITOR_GRACE_SECONDS` (default 60 s), so a reconnect or screen
+switch within that window is served from the cache.
 
 ## Limits
 

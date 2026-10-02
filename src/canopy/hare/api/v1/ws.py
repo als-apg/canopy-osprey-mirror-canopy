@@ -72,7 +72,9 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
             if isinstance(message, PingMessage):
                 await websocket.send_json({"type": "pong", "timestamp": time.time()})
             elif message.type == "subscribe":
-                await broker.subscribe(client_id, message.pv_names)
+                # Seeds are delivered in the background: a name that takes the
+                # connector timeout to fail must not hold up the next frame.
+                await broker.subscribe(client_id, message.pv_names, wait_seed=False)
             else:  # unsubscribe
                 await broker.unsubscribe(client_id, message.pv_names)
     except WebSocketDisconnect:

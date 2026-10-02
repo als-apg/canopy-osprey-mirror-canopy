@@ -32,8 +32,22 @@ class HareConfig(BaseSettings):
     # Bound on the internal event queue so a fast producer can't grow it without
     # limit (OOM). At capacity the oldest-losing policy is "drop newest + warn".
     event_queue_maxsize: int = 100_000
-    # Max concurrent seed (get+describe) calls when activating a subscribe batch.
-    seed_concurrency: int = 32
+    # Max PVs being seeded (one get + one describe, run concurrently) at once,
+    # across all clients. Each PV's initial value is sent as soon as its seed
+    # lands, so a slow or unreachable name holds one slot, not the batch.
+    seed_concurrency: int = 64
+
+    # --- caching --- #
+    # A name whose seed read came back disconnected (or failed) is not looked up
+    # again for this long: a re-subscribe within the TTL gets the cached
+    # disconnected value at once instead of waiting out the connector timeout
+    # again. The monitor still starts, so a channel that comes up is picked up
+    # on its first event. 0 disables the cache.
+    negative_cache_ttl_s: float = 30.0
+    # After a PV loses its last subscriber its monitor and cached value are kept
+    # this long, so switching back to a screen is served from cache instead of
+    # re-seeding. Mirrors Vole's buffer_grace_seconds. 0 releases at once.
+    monitor_grace_seconds: float = 60.0
 
 
 def get_hare_config() -> HareConfig:

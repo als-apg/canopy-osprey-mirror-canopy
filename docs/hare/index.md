@@ -12,6 +12,13 @@ to it. Updates land in a cache of latest values and are fanned out to
 subscribers as batched diffs. New subscribers get the current value
 immediately from the cache — no extra load on the IOC.
 
+A PV that is not cached yet is seeded with a one-shot read. Each PV's first
+value is sent as soon as its own read completes, so a name that only answers
+after the connector timeout delays nobody else. A name that failed to resolve
+is answered from a short-lived negative cache instead of being read again, and
+a PV whose last subscriber left stays monitored for a grace period, so
+switching back to a screen is served from the cache.
+
 ```mermaid
 graph LR
     IOC["IOCs (CA / PVA)"] --> Connector["EPICS connector"]
@@ -78,7 +85,9 @@ Environment variables with prefix `CANOPY_HARE__`:
 | `CANOPY_HARE__MAX_PVS_PER_MESSAGE` | `5000` | Max PV names accepted in a single subscribe frame (excess dropped) |
 | `CANOPY_HARE__MAX_SUBSCRIPTIONS_PER_CLIENT` | `20000` | Max distinct PVs one client may hold subscriptions to |
 | `CANOPY_HARE__EVENT_QUEUE_MAXSIZE` | `100000` | Bound on the internal update queue (overflow drops newest + warns) |
-| `CANOPY_HARE__SEED_CONCURRENCY` | `32` | Max concurrent reads when seeding a fresh subscribe batch |
+| `CANOPY_HARE__SEED_CONCURRENCY` | `64` | Max PVs seeded (one get + one describe, run together) at once, across all clients |
+| `CANOPY_HARE__NEGATIVE_CACHE_TTL_S` | `30.0` | How long a name whose seed came back disconnected is answered from cache instead of being read again (0 disables) |
+| `CANOPY_HARE__MONITOR_GRACE_SECONDS` | `60.0` | How long a PV's monitor and cached value stay warm after its last subscriber leaves (0 releases at once) |
 
 The connector's own settings use the `CANOPY_EPICS__` prefix — see
 `.env.example` at the repo root for the full annotated list.

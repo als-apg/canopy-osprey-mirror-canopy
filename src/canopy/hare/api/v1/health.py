@@ -32,5 +32,6 @@ async def summary(broker: PVBrokerDep) -> HealthSummaryDTO:
         connector_ok=bool(status["running"]),
         clients=status["clients"],
         active_monitors=status["active_monitors"],
+        warm_monitors=status.get("warm_monitors", 0),
         subscriptions=status["subscriptions"],
     )

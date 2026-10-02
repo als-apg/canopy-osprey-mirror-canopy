@@ -25,3 +25,4 @@ def test_summary_reports_backend():
     assert body["status"] == "ok"
     assert body["backend"] == "simulation"
     assert body["connectorOk"] is True
+    assert body["warmMonitors"] == 0
