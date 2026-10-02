@@ -4,16 +4,17 @@ Standard EPICS network discovery (``EPICS_CA_ADDR_LIST``, ``EPICS_PVA_ADDR_LIST`
 etc.) is configured via the EPICS library's own environment variables, not here.
 """
 
-from pydantic import Field
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class EpicsConfig(BaseSettings):
     """Settings for the EPICS connector package.
 
-    An empty environment value (``CANOPY_EPICS__SIM_SEED=``, as the ``.env``
-    templates show it) is ignored and leaves the field at its default, rather than
-    failing validation for a typed field.
+    A blank ``CANOPY_EPICS__SIM_SEED=`` or ``CANOPY_EPICS__SIM_PUT_ERROR_RATE=``, as
+    the ``.env`` templates show them, leaves that field at its default. Every other
+    field keeps failing on a blank value, so a blank ``CANOPY_EPICS__BACKEND=`` stops
+    startup instead of falling back to the simulation backend.
 
     Attributes
     ----------
@@ -33,7 +34,6 @@ class EpicsConfig(BaseSettings):
         env_prefix="CANOPY_EPICS__",
         env_nested_delimiter="__",
         env_file=".env",
-        env_ignore_empty=True,
         extra="ignore",
     )
 
@@ -49,6 +49,27 @@ class EpicsConfig(BaseSettings):
     sim_put_error_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     sim_put_fail_pvs: str = ""
     sim_seed: int | None = None
+
+    @field_validator("sim_put_error_rate", "sim_seed", mode="before")
+    @classmethod
+    def _blank_keeps_default(cls, value: object, info: ValidationInfo) -> object:
+        """Read a blank failure-injection value as unset.
+
+        Parameters
+        ----------
+        value : object
+            The raw value, a string when it comes from the environment.
+        info : ValidationInfo
+            Names the field being validated.
+
+        Returns
+        -------
+        object
+            The field's default when `value` is a blank string, otherwise `value`.
+        """
+        if isinstance(value, str) and not value.strip():
+            return cls.model_fields[info.field_name].default
+        return value
 
     # --- real (epics) backend ---
     ca_timeout_s: float = 5.0

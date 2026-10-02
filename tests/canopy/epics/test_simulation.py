@@ -5,8 +5,9 @@ import random
 import pytest
 from pydantic import ValidationError
 
-from canopy.epics.base import PVWriteFailed
+from canopy.epics.base import PVWriteFailed, EpicsBackendUnavailable
 from canopy.epics.config import EpicsConfig
+from canopy.epics.gateway import build_connector
 from canopy.epics.backends import simulation
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.backends.simulation import SimulationConnector, _parse_fail_pvs
@@ -168,6 +169,25 @@ def test_empty_env_values_keep_the_defaults(monkeypatch):
     assert cfg.sim_put_error_rate == 0.0
     assert cfg.sim_put_fail_pvs == ""
     assert cfg.sim_seed is None
+
+
+def test_blank_seed_with_whitespace_keeps_the_default(monkeypatch):
+    monkeypatch.setenv("CANOPY_EPICS__SIM_SEED", "  ")
+    assert EpicsConfig().sim_seed is None
+
+
+def test_blank_backend_still_fails_startup(monkeypatch):
+    monkeypatch.setenv("CANOPY_EPICS__BACKEND", "")
+    cfg = EpicsConfig()
+    assert cfg.backend == ""
+    with pytest.raises(EpicsBackendUnavailable):
+        build_connector(cfg)
+
+
+def test_blank_value_outside_failure_injection_is_rejected(monkeypatch):
+    monkeypatch.setenv("CANOPY_EPICS__SIM_UPDATE_HZ", "")
+    with pytest.raises(ValidationError):
+        EpicsConfig()
 
 
 def test_seed_is_read_from_the_environment(monkeypatch):
