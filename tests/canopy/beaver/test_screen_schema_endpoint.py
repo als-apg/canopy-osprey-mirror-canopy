@@ -8,7 +8,7 @@ from tests.conftest import READ_HEADERS
 def test_list_versions(beaver_client):
     resp = beaver_client.get("/beaver/v1/screen-schema", headers=READ_HEADERS)
     assert resp.status_code == 200
-    assert resp.json() == {"versions": ["1.0"], "total": 1}
+    assert resp.json() == {"versions": ["1.0", "1.1"], "total": 2}
 
 
 def test_get_schema_byte_identical(beaver_client):
@@ -18,6 +18,17 @@ def test_get_schema_byte_identical(beaver_client):
     expected = files("canopy.beaver.data").joinpath("schemas/screen-ir-1.0.schema.json").read_bytes()
     assert resp.content == expected
     assert resp.json()["properties"]["schemaVersion"]["const"] == "1.0"
+
+
+def test_get_schema_1_1_byte_identical(beaver_client):
+    resp = beaver_client.get("/beaver/v1/screen-schema/1.1", headers=READ_HEADERS)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    expected = files("canopy.beaver.data").joinpath("schemas/screen-ir-1.1.schema.json").read_bytes()
+    assert resp.content == expected
+    body = resp.json()
+    assert body["properties"]["schemaVersion"]["enum"] == ["1.0", "1.1"]
+    assert "ColorRole" in body["$defs"]
 
 
 def test_get_schema_unknown_version(beaver_client):

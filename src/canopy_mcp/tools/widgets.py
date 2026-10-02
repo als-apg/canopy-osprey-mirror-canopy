@@ -37,5 +37,9 @@ async def get_widget(type: str) -> dict[str, Any]:
 
 @mcp.tool
 async def get_schema() -> dict[str, Any]:
-    """Return the Screen-IR 1.0 JSON Schema every screen document must satisfy."""
+    """Return the newest supported Screen-IR JSON Schema (1.1) that screen documents must satisfy.
+
+    Its ``schemaVersion`` enum also accepts 1.0; a document declaring 1.0 is checked
+    against the frozen 1.0 schema, which lacks theme colour roles (``$role``).
+    """
     return load_schema()

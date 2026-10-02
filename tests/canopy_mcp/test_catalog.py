@@ -321,7 +321,9 @@ async def test_get_widget_tool_unknown_type(loaded):
 async def test_get_schema_tool():
     schema = await widget_tools.get_schema()
     assert schema["$schema"].startswith("https://json-schema.org/draft/2020-12")
-    assert schema["properties"]["schemaVersion"]["const"] == "1.0"
+    assert schema["$id"].endswith("/screen-ir/1.1/schema.json")
+    assert schema["properties"]["schemaVersion"]["enum"] == ["1.0", "1.1"]
+    assert "ColorRole" in schema["$defs"]
     # Each call returns a fresh copy; mutating one does not leak.
     schema["properties"] = {}
     assert load_schema()["properties"]
