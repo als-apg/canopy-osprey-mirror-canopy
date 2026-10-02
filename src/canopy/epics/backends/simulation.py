@@ -302,7 +302,10 @@ class SimulationConnector:
             configured put error rate.
         """
         name = strip_protocol_prefix(pv)
-        if name in self._put_fail_pvs or self._rng.random() < self._put_error_rate:
+        # Draw on every put, so naming a PV to always fail doesn't shift the seeded
+        # outcomes of the others.
+        drawn = self._rng.random()
+        if name in self._put_fail_pvs or drawn < self._put_error_rate:
             raise PVWriteFailed(f"simulated put failure for {pv}")
         self._overrides[name] = value
 

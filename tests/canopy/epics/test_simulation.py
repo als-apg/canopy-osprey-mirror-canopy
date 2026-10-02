@@ -173,6 +173,13 @@ async def test_different_seeds_diverge():
     assert first != second
 
 
+async def test_naming_a_failing_pv_leaves_the_others_outcomes_unchanged():
+    baseline = await _put_outcomes(SimulationConnector(put_error_rate=0.5, seed=3))
+    named = await _put_outcomes(SimulationConnector(put_error_rate=0.5, seed=3, put_fail_pvs=frozenset({"SIM:P0"})))
+    assert named[0] is False
+    assert named[1:] == baseline[1:]
+
+
 async def test_failure_rng_is_private_to_the_instance():
     conn = SimulationConnector(put_error_rate=0.5, seed=7)
     baseline = await _put_outcomes(SimulationConnector(put_error_rate=0.5, seed=7))
