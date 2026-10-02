@@ -79,11 +79,24 @@ async def test_pva_alarm_status_comes_from_the_alarm_message(pva_server, message
         ({"alarm.severity": 0, "alarm.status": 0, "alarm.message": ""}, 0),
         ({"alarm.severity": 2, "alarm.status": 1, "alarm.message": ""}, None),
         ({"alarm.severity": 2, "alarm.status": 1, "alarm.message": "pump tripped"}, None),
+        ({"alarm.message": "HIHI"}, 3),
         ({}, None),
     ],
 )
 def test_pva_alarm_status_reads_the_message_not_the_category(alarm, expected):
-    assert epics_backend._pva_alarm_status(alarm) == expected
+    assert epics_backend._pva_alarm_status(alarm, alarm.get("alarm.severity")) == expected
+
+
+@pytest.mark.parametrize(
+    "alarm,expected",
+    [
+        ({"alarm.severity": 2, "alarm.status": 1, "alarm.message": "NO_ALARM"}, None),
+        ({"alarm.severity": 0, "alarm.status": 0, "alarm.message": "LOW"}, 0),
+        ({"alarm.severity": 0, "alarm.status": 3, "alarm.message": "HIHI"}, None),
+    ],
+)
+def test_pva_alarm_status_ignores_a_message_that_contradicts_severity(alarm, expected):
+    assert epics_backend._pva_alarm_status(alarm, alarm.get("alarm.severity")) == expected
 
 
 async def test_pva_monitor_delivers_updates(pva_server):

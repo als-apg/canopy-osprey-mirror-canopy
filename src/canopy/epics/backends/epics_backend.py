@@ -119,7 +119,7 @@ def _pva_get(value, field):
         return None
 
 
-def _pva_alarm_status(value) -> int | None:
+def _pva_alarm_status(value, severity) -> int | None:
     """Read a p4p Value's alarm as the ``menuAlarmStat`` code Channel Access reports.
 
     A PV Access ``alarm.status`` is the Normative Types category (NO_STATUS, DEVICE,
@@ -127,22 +127,31 @@ def _pva_alarm_status(value) -> int | None:
     DEVICE there. QSRV carries the ``menuAlarmStat`` name in ``alarm.message``
     instead, and that is what the code is taken from.
 
+    The message is trusted only when it agrees with ``severity``. A record takes an
+    alarm status only together with a raised severity, so NO_ALARM beside a nonzero
+    severity, or an alarm status beside severity zero, is free text that happens to
+    spell a status name.
+
     Parameters
     ----------
     value : object
         A p4p ``Value`` with an ``alarm`` sub-structure.
+    severity : object
+        The value's ``alarm.severity`` as the caller already read it, or ``None``
+        when it carries none.
 
     Returns
     -------
     int | None
-        The code named by ``alarm.message``; ``NO_ALARM`` when the message names
-        nothing but severity and category are both zero; otherwise ``None``, since
-        a free-text message says nothing about which status applies.
+        The code named by ``alarm.message`` when it agrees with ``severity``;
+        ``NO_ALARM`` when severity and category are both zero; otherwise ``None``,
+        since a free-text message says nothing about which status applies.
     """
+    sevr = _alarm_status(severity)
     code = alarm_status_from_name(_pva_get(value, "alarm.message"))
-    if code is not None:
+    if code is not None and (sevr is None or (code == 0) == (sevr == 0)):
         return code
-    if _alarm_status(_pva_get(value, "alarm.severity")) == 0 and _alarm_status(_pva_get(value, "alarm.status")) == 0:
+    if sevr == 0 and _alarm_status(_pva_get(value, "alarm.status")) == 0:
         return ALARM_STATUS_CODES["NO_ALARM"]
     return None
 
@@ -531,7 +540,7 @@ class EpicsConnector:
             value=raw,
             value_kind=kind,
             severity=normalize_severity(severity),
-            alarm_status=_pva_alarm_status(value),
+            alarm_status=_pva_alarm_status(value, severity),
             ts_ns=ts_ns,
             connected=True,
             error=error,
