@@ -20,8 +20,6 @@ from canopy.mole.app import app as mole_app
 from canopy.mole.app import mole_lifespan
 from canopy.vole.app import app as vole_app
 from canopy.vole.app import vole_lifespan
-from canopy.beaver.app import app as beaver_app
-from canopy.beaver.app import beaver_lifespan
 from canopy.magpie.app import app as magpie_app
 from canopy.magpie.app import magpie_lifespan
 from canopy.core.config import get_settings
@@ -74,7 +72,6 @@ async def lifespan(app: FastAPI):
         raccoon_lifespan(),
         vole_lifespan(),
         fox_lifespan(),
-        beaver_lifespan(),
         squirrel_lifespan(),
         magpie_lifespan(),
         jobs_lifespan(),
@@ -113,7 +110,6 @@ app.mount("/hare", hare_app)
 app.mount("/raccoon", raccoon_app)
 app.mount("/vole", vole_app)
 app.mount("/fox", fox_app)
-app.mount("/beaver", beaver_app)
 app.mount("/squirrel", squirrel_app)
 app.mount("/magpie", magpie_app)
 app.mount("/jobs", jobs_app)

@@ -71,8 +71,7 @@ class ConversionService:
 
     def __init__(self, registry: RegistryClient | None = None) -> None:
         # One registry instance, reused across requests (the adapters would
-        # otherwise rebuild a VendoredRegistry per call). Phase 2 injects a
-        # BeaverGatewayRegistry here behind the ``use_beaver_gateway`` flag.
+        # otherwise rebuild a VendoredRegistry per call).
         self._registry: RegistryClient = registry or VendoredRegistry()
 
     def convert(self, data: bytes, *, kind: Literal["edl", "ui"]) -> ConversionResult:

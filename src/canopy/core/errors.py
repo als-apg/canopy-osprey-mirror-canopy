@@ -70,14 +70,6 @@ class ErrorCode(StrEnum):
     WINDOW_TOO_LARGE = auto()
     INGEST_UNAVAILABLE = auto()
 
-    # Beaver
-    WIDGET_NOT_FOUND = auto()
-    QT_CLASS_NOT_MAPPED = auto()
-    ICON_NOT_FOUND = auto()
-    LEGACY_SCREEN_NOT_FOUND = auto()
-    CATALOG_MISCONFIGURED = auto()
-    SCREEN_SCHEMA_VERSION_NOT_FOUND = auto()
-
     # Jobs
     JOB_NOT_FOUND = auto()
     JOB_ALREADY_EXISTS = auto()

@@ -9,7 +9,6 @@ from canopy.converter.config import get_converter_config
 from canopy.converter.runtime import mark_started
 from canopy.converter.api.v1.router import router as v1_router
 from canopy.converter.adapters.edm_env import apply_edm_colors
-from canopy.converter.adapters.beaver_registry import build_registry
 from canopy.converter.services.conversion_service import ConversionService
 
 logger = logging.getLogger(__name__)
@@ -30,16 +29,12 @@ async def converter_lifespan():
     # TODO(pydm-converter-tool#150 + dep bump): replace with an explicit
     # color_list_path=config.colors_list_path argument to convert_bytes.
     apply_edm_colors(config)
-    # Seam #1: pick the widget registry by config — the Beaver gateway when
-    # enabled, else the vendored snapshot shipped with pydmconverter.
-    registry = build_registry(config)
-    service = ConversionService(registry=registry)
+    service = ConversionService()
     gateway.bind(service)
     mark_started()
     logger.info(
-        "Converter started: colors_list=%s, beaver_gateway=%s",
+        "Converter started: colors_list=%s",
         config.colors_list_path,
-        config.use_beaver_gateway,
     )
     try:
         yield

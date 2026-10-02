@@ -18,7 +18,6 @@ to live PV data in a few minutes, no EPICS required.
 - **Raccoon** — PV name lookup over the lab directory service.
 - **Vole** — time-aligned in-memory buffer merging live and historical data.
 - **Fox** — formula engine over live and historical PV data.
-- **Beaver** — widget registry + screen JSON Schemas.
 - **Squirrel** — machine-state snapshot save / restore / compare.
 - **Jobs** — background-job status over the Arq + Redis worker pool.
 - **Converter** — EDM `.edl` / Qt `.ui` to Canopy Screen IR.

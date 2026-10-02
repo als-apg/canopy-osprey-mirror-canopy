@@ -103,13 +103,10 @@ forbidden_modules = [
     "canopy.hare",
     "canopy.vole",
     "canopy.raccoon",
-    "canopy.beaver",
     "canopy.jobs",
 ]
 ignore_imports = [
     "canopy.converter.dependencies -> canopy.fox.gateway",
-    "canopy.converter.adapters.beaver_registry -> canopy.beaver.gateway",
-    "canopy.converter.adapters.beaver_registry -> canopy.beaver.errors",
     "canopy.converter.api.v1.conversions -> canopy.jobs.gateway",
     "canopy.converter.tasks -> canopy.jobs.gateway",
 ]
