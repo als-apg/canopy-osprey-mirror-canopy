@@ -5,6 +5,7 @@ import os
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 from fastmcp.exceptions import ToolError
@@ -17,6 +18,7 @@ from canopy_mcp.catalog import set_catalog, build_catalog
 from canopy_mcp.tools.check import run_check
 from canopy_mcp.tools.drafts import get_screen, patch_node, list_drafts
 from canopy_mcp.tools.convert import QUEUE_CODES, convert_legacy
+from canopy.core.color_scheme import THEME_FILE_ENV, ColorScheme
 from tests.canopy_mcp.fixtures.convert import mocks
 
 BASE = "http://canopy.test"
@@ -318,6 +320,124 @@ async def test_refusal_is_all_or_nothing(settings, converter, sources):
     out = await _convert(sources)  # ...but the parent conflicts, so nothing is written
     assert out["refused"] is True and out["conflicts"] == [PARENT_ID]
     assert not _file(settings, "a/def").exists()
+
+
+# --- scheme guard on overwrite (CANOPY_THEME_FILE) ------------------------------------------------
+
+OWN_META = {"id": "site", "sha256": "a" * 64, "flatHash": "b" * 64, "served": "site", "errors": []}
+GOOD_SCHEME = {"id": "site", "sha256": "a" * 64, "served": "site", "errors": []}
+MISSING = object()  # a scheme_converter value: drop the ``scheme`` key from the response
+
+
+@pytest.fixture
+def themed(monkeypatch, tmp_path):
+    """``CANOPY_THEME_FILE`` set, with canopy_mcp's own scheme meta pinned to :data:`OWN_META`."""
+    monkeypatch.setenv(THEME_FILE_ENV, str(tmp_path / "site-scheme.json"))
+    stub = ColorScheme(result=None, flat_json=None, meta=OWN_META, imports={}, degraded=[])
+    monkeypatch.setattr(convert, "get_color_scheme", lambda *a, **k: stub)
+
+
+@pytest.fixture
+def scheme_converter(httpx_mock: HTTPXMock):
+    """A converter whose response ``scheme`` is ``schemes[filename]`` (else ``schemes[None]``; key dropped if MISSING)."""
+    schemes: dict = {None: GOOD_SCHEME}
+
+    def respond(request):
+        data, filename, kind = mocks._multipart(request)
+        body = mocks.conversion_response(data, kind or Path(filename or "").suffix.lstrip("."))
+        scheme = schemes.get(filename, schemes[None])
+        body.pop("scheme", None)
+        if scheme is not MISSING:
+            body["scheme"] = scheme
+        return httpx.Response(200, json=body)
+
+    httpx_mock.add_callback(
+        respond, method="POST", url=BASE + convert.CONVERSIONS_PATH, is_optional=True, is_reusable=True
+    )
+    return schemes
+
+
+async def _edited(settings, sources):
+    """Convert once, then hand-edit the parent; returns ``(before bytes, base_revs for an overwrite)``."""
+    await _convert(sources)
+    current = await get_screen(PARENT_ID)
+    node = current["screen"]["root"]["children"][0]["id"]
+    patched = await patch_node(PARENT_ID, node, current["rev"], {"geometry": {"x": 5}})
+    return {d: _file(settings, d).read_bytes() for d in ALL_WRITTEN}, {PARENT_ID: patched["rev"]}
+
+
+async def test_overwrite_refused_when_converter_served_canopy_default(settings, scheme_converter, sources, themed):
+    served = {**GOOD_SCHEME, "served": "canopy-default"}
+    scheme_converter[None] = served
+    before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert out["refused"] is True and out["reason"] == "scheme_mismatch" and "canopy-default" in out["message"]
+    assert out["scheme"] == served
+    assert {d: _file(settings, d).read_bytes() for d in ALL_WRITTEN} == before
+
+
+async def test_overwrite_refused_when_converter_scheme_has_errors(settings, scheme_converter, sources, themed):
+    bad = {**GOOD_SCHEME, "errors": [{"path": "/roles/0", "message": "bad colour"}]}
+    scheme_converter[None] = bad
+    before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert out["refused"] is True and out["reason"] == "scheme_mismatch" and "error" in out["message"]
+    assert {d: _file(settings, d).read_bytes() for d in ALL_WRITTEN} == before
+
+
+@pytest.mark.parametrize("field", ["id", "sha256"])
+async def test_overwrite_refused_when_id_or_sha_differs_from_own(settings, scheme_converter, sources, themed, field):
+    scheme_converter[None] = {**GOOD_SCHEME, field: "other"}
+    before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert out["refused"] is True and out["reason"] == "scheme_mismatch" and "differs from" in out["message"]
+    assert {d: _file(settings, d).read_bytes() for d in ALL_WRITTEN} == before
+
+
+async def test_overwrite_refused_when_a_sibling_disagrees_with_the_parent(settings, scheme_converter, sources, themed):
+    scheme_converter["_warn.bob"] = {**GOOD_SCHEME, "sha256": "c" * 64}
+    before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert out["refused"] is True and out["reason"] == "scheme_mismatch"
+    assert "'a/embedded/_warn'" in out["message"] and "different scheme" in out["message"]
+    assert {d: _file(settings, d).read_bytes() for d in ALL_WRITTEN} == before
+
+
+async def test_overwrite_refused_when_scheme_key_is_missing(settings, scheme_converter, sources, themed):
+    scheme_converter[None] = MISSING
+    before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert out["refused"] is True and out["reason"] == "scheme_mismatch" and "no scheme" in out["message"]
+    assert out["scheme"] is None
+    assert {d: _file(settings, d).read_bytes() for d in ALL_WRITTEN} == before
+
+
+async def test_overwrite_passes_when_scheme_matches_and_returns_it(settings, scheme_converter, sources, themed):
+    first = await _convert(sources)
+    assert first["scheme"] == GOOD_SCHEME
+    _before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert "refused" not in out
+    assert out["rev"] == first["rev"]
+    assert out["scheme"] == GOOD_SCHEME
+
+
+async def test_without_overwrite_the_scheme_is_not_checked(settings, scheme_converter, sources, themed):
+    scheme_converter[None] = {**GOOD_SCHEME, "served": "canopy-default"}
+    out = await _convert(sources)
+    assert "refused" not in out and _written(settings) == ALL_WRITTEN
+    assert out["scheme"]["served"] == "canopy-default"
+
+
+async def test_no_theme_file_leaves_overwrite_unchanged(settings, scheme_converter, sources, monkeypatch):
+    monkeypatch.delenv(THEME_FILE_ENV, raising=False)
+    monkeypatch.setattr(convert, "get_color_scheme", lambda *a, **k: pytest.fail("scheme consulted"))
+    scheme_converter[None] = MISSING
+    first = await _convert(sources)
+    _before, base_revs = await _edited(settings, sources)
+    out = await _convert(sources, overwrite=True, base_revs=base_revs)
+    assert "refused" not in out and out["rev"] == first["rev"]
+    assert out["scheme"] is None
 
 
 # --- image copy (FR6) ------------------------------------------------------------------------------
