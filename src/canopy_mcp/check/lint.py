@@ -103,7 +103,12 @@ def _validator(schema: dict[str, Any]) -> Draft7Validator:
 
 
 def prop_findings(doc: Any, catalog: Catalog) -> list[Finding]:
-    """Catalog-driven type and prop findings, in document order."""
+    """Catalog-driven type and prop findings, in document order.
+
+    Colour props carry the registry's inline colour def (a string or a
+    ``{"$role", "fallback"}`` role), so a role-bearing draft validates here; a
+    malformed role is an ``invalid_prop`` on the colour prop.
+    """
     out: list[Finding] = []
     for path, node in iter_nodes(doc):
         ntype = node.get("type")
