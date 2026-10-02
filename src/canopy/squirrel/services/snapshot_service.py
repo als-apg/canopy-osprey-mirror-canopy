@@ -614,7 +614,9 @@ class SnapshotService:
             derived_writes = 0
             for primary_addr, extras in derived.items():
                 derived_writes += len(extras)
-                if not results[primary_addr][0]:
+                # A later hook's derivation error kept this PV out of the write set, so
+                # it has no result; its extras are skipped like a failed setpoint's.
+                if primary_addr in hook_errors or not results[primary_addr][0]:
                     continue
                 for extra_addr, extra_val in extras:
                     extra_values[extra_addr] = extra_val

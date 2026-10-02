@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from canopy.squirrel.data.models import Pv
 from canopy.squirrel.schemas.snapshot import NewSnapshotDTO, RestoreRequestDTO
 from canopy.squirrel.adapters.epics_io import EpicsValue
-from canopy.squirrel.restore_hooks.base import RestoreHook
+from canopy.squirrel.restore_hooks.base import RestoreHook, RestoreHookError
 from canopy.squirrel.restore_hooks.magnet_trim import MagnetTrimHook
 from canopy.squirrel.services.snapshot_service import SnapshotService
 from canopy.squirrel.restore_hooks.write_to_con import WriteToConHook
@@ -259,6 +259,42 @@ async def test_restore_derivation_error_skips_the_pv_and_blames_setpoints(db_ses
     assert emitted[-1] == [
         {"name": "Setpoints", "current": 1, "total": 1, "status": "completed", "failures": 1},
         {"name": "MagnetTrimHook", "current": 0, "total": 0, "status": "skipped", "failures": 0},
+    ]
+
+
+class _MirrorHook(RestoreHook):
+    """Derives one extra write for any address."""
+
+    def derive_extra_writes(self, address: str, value: Any) -> list[tuple[str, Any]]:
+        return [(f"{address}:MIRROR", value)]
+
+
+class _RefusingHook(RestoreHook):
+    """Cannot derive from any address."""
+
+    def derive_extra_writes(self, address: str, value: Any) -> list[tuple[str, Any]]:
+        raise RestoreHookError(f"cannot derive from {address}")
+
+
+async def test_restore_skips_an_earlier_hooks_writes_when_a_later_hook_refuses(db_session: AsyncSession):
+    """The first hook derives for the PV, then the second refuses it, so nothing is written."""
+    await _seed_pv(db_session, "A:SP")
+    io = FakeEpicsIO({"A:SP": _ev(1.0)})
+    svc = SnapshotService(db_session, io, restore_hooks=[_MirrorHook(), _RefusingHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
+
+    io.writes.clear()
+    result, emitted = await _restore_recording_phases(svc, summary.id)
+
+    assert io.writes == {}
+    assert result.failure_count == 1
+    assert result.failures[0]["phase"] == "Setpoints"
+    assert "cannot derive from A:SP" in result.failures[0]["error"]
+    _assert_phases_only_move_forward(emitted)
+    assert emitted[-1] == [
+        {"name": "Setpoints", "current": 1, "total": 1, "status": "completed", "failures": 1},
+        {"name": "_MirrorHook", "current": 0, "total": 0, "status": "skipped", "failures": 0},
+        {"name": "_RefusingHook", "current": 0, "total": 0, "status": "skipped", "failures": 0},
     ]
 
 
