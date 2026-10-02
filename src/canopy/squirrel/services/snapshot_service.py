@@ -12,6 +12,8 @@ from collections.abc import Callable
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from canopy.core.errors import BadRequest
+from canopy.core.time_parse import to_utc
 from canopy.squirrel.errors import SnapshotNotFound
 from canopy.squirrel.data.models import Snapshot
 from canopy.squirrel.restore_hooks import (
@@ -80,6 +82,35 @@ def _sanitize_for_json(value: Any) -> Any:
     return value
 
 
+def _utc_bound(name: str, value: datetime | None) -> datetime | None:
+    """Convert a listing bound with ``to_utc``, refusing one that leaves ``datetime``'s range.
+
+    Parameters
+    ----------
+    name : str
+        The query parameter the bound came from, for the error message.
+    value : datetime | None
+        The bound as the client sent it.
+
+    Returns
+    -------
+    datetime | None
+        The bound as an aware UTC datetime, or ``None`` when it was omitted.
+
+    Raises
+    ------
+    BadRequest
+        When the UTC instant falls outside years 1 to 9999, e.g.
+        ``9999-12-31T23:00:00-05:00``.
+    """
+    if value is None:
+        return None
+    try:
+        return to_utc(value)
+    except OverflowError as exc:
+        raise BadRequest(f"{name} ({value.isoformat()}) is out of range once converted to UTC") from exc
+
+
 class SnapshotService:
     """Snapshot operations with EPICS integration. Owns no transaction — the caller
     (request dep or worker ``session_scope``) commits."""
@@ -117,10 +148,42 @@ class SnapshotService:
         return meta_pv_values
 
     async def list_snapshots(
-        self, title: str | None = None, tag_ids: list[str] | None = None
+        self,
+        title: str | None = None,
+        tag_ids: list[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> list[SnapshotSummaryDTO]:
-        """List snapshots, optionally filtered by title and/or tags."""
-        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids)
+        """List snapshots, optionally filtered by title, tags and/or creation time.
+
+        Parameters
+        ----------
+        title : str | None
+            Case-insensitive substring match against the snapshot title.
+        tag_ids : list[str] | None
+            Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+        start : datetime | None
+            Lower bound on creation time, inclusive. Converted with ``to_utc``, because
+            ``created_at`` is a ``timestamptz`` and asyncpg refuses a naive bind parameter.
+        end : datetime | None
+            Upper bound on creation time, inclusive. Converted the same way as ``start``.
+
+        Returns
+        -------
+        list[SnapshotSummaryDTO]
+            Matching snapshot summaries, newest first.
+
+        Raises
+        ------
+        BadRequest
+            When a bound falls outside ``datetime``'s range once converted to UTC, or
+            both bounds are given and ``start`` is after ``end``.
+        """
+        start = _utc_bound("start", start)
+        end = _utc_bound("end", end)
+        if start is not None and end is not None and start > end:
+            raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
+        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids, start=start, end=end)
 
         # One grouped query for all value counts (avoids N+1).
         snapshot_ids = [snap.id for snap in snapshots]

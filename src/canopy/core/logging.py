@@ -72,20 +72,44 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def _resolve_level(name: str, fallback: int) -> int:
-    resolved = logging.getLevelNamesMapping().get(name.upper())
-    return resolved if resolved is not None else fallback
+def _resolve_level(name: str) -> int | None:
+    """Map a log level name to its number.
+
+    Parameters
+    ----------
+    name : str
+        Level name, matched case-insensitively and ignoring surrounding whitespace.
+
+    Returns
+    -------
+    int | None
+        The level number, or ``None`` when ``name`` is not a known level.
+    """
+    return logging.getLevelNamesMapping().get(name.strip().upper())
 
 
 def configure_logging(level: int | None = None) -> None:
     """Configure application logging. Idempotent, safe to call repeatedly.
 
-    ``level`` overrides ``CANOPY_LOG_LEVEL`` when given (kept for callers that
-    predate the settings-driven config).
+    Parameters
+    ----------
+    level : int | None
+        Level number that overrides ``CANOPY_LOG_LEVEL`` when given, kept for callers
+        that predate the settings-driven config. When omitted, ``CANOPY_LOG_LEVEL`` is
+        used; an unknown name there falls back to ``INFO`` and logs a warning through
+        the configured handlers instead of failing process startup.
+
+    Returns
+    -------
+    None
     """
     settings = get_settings()
+    unknown_level: str | None = None
     if level is None:
-        level = _resolve_level(settings.log_level, logging.INFO)
+        resolved = _resolve_level(settings.log_level)
+        if resolved is None:
+            unknown_level = settings.log_level
+        level = logging.INFO if resolved is None else resolved
 
     formatter: logging.Formatter
     if settings.log_format == "json":
@@ -117,6 +141,8 @@ def configure_logging(level: int | None = None) -> None:
         logging.getLogger(__name__).warning(
             "Could not open log file %s (%s); logging to stdout only", settings.log_path, file_error
         )
+    if unknown_level is not None:
+        logging.getLogger(__name__).warning("Unknown log level %r, falling back to INFO", unknown_level)
 
 
 def _adopt_framework_loggers() -> None:

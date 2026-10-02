@@ -5,6 +5,31 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Core application settings, read from the environment with the ``CANOPY_`` prefix.
+
+    Attributes
+    ----------
+    debug : bool
+        Include verbose error detail in responses.
+    api_keys : str
+        API-key registry string, ``"<token>:<scope>[+<scope>][,...]"``.
+    log_format : {"text", "json"}
+        Line format for every log handler; ``"json"`` is what the Promtail scraper parses.
+    log_path : str | None
+        Optional file sink alongside stdout, rotated by size; ``None`` means stdout only.
+    log_level : str
+        Root log level name for the API and worker processes, matched case-insensitively.
+        An unknown name falls back to ``INFO`` with a warning.
+    database_url : str
+        Postgres DSN using the asyncpg driver.
+    database_pool_size : int
+        Connections kept in the SQLAlchemy pool.
+    database_max_overflow : int
+        Connections the pool may open beyond ``database_pool_size``.
+    redis_url : str
+        Redis DSN backing the Arq job queue and per-job progress.
+    """
+
     model_config = SettingsConfigDict(
         env_prefix="CANOPY_",
         env_file=".env",
