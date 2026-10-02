@@ -8,6 +8,7 @@ so reads after writes are visible without committing; ``drop_all`` isolates acro
 
 from typing import Any
 from datetime import UTC, datetime
+from collections import Counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -246,11 +247,19 @@ async def test_restore_derivation_error_skips_the_pv_and_blames_setpoints(db_ses
     summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
 
     io.writes.clear()
-    result = await svc.restore_snapshot(summary.id)
+    result, emitted = await _restore_recording_phases(svc, summary.id)
     assert io.writes == {}
     assert result.failure_count == 1
     assert result.failures[0]["phase"] == "Setpoints"
     assert "not a BDES setpoint" in result.failures[0]["error"]
+
+    # The failure lands in Setpoints when that phase starts, not before.
+    _assert_phases_only_move_forward(emitted)
+    assert emitted[0][0] == {"name": "Setpoints", "current": 0, "total": 1, "status": "pending", "failures": 0}
+    assert emitted[-1] == [
+        {"name": "Setpoints", "current": 1, "total": 1, "status": "completed", "failures": 1},
+        {"name": "MagnetTrimHook", "current": 0, "total": 0, "status": "skipped", "failures": 0},
+    ]
 
 
 async def test_restore_progress_reaches_the_total(db_session: AsyncSession):
@@ -268,7 +277,7 @@ async def test_restore_progress_reaches_the_total(db_session: AsyncSession):
 
     reported: list[tuple[int, int]] = []
 
-    async def on_progress(current: int, total: int, message: str) -> None:
+    async def on_progress(current: int, total: int, message: str, phases: list[dict] | None = None) -> None:
         reported.append((current, total))
 
     await svc.restore_snapshot(summary.id, progress_callback=on_progress)
@@ -279,6 +288,92 @@ async def test_restore_progress_reaches_the_total(db_session: AsyncSession):
     assert currents == sorted(currents)
     assert currents[0] == 0
     assert reported[-1] == (6, 6)
+
+
+_STATUS_RANK = {"pending": 0, "running": 1, "completed": 2, "skipped": 2}
+
+
+async def _restore_recording_phases(svc: SnapshotService, snapshot_id: str):
+    """Restore, returning the result and the ``phases`` sent with every progress call."""
+    emitted: list[list[dict] | None] = []
+
+    async def on_progress(current: int, total: int, message: str, phases: list[dict] | None = None) -> None:
+        emitted.append(phases)
+
+    result = await svc.restore_snapshot(snapshot_id, progress_callback=on_progress)
+    return result, emitted
+
+
+def _assert_phases_only_move_forward(emitted: list[list[dict] | None]) -> None:
+    # Every call replaces the job's whole progress value, so one call without phases
+    # would wipe them from the poller's view mid-restore.
+    assert emitted and all(phases is not None for phases in emitted)
+    names = [phase["name"] for phase in emitted[0]]
+    for before, after in zip(emitted, emitted[1:]):
+        assert [phase["name"] for phase in after] == names
+        for b, a in zip(before, after):
+            assert _STATUS_RANK[a["status"]] >= _STATUS_RANK[b["status"]], (b, a)
+            assert a["current"] >= b["current"], (b, a)
+
+
+async def test_restore_reports_per_phase_progress(db_session: AsyncSession):
+    """Same restore as above: BEND's setpoint and QUAD's BCON write fail."""
+    await _seed_pv(db_session, "QUAD:LI21:201:BDES")
+    await _seed_pv(db_session, "BEND:DMP1:400:BDES")
+    io = FakeEpicsIO({"QUAD:LI21:201:BDES": _ev(3.0), "BEND:DMP1:400:BDES": _ev(4.0)})
+    io.fail_writes.update({"BEND:DMP1:400:BDES", "QUAD:LI21:201:BCON"})
+    svc = SnapshotService(db_session, io, restore_hooks=[WriteToConHook(), MagnetTrimHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="m"))
+
+    result, emitted = await _restore_recording_phases(svc, summary.id)
+
+    _assert_phases_only_move_forward(emitted)
+    assert [(p["name"], p["status"], p["current"], p["total"]) for p in emitted[0]] == [
+        ("Setpoints", "pending", 0, 2),
+        ("WriteToConHook", "pending", 0, 2),
+        ("MagnetTrimHook", "pending", 0, 2),
+    ]
+    assert any(phases[0]["status"] == "running" for phases in emitted)
+    assert any(phases[1]["status"] == "running" for phases in emitted)
+    assert emitted[-1] == [
+        {"name": "Setpoints", "current": 2, "total": 2, "status": "completed", "failures": 1},
+        # BEND's BCON write is never attempted, so the phase drops to QUAD's alone.
+        {"name": "WriteToConHook", "current": 1, "total": 1, "status": "completed", "failures": 1},
+        # Both PVs already failed, so there is nothing left to trim.
+        {"name": "MagnetTrimHook", "current": 0, "total": 0, "status": "skipped", "failures": 0},
+    ]
+    rows_by_phase = Counter(row["phase"] for row in result.failures)
+    assert {p["name"]: p["failures"] for p in emitted[-1] if p["failures"]} == dict(rows_by_phase)
+
+
+async def test_restore_without_hooks_reports_only_setpoints(db_session: AsyncSession):
+    await _seed_pv(db_session, "A:SP")
+    await _seed_pv(db_session, "B:SP")
+    io = FakeEpicsIO({"A:SP": _ev(1.0), "B:SP": _ev(2.0)})
+    svc = SnapshotService(db_session, io, restore_hooks=[])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
+
+    _result, emitted = await _restore_recording_phases(svc, summary.id)
+
+    _assert_phases_only_move_forward(emitted)
+    assert emitted[-1] == [{"name": "Setpoints", "current": 2, "total": 2, "status": "completed", "failures": 0}]
+
+
+async def test_restore_with_nothing_to_write_skips_every_phase(db_session: AsyncSession):
+    """A readback-only PV is in the snapshot but has no setpoint to restore."""
+    await _seed_pv(db_session, None, "R:RB")
+    io = FakeEpicsIO({"R:RB": _ev(1.0)})
+    svc = SnapshotService(db_session, io, restore_hooks=[MagnetTrimHook()])
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="s"))
+
+    result, emitted = await _restore_recording_phases(svc, summary.id)
+
+    assert result.total_pvs == 0
+    _assert_phases_only_move_forward(emitted)
+    assert [(p["name"], p["status"], p["total"]) for p in emitted[-1]] == [
+        ("Setpoints", "skipped", 0),
+        ("MagnetTrimHook", "skipped", 0),
+    ]
 
 
 async def test_restore_subset_by_pv_ids(db_session: AsyncSession):

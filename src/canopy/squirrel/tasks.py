@@ -2,9 +2,10 @@
 
 Run in the ``canopy-worker`` process off the request path. Progress here rides a
 per-job Redis key via ``jobs.gateway.report_progress`` (Arq passes the pool as
-``ctx['redis']`` and the id as ``ctx['job_id']``), and the whole DB write is one
-``session_scope`` transaction committed once at the end — so the snapshot row and its
-COPY'd values are all-or-nothing and an Arq retry never resumes against partial state.
+``ctx['redis']`` and the id as ``ctx['job_id']``), a restore's per-phase progress
+included, and the whole DB write is one ``session_scope`` transaction committed once
+at the end — so the snapshot row and its COPY'd values are all-or-nothing and an Arq
+retry never resumes against partial state.
 
 The EPICS connector is built once at worker startup and shared via ``ctx['epics']``.
 Task results are opaque refs the Jobs module returns verbatim to pollers.
@@ -43,9 +44,9 @@ def _progress_sink(ctx: dict):
     redis = ctx["redis"]
     job_id = ctx["job_id"]
 
-    async def on_progress(current: int, total: int, message: str) -> None:
+    async def on_progress(current: int, total: int, message: str, phases: list[dict] | None = None) -> None:
         percent = int((current / total) * 100) if total else 0
-        await report_progress(redis, job_id, percent, message)
+        await report_progress(redis, job_id, percent, message, phases=phases)
 
     return on_progress
 
