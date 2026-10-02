@@ -29,6 +29,9 @@ from canopy.analytics.app import app as analytics_app
 from canopy.analytics.app import analytics_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
+from canopy.contracts.base import CanopyModel
+from canopy.core.color_scheme import get_color_scheme
+from canopy.converter.config import get_converter_config
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -85,9 +88,18 @@ app.mount("/converter", converter_app)
 app.mount("/analytics", analytics_app)
 
 
+class HealthDTO(CanopyModel):
+    """``/health``: ``degraded`` names the parts serving a fallback (``color-scheme`` on a bad scheme file)."""
+
+    status: str
+    degraded: list[str] = []
+
+
 @app.get("/health", tags=["meta"])
-async def health() -> dict[str, str]:
-    return {"status": "healthy"}
+async def health() -> HealthDTO:
+    # The converter's scheme, from the same cached load its lifespan made: no new log line here.
+    scheme = get_color_scheme(get_converter_config().scheme_path)
+    return HealthDTO(status="healthy", degraded=list(scheme.degraded))
 
 
 @app.get("/", tags=["meta"])

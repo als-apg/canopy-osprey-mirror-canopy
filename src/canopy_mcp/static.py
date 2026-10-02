@@ -51,6 +51,9 @@ itself (``canopy-default`` when unset). It is omitted when the flattener is
 unavailable. It describes only what this server sees, never the converter's
 scheme. The document holds no secret, so it is served with
 ``Access-Control-Allow-Origin: *`` for cross-origin fetches by the Builder.
+
+``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
+only when that scheme had load errors (it is then served as ``canopy-default``).
 """
 
 import re
@@ -270,7 +273,11 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         return _missing()
 
     async def health(request: Request) -> Response:
-        return JSONResponse({"status": "ok"})
+        body: dict[str, Any] = {"status": "ok"}
+        degraded = get_color_scheme().degraded
+        if degraded:
+            body["degraded"] = list(degraded)
+        return JSONResponse(body)
 
     return [
         Route("/", index, methods=["GET", "HEAD"]),

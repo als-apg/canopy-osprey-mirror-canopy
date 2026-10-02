@@ -13,7 +13,9 @@ proxy -- i.e. from a browser session -- so :class:`McpProxyGuard` refuses it
 with 403 before it reaches FastMCP. The viewer routes stay reachable through
 the proxy; that is what they are for.
 
-One lifespan runs FastMCP's session manager, opens the shared backend
+One lifespan first flattens the color scheme (:func:`~canopy.core.color_scheme.get_color_scheme`,
+so a bad ``CANOPY_THEME_FILE`` logs its one ERROR at boot, not on the first
+request), then runs FastMCP's session manager, opens the shared backend
 ``httpx.AsyncClient`` (``app.state.http``) and then enters every
 :data:`STARTUP_HOOKS` entry in order; hooks are exited in reverse on shutdown.
 The defaults load the widget catalog (:func:`catalog_hook`) and launch the
@@ -33,6 +35,7 @@ from starlette.responses import PlainTextResponse
 from starlette.middleware import Middleware
 from starlette.applications import Starlette
 
+from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp.store import DraftStore
 from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
@@ -118,6 +121,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         hooks = STARTUP_HOOKS if startup_hooks is None else startup_hooks
+        get_color_scheme()  # never raises; a bad file degrades /health and serves canopy-default
         async with mcp_app.lifespan(app), make_client(settings) as client, AsyncExitStack() as stack:
             app.state.http = client
             for hook in list(hooks):
