@@ -1,7 +1,9 @@
 """Saved views: named Trace queries the viewer stores and reloads.
 
 A view is ``{"id", "name", "query", "updated"}``: ``query`` is the Trace embed
-query string (``pv=A:B&range=-1h``), ``name`` what the viewer shows, and
+query string (``pv=A:B&range=-1h``, plus Trace's axis and display settings as
+``plot=<JSON>`` when the operator changed them), stored opaque and never
+parsed here, ``name`` what the viewer shows, and
 ``updated`` the ISO-8601 UTC time of the last write. Each lives at
 ``<drafts_dir>/views/<id>.json``, a sibling of ``screens/``, so the drafts
 manifest (which walks only ``screens/``) never lists one and the ``/drafts``

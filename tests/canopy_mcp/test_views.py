@@ -211,6 +211,20 @@ def test_crud_over_http(client: TestClient) -> None:
     assert r.headers["cache-control"] == "no-cache"
 
 
+def test_query_with_a_plot_config_is_stored_verbatim(client: TestClient, drafts: Path) -> None:
+    # Trace's axis and display settings ride in the query as `plot=<JSON>`;
+    # the server stores the query as an opaque string and never parses it.
+    query = (
+        "pv=GTL:BPM1:X&pv=GTL:QF1:I&range=-6h"
+        "&plot={%22v%22:1,%22axes%22:[{},{%22name%22:%22I%22,%22logScale%22:true}],"
+        "%22traces%22:[{},{%22axis%22:1}]}"
+    )
+    r = _put(client, "gtl", {"name": "GTL", "query": query})
+    assert r.status_code == 201
+    assert client.get("/views/gtl").json()["query"] == query
+    assert json.loads((drafts / "views" / "gtl.json").read_text())["query"] == query
+
+
 @pytest.mark.parametrize("path", ["/views/a.b", "/views/x.screen", "/views/" + "a" * 65, "/views/a/b", "/views/"])
 @pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
 def test_invalid_id_is_400(client: TestClient, path: str, method: str) -> None:

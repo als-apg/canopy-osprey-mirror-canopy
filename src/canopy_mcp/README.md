@@ -46,8 +46,9 @@ A view is `{"id", "name", "query", "updated"}`, where `updated` is an ISO-8601
 UTC timestamp. The id must match `^[A-Za-z0-9_-]{1,64}$`. The `PUT` body is
 exactly `{"name": str, "query": str}`. The name is stripped and must then be 1
 to 120 characters with no control characters. The query is the Trace embed
-query, for example `pv=A:B&range=-1h`; it may be empty and is limited to
-4096 UTF-8 bytes. A `PUT` answers 415 unless `Content-Type` is
+query, for example `pv=A:B&range=-1h`, which may also carry Trace's axis and
+display settings as `plot=<JSON>`. The server stores it as an opaque string;
+it may be empty and is limited to 4096 UTF-8 bytes. A `PUT` answers 415 unless `Content-Type` is
 `application/json` and 413 when the body is larger than 16 KiB. Any other
 invalid body is a 400. Error bodies are `{"error": "..."}`.
 
