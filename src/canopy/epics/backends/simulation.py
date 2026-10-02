@@ -41,6 +41,7 @@ from canopy.epics.pv_protocol import strip_protocol_prefix
 _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
 
 _NO_ALARM_STATUS = ALARM_STATUS_CODES["NO_ALARM"]
+_FAULT_INDEX = _ENUM_CHOICES.index("FAULT")
 
 
 def _parse_fail_pvs(raw: str) -> frozenset[str]:
@@ -199,11 +200,31 @@ class SimulationConnector:
             return severity, ALARM_STATUS_CODES["HIGH" if v > 0 else "LOW"]
         return severity, _NO_ALARM_STATUS
 
+    @staticmethod
+    def _enum_alarm(choice: object) -> tuple[AlarmSeverity, int]:
+        """The severity and alarm status an IOC would report with a simulated enum choice.
+
+        Parameters
+        ----------
+        choice : object
+            The choice, as its index into the enum's choices or as its name.
+
+        Returns
+        -------
+        tuple[AlarmSeverity, int]
+            MAJOR with STATE for the FAULT choice, NO_ALARM otherwise.
+        """
+        if choice in (_FAULT_INDEX, "FAULT"):
+            return AlarmSeverity.MAJOR, ALARM_STATUS_CODES["STATE"]
+        return AlarmSeverity.NO_ALARM, _NO_ALARM_STATUS
+
     def _value_for(self, pv: str) -> PVValue:
         """Generate the current value of a simulated PV.
 
-        A PV pinned by a prior `put` is returned verbatim, keeping the
-        name-derived value kind so a write round-trips through a read.
+        A PV pinned by a prior `put` is returned verbatim, keeping the name-derived
+        value kind so a write round-trips through a read, with the alarm an IOC would
+        raise for that value. A ``ca://`` / ``pva://`` prefix doesn't change which PV
+        is read: every spelling shares one generated value and one written override.
 
         Parameters
         ----------
@@ -215,76 +236,41 @@ class SimulationConnector:
         PVValue
             The value, its kind, and an alarm severity with the matching status.
         """
-        kind = self._kind_for(pv)
-        now = time.time_ns()
-        if pv in self._overrides:
-            return PVValue(
-                pv=pv,
-                value=self._overrides[pv],
-                value_kind=kind,
-                severity=AlarmSeverity.NO_ALARM,
-                alarm_status=_NO_ALARM_STATUS,
-                ts_ns=now,
-            )
-        if kind is ValueKind.ENUM:
-            idx = int(time.monotonic() / 2) % len(_ENUM_CHOICES)
-            if _ENUM_CHOICES[idx] == "FAULT":
-                severity, status = AlarmSeverity.MAJOR, ALARM_STATUS_CODES["STATE"]
-            else:
-                severity, status = AlarmSeverity.NO_ALARM, _NO_ALARM_STATUS
-            return PVValue(
-                pv=pv,
-                value=idx,
-                value_kind=kind,
-                severity=severity,
-                alarm_status=status,
-                ts_ns=now,
-            )
-        if kind is ValueKind.WAVEFORM:
-            t = 2 * math.pi * 0.1 * time.monotonic() + self._phase(pv)
+        name = strip_protocol_prefix(pv)
+        kind = self._kind_for(name)
+        severity, status = AlarmSeverity.NO_ALARM, _NO_ALARM_STATUS
+        if name in self._overrides:
+            value = self._overrides[name]
+            if kind is ValueKind.SCALAR and isinstance(value, int | float):
+                severity, status = self._alarm_for(float(value))
+            elif kind is ValueKind.ENUM:
+                severity, status = self._enum_alarm(value)
+        elif kind is ValueKind.ENUM:
+            value = int(time.monotonic() / 2) % len(_ENUM_CHOICES)
+            severity, status = self._enum_alarm(value)
+        elif kind is ValueKind.WAVEFORM:
+            t = 2 * math.pi * 0.1 * time.monotonic() + self._phase(name)
             n = self._waveform_length
-            wf = [round(10.0 * math.sin(t + i * 2 * math.pi / n), 4) for i in range(n)]
-            return PVValue(
-                pv=pv,
-                value=wf,
-                value_kind=kind,
-                severity=AlarmSeverity.NO_ALARM,
-                alarm_status=_NO_ALARM_STATUS,
-                ts_ns=now,
-            )
-        if kind is ValueKind.STRING:
-            return PVValue(
-                pv=pv,
-                value=f"sample={self._sine(pv):+.3f}",
-                value_kind=kind,
-                severity=AlarmSeverity.NO_ALARM,
-                alarm_status=_NO_ALARM_STATUS,
-                ts_ns=now,
-            )
-        if kind is ValueKind.TABLE:
+            value = [round(10.0 * math.sin(t + i * 2 * math.pi / n), 4) for i in range(n)]
+        elif kind is ValueKind.STRING:
+            value = f"sample={self._sine(name):+.3f}"
+        elif kind is ValueKind.TABLE:
             n = 4
-            base = self._sine(pv)
+            base = self._sine(name)
             rows = list(range(1, n + 1))
             vals = [round(base + i, 3) for i in range(n)]
-            status = [_ENUM_CHOICES[(i + int(time.monotonic())) % len(_ENUM_CHOICES)] for i in range(n)]
-            table = TableValue(labels=["Index", "Value", "Status"], columns=[rows, vals, status])
-            return PVValue(
-                pv=pv,
-                value=table,
-                value_kind=kind,
-                severity=AlarmSeverity.NO_ALARM,
-                alarm_status=_NO_ALARM_STATUS,
-                ts_ns=now,
-            )
-        v = self._sine(pv)
-        severity, status = self._alarm_for(v)
+            states = [_ENUM_CHOICES[(i + int(time.monotonic())) % len(_ENUM_CHOICES)] for i in range(n)]
+            value = TableValue(labels=["Index", "Value", "Status"], columns=[rows, vals, states])
+        else:
+            value = self._sine(name)
+            severity, status = self._alarm_for(value)
         return PVValue(
             pv=pv,
-            value=v,
+            value=value,
             value_kind=kind,
             severity=severity,
             alarm_status=status,
-            ts_ns=now,
+            ts_ns=time.time_ns(),
         )
 
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
@@ -293,7 +279,8 @@ class SimulationConnector:
     async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
         """Pin a PV's value so subsequent reads and monitor ticks return it.
 
-        The override is never evicted, which is bounded in practice by the small set
+        The override is held under the name without any ``ca://`` / ``pva://`` prefix,
+        so a read through any spelling of the PV returns it. It is never evicted, which is bounded in practice by the small set
         of distinct PVs a dev or test session writes to.
 
         Parameters
@@ -314,9 +301,10 @@ class SimulationConnector:
             configured always-failing PVs, or when the instance's RNG draws below the
             configured put error rate.
         """
-        if strip_protocol_prefix(pv) in self._put_fail_pvs or self._rng.random() < self._put_error_rate:
+        name = strip_protocol_prefix(pv)
+        if name in self._put_fail_pvs or self._rng.random() < self._put_error_rate:
             raise PVWriteFailed(f"simulated put failure for {pv}")
-        self._overrides[pv] = value
+        self._overrides[name] = value
 
     async def describe(self, pv: str) -> PVMeta:
         kind = self._kind_for(pv)

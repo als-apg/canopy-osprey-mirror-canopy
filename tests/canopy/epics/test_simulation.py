@@ -50,12 +50,54 @@ def test_enum_fault_reports_state_alarm(monkeypatch, clock, severity, status):
     assert (value.severity, value.alarm_status) == (severity, status)
 
 
-async def test_written_value_reports_no_alarm_status():
+@pytest.mark.parametrize(
+    "pv,written,severity,status",
+    [
+        ("SIM:X", 42.0, AlarmSeverity.MAJOR, 3),
+        ("SIM:X", -8, AlarmSeverity.MINOR, 6),
+        ("SIM:X", 1.0, AlarmSeverity.NO_ALARM, 0),
+        ("SIM:STATE:ENUM", 3, AlarmSeverity.MAJOR, 7),
+        ("SIM:STATE:ENUM", "FAULT", AlarmSeverity.MAJOR, 7),
+        ("SIM:STATE:ENUM", 0, AlarmSeverity.NO_ALARM, 0),
+        ("SIM:MSG:STR", "written", AlarmSeverity.NO_ALARM, 0),
+        ("SIM:TRACE:WAVEFORM", [99.0, -99.0], AlarmSeverity.NO_ALARM, 0),
+    ],
+)
+async def test_written_value_reports_the_alarm_it_would_raise(pv, written, severity, status):
     conn = SimulationConnector.from_config(EpicsConfig())
-    await conn.put("SIM:X", 42.0)
+    await conn.put(pv, written)
+    value = await conn.get(pv)
+    assert value.value == written
+    assert (value.severity, value.alarm_status) == (severity, status)
+
+
+@pytest.mark.parametrize(
+    "written,read",
+    [("ca://SIM:Y", "SIM:Y"), ("SIM:Y", "pva://SIM:Y"), ("pva://SIM:Y", "ca://SIM:Y")],
+)
+async def test_written_value_round_trips_across_protocol_prefixes(written, read):
+    conn = SimulationConnector()
+    await conn.put(written, 1.5)
+    value = await conn.get(read)
+    assert value.value == 1.5
+    assert value.pv == read
+
+
+async def test_prefixed_write_reads_back_bare_with_its_alarm():
+    conn = SimulationConnector()
+    await conn.put("ca://SIM:X", 9.5)
     value = await conn.get("SIM:X")
-    assert value.severity is AlarmSeverity.NO_ALARM
-    assert value.alarm_status == 0
+    assert value.value == 9.5
+    assert (value.severity, value.alarm_status) == (AlarmSeverity.MAJOR, 3)
+
+
+@pytest.mark.parametrize("pv", ["SIM:X", "SIM:MSG:STR", "SIM:TRACE:WAVEFORM", "SIM:DATA:TABLE"])
+def test_generated_value_is_the_same_under_every_prefix(monkeypatch, pv):
+    monkeypatch.setattr(simulation.time, "monotonic", lambda: 12.3)
+    conn = SimulationConnector()
+    bare = conn._value_for(pv)
+    for prefixed in (f"ca://{pv}", f"pva://{pv}"):
+        assert conn._value_for(prefixed).value == bare.value
 
 
 # --- put failure injection -------------------------------------------------- #
