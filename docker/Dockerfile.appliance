@@ -21,8 +21,8 @@
 # Versions: hatch-vcs (canopy) and setuptools_scm (PyDMConverter) cannot read a
 # git worktree's `.git` FILE, and `git describe` output is not PEP 440, so the
 # caller computes both versions on the host and passes them as build-args. The
-# provenance SHAs (CANOPY_SHA, TRACE_SHA, TRACE_LOCK_SHA256, RUNTIME_SHA) are
-# passed the same way and recorded as org.canopy.* labels.
+# provenance SHAs (CANOPY_SHA, TRACE_SHA, TRACE_LOCK_SHA256, RUNTIME_SHA,
+# SDK_SHA, PYDM_SHA) are passed the same way and recorded as org.canopy.* labels.
 #
 # Plain pip on python:3.12 (ALS convention). pip ignores canopy's
 # [tool.uv.sources] path link, which is why the PyDMConverter wheel is passed
@@ -76,12 +76,16 @@ ARG CANOPY_SHA
 ARG TRACE_SHA
 ARG TRACE_LOCK_SHA256
 ARG RUNTIME_SHA
+ARG SDK_SHA
+ARG PYDM_SHA
 ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CANOPY=${CANOPY_VERSION}
 
 LABEL org.canopy.sha="${CANOPY_SHA}" \
       org.canopy.trace.sha="${TRACE_SHA}" \
       org.canopy.trace.lockfile-sha256="${TRACE_LOCK_SHA256}" \
-      org.canopy.runtime.sha="${RUNTIME_SHA}"
+      org.canopy.runtime.sha="${RUNTIME_SHA}" \
+      org.canopy.sdk.sha="${SDK_SHA}" \
+      org.canopy.pydm.sha="${PYDM_SHA}"
 
 WORKDIR /app
 
@@ -100,6 +104,12 @@ ENV CANOPY_TRACE_DIST=/app/trace
 RUN --mount=type=bind,from=canopy,target=/ctx/canopy,rw \
     SETUPTOOLS_SCM_PRETEND_VERSION="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CANOPY}" \
     pip install --no-cache-dir /wheels/*.whl '/ctx/canopy[mcp]'
+
+# Smoke: the PyDMConverter wheel carries the colour-scheme loader, and the
+# canopy wheel ships its default colour scheme.
+RUN python -c "import pydmconverter.scheme, pathlib, canopy; \
+p = pathlib.Path(canopy.__file__).parent / 'converter/data/schemes/canopy-default.json'; \
+assert p.is_file(), f'missing {p}'"
 
 # Chromium for canopy_mcp's screenshot tool, at a fixed world-readable path so
 # the browser is visible to whichever uid the container runs as.
