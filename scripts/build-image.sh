@@ -25,6 +25,16 @@
 # untracked, non-ignored file makes it dirty and the fingerprint (tree_fp) is a
 # content hash of the working tree. verify-image.sh recomputes the fingerprint.
 #
+# A react-trace whose package.json has a `link:` dependency (the local
+# canopy-sdk-js checkout, before the SDK is released) cannot be built inside
+# Docker: the link points outside the copied tree. Such a Trace is refused
+# without --worktree. With --worktree it is built on the host, in place in
+# $TRACE: the linked package's dist/ is rebuilt first (`pnpm run build` there),
+# then the Dockerfile's trace-build steps run (HUSKY=0 pnpm install
+# --frozen-lockfile, tsc -b, vite build --base=./) and $TRACE/dist is passed as
+# the `trace` context. The linked package's commit (tree_state, so
+# `<sha>+dirty.<fp>` for uncommitted SDK work) becomes org.canopy.trace.sdk.sha.
+#
 # Needs git, tar, uv/uvx, pnpm and docker (BuildKit). Run with --help for inputs.
 set -euo pipefail
 
@@ -58,7 +68,11 @@ Options:
   --worktree  build Trace from TRACE's working tree (uncommitted edits included)
               instead of a `git archive` of TRACE_REF, which must be TRACE's
               HEAD; label canopy, runtime and trace with working-tree
-              fingerprints (<sha>+dirty.<fp>) that verify-image.sh recomputes
+              fingerprints (<sha>+dirty.<fp>) that verify-image.sh recomputes.
+              Required when TRACE's package.json has a `link:` dependency:
+              Trace is then built on the host in TRACE (after rebuilding the
+              linked package) and the link's commit is labelled
+              org.canopy.trace.sdk.sha
   --dry-run   validate inputs, resolve SHAs and print the docker build argv; build nothing
   -h, --help  show this help
 EOF
@@ -166,12 +180,40 @@ if [ "$NO_TRACE" = 0 ]; then
     fi
 fi
 
+# --- a `link:` dependency in react-trace (the unreleased local SDK) ---------
+# `link:` targets of a package.json read on stdin, one per line.
+link_targets() { grep -oE '"link:[^"]*"' | sed -e 's/^"link://' -e 's/"$//' || true; }
+SDK_DIR=""
+SDK_SHA=""
+if [ "$NO_TRACE" = 0 ]; then
+    if [ "$WORKTREE" = 1 ]; then
+        [ -f "$TRACE/package.json" ] || die "--worktree: $TRACE/package.json is missing"
+        links="$(link_targets < "$TRACE/package.json")"
+    else
+        links="$(git -C "$TRACE" show "$TRACE_SHA:package.json" 2>/dev/null | link_targets)"
+        [ -z "$links" ] || die "TRACE_REF=$TRACE_REF has a link: dependency ($links) that Docker cannot follow; build with --worktree"
+    fi
+    if [ -n "$links" ]; then
+        [ "$(printf '%s\n' "$links" | wc -l | tr -d ' ')" = 1 ] \
+            || die "--worktree: TRACE=$TRACE has more than one link: dependency ($(echo $links)); only one is supported"
+        case "$links" in /*) SDK_DIR="$links" ;; *) SDK_DIR="$TRACE/$links" ;; esac
+        [ -d "$SDK_DIR" ] || die "--worktree: link: target $links of TRACE=$TRACE is not a directory"
+        SDK_DIR="$(cd "$SDK_DIR" && pwd)"
+        [ -f "$SDK_DIR/package.json" ] || die "--worktree: link: target $SDK_DIR has no package.json"
+        git -C "$SDK_DIR" rev-parse --verify --quiet HEAD >/dev/null \
+            || die "--worktree: link: target $SDK_DIR is not in a git checkout with a commit"
+        SDK_SHA="$(tree_state "$SDK_DIR")"
+    fi
+fi
+
 echo "$PROG: canopy  $CANOPY_SHA ($ROOT)" >&2
 echo "$PROG: runtime $RUNTIME_SHA ($RT)" >&2
 echo "$PROG: pydm    $PYDM_SHA ($PYDM)" >&2
 if [ "$NO_TRACE" = 0 ]; then
     mode="commit"; [ "$WORKTREE" = 1 ] && mode="working tree"
+    [ -n "$SDK_DIR" ] && mode="working tree, built on the host"
     echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE, $mode), pnpm-lock.yaml sha256 $TRACE_LOCK_SHA256" >&2
+    [ -z "$SDK_DIR" ] || echo "$PROG: sdk     $SDK_SHA ($SDK_DIR, linked from TRACE)" >&2
 else
     echo "$PROG: trace   none (--no-trace)" >&2
 fi
@@ -190,6 +232,7 @@ WHEEL_DIR="$WORK/wheels"
 TRACE_SRC="$WORK/trace-src"
 TRACE_EMPTY="$WORK/trace-empty"
 VIEWER_DIST="$RT/apps/viewer/dist"
+TRACE_DIST="${TRACE:+$TRACE/dist}"
 
 argv=(docker build)
 [ -n "$PLATFORM" ] && argv+=(--platform "$PLATFORM")
@@ -203,6 +246,12 @@ argv+=(
     --build-context "trace-src=$TRACE_SRC"
 )
 [ "$NO_TRACE" = 1 ] && argv+=(--build-context "trace=$TRACE_EMPTY")
+# Host-built Trace (linked SDK): its dist overrides the `trace` stage, so the
+# (empty) trace-src context is never read.
+[ -n "$SDK_DIR" ] && argv+=(
+    --build-context "trace=$TRACE_DIST"
+    --label "org.canopy.trace.sdk.sha=$SDK_SHA"
+)
 argv+=(
     --build-arg "CANOPY_VERSION=$CANOPY_VERSION"
     --build-arg "PYDM_VERSION=$PYDM_VERSION"
@@ -236,7 +285,24 @@ ls "$WHEEL_DIR"/*.whl >/dev/null 2>&1 || die "no PyDMConverter wheel was built"
 # react-trace source of exactly TRACE_SHA, or of the working tree under
 # --worktree (built by the `trace-build` stage); under --no-trace both
 # trace contexts stay empty.
-if [ "$NO_TRACE" = 0 ] && [ "$WORKTREE" = 1 ]; then
+if [ -n "$SDK_DIR" ]; then
+    # Linked SDK first, so Trace bundles a fresh dist/ of exactly SDK_SHA; then
+    # the trace-build stage's steps, in place. Build output is git-ignored, so
+    # neither tree_state may move; a build that dirties a tree is refused,
+    # because verify-image.sh would no longer match the labels.
+    # TRACE is unset for these commands: pnpm and the bundler read it as a
+    # tracing filter and warn on every invocation.
+    (cd "$SDK_DIR" && unset TRACE && pnpm run build) \
+        || die "rebuilding the linked SDK in $SDK_DIR failed (did you run pnpm install there?)"
+    (cd "$TRACE" && unset TRACE && HUSKY=0 pnpm install --frozen-lockfile \
+        && pnpm exec tsc -b && pnpm exec vite build --base=./) \
+        || die "host build of Trace in $TRACE failed"
+    [ -f "$TRACE_DIST/index.html" ] || die "trace dist missing ($TRACE_DIST/index.html)"
+    [ "$(tree_state "$SDK_DIR")" = "$SDK_SHA" ] \
+        || die "the working tree of $SDK_DIR changed during the build (build output not ignored, or edited meanwhile); rebuild once it is stable"
+    [ "$(tree_state "$TRACE")" = "$TRACE_SHA" ] \
+        || die "the working tree of $TRACE changed during the build (build output not ignored, or edited meanwhile); rebuild once it is stable"
+elif [ "$NO_TRACE" = 0 ] && [ "$WORKTREE" = 1 ]; then
     tree_files "$TRACE" | (cd "$TRACE" && tar --null -T - -cf -) | tar -x -C "$TRACE_SRC"
 elif [ "$NO_TRACE" = 0 ]; then
     git -C "$TRACE" archive "${TRACE_SHA%%+*}" | tar -x -C "$TRACE_SRC"
