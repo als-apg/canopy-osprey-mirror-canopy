@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 # Negative-cache size at which expired entries are swept on insert.
 _NEGATIVE_SWEEP_AT = 1024
 
+# What a describe that failed or timed out leaves behind: bare metadata (b6:IA-1).
+_EMPTY_META_FIELDS = PVMeta(pv="").model_dump(exclude={"pv"})
+
 
 @dataclass(frozen=True)
 class _DeadName:
@@ -82,6 +85,8 @@ class PVBroker:
         self._negative: dict[str, _DeadName] = {}
         # PVs with no subscriber kept warm until their release task fires.
         self._grace: dict[str, asyncio.Task] = {}
+        # Late-connect re-describes in flight, one per PV (b6:IA-1).
+        self._redescribing: dict[str, asyncio.Task] = {}
 
     @property
     def registry(self) -> SubscriptionRegistry:
@@ -134,7 +139,7 @@ class PVBroker:
 
     async def stop(self) -> None:
         self._running = False
-        background = [*self._tasks, *self._grace.values(), *self._seeding.values()]
+        background = [*self._tasks, *self._grace.values(), *self._seeding.values(), *self._redescribing.values()]
         background += [t for tasks in self._deliveries.values() for t in tasks]
         for task in background:
             task.cancel()
@@ -142,6 +147,7 @@ class PVBroker:
         self._tasks = []
         self._grace.clear()
         self._seeding.clear()
+        self._redescribing.clear()
         self._deliveries.clear()
         for pv, sub in list(self._monitors.items()):
             try:
@@ -531,11 +537,60 @@ class PVBroker:
             await self._ingest(value)
 
     async def _ingest(self, value: PVValue) -> None:
+        previous = self._latest.get(value.pv)
         self._latest[value.pv] = value
         if value.connected:
             self._negative.pop(value.pv, None)
+            if (previous is None or not previous.connected) and self._meta_is_missing(value.pv):
+                self._ensure_redescribe(value.pv)
         async with self._buffer_lock:
             self._buffer[value.pv] = value
+
+    # --- late-connect re-describe ---------------------------------------- #
+
+    def _meta_is_missing(self, pv: str) -> bool:
+        """True when the cached meta is absent, empty or a dead-name placeholder."""
+        meta = self._meta.get(pv)
+        return meta is None or meta.model_dump(exclude={"pv"}) == _EMPTY_META_FIELDS
+
+    def _ensure_redescribe(self, pv: str) -> None:
+        """Spawn one deduped re-describe for ``pv``; nothing awaits a describe on the consume loop."""
+        if pv in self._redescribing:
+            return
+        task = asyncio.create_task(self._redescribe(pv), name=f"redescribe:{pv}")
+        self._redescribing[pv] = task
+
+        def _forget(done: asyncio.Task, pv: str = pv) -> None:
+            if self._redescribing.get(pv) is done:
+                del self._redescribing[pv]
+            if not done.cancelled() and done.exception() is not None:
+                logger.error("re-describe of %s failed", pv, exc_info=done.exception())
+
+        task.add_done_callback(_forget)
+
+    async def _redescribe(self, pv: str) -> None:
+        """Describe a held PV on its first successful connect and re-send ``initial`` to its holders.
+
+        Waits for an in-flight seed first (its describe may land the meta), runs
+        under the seed semaphore like ``_seed_pv``, and drops the result when the
+        PV was released meanwhile.
+        """
+        seed = self._seeding.get(pv)
+        if seed is not None:
+            await asyncio.wait({seed})
+        if not self._meta_is_missing(pv) or not self._is_held(pv):
+            return
+        async with self._seed_sem:
+            try:
+                meta = await self._connector.describe(pv)
+            except Exception as exc:
+                logger.debug("re-describe failed for %s: %s", pv, exc)
+                return
+        if not self._is_held(pv):
+            return
+        self._meta[pv] = meta
+        for client_id in list(self._registry.subscribers(pv)):
+            await self._send_initial(client_id, [pv])
 
     async def _flush_loop(self) -> None:
         interval = self._config.ws_batch_interval_ms / 1000.0
@@ -549,19 +604,28 @@ class PVBroker:
                 logger.exception("broker flush loop iteration failed")
 
     async def _flush(self) -> None:
+        """Send the buffered diffs, then a ``flush`` marker to the channels that ask for one.
+
+        The marker goes out on every flush, empty ones included, and after the
+        diff it covers, so an in-process client (Vole) can take its ingest
+        watermark from it. Browser sockets never receive it.
+        """
         async with self._buffer_lock:
-            if not self._buffer:
-                return
             updates = self._buffer
             self._buffer = {}
-        per_client: dict[str, dict[str, dict]] = defaultdict(dict)
-        for pv, value in updates.items():
-            payload = value.model_dump(by_alias=True)
-            for client_id in self._registry.subscribers(pv):
-                per_client[client_id][pv] = payload
-        for client_id, data in per_client.items():
-            frame = {"type": "diff", "data": data, "count": len(data), "timestamp": time.time()}
-            await self._send(client_id, frame)
+        if updates:
+            per_client: dict[str, dict[str, dict]] = defaultdict(dict)
+            for pv, value in updates.items():
+                payload = value.model_dump(by_alias=True)
+                for client_id in self._registry.subscribers(pv):
+                    per_client[client_id][pv] = payload
+            for client_id, data in per_client.items():
+                frame = {"type": "diff", "data": data, "count": len(data), "timestamp": time.time()}
+                await self._send(client_id, frame)
+        marker = {"type": "flush", "timestamp": time.time()}
+        for client_id, channel in list(self._channels.items()):
+            if getattr(channel, "wants_flush_marker", False):
+                await self._send(client_id, marker)
 
     async def _heartbeat_loop(self) -> None:
         while self._running:
