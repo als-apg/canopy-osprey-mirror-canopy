@@ -1,6 +1,8 @@
 """Saved views: named Trace queries the viewer stores and reloads.
 
-A view is ``{"id", "name", "query", "updated"}``: ``query`` is the Trace embed
+A view is ``{"id", "name", "query", "kind", "updated"}``: ``kind`` names the
+tool that opens it (default ``trace``; rows stored without one read as
+``trace``; any ``^[a-z][a-z0-9-]{0,31}$`` kind is stored and listed), ``query`` is the Trace embed
 query string (``pv=A:B&range=-1h``, plus Trace's axis and display settings as
 ``plot=<JSON>`` when the operator changed them), stored opaque and never
 parsed here, ``name`` what the viewer shows, and
@@ -17,8 +19,9 @@ HTTP surface (:func:`build_view_routes`), every response ``Cache-Control: no-cac
 
 * ``GET /views`` -> 200 ``{"views": [...]}``, sorted by name (case-folded), then id
 * ``GET /views/{id}`` -> 200 view, 404, 400 invalid id
-* ``PUT /views/{id}`` with a JSON ``{"name", "query"}`` body -> 201 created,
-  200 replaced (body: the stored view); 400 invalid id or body, 415 unless
+* ``PUT /views/{id}`` with a JSON ``{"name", "query"[, "kind"]}`` body -> 201 created,
+  200 replaced (body: the stored view); 400 invalid id or body, 409 when the
+  id is stored under another kind (a PUT without ``kind`` counts as ``trace``), 415 unless
   ``Content-Type: application/json``, 413 over :data:`MAX_BODY_BYTES`
 * ``DELETE /views/{id}`` -> 204, 404, 400
 
@@ -43,6 +46,8 @@ from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
 VIEW_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
+VIEW_KIND_PATTERN = re.compile(r"[a-z][a-z0-9-]{0,31}")
+DEFAULT_KIND = "trace"
 VIEW_SUFFIX = ".json"
 MAX_NAME_CHARS = 120
 MAX_QUERY_BYTES = 4096
@@ -61,6 +66,10 @@ class InvalidViewId(ValueError):
 
 class InvalidView(ValueError):
     """The name or query breaks the view rules."""
+
+
+class ViewKindConflict(ValueError):
+    """The id is already stored under a different kind."""
 
 
 class ViewNotFound(LookupError):
@@ -84,6 +93,13 @@ def clean_name(name: Any) -> str:
     if any(unicodedata.category(ch) in ("Cc", "Cs") for ch in name):
         raise InvalidView("name must not contain control characters or lone surrogates")
     return name
+
+
+def check_kind(kind: Any) -> str:
+    """``kind`` when it matches ``^[a-z][a-z0-9-]{0,31}$``."""
+    if not isinstance(kind, str) or not VIEW_KIND_PATTERN.fullmatch(kind):
+        raise InvalidView("kind must match ^[a-z][a-z0-9-]{0,31}$")
+    return kind
 
 
 def check_query(query: Any) -> str:
@@ -128,7 +144,10 @@ class ViewStore:
             name, query = clean_name(doc.get("name")), check_query(doc.get("query"))
         except InvalidView:
             return None
-        return {"id": view_id, "name": name, "query": query, "updated": doc["updated"]}
+        kind = doc.get("kind", DEFAULT_KIND)
+        if not isinstance(kind, str) or not VIEW_KIND_PATTERN.fullmatch(kind):
+            return None
+        return {"id": view_id, "name": name, "query": query, "kind": kind, "updated": doc["updated"]}
 
     def get(self, view_id: str) -> dict[str, Any]:
         view = self._load(self.path_for(view_id), view_id)
@@ -150,13 +169,29 @@ class ViewStore:
                 views.append(view)
         return sorted(views, key=lambda v: (v["name"].casefold(), v["id"]))
 
-    async def put(self, view_id: str, name: Any, query: Any) -> tuple[dict[str, Any], bool]:
-        """Create or replace the view; returns ``(view, created)``."""
+    async def put(
+        self, view_id: str, name: Any, query: Any, kind: Any = None
+    ) -> tuple[dict[str, Any], bool]:
+        """Create or replace the view; returns ``(view, created)``.
+
+        An absent ``kind`` is ``trace``. Raises :class:`ViewKindConflict` when the id is
+        already stored under another kind (checked inside the write lock).
+        """
         path = self.path_for(view_id)
-        view = {"id": view_id, "name": clean_name(name), "query": check_query(query), "updated": _now()}
+        kind = DEFAULT_KIND if kind is None else check_kind(kind)
+        view = {
+            "id": view_id,
+            "name": clean_name(name),
+            "query": check_query(query),
+            "kind": kind,
+            "updated": _now(),
+        }
         data = _serialize(view)
         async with self._lock:
             created = not path.exists()
+            existing = None if created else self._load(path, view_id)
+            if existing is not None and existing["kind"] != kind:
+                raise ViewKindConflict(f"view {view_id!r} is stored as kind {existing['kind']!r}")
             self.views.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=self.views, prefix=f".{path.name}.", suffix=".tmp")
             try:
@@ -238,12 +273,14 @@ def build_view_routes(views: ViewStore) -> list[Route]:
             body = json.loads(raw)
         except ValueError:
             return _error(400, "body is not valid JSON")
-        if not isinstance(body, dict) or set(body) != {"name", "query"}:
-            return _error(400, 'body must be a JSON object with exactly "name" and "query"')
+        if not isinstance(body, dict) or not {"name", "query"} <= set(body) <= {"name", "query", "kind"}:
+            return _error(400, 'body must be a JSON object with "name" and "query" and optionally "kind"')
         try:
-            view, created = await views.put(view_id, body["name"], body["query"])
+            view, created = await views.put(view_id, body["name"], body["query"], body.get("kind"))
         except InvalidView as exc:
             return _error(400, str(exc))
+        except ViewKindConflict as exc:
+            return _error(409, str(exc))
         return _json(view, 201 if created else 200)
 
     async def item(request: Request) -> Response:
