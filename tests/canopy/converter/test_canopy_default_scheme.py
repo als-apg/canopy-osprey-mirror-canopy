@@ -109,7 +109,7 @@ LIGHT = {
 # Dark values redesigned to pass contrast, and the new Grid_Fill role.
 DARK = {
     "Grid": "#757575",
-    "Button_Background": "#787878",
+    "Button_Background": "#6a6a6a",
     "MAJOR": "#ff8389",
     "STOP": "#ff8389",
 }
