@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     trace_dist: Path | None = None
     # Query the Trace tab opens with when the URL carries none (pv=...&range=...).
     trace_default_query: str = ""
+    # Query the correlation page opens with when the URL carries none (x=...&y=...).
+    correlation_default_query: str = ""
 
 
 @lru_cache

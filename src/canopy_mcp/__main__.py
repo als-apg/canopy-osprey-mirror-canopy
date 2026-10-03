@@ -39,7 +39,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     # The full app, not bare FastMCP: /mcp plus the viewer, drafts, read-only
     # forward routes, /health and the proxy guard all share this one port.
     app = app_module.create_app(self_url=f"http://127.0.0.1:{args.port}")
-    uvicorn.run(app, host=args.host, port=args.port)
+    # No permessage-deflate on the browser's WebSocket hop: the relayed frames
+    # are small and frequent, and compressing them costs more than it saves.
+    uvicorn.run(app, host=args.host, port=args.port, ws_per_message_deflate=False)
     return 0
 
 

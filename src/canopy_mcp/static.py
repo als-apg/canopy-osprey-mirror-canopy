@@ -24,6 +24,13 @@ and ``/trace/favicon.svg``. Every other ``/trace`` path, the bare ``/trace``
 included, is a 404 rather than a slash redirect. ``config.json`` names the
 route only when ``trace_dist/index.html`` exists.
 
+react-trace's correlation page, ``trace_dist/correlation.html``, is served at
+``/trace/correlation.html`` exactly like the Trace index (same ``<base href>``
+of ``{prefix}/trace/``, :data:`TRACE_CSP` and no-cache), and ``config.json``
+names it as ``{"correlation": {"path": "trace/correlation.html", "query": ...}}``
+only when the file exists, so a dist built from an upstream react-trace without
+the page advertises nothing and 404s there.
+
 ``config.json`` always names the saved-views API (``{"views": {"path": "views"}}``):
 ``/views`` and ``/views/{id}`` are served by :mod:`canopy_mcp.views` from
 ``<drafts_dir>/views/``, beside (never inside) ``screens/``, so a view is
@@ -54,6 +61,8 @@ VIEWS_PATH = "views"
 IMAGE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff"}
 
 TRACE_PATH = "trace/"
+CORRELATION_PAGE = "correlation.html"
+CORRELATION_PATH = TRACE_PATH + CORRELATION_PAGE
 # On the trace index: same-origin, unsandboxed iframe of the viewer.
 TRACE_CSP = (
     "script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; "
@@ -94,14 +103,21 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     }
     if _trace_index(settings) is not None:
         config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
+    if _trace_page(settings, CORRELATION_PAGE) is not None:
+        config["correlation"] = {"path": CORRELATION_PATH, "query": settings.correlation_default_query}
     return config
+
+
+def _trace_page(settings: Settings, name: str) -> Path | None:
+    """The installed react-trace page ``name``, or ``None``."""
+    dist = settings.trace_dist
+    page = dist / name if dist else None
+    return page if page is not None and page.is_file() else None
 
 
 def _trace_index(settings: Settings) -> Path | None:
     """The installed react-trace ``index.html``, or ``None``."""
-    dist = settings.trace_dist
-    page = dist / "index.html" if dist else None
-    return page if page is not None and page.is_file() else None
+    return _trace_page(settings, "index.html")
 
 
 def _etag(rev: str) -> str:
@@ -187,14 +203,20 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         extra = None if is_screen else IMAGE_HEADERS
         return _revved(request, rev, lambda: FileResponse(target, media_type=media), extra)
 
-    async def trace_index(request: Request) -> Response:
-        page = _trace_index(settings)
+    def trace_html(request: Request, page: Path | None) -> Response:
+        """A react-trace entry page, based at ``{prefix}/trace/``."""
         if page is None:
             return _missing()
         prefix = safe_prefix(request.headers.get(PREFIX_HEADER))
         body = inject_base(page.read_text(encoding="utf-8"), prefix + "/trace")
         headers = {"Cache-Control": DRAFT_CACHE_CONTROL, "Content-Security-Policy": TRACE_CSP}
         return Response(body, media_type="text/html", headers=headers)
+
+    async def trace_index(request: Request) -> Response:
+        return trace_html(request, _trace_index(settings))
+
+    async def correlation_page(request: Request) -> Response:
+        return trace_html(request, _trace_page(settings, CORRELATION_PAGE))
 
     async def trace_asset(request: Request) -> Response:
         trace = settings.trace_dist
@@ -228,6 +250,7 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         Route("/trace/", trace_index, methods=["GET", "HEAD"]),
         Route("/trace/assets/{path:path}", trace_asset, methods=["GET", "HEAD"]),
         Route("/trace/favicon.svg", trace_favicon, methods=["GET", "HEAD"]),
+        Route(f"/{CORRELATION_PATH}", correlation_page, methods=["GET", "HEAD"]),
         # Claim the rest of /trace so the router never slash-redirects into it.
         Route("/trace", not_found),
         Route("/trace/{path:path}", not_found),

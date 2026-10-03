@@ -100,8 +100,14 @@ def make_relay(settings: Settings, path: str) -> Callable[[WebSocket], Awaitable
     async def relay(websocket: WebSocket) -> None:
         url = upstream_ws_url(settings.base_url, path, websocket.query_params.multi_items())
         try:
+            # compression=None: the in-cluster hop never negotiates permessage-deflate.
             upstream = await connect(
-                url, additional_headers=headers, open_timeout=OPEN_TIMEOUT, max_size=None, user_agent_header=None
+                url,
+                additional_headers=headers,
+                open_timeout=OPEN_TIMEOUT,
+                max_size=None,
+                user_agent_header=None,
+                compression=None,
             )
         except (OSError, TimeoutError, InvalidHandshake):
             # Closing before accept refuses the client's handshake.

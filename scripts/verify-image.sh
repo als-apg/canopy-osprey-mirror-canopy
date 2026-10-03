@@ -11,7 +11,9 @@
 #   - org.canopy.trace.lockfile-sha256  == sha256 of that commit's pnpm-lock.yaml
 #   - in the image: /app/viewer/index.html and /app/trace/index.html exist, the
 #     trace index uses relative ./assets/ URLs (no ="/assets/ or ="/favicon.svg),
-#     and `import pymongo` works.
+#     and `import pymongo` works; when the trace dist also ships
+#     /app/trace/correlation.html, that page passes the same URL checks (an
+#     image built from an upstream react-trace without it still verifies).
 # An image built with `build-image.sh --worktree` carries `<sha>+dirty.<fp>`
 # labels instead; each is accepted only when the checkout's HEAD is <sha> and
 # its working tree still hashes to <fp> (canopy, trace), and for such a trace
@@ -123,12 +125,13 @@ if docker run --rm --entrypoint sh "$IMAGE" -c '
     for f in /app/viewer/index.html /app/trace/index.html; do
         [ -f "$f" ] || { echo "missing $f"; rc=1; }
     done
-    t=/app/trace/index.html
-    if [ -f "$t" ]; then
+    for t in /app/trace/index.html /app/trace/correlation.html; do
+        [ -f "$t" ] || continue
         grep -qF "./assets/" "$t" || { echo "$t has no ./assets/ reference"; rc=1; }
         ! grep -qF "=\"/assets/" "$t" || { echo "$t has an absolute /assets/ URL"; rc=1; }
         ! grep -qF "=\"/favicon.svg" "$t" || { echo "$t has an absolute /favicon.svg URL"; rc=1; }
-    fi
+    done
+    [ -f /app/trace/correlation.html ] && echo "checked /app/trace/correlation.html"
     python -c "import pymongo" || { echo "import pymongo failed"; rc=1; }
     exit $rc
 ' >&2; then
