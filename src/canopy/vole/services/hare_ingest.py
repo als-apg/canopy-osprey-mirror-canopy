@@ -5,6 +5,14 @@ add_client/subscribe API that WebSocket clients use. Diff frames arrive
 at ~100ms intervals; each PVValue is converted to a Sample and appended
 to the corresponding ring.
 
+Every sample is stamped with the server's receive time and an ``after_connect``
+flag (an ``initial`` frame, the first sample after a disconnected entry, or a
+PV's first sample at all). Disconnected entries open an outage interval on the
+ring, closed by the next connected sample -- both on the receive clock. The
+broker sends this channel a ``flush`` marker after every flush, empty ones
+included; ``watermark_ns`` is the receive time of the newest marker, i.e. the
+newest flush ingest has fully applied.
+
 This module is guarded by try/except at import sites — it degrades
 gracefully when Hare is not available (tests, standalone Mole-only mode).
 """
@@ -24,9 +32,12 @@ logger = logging.getLogger(__name__)
 class VoleChannel:
     """Implements Hare's ClientChannel protocol for in-process ingestion.
 
-    The broker calls ``send_json`` with diff/initial/heartbeat frames.
-    Vole only cares about "diff" and "initial" frames.
+    The broker calls ``send_json`` with diff/initial/heartbeat/flush frames.
+    Vole applies "diff" and "initial" frames and takes its watermark from "flush".
     """
+
+    # Asks the broker for a ``flush`` marker after every flush, empty ones included.
+    wants_flush_marker = True
 
     def __init__(self, ingest: HareIngestService) -> None:
         self._ingest = ingest
@@ -43,7 +54,9 @@ class VoleChannel:
             if frame_type in ("diff", "initial"):
                 pv_data = data.get("data")
                 if isinstance(pv_data, dict):
-                    await self._ingest._handle_frame(pv_data)
+                    await self._ingest._handle_frame(pv_data, frame_type)
+            elif frame_type == "flush":
+                self._ingest._on_flush()
         except Exception:
             logger.warning(
                 "Failed to ingest %r frame",
@@ -66,6 +79,9 @@ class HareIngestService:
         self._channel = VoleChannel(self)
         self._subscribed_pvs: set[str] = set()
         self._running = False
+        self._watermark_ns = 0
+        self._seen: set[str] = set()  # PVs that have stored at least one sample
+        self._disconnected: set[str] = set()  # PVs whose last entry was disconnected
 
     async def start(self) -> None:
         self._broker.add_client(self.CLIENT_ID, self._channel)
@@ -82,16 +98,20 @@ class HareIngestService:
         await self._broker.remove_client(self.CLIENT_ID)
         logger.info("HareIngestService stopped")
 
-    async def subscribe(self, pvs: list[str]) -> list[str]:
+    async def subscribe(self, pvs: list[str], *, wait_seed: bool = True) -> list[str]:
         """Subscribe Vole to live updates for these PVs via Hare.
 
         Returns which of ``pvs`` are subscribed afterwards. Only names the broker
         accepted are recorded — a rejected one would make GraceManager believe
-        there is a buffer to tear down.
+        there is a buffer to tear down. ``wait_seed=False`` returns before the
+        broker's seed reads land, so a dead name does not cost the CA timeout.
         """
         new_pvs = [pv for pv in pvs if pv not in self._subscribed_pvs]
         if new_pvs:
-            accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs)
+            if wait_seed:
+                accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs)
+            else:
+                accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs, wait_seed=False)
             self._subscribed_pvs.update(accepted)
             logger.debug("Vole subscribed to %d/%d new PVs: %s", len(accepted), len(new_pvs), accepted[:5])
         return [pv for pv in pvs if pv in self._subscribed_pvs]
@@ -103,31 +123,54 @@ class HareIngestService:
             return
         await self._broker.unsubscribe(self.CLIENT_ID, to_unsub)
         self._subscribed_pvs -= set(to_unsub)
+        for pv in to_unsub:
+            name = strip_protocol_prefix(pv)
+            self._seen.discard(name)
+            self._disconnected.discard(name)
         logger.debug("Vole unsubscribed from %d PVs", len(to_unsub))
 
     @property
     def subscribed_pvs(self) -> set[str]:
         return set(self._subscribed_pvs)
 
-    async def _handle_frame(self, data: dict[str, dict]) -> None:
+    @property
+    def watermark_ns(self) -> int:
+        """Receive time of the newest Hare flush ingest has fully applied (0 before the first)."""
+        return self._watermark_ns
+
+    def _on_flush(self) -> None:
+        self._watermark_ns = self._buffer.clock.now_ns()
+
+    async def _handle_frame(self, data: dict[str, dict], frame_type: str = "diff") -> None:
         """Process a diff/initial frame: convert each PVValue to a Sample and append.
 
         The whole per-PV body is guarded so one malformed PV entry (e.g. a
         non-numeric ``tsNs``) skips only that PV — the rest of the frame still
         lands, and no exception propagates back to the broker.
         """
+        recv_ns = self._buffer.clock.now_ns()
         for pv_name, pv_dict in data.items():
             if not isinstance(pv_dict, dict):
                 continue
-            if not pv_dict.get("connected", True):
-                continue
-
             try:
+                canonical_pv = strip_protocol_prefix(pv_name)
+                if not pv_dict.get("connected", True):
+                    if canonical_pv not in self._disconnected:
+                        self._disconnected.add(canonical_pv)
+                        self._buffer.open_outage(canonical_pv, recv_ns)
+                    continue
+
                 sample = self._pv_value_to_sample(pv_dict)
                 if sample is None:
                     continue
-                canonical_pv = strip_protocol_prefix(pv_name)
-                await self._buffer.append(canonical_pv, sample)
+                after_connect = (
+                    frame_type == "initial" or canonical_pv in self._disconnected or canonical_pv not in self._seen
+                )
+                if canonical_pv in self._disconnected:
+                    self._disconnected.discard(canonical_pv)
+                    self._buffer.close_outage(canonical_pv, recv_ns)
+                await self._buffer.append(canonical_pv, sample, recv_ns=recv_ns, after_connect=after_connect)
+                self._seen.add(canonical_pv)
             except Exception:
                 logger.warning("Failed to ingest live sample for %s", pv_name, exc_info=True)
 

@@ -47,7 +47,7 @@ class TestDrop:
 class TestAccounting:
     def test_total_bytes_and_points(self, store):
         from canopy.contracts.sample import AlarmSeverity
-        from canopy.vole.buffer.ring import StoredSample
+        from canopy.vole.buffer.ring import BYTES_PER_SAMPLE, StoredSample
 
         ring = store.get_or_create("PV:A")
         ring.append(
@@ -55,7 +55,7 @@ class TestAccounting:
             now_ns=100,
         )
         assert store.total_points == 1
-        assert store.total_bytes == 80
+        assert store.total_bytes == BYTES_PER_SAMPLE
 
 
 class TestLRU:

@@ -10,7 +10,7 @@ from canopy.vole.config import VoleConfig
 from canopy.vole.errors import PVNotBuffered, BufferAtCapacity
 from canopy.core.decimation import uniform_time_decimate
 from canopy.contracts.sample import Sample
-from canopy.vole.buffer.ring import StoredSample
+from canopy.vole.buffer.ring import Outage, StoredSample
 from canopy.vole.buffer.store import PVStore
 from canopy.vole.schemas.buffer import PerPVInfoDTO, VoleStatsDTO
 from canopy.vole.services.notifier import ChangeNotifier
@@ -38,22 +38,36 @@ class BufferService:
         self._clock = clock
         self._config = config
         self._notifier = notifier
+        self._retry_after: dict[str, int] = {}
 
     @property
     def max_points(self) -> int:
         return self._config.max_points
 
+    @property
+    def clock(self) -> Clock:
+        return self._clock
+
+    @property
+    def provision_retry_ns(self) -> int:
+        return int(self._config.provision_retry_s * 1_000_000_000)
+
     # --- writes ---------------------------------------------------------- #
 
-    async def append(self, pv: str, sample: Sample) -> None:
-        """Append a live sample to the PV's ring."""
+    async def append(self, pv: str, sample: Sample, *, recv_ns: int = 0, after_connect: bool = False) -> None:
+        """Append a live sample to the PV's ring.
+
+        Under unrelievable memory pressure an append to an unpinned ring is
+        refused; a pinned ring (bounded by its own ceiling, shrunk by eviction)
+        keeps ingesting, since its subscription is the reason it is pinned.
+        """
         if self._eviction.under_pressure():
             await self._eviction.evict_lru()
-            if self._eviction.under_pressure():
+            if self._eviction.under_pressure() and not self._store.is_pinned(pv):
                 raise BufferAtCapacity(f"Global memory ceiling exceeded; cannot append to {pv}")
 
         ring = self._store.get_or_create(pv)
-        stored = self._sample_to_stored(sample, source_override="live")
+        stored = self._sample_to_stored(sample, source_override="live", recv_ns=recv_ns, after_connect=after_connect)
         now = self._clock.now_ns()
 
         async with self._store.lock_for(pv):
@@ -93,6 +107,99 @@ class BufferService:
     async def drop(self, pv: str) -> None:
         """Remove a PV's ring entirely. Idempotent."""
         self._store.drop(pv)
+
+    # --- pins, capacity, provisioning ------------------------------------ #
+
+    def pin(self, pvs: list[str], holder: str) -> None:
+        self._store.pin(pvs, holder)
+
+    def unpin(self, holder: str) -> list[str]:
+        return self._store.unpin(holder)
+
+    def is_pinned(self, pv: str) -> bool:
+        return self._store.is_pinned(pv)
+
+    def ensure_capacity(self, pv: str, max_points: int | None = None) -> None:
+        """Grow ``pv``'s ring to at least ``max_points`` (default ``settle_depth``); never shrinks."""
+        self._store.ensure_capacity(pv, max_points or self._config.settle_depth)
+
+    def touch(self, pv: str, now_ns: int) -> None:
+        ring = self._store.get(pv)
+        if ring is not None:
+            ring.touch(now_ns)
+
+    def ring_max_points(self, pv: str) -> int | None:
+        ring = self._store.get(pv)
+        return ring.max_points if ring is not None else None
+
+    def ring_count(self, pv: str) -> int:
+        ring = self._store.get(pv)
+        return ring.count if ring is not None else 0
+
+    def is_provisioned(self, pv: str) -> bool:
+        ring = self._store.get(pv)
+        return ring is not None and ring.provisioned
+
+    def mark_provisioned(self, pv: str) -> None:
+        self._store.get_or_create(pv).provisioned = True
+
+    def provision_retry_after_ns(self, pv: str) -> int:
+        ring = self._store.get(pv)
+        side = self._retry_after.get(pv, 0)
+        if ring is None:
+            return side
+        if side:
+            # A deferral recorded before the ring existed moves onto the ring.
+            del self._retry_after[pv]
+            ring.provision_retry_after_ns = max(ring.provision_retry_after_ns, side)
+        return ring.provision_retry_after_ns
+
+    def defer_provision(self, pv: str, until_ns: int) -> None:
+        """Record that a failed provision of ``pv`` may be retried after ``until_ns``.
+
+        Kept on the ring when there is one, else in a side table (a refused PV has
+        no ring yet) so a PV the archiver refuses costs one Mole call per period.
+        """
+        ring = self._store.get(pv)
+        if ring is not None:
+            ring.provision_retry_after_ns = until_ns
+        else:
+            self._retry_after[pv] = until_ns
+
+    # --- sample-record port (synchronous under the per-PV state) --------- #
+
+    def last_at_or_before(self, pv: str, ts_ns: int) -> StoredSample | None:
+        ring = self._store.get(pv)
+        return ring.last_at_or_before(ts_ns) if ring is not None else None
+
+    def read_latest_sync(self, pv: str) -> StoredSample | None:
+        ring = self._store.get(pv)
+        return ring.latest if ring is not None else None
+
+    def in_outage(self, pv: str, ts_ns: int) -> bool:
+        ring = self._store.get(pv)
+        return ring.in_outage(ts_ns) if ring is not None else False
+
+    def outages(self, pv: str) -> list[Outage]:
+        ring = self._store.get(pv)
+        return ring.outages if ring is not None else []
+
+    def samples_since(self, pv: str, recv_after_ns: int) -> list[StoredSample]:
+        ring = self._store.get(pv)
+        return ring.samples_since(recv_after_ns) if ring is not None else []
+
+    def ring_slice(self, pv: str, ts_from_ns: int) -> tuple[list[StoredSample], list[Outage]]:
+        """One synchronous copy of the samples with ``ts >= ts_from_ns`` plus the outage intervals."""
+        ring = self._store.get(pv)
+        if ring is None:
+            return [], []
+        return ring.slice_from(ts_from_ns), ring.outages
+
+    def open_outage(self, pv: str, now_ns: int) -> None:
+        self._store.open_outage(pv, now_ns)
+
+    def close_outage(self, pv: str, now_ns: int) -> None:
+        self._store.close_outage(pv, now_ns)
 
     # --- reads ----------------------------------------------------------- #
 
@@ -224,7 +331,14 @@ class BufferService:
 
     # --- internal helpers ------------------------------------------------ #
 
-    def _sample_to_stored(self, sample: Sample, *, source_override: str | None = None) -> StoredSample:
+    def _sample_to_stored(
+        self,
+        sample: Sample,
+        *,
+        source_override: str | None = None,
+        recv_ns: int = 0,
+        after_connect: bool = False,
+    ) -> StoredSample:
         source: Literal["live", "archive"] = (
             source_override if source_override in ("live", "archive") else sample.source
         )  # type: ignore[assignment]
@@ -233,6 +347,8 @@ class BufferService:
             value=sample.value,
             severity=sample.severity,
             source=source,
+            recv_ns=recv_ns,
+            after_connect=after_connect,
         )
 
     def _stored_to_sample(self, stored: StoredSample) -> Sample:

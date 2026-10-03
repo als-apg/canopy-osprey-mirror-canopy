@@ -1,17 +1,22 @@
 """Data-source abstraction for Fox.
 
-Fox never imports Vole directly. It depends only on this ``DataSource`` Protocol.
-When Vole ships, its gateway implements ``DataSource`` and is injected into
-``FormulaService`` via ``fox_lifespan()``.
+Fox never imports Vole directly. It depends only on this ``DataSource`` Protocol
+and the callables declared here. Vole's adapter implements ``DataSource`` and
+the sample-record port; ``fox_lifespan()`` injects both into ``FormulaService``
+and ``SubscriptionManager``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, NamedTuple, runtime_checkable
 from dataclasses import dataclass
+from collections.abc import Callable, Awaitable
 
 import numpy as np
 
-from canopy.contracts.sample import Sample
+from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.contracts.formula import IndexMode, AlignmentMode
+
+if TYPE_CHECKING:
+    from canopy.mole.adapters.base import ArchiveBlock
 
 
 @dataclass(frozen=True)
@@ -26,6 +31,51 @@ class AlignedWindow:
     ts_ns: np.ndarray
     arrays: dict[str, np.ndarray]
     severities: dict[str, np.ndarray]
+
+
+class SampleRecord(NamedTuple):
+    """One stored sample as the table evaluator sees it.
+
+    ``value`` is raw (non-numeric → null is the cell fill's job); ``severity``
+    lets INVALID → null be decided at the cell; ``in_outage`` says the PV was in
+    a recorded outage at the looked-up instant; ``recv_ns`` is the server receive
+    time (0 for archive-seeded samples); ``after_connect`` marks the first sample
+    after a (re)connect.
+    """
+
+    value: Any
+    severity: AlarmSeverity
+    in_outage: bool
+    ts_ns: int
+    recv_ns: int
+    after_connect: bool
+
+
+@dataclass(frozen=True)
+class RingSlice:
+    """One synchronous copy of a ring's samples from a timestamp on, plus its outages.
+
+    ``severities`` are ``AlarmSeverity`` ordinals (``list(AlarmSeverity).index``);
+    ``outages`` are ``(start_ns, end_ns)`` on the receive clock, ``end_ns`` None while open.
+    """
+
+    ts_ns: np.ndarray  # int64
+    values: np.ndarray  # object
+    severities: np.ndarray  # int8
+    outages: list[tuple[int, int | None]]
+
+
+# Callables Vole provides and fox_lifespan injects into SubscriptionManager.
+PinFn = Callable[[list[str], str], None]
+UnpinFn = Callable[[str], Awaitable[list[str]]]
+WatermarkFn = Callable[[], int]
+EnsureCapacityFn = Callable[..., None]
+LastAtOrBeforeFn = Callable[[str, int], SampleRecord | None]
+SamplesSinceFn = Callable[[str, int], list[SampleRecord]]
+RingSliceFn = Callable[[str, int], RingSlice]
+FetchWindowBudgetedFn = Callable[..., Awaitable["ArchiveBlock"]]  # (pv, t0_ns, t1_ns, *, budget=None)
+FetchLastBeforeFn = Callable[..., Awaitable[list[Sample | None]]]  # (pv, ts_list)
+EventFaithfulFn = Callable[..., Awaitable[bool]]
 
 
 @runtime_checkable
