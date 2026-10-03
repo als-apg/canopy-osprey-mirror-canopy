@@ -41,11 +41,22 @@ async def fox_lifespan():
     sub_manager = SubscriptionManager(
         formula_service=service,
         on_change_fn=vole_gateway.on_change,
-        subscribe_live_fn=vole_gateway.subscribe_live,
+        subscribe_live_fn=vole_gateway.subscribe_live,  # accepts wait_seed=False for table inputs
         subscribe_latest_fn=vole_gateway.subscribe_latest,
         min_interval_ms=config.min_interval_ms,
         max_subscriptions_per_client=config.max_subscriptions_per_client,
         input_wait_notify_s=config.input_wait_notify_s,
+        # The row-store port (plan task 1.2); the table eval wires its call sites in 1.3.
+        pin_fn=vole_gateway.pin,
+        unpin_fn=vole_gateway.unpin,
+        watermark_fn=vole_gateway.watermark_ns,
+        ensure_capacity_fn=vole_gateway.ensure_capacity,
+        last_at_or_before_fn=data_source.last_at_or_before,
+        samples_since_fn=data_source.samples_since,
+        ring_slice_fn=data_source.ring_slice,
+        fetch_window_budgeted_fn=mole_gateway.fetch_window_budgeted,
+        fetch_last_before_fn=mole_gateway.fetch_last_before,
+        event_faithful_fn=mole_gateway.event_faithful,
     )
     gateway.bind_subscription_manager(sub_manager)
 

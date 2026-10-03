@@ -23,6 +23,7 @@ dependencies = [
     "PyDMConverter>=1.0.5",
     "python-multipart>=0.0.32",
     "pymongo>=4.17",
+    "orjson>=3.12.0",
 ]
 
 [project.optional-dependencies]

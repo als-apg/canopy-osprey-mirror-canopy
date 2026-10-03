@@ -4,8 +4,9 @@ All compute is CPU-bound and runs via ``asyncio.to_thread`` to avoid blocking
 the event loop. Timeout is enforced via ``asyncio.wait_for``.
 """
 
+import re
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import numpy as np
 import numexpr as ne
@@ -40,6 +41,22 @@ def worst_severity_arrays(severity_arrays: list[np.ndarray]) -> list[AlarmSeveri
     stacked = np.stack(severity_arrays, axis=0)
     max_ordinals = np.max(stacked, axis=0)
     return [_SEVERITY_ORDER[int(o)] for o in max_ordinals]
+
+
+_BARE_BINDING_RE = re.compile(r"\s*\{([^{}]+)\}\s*")
+
+
+def bare_binding(expression: str, bindings: Mapping[str, str]) -> str | None:
+    """The binding a column passes through unchanged (``"{x}"``), else None.
+
+    A bare-binding table column needs no parse and no numexpr call: its cells
+    are the input's values as they are, so the table path skips
+    ``evaluate_array`` for it. Scalar/timeseries/waveform formulas are unchanged.
+    """
+    match = _BARE_BINDING_RE.fullmatch(expression)
+    if match is None or match.group(1) not in bindings:
+        return None
+    return match.group(1)
 
 
 def _numexpr_expr(parsed: ParsedFormula) -> str:
