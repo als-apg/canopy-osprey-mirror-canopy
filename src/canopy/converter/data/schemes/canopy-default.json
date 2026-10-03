@@ -15,7 +15,7 @@
     },
     "MAJOR": {
       "light": "#da1e28",
-      "dark": "#fa4d56"
+      "dark": "#ff8389"
     },
     "INVALID": {
       "light": "#a56eff",
@@ -47,11 +47,15 @@
     },
     "Button_Background": {
       "light": "#e0e0e0",
-      "dark": "#393939"
+      "dark": "#787878"
     },
     "Grid": {
       "light": "#c6c6c6",
-      "dark": "#393939"
+      "dark": "#757575"
+    },
+    "Grid_Fill": {
+      "light": "#c6c6c6",
+      "dark": "#2e2e2e"
     },
     "Display_Background": {
       "light": "#ffffff",
@@ -79,7 +83,7 @@
     },
     "STOP": {
       "light": "#da1e28",
-      "dark": "#fa4d56"
+      "dark": "#ff8389"
     }
   },
   "import": {
@@ -96,7 +100,10 @@
       "Read_Background": "Read_Background",
       "Write_Background": "Write_Background",
       "Button_Background": "Button_Background",
-      "Grid": "Grid",
+      "Grid": {
+        "role": "Grid",
+        "background_color": "Grid_Fill"
+      },
       "Display_Background": "Display_Background",
       "On": "On",
       "Off": "Off",

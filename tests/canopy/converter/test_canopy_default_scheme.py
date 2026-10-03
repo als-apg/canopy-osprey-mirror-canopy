@@ -41,6 +41,7 @@ ROLES = [
     "Write_Background",
     "Button_Background",
     "Grid",
+    "Grid_Fill",
     "Display_Background",
     "On",
     "Off",
@@ -51,7 +52,11 @@ ROLES = [
 ]
 
 # Phoebus standard named colours (color.def plus the NamedWidgetColors built-ins).
-PHOEBUS_NAMES = [name for name in ROLES if name != "Display_Background"]
+# Grid_Fill is not a Phoebus name: it is the box-background slot of Phoebus Grid.
+PHOEBUS_NAMES = [name for name in ROLES if name not in ("Display_Background", "Grid_Fill")]
+
+# Phoebus Grid splits by use: as a box background it becomes Grid_Fill.
+GRID_IMPORT = {"role": "Grid", "background_color": "Grid_Fill"}
 
 # Stock EDM colors.list names whose meaning matches a role.
 EDM_IMPORT = {
@@ -75,6 +80,40 @@ ALARM_LIGHT = {
     "INVALID": "#a56eff",
     "DISCONNECTED": "#6f6f6f",
 }
+
+# Light values are today's CANOPY look and stay put; only dark was redesigned.
+LIGHT = {
+    "Transparent": "#ffffff00",
+    "OK": "#24a148",
+    "MINOR": "#f1c21b",
+    "MAJOR": "#da1e28",
+    "INVALID": "#a56eff",
+    "DISCONNECTED": "#6f6f6f",
+    "Text": "#161616",
+    "ActiveText": "#0f62fe",
+    "Background": "#ffffff",
+    "Read_Background": "#f4f4f4",
+    "Write_Background": "#edf5ff",
+    "Button_Background": "#e0e0e0",
+    "Grid": "#c6c6c6",
+    "Grid_Fill": "#c6c6c6",
+    "Display_Background": "#ffffff",
+    "On": "#24a148",
+    "Off": "#0e6027",
+    "Header_Background": "#393939",
+    "Header_ForeGround": "#ffffff",
+    "Attention": "#ff832b",
+    "STOP": "#da1e28",
+}
+
+# Dark values redesigned to pass contrast, and the new Grid_Fill role.
+DARK = {
+    "Grid": "#757575",
+    "Button_Background": "#787878",
+    "MAJOR": "#ff8389",
+    "STOP": "#ff8389",
+}
+GRID_FILL = {"light": "#c6c6c6", "dark": "#2e2e2e"}
 
 CANONICAL_HEX = re.compile(r"^#[0-9a-f]{6}([0-9a-f]{2})?$")
 
@@ -134,11 +173,34 @@ def test_alarm_light_values_match_runtime_tokens(scheme, role):
     assert scheme["roles"][role]["light"] == ALARM_LIGHT[role]
 
 
+@pytest.mark.parametrize("role", ROLES)
+def test_light_values_unchanged(scheme, role):
+    assert scheme["roles"][role]["light"] == LIGHT[role]
+
+
+@pytest.mark.parametrize("role", sorted(DARK))
+def test_redesigned_dark_values(scheme, role):
+    assert scheme["roles"][role]["dark"] == DARK[role]
+
+
+def test_grid_fill_values(scheme):
+    assert scheme["roles"]["Grid_Fill"] == GRID_FILL
+
+
+def test_grid_fill_light_matches_grid_light(scheme):
+    assert scheme["roles"]["Grid_Fill"]["light"] == scheme["roles"]["Grid"]["light"]
+
+
 def test_phoebus_import_maps_standard_names(scheme):
     phoebus = scheme["import"]["phoebus"]
     expected = {name: name for name in PHOEBUS_NAMES}
     expected["Display_Background"] = "Display_Background"
+    expected["Grid"] = GRID_IMPORT
     assert phoebus == expected
+
+
+def test_phoebus_import_splits_grid_background(scheme):
+    assert scheme["import"]["phoebus"]["Grid"] == GRID_IMPORT
 
 
 def test_phoebus_import_maps_display_background_to_itself(scheme):
@@ -158,7 +220,14 @@ def test_edm_import_names_exist_in_stock_palette():
 
 @pytest.mark.parametrize("source", ["phoebus", "edm"])
 def test_every_import_target_is_a_role(scheme, source):
-    bad = {k: v for k, v in scheme["import"][source].items() if v not in ROLES}
+    bad = {}
+    for name, target in scheme["import"][source].items():
+        if isinstance(target, dict):
+            # Slot object: a default "role" plus per-slot roles, every one a role.
+            if "role" not in target or any(v not in ROLES for v in target.values()):
+                bad[name] = target
+        elif target not in ROLES:
+            bad[name] = target
     assert not bad, f"import.{source} targets that are not roles: {bad}"
 
 
