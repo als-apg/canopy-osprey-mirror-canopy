@@ -9,17 +9,23 @@ This commit implements raw `fetch_window`, `health`, and `close`. Binned mode,
 metadata, and search land in subsequent commits.
 """
 
+import json
 import time
+import asyncio
 from typing import Literal
 from datetime import UTC, datetime
 
 import httpx
+import numpy as np
 
 from canopy.mole.config import ArchiverInstanceConfig
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.adapters.base import (
+    SEED_SAMPLE_BUDGET,
+    SEVERITY_ORDINAL,
     AdapterHealth,
+    ArchiveBlock,
     ArchiverTimeout,
     ArchiverBadResponse,
     ArchiverUnavailable,
@@ -27,7 +33,32 @@ from canopy.mole.adapters.base import (
     PVNotFoundInArchiver,
     normalize_severity,
     register_archiver_type,
+    fetch_window_budgeted_via,
 )
+
+
+def _parse_raw_arrays(content: bytes, archiver: str) -> ArchiveBlock:
+    """The whole seed-path parse -- JSON decode plus the numpy build -- meant for a worker thread."""
+    try:
+        payload = json.loads(content)
+    except ValueError as exc:
+        raise ArchiverBadResponse(f"Appliance '{archiver}' returned invalid JSON: {exc}") from exc
+    if not isinstance(payload, list) or not payload:
+        return ArchiveBlock.empty()
+    rows = payload[0].get("data") if isinstance(payload[0], dict) else None
+    if not isinstance(rows, list):
+        raise ArchiverBadResponse(f"Appliance '{archiver}': missing 'data' array in response")
+    ts = np.empty(len(rows), dtype=np.int64)
+    values = np.empty(len(rows), dtype=object)
+    severities = np.empty(len(rows), dtype=np.int8)
+    for i, row in enumerate(rows):
+        try:
+            ts[i] = int(row["secs"]) * 1_000_000_000 + int(row.get("nanos", 0))
+            values[i] = row["val"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ArchiverBadResponse(f"Appliance '{archiver}': malformed sample row: {exc}") from exc
+        severities[i] = SEVERITY_ORDINAL[normalize_severity(row.get("severity"))]
+    return ArchiveBlock(ts, values, severities)
 
 
 def _ns_to_iso(ts_ns: int) -> str:
@@ -41,6 +72,8 @@ class EpicsArchiverApplianceAdapter:
     """Adapter for one EPICS Archiver Appliance instance."""
 
     type_name: str = "epics_archiver_appliance"
+    # The Appliance stores every change event with its severity.
+    event_faithful: bool = True
 
     def __init__(self, name: str, url: str, timeout_s: float = 30.0) -> None:
         self.name = name
@@ -105,6 +138,37 @@ class EpicsArchiverApplianceAdapter:
             return []
         samples = self._parse_raw_block(payload[0])
         return [s for s in samples if t0_ns <= s.ts_ns <= t1_ns]
+
+    async def fetch_window_budgeted(
+        self, pv: str, t0_ns: int, t1_ns: int, *, budget: int = SEED_SAMPLE_BUDGET
+    ) -> ArchiveBlock:
+        """Seed-path read: rate-sized windows newest-first, each parsed in a worker thread.
+
+        ``getData`` has no server-side limit, so the budget is a target the next
+        window is sized to. The oldest window also carries the last sample before
+        ``t0_ns`` (a zero-width query), at its true timestamp.
+        """
+        return await fetch_window_budgeted_via(self._fetch_block, pv, t0_ns, t1_ns, budget=budget)
+
+    async def _fetch_block(self, pv: str, lo_ns: int, hi_ns: int, include_last_before: bool) -> ArchiveBlock:
+        block = await self._get_block(pv, lo_ns, hi_ns)
+        mask = (block.ts_ns >= lo_ns) & (block.ts_ns <= hi_ns)
+        block = ArchiveBlock(block.ts_ns[mask], block.values[mask], block.severities[mask])
+        if include_last_before and lo_ns > 0:
+            prior = await self._get_block(pv, lo_ns - 1, lo_ns - 1)
+            mask = prior.ts_ns <= lo_ns - 1
+            if mask.any():
+                idx = np.flatnonzero(mask)[-1]
+                prior = ArchiveBlock(
+                    prior.ts_ns[idx : idx + 1], prior.values[idx : idx + 1], prior.severities[idx : idx + 1]
+                )
+                block = ArchiveBlock.concat([prior, block])
+        return block
+
+    async def _get_block(self, pv: str, from_ns: int, to_ns: int) -> ArchiveBlock:
+        params = {"pv": pv, "from": _ns_to_iso(from_ns), "to": _ns_to_iso(to_ns), "donotchunk": "true"}
+        response = await self._safe_get("/retrieval/data/getData.json", params=params, pv=pv)
+        return await asyncio.to_thread(_parse_raw_arrays, response.content, self.name)
 
     async def fetch_last_before(self, pv: str, ts_ns: int) -> Sample | None:
         """Most recent stored sample at or before `ts_ns`, or `None`.

@@ -42,6 +42,8 @@ from datetime import UTC, datetime, timedelta
 from contextlib import contextmanager
 from collections.abc import Iterator
 
+import bson
+import numpy as np
 from pymongo import AsyncMongoClient
 from pymongo import errors as mongo_errors
 from pymongo.uri_parser import parse_uri
@@ -51,7 +53,10 @@ from canopy.mole.config import ArchiverInstanceConfig
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.adapters.base import (
+    SEED_SAMPLE_BUDGET,
+    SEVERITY_ORDINAL,
     AdapterHealth,
+    ArchiveBlock,
     ArchiverError,
     ArchiverTimeout,
     ArchiverBadResponse,
@@ -59,7 +64,21 @@ from canopy.mole.adapters.base import (
     BinningNotSupported,
     PVNotFoundInArchiver,
     register_archiver_type,
+    fetch_window_budgeted_via,
 )
+
+
+def _decode_raw_batches(batches: list[bytes], pv: str) -> ArchiveBlock:
+    """``bson.decode_all`` plus the numpy build, meant for a worker thread (b6:OC-1)."""
+    docs = [doc for batch in batches for doc in bson.decode_all(batch)]
+    ts = np.fromiter((datetime_to_ns(doc[DATE_FIELD]) for doc in docs), dtype=np.int64, count=len(docs))
+    values = np.empty(len(docs), dtype=object)
+    for i, doc in enumerate(docs):
+        values[i] = _map_value(doc[pv])
+    # The recorder keeps no alarm state: every sample is NO_ALARM (see ``_sample``).
+    severities = np.full(len(docs), SEVERITY_ORDINAL[AlarmSeverity.NO_ALARM], dtype=np.int8)
+    return ArchiveBlock(ts, values, severities)
+
 
 #: Field holding each document's sample instant.
 DATE_FIELD = "date"
@@ -184,6 +203,9 @@ class OspreyMongoRecorderAdapter:
     """Adapter for one OSPREY archiver-recorder collection."""
 
     type_name: str = "osprey_mongodb_recorder"
+    # A polled recorder: every channel lands in each slot, no alarm state, a
+    # channel that did not answer is simply absent.
+    event_faithful: bool = False
 
     def __init__(
         self,
@@ -412,6 +434,54 @@ class OspreyMongoRecorderAdapter:
             buckets.setdefault(index, []).append(sample.value)
         return [_binned_point(t0_ns + index * width, width, buckets[index]) for index in sorted(buckets)]
 
+    async def fetch_window_budgeted(
+        self, pv: str, t0_ns: int, t1_ns: int, *, budget: int = SEED_SAMPLE_BUDGET
+    ) -> ArchiveBlock:
+        """Seed-path read over ``find_raw_batches`` on the async client.
+
+        The cursor's network waits stay on the event loop; only ``bson.decode_all``
+        and the numpy build run in a worker thread. A window over ``max_raw``
+        is halved and retried rather than refused.
+        """
+        await self._require_channel(pv)
+        return await fetch_window_budgeted_via(self._fetch_block, pv, t0_ns, t1_ns, budget=budget)
+
+    async def _fetch_block(self, pv: str, lo_ns: int, hi_ns: int, include_last_before: bool) -> ArchiveBlock | None:
+        max_raw = self.caps["max_raw"]
+        query: dict[str, Any] = {
+            DATE_FIELD: {"$gte": ns_floor_ms(lo_ns), "$lte": ns_ceil_ms(hi_ns)},
+            pv: {"$exists": True},
+        }
+        block = await self._raw_block(pv, query, 1, max_raw + 1)
+        if len(block) > max_raw:
+            return None
+        mask = (block.ts_ns >= lo_ns) & (block.ts_ns <= hi_ns)
+        block = ArchiveBlock(block.ts_ns[mask], block.values[mask], block.severities[mask])
+        if include_last_before:
+            lookback_ns = self.caps["last_before_lookback_s"] * _NS_PER_S
+            prior_query = {
+                DATE_FIELD: {"$gte": ns_ceil_ms(lo_ns - lookback_ns), "$lt": ns_ceil_ms(lo_ns)},
+                pv: {"$exists": True},
+            }
+            prior = await self._raw_block(pv, prior_query, -1, 1)
+            mask = prior.ts_ns < lo_ns
+            if mask.any():
+                block = ArchiveBlock.concat(
+                    [ArchiveBlock(prior.ts_ns[mask], prior.values[mask], prior.severities[mask]), block]
+                )
+        return block
+
+    async def _raw_block(self, pv: str, query: dict[str, Any], direction: int, limit: int) -> ArchiveBlock:
+        with self._mongo_errors():
+            cursor = (
+                self._collection()
+                .find_raw_batches(query, {"_id": 0, DATE_FIELD: 1, pv: 1})
+                .sort(DATE_FIELD, direction)
+                .limit(limit)
+            )
+            batches = [batch async for batch in cursor]
+        return await asyncio.to_thread(_decode_raw_batches, batches, pv)
+
     async def fetch_last_before(self, pv: str, ts_ns: int) -> Sample | None:
         """Newest sample at or before ``ts_ns`` within ``last_before_lookback_s``, else None."""
         await self._require_channel(pv)
@@ -477,7 +547,7 @@ class OspreyMongoRecorderAdapter:
     def _mongo_errors(self) -> Iterator[None]:
         try:
             yield
-        except (mongo_errors.PyMongoError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, mongo_errors.PyMongoError) as exc:
             raise map_mongo_error(exc, self.name) from exc
 
 

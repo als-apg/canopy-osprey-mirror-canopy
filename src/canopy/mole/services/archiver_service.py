@@ -14,7 +14,14 @@ from canopy.mole.config import MoleConfig
 from canopy.core.decimation import uniform_time_decimate
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint
-from canopy.mole.adapters.base import ArchiverAdapter, LastBeforeNotSupported
+from canopy.mole.adapters.base import (
+    LAST_BEFORE_CONCURRENCY,
+    LAST_BEFORE_MAX_TIMESTAMPS,
+    SEED_SAMPLE_BUDGET,
+    ArchiveBlock,
+    ArchiverAdapter,
+    LastBeforeNotSupported,
+)
 from canopy.mole.schemas.archiver import (
     ArchiverInfoDTO,
     ArchiverListDTO,
@@ -84,6 +91,55 @@ class ArchiverService:
             samples = [prior, *samples]
 
         return adapter.name, samples, decimated
+
+    async def fetch_window_budgeted(
+        self,
+        pv: str,
+        t0_ns: int,
+        t1_ns: int,
+        *,
+        archiver: str | None = None,
+        budget: int | None = None,
+    ) -> tuple[str, ArchiveBlock]:
+        """Seed-path read as arrays. Returns ``(archiver_name, block)``; never decimates.
+
+        ``ArchiverNotConfigured`` and ``PVNotFoundInArchiver`` propagate unchanged.
+        An adapter without ``fetch_window_budgeted`` is served from ``fetch_window``.
+        """
+        adapter = self._resolve(archiver)
+        budgeted = getattr(adapter, "fetch_window_budgeted", None)
+        if budgeted is not None:
+            return adapter.name, await budgeted(pv, t0_ns, t1_ns, budget=budget or SEED_SAMPLE_BUDGET)
+        samples = await adapter.fetch_window(pv, t0_ns=t0_ns, t1_ns=t1_ns, max_points=None)
+        return adapter.name, ArchiveBlock.from_samples(samples)
+
+    async def fetch_last_before(
+        self, pv: str, ts_list: list[int], *, archiver: str | None = None
+    ) -> list[Sample | None]:
+        """The last sample at or before each timestamp, at most ``LAST_BEFORE_CONCURRENCY`` lookups at once.
+
+        Raises ``ValueError`` above ``LAST_BEFORE_MAX_TIMESTAMPS`` timestamps: a
+        caller needing more uses the windowed fetch instead.
+        """
+        if len(ts_list) > LAST_BEFORE_MAX_TIMESTAMPS:
+            raise ValueError(
+                f"fetch_last_before takes at most {LAST_BEFORE_MAX_TIMESTAMPS} timestamps, got {len(ts_list)}"
+            )
+        adapter = self._resolve(archiver)
+        fetch_last_before = getattr(adapter, "fetch_last_before", None)
+        if fetch_last_before is None:
+            raise LastBeforeNotSupported(f"Archiver '{adapter.name}' does not support last-before lookups")
+        semaphore = asyncio.Semaphore(LAST_BEFORE_CONCURRENCY)
+
+        async def one(ts_ns: int) -> Sample | None:
+            async with semaphore:
+                return await fetch_last_before(pv, ts_ns)
+
+        return list(await asyncio.gather(*(one(ts) for ts in ts_list)))
+
+    def event_faithful(self, *, archiver: str | None = None) -> bool:
+        """Whether the archiver stores change events with severity (see ``ArchiverAdapter.event_faithful``)."""
+        return bool(getattr(self._resolve(archiver), "event_faithful", True))
 
     async def fetch_binned(
         self,

@@ -10,6 +10,9 @@ one mapping (per §12.1 of `Mole-Module-Architecture.md`).
 """
 
 from typing import Literal, Protocol, runtime_checkable
+from dataclasses import dataclass
+
+import numpy as np
 
 from canopy.core.errors import ErrorCode, CanopyError
 from canopy.mole.config import ArchiverInstanceConfig
@@ -84,6 +87,113 @@ def normalize_severity(value: int | None) -> AlarmSeverity:
     return _SEVERITY_MAP.get(value, AlarmSeverity.INVALID)
 
 
+#: ``AlarmSeverity`` ordinal used by ``ArchiveBlock.severities`` and Fox's ``RingSlice``.
+SEVERITY_ORDINAL: dict[AlarmSeverity, int] = {sev: i for i, sev in enumerate(AlarmSeverity)}
+
+# --------------------------------------------------------------------------- #
+# Budgeted seed fetch (plan task 1.2)
+# --------------------------------------------------------------------------- #
+
+#: Target samples per archive request on the seed path; the next window is sized to it.
+SEED_SAMPLE_BUDGET = 20_000
+#: The first (newest) window of a budgeted fetch, before any rate is known.
+FIRST_SEED_WINDOW_NS = 60 * 1_000_000_000
+#: ``fetch_last_before`` accepts at most this many timestamps per call ...
+LAST_BEFORE_MAX_TIMESTAMPS = 500
+#: ... and runs at most this many lookups at once.
+LAST_BEFORE_CONCURRENCY = 8
+
+
+@dataclass(frozen=True)
+class ArchiveBlock:
+    """Archive samples as parallel arrays, ascending in time, built off the event loop.
+
+    ``severities`` are ``SEVERITY_ORDINAL`` codes; ``values`` is an object array
+    (raw archive values, numeric or not).
+    """
+
+    ts_ns: np.ndarray  # int64
+    values: np.ndarray  # object
+    severities: np.ndarray  # int8
+
+    def __len__(self) -> int:
+        return int(self.ts_ns.size)
+
+    @classmethod
+    def empty(cls) -> "ArchiveBlock":
+        return cls(np.empty(0, dtype=np.int64), np.empty(0, dtype=object), np.empty(0, dtype=np.int8))
+
+    @classmethod
+    def from_samples(cls, samples: list[Sample]) -> "ArchiveBlock":
+        """Build from ``Sample`` objects (a fallback for adapters without a budgeted fetch)."""
+        ordered = sorted(samples, key=lambda s: s.ts_ns)
+        values = np.empty(len(ordered), dtype=object)
+        for i, s in enumerate(ordered):
+            values[i] = s.value
+        return cls(
+            np.fromiter((s.ts_ns for s in ordered), dtype=np.int64, count=len(ordered)),
+            values,
+            np.fromiter((SEVERITY_ORDINAL[s.severity] for s in ordered), dtype=np.int8, count=len(ordered)),
+        )
+
+    @staticmethod
+    def concat(blocks: list["ArchiveBlock"]) -> "ArchiveBlock":
+        """Merge blocks into one ascending block, keeping one sample per timestamp."""
+        blocks = [b for b in blocks if len(b)]
+        if not blocks:
+            return ArchiveBlock.empty()
+        ts = np.concatenate([b.ts_ns for b in blocks])
+        values = np.concatenate([b.values for b in blocks])
+        severities = np.concatenate([b.severities for b in blocks])
+        order = np.argsort(ts, kind="stable")
+        ts, values, severities = ts[order], values[order], severities[order]
+        keep = np.concatenate(([True], ts[1:] != ts[:-1]))
+        return ArchiveBlock(ts[keep], values[keep], severities[keep])
+
+
+#: Largest factor one budgeted-fetch step may widen its window by.
+WINDOW_GROWTH_MAX = 8
+
+
+async def fetch_window_budgeted_via(
+    fetch_block,
+    pv: str,
+    t0_ns: int,
+    t1_ns: int,
+    *,
+    budget: int,
+    first_window_ns: int = FIRST_SEED_WINDOW_NS,
+) -> ArchiveBlock:
+    """Walk ``[t0_ns, t1_ns]`` newest-first in windows sized from the observed rate.
+
+    ``fetch_block(pv, lo, hi, include_last_before)`` returns one ``ArchiveBlock``
+    for ``[lo, hi]``, or ``None`` to ask for a narrower window (the adapter hit a
+    server cap); the oldest window also carries the last sample before it. The
+    next window holds ``budget`` samples at the rate just observed -- a response
+    over the budget shrinks it proportionally -- and is never grown by doubling.
+    Growth per step is capped at ``WINDOW_GROWTH_MAX``x, so a sparse (or empty)
+    recent window cannot balloon the next request over a dense older region.
+    """
+    if t1_ns < t0_ns:
+        return ArchiveBlock.empty()
+    blocks: list[ArchiveBlock] = []
+    hi = t1_ns
+    width = max(1, first_window_ns)
+    while True:
+        lo = max(t0_ns, hi - width)
+        block = await fetch_block(pv, lo, hi, lo == t0_ns)
+        if block is None:  # server cap: halve and retry the same end
+            width = max(1, width // 2)
+            continue
+        blocks.append(block)
+        if lo == t0_ns:
+            break
+        elapsed = hi - lo + 1
+        width = max(1, min((elapsed * budget) // max(len(block), 1), (hi - lo) * WINDOW_GROWTH_MAX))
+        hi = lo - 1
+    return ArchiveBlock.concat(blocks)
+
+
 # --------------------------------------------------------------------------- #
 # Adapter health DTO
 # --------------------------------------------------------------------------- #
@@ -110,6 +220,12 @@ class ArchiverAdapter(Protocol):
 
     name: str
     type_name: str
+    #: True when the archive stores every change event with its severity
+    #: (Archiver Appliance); False for a polled recorder that writes every channel
+    #: into each slot with no alarm state (OSPREY MongoDB). Lets a reader tell a
+    #: polled archive from an event archive. Adapters without the attribute count
+    #: as event-faithful.
+    event_faithful: bool
 
     @classmethod
     def from_config(cls, name: str, cfg: ArchiverInstanceConfig) -> "ArchiverAdapter":
@@ -154,6 +270,17 @@ class ArchiverAdapter(Protocol):
 
         Adapters whose backend cannot answer point-in-time lookups raise
         `LastBeforeNotSupported` (surfaced as 501).
+        """
+        ...
+
+    async def fetch_window_budgeted(
+        self, pv: str, t0_ns: int, t1_ns: int, *, budget: int = SEED_SAMPLE_BUDGET
+    ) -> ArchiveBlock:
+        """Raw samples in ``[t0_ns, t1_ns]`` as arrays, fetched newest-first in rate-sized windows.
+
+        Every response is parsed off the event loop; the oldest window also
+        carries the last sample before ``t0_ns``. Optional: the service falls
+        back to ``fetch_window`` for adapters without it.
         """
         ...
 
