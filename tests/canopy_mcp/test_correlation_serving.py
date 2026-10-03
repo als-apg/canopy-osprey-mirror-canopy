@@ -278,7 +278,7 @@ def _repo(path: Path, files: dict[str, str]) -> Path:
 
 @pytest.fixture
 def image(tmp_path: Path) -> dict:
-    """A fake image (labels + /app tree) matching three throwaway checkouts."""
+    """A fake image (labels + /app tree) matching five throwaway checkouts."""
     if shutil.which("git") is None:
         pytest.skip("git not available")
     can = tmp_path / "can"
@@ -289,12 +289,16 @@ def image(tmp_path: Path) -> dict:
     _git(can, "commit", "-q", "-m", "init")
     rt = _repo(tmp_path / "rt", {"package.json": "{}\n"})
     trace = _repo(tmp_path / "trace", {"package.json": "{}\n", "pnpm-lock.yaml": LOCK_TEXT})
+    sdk = _repo(tmp_path / "sdk", {"package.json": "{}\n"})
+    pydm = _repo(tmp_path / "pydm", {"pyproject.toml": "[project]\nname='PyDMConverter'\n"})
 
     labels = tmp_path / "labels"
     labels.mkdir()
     for name, value in {
         "org.canopy.sha": _git(can, "rev-parse", "HEAD"),
         "org.canopy.runtime.sha": _git(rt, "rev-parse", "HEAD"),
+        "org.canopy.sdk.sha": _git(sdk, "rev-parse", "HEAD"),
+        "org.canopy.pydm.sha": _git(pydm, "rev-parse", "HEAD"),
         "org.canopy.trace.sha": _git(trace, "rev-parse", "HEAD"),
         "org.canopy.trace.lockfile-sha256": hashlib.sha256(LOCK_TEXT.encode()).hexdigest(),
     }.items():
@@ -313,12 +317,14 @@ def image(tmp_path: Path) -> dict:
     for stub in bin_dir.iterdir():
         stub.chmod(0o755)
 
-    env = {k: v for k, v in os.environ.items() if k not in {"TRACE", "TRACE_REF", "RT"}}
+    env = {k: v for k, v in os.environ.items() if k not in {"TRACE", "TRACE_REF", "RT", "SDK", "PYDM"}}
     env.update(
         PATH=f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
         TRACE=str(trace),
         TRACE_REF="main",
         RT=str(rt),
+        SDK=str(sdk),
+        PYDM=str(pydm),
         LABELS=str(labels),
         APPROOT=str(root),
     )
