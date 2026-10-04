@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     trace_default_query: str = ""
     # Query the correlation page opens with when the URL carries none (x=...&y=...).
     correlation_default_query: str = ""
+    # Build-time channel catalog (a JSON string[]) served on /channels for
+    # Trace's PV autocomplete; unset or missing means no catalog (404).
+    channels_file: Path | None = None
 
     @field_validator("api_key_file", "access_token_file", "self_url", mode="before")
     @classmethod

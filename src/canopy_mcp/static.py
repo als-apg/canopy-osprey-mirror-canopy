@@ -31,6 +31,15 @@ names it as ``{"correlation": {"path": "trace/correlation.html", "query": ...}}`
 only when the file exists, so a dist built from an upstream react-trace without
 the page advertises nothing and 404s there.
 
+``GET /channels`` serves the build-time channel catalog named by
+``CANOPY_CHANNELS_FILE`` (a JSON array of channel addresses, written by
+``osprey build`` and mounted read-only) for the Trace pages' PV
+autocomplete. It sits at the server root beside ``/mole/v1/``, so the pages
+reach it as ``{apiBase}/channels``. Like OSPREY's bluesky_web route it carries a
+strong ETag over the file bytes and ``Cache-Control: no-cache``, re-reads the
+file on every request, and answers 404 when the variable is unset or the file
+is absent: no catalog, not an empty one.
+
 ``config.json`` always names the saved-views API (``{"views": {"path": "views"}}``):
 ``/views`` and ``/views/{id}`` are served by :mod:`canopy_mcp.views` from
 ``<drafts_dir>/views/``, beside (never inside) ``screens/``, so a view is
@@ -232,6 +241,17 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
             return _missing()
         return FileResponse(target, headers={"Cache-Control": DRAFT_CACHE_CONTROL})
 
+    async def channels(request: Request) -> Response:
+        path = settings.channels_file
+        try:
+            payload = path.read_bytes() if path else None
+        except OSError:
+            payload = None
+        if payload is None:
+            return _missing()
+        rev = hashlib.sha256(payload).hexdigest()
+        return _revved(request, rev, lambda: Response(payload, media_type="application/json"))
+
     async def not_found(request: Request) -> Response:
         return _missing()
 
@@ -247,6 +267,7 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         Route("/drafts/manifest.json", manifest, methods=["GET", "HEAD"]),
         Route("/drafts/{path:path}", draft_file, methods=["GET", "HEAD"]),
         Route("/health", health, methods=["GET"]),
+        Route("/channels", channels, methods=["GET", "HEAD"]),
         Route("/trace/", trace_index, methods=["GET", "HEAD"]),
         Route("/trace/assets/{path:path}", trace_asset, methods=["GET", "HEAD"]),
         Route("/trace/favicon.svg", trace_favicon, methods=["GET", "HEAD"]),
