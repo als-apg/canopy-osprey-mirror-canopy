@@ -15,6 +15,7 @@ launch with a non-zero status before any socket is bound or served.
 
 import sys
 import socket
+import logging
 import argparse
 from collections.abc import Sequence
 
@@ -59,11 +60,34 @@ def _inherited_port(listener: socket.socket, fallback: int) -> int:
     return fallback
 
 
+def configure_logging() -> None:
+    """Give the server's log records a level and logger name, on stderr.
+
+    Without a root handler, records fall through to ``logging.lastResort`` and
+    print only the message. This uses canopy-api's formatter and level
+    (``CANOPY_LOG_FORMAT`` / ``CANOPY_LOG_LEVEL``) but writes to stderr, never
+    stdout. A root logger that already has handlers (configured by the host, or
+    by an earlier call) is left alone, so handlers are never duplicated.
+    """
+    root = logging.getLogger()
+    if root.handlers:
+        return
+
+    from canopy.core.logging import make_formatter, configured_level
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(make_formatter())
+    root.addHandler(handler)
+    root.setLevel(configured_level())
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     if not args.http:
         print(STDIO_REFUSED, file=sys.stderr)
         return 2
+
+    configure_logging()
 
     import uvicorn
 

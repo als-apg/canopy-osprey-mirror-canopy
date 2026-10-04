@@ -321,7 +321,9 @@ async def test_get_widget_tool_unknown_type(loaded):
 async def test_get_schema_tool():
     schema = await widget_tools.get_schema()
     assert schema["$schema"].startswith("https://json-schema.org/draft/2020-12")
-    assert schema["properties"]["schemaVersion"]["const"] == "1.0"
+    assert schema["$id"].endswith("/screen-ir/1.1/schema.json")
+    assert schema["properties"]["schemaVersion"]["enum"] == ["1.0", "1.1"]
+    assert "ColorRole" in schema["$defs"]
     # Each call returns a fresh copy; mutating one does not leak.
     schema["properties"] = {}
     assert load_schema()["properties"]
@@ -332,3 +334,73 @@ async def test_tools_registered_on_mcp():
 
     names = {tool.name for tool in await mcp.list_tools()}
     assert {"list_widgets", "get_widget", "get_schema"} <= names
+
+
+# --- Colour roles (the registry's inline colour def) ----------------------------
+
+_ROLE = {"$role": "text.primary", "fallback": "#112233", "fallbackDark": "#eeeeee"}
+
+
+def _role_catalog():
+    return build_catalog(_registry_details(), _ir_map())
+
+
+def _role_doc(**props):
+    return {
+        "schemaVersion": "1.1",
+        "kind": "screen",
+        "id": "t",
+        "root": {
+            "id": "root",
+            "type": "frame",
+            "geometry": {"x": 0, "y": 0, "width": 100, "height": 100},
+            "children": [
+                {
+                    "id": "n1",
+                    "type": "pv-label",
+                    "geometry": {"x": 0, "y": 0, "width": 10, "height": 10},
+                    "props": {"pv": "SR:X", **props},
+                }
+            ],
+        },
+    }
+
+
+def test_catalog_exposes_the_colour_def_on_colour_props():
+    entry = _role_catalog().get("pv-label")
+    schema = entry.props["foregroundColor"].schema
+    assert schema["anyOf"][0] == {"type": "string"}
+    assert schema["anyOf"][1]["required"] == ["$role", "fallback"]
+
+
+def test_a_role_bearing_draft_passes_prop_validation():
+    from canopy_mcp.check.lint import prop_findings
+
+    doc = _role_doc(foregroundColor=_ROLE, backgroundColor={"$role": "surface", "fallback": "#ffffff"})
+    assert prop_findings(doc, _role_catalog()) == []
+
+
+def test_a_role_in_a_nested_plot_curve_passes_prop_validation():
+    from canopy_mcp.check.lint import prop_findings
+
+    doc = _role_doc()
+    doc["root"]["children"][0].update(
+        type="xy-plot", props={"curves": [{"yPv": "SR:Y", "color": {"$role": "series.1", "fallback": "#336699"}}]}
+    )
+    assert [f for f in prop_findings(doc, _role_catalog()) if "color" in f.path] == []
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"$role": "text.primary"},
+        {"$role": "text.primary", "fallback": "red"},
+        {"$role": "", "fallback": "#112233"},
+        {"$role": "text.primary", "fallback": "#112233", "extra": 1},
+    ],
+)
+def test_a_malformed_role_is_an_invalid_prop(bad):
+    from canopy_mcp.check.lint import prop_findings
+
+    findings = prop_findings(_role_doc(foregroundColor=bad), _role_catalog())
+    assert [(f.code, f.path) for f in findings] == [("invalid_prop", "/root/children/0/props/foregroundColor")]

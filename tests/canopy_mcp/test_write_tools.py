@@ -481,3 +481,86 @@ async def test_delete_draft_needs_the_current_rev(settings, store):
     assert store.list() == []
     with pytest.raises(ToolError, match="no draft"):
         await delete_draft("x/y", first["rev"])
+
+
+# --- colour roles: atomic replace and schemaVersion stamping -------------------------
+
+ROLE = {"$role": "text.primary", "fallback": "#202020", "fallbackDark": "#e0e0e0"}
+ROLE2 = {"$role": "alarm.major", "fallback": "#ff0000"}
+
+
+@pytest.fixture(params=["pydmconverter", "local"])
+def stamper(request, monkeypatch):
+    """Run each stamping test with the converter's rule and with the local fallback walk."""
+    if request.param == "local":
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pydmconverter.scheme", None)  # import raises ImportError
+    return request.param
+
+
+async def _stored(draft_id="x/y"):
+    return (await get_screen(draft_id))["screen"]
+
+
+async def test_patch_role_over_hex_replaces_the_value_whole(settings, store, stamper):
+    first = await new_screen("x/y", _doc(_node("a", props={"text": "hi", "foregroundColor": "#123456"})))
+    out = await patch_node("x/y", "a", first["rev"], {"props": {"foregroundColor": ROLE}})
+    assert "refused" not in out, out
+    doc = await _stored()
+    assert doc["root"]["children"][0]["props"] == {"text": "hi", "foregroundColor": ROLE}
+    assert doc["schemaVersion"] == "1.1"
+
+
+async def test_patch_role_over_role_does_not_deep_merge(settings, store, stamper):
+    first = await new_screen("x/y", _doc(_node("a", props={"foregroundColor": ROLE})))
+    assert (await _stored())["schemaVersion"] == "1.1"
+    out = await patch_node("x/y", "a", first["rev"], {"props": {"foregroundColor": ROLE2}})
+    assert "refused" not in out, out
+    # a deep merge would keep ROLE's stale fallbackDark
+    assert (await _stored())["root"]["children"][0]["props"]["foregroundColor"] == ROLE2
+
+
+async def test_patch_hex_over_role_replaces_and_last_role_returns_to_1_0(settings, store, stamper):
+    first = await new_screen("x/y", _doc(_node("a", props={"text": "hi", "foregroundColor": ROLE})))
+    out = await patch_node("x/y", "a", first["rev"], {"props": {"foregroundColor": "#abcdef"}})
+    assert "refused" not in out, out
+    doc = await _stored()
+    assert doc["root"]["children"][0]["props"] == {"text": "hi", "foregroundColor": "#abcdef"}
+    assert doc["schemaVersion"] == "1.0"
+
+
+async def test_adding_the_first_role_stamps_1_1(settings, store, stamper):
+    first = await new_screen("x/y", _doc(_node("a")))
+    assert (await _stored())["schemaVersion"] == "1.0"
+    out = await add_node("x/y", "root", _node("b", props={"backgroundColor": ROLE2}), first["rev"])
+    assert "refused" not in out, out
+    assert (await _stored())["schemaVersion"] == "1.1"
+
+
+async def test_removing_the_last_role_returns_to_1_0(settings, store, stamper):
+    first = await new_screen("x/y", _doc(_node("a"), _node("b", props={"backgroundColor": ROLE2})))
+    assert (await _stored())["schemaVersion"] == "1.1"
+    out = await remove_node("x/y", "b", first["rev"])
+    assert "refused" not in out, out
+    assert (await _stored())["schemaVersion"] == "1.0"
+
+
+async def test_new_screen_stamps_a_role_bearing_1_0_document_as_1_1(settings, store, stamper):
+    screen = _doc(_node("a", props={"foregroundColor": ROLE}))
+    assert screen["schemaVersion"] == "1.0"
+    out = await new_screen("x/y", screen)
+    assert "refused" not in out, out
+    assert (await _stored())["schemaVersion"] == "1.1"
+    assert screen["schemaVersion"] == "1.0"  # the caller's document is not mutated
+
+
+async def test_malformed_role_does_not_stamp_1_1(settings, store, stamper):
+    from canopy_mcp.tools.drafts import _stamp_schema_version
+
+    assert _stamp_schema_version({"p": {"$role": "x", "fallback": "red"}}) == "1.0"
+    assert _stamp_schema_version({"p": [{"$role": "", "fallback": "#000000"}]}) == "1.0"
+    assert _stamp_schema_version({"p": {"$role": "x", "fallback": "#000000", "extra": 1}}) == "1.0"
+    assert _stamp_schema_version({"p": [[{"$role": "x" * 64, "fallback": "#00000000"}]]}) == "1.1"
+    assert _stamp_schema_version({"p": {"$role": "x" * 65, "fallback": "#000000"}}) == "1.0"
+    assert _stamp_schema_version("not a doc") == "1.0"

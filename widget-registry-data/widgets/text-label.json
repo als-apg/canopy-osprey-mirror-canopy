@@ -32,8 +32,8 @@
         "enum": ["left", "center", "right"],
         "default": "left"
       },
-      "foregroundColor": { "type": "string" },
-      "backgroundColor": { "type": "string" },
+      "foregroundColor": { "anyOf": [{ "type": "string" }, { "type": "object", "additionalProperties": false, "required": ["$role", "fallback"], "properties": { "$role": { "type": "string", "minLength": 1, "maxLength": 64 }, "fallback": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }, "fallbackDark": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" } } }] },
+      "backgroundColor": { "anyOf": [{ "type": "string" }, { "type": "object", "additionalProperties": false, "required": ["$role", "fallback"], "properties": { "$role": { "type": "string", "minLength": 1, "maxLength": 64 }, "fallback": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }, "fallbackDark": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" } } }] },
       "fontSize": {
         "type": "number",
         "title": "Font Size (px)"

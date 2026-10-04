@@ -19,7 +19,9 @@ A deployment that sets ``CANOPY_ACCESS_TOKEN_FILE`` gets
 the proxy that adds it is how ``/mcp`` is reached. ``GET /health`` stays open.
 Either way ``/mcp/`` is a redirect to ``/mcp``, never the transport itself.
 
-One lifespan runs FastMCP's session manager, opens the shared backend
+One lifespan first flattens the color scheme (:func:`~canopy.core.color_scheme.get_color_scheme`,
+so a bad ``CANOPY_THEME_FILE`` logs its one ERROR at boot, not on the first
+request), then runs FastMCP's session manager, opens the shared backend
 ``httpx.AsyncClient`` (``app.state.http``) and then enters every
 :data:`STARTUP_HOOKS` entry in order; hooks are exited in reverse on shutdown.
 The defaults load the widget catalog (:func:`catalog_hook`) and launch the
@@ -32,7 +34,6 @@ built decides which tools every app in the process offers.
 """
 
 import logging
-
 from typing import Any
 from contextlib import AsyncExitStack, AbstractAsyncContextManager, asynccontextmanager
 from collections.abc import Callable, AsyncIterator
@@ -44,16 +45,17 @@ from starlette.middleware import Middleware
 from starlette.applications import Starlette
 
 from canopy_mcp.store import DraftStore
+from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.access import AccessGate, read_secret_file
-from canopy_mcp.browser import browser_hook
-from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp, register_all, set_authoring
-from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
-from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.static import build_routes
+from canopy_mcp.browser import browser_hook
+from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.forward import build_forward_routes
+from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
+from canopy.core.color_scheme import get_color_scheme
 
 MCP_PATH = "/mcp"
 PROXY_HEADERS = (b"x-forwarded-prefix", b"x-osprey-terminal-secret")
@@ -139,6 +141,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         hooks = STARTUP_HOOKS if startup_hooks is None else startup_hooks
+        get_color_scheme()  # never raises; a bad file degrades /health and serves canopy-default
         async with mcp_app.lifespan(app), make_client(settings) as client, AsyncExitStack() as stack:
             app.state.http = client
             for hook in list(hooks):

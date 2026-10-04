@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 from typing import Any
 
+import pytest
+
+from canopy_mcp.catalog import build_catalog
 from canopy_mcp.check import Finding, check_schema, load_schema, node_id_at, pointer
+from canopy_mcp.store import DraftStore
+from canopy_mcp.tools.check import run_check
 
 
 def _node(nid: str, children: list[dict[str, Any]] | None = None, **extra: Any) -> dict[str, Any]:
@@ -36,10 +42,100 @@ def _doc() -> dict[str, Any]:
     }
 
 
+def _role_rule() -> dict[str, Any]:
+    """A conditional rule whose default and condition value are theme colour roles (1.1 only)."""
+    return {
+        "id": "r-1",
+        "name": "alarm colour",
+        "targetProperty": "foreground",
+        "default": {"$role": "Text", "fallback": "#202020", "fallbackDark": "#e0e0e0"},
+        "pvs": [],
+        "conditions": [
+            {"expression": "True", "value": {"$role": "MAJOR", "fallback": "#ff0000"}},
+            {"expression": "False", "value": "#00ff00"},
+        ],
+    }
+
+
+def _role_doc() -> dict[str, Any]:
+    doc = _doc()
+    doc["schemaVersion"] = "1.1"
+    doc["root"]["children"][1]["rules"] = [_role_rule()]
+    return doc
+
+
 def test_schema_loads_vendored_2020_12_schema() -> None:
     schema = load_schema()
     assert schema["$schema"].endswith("2020-12/schema")
     assert "WidgetNode" in schema["$defs"]
+
+
+def test_load_schema_defaults_to_newest_supported_version() -> None:
+    schema = load_schema()
+    assert schema["$id"].endswith("/screen-ir/1.1/schema.json")
+    assert schema["properties"]["schemaVersion"]["enum"] == ["1.0", "1.1"]
+    assert "ColorRole" in schema["$defs"]
+    assert load_schema("1.1") is schema
+    assert load_schema("1.0")["properties"]["schemaVersion"] == {"const": "1.0"}
+
+
+def test_role_bearing_1_1_document_passes_schema() -> None:
+    assert check_schema(_role_doc()) == []
+
+
+def test_1_1_document_without_roles_passes_schema() -> None:
+    doc = _doc()
+    doc["schemaVersion"] = "1.1"
+    assert check_schema(doc) == []
+
+
+def test_role_in_1_0_document_is_rejected() -> None:
+    """A 1.0 document is checked against the frozen 1.0 schema, which has no colour roles."""
+    doc = _role_doc()
+    doc["schemaVersion"] = "1.0"
+    findings = check_schema(doc)
+    assert findings
+    assert {f.node_id for f in findings} == {"w-c"}
+    assert all(f.path.startswith("/root/children/1/rules/0") for f in findings)
+
+
+def test_malformed_role_is_rejected_in_1_1() -> None:
+    doc = _role_doc()
+    doc["root"]["children"][1]["rules"][0]["default"] = {"$role": "text.primary", "fallback": "red"}
+    findings = check_schema(doc)
+    assert findings
+    assert {f.node_id for f in findings} == {"w-c"}
+    assert {f.path for f in findings} == {"/root/children/1/rules/0"}
+
+
+@pytest.mark.parametrize("version", ["2.0", "1.2", 1.1, None])
+def test_unsupported_version_is_rejected(version: Any) -> None:
+    doc = _doc()
+    doc["schemaVersion"] = version
+    (f,) = check_schema(doc)
+    assert f.path == "/schemaVersion" and f.node_id is None and f.severity == "error"
+
+
+def test_missing_version_is_rejected() -> None:
+    doc = _doc()
+    del doc["schemaVersion"]
+    (f,) = check_schema(doc)
+    assert f.path == "" and "schemaVersion" in f.message
+
+
+async def test_role_bearing_1_1_draft_passes_check(tmp_path: Path) -> None:
+    """FR7: schema, semantic and lint passes all accept a role-bearing 1.1 draft."""
+    catalog = build_catalog([], {"label": {"consumes": ["text"], "verbatim": False}})
+    result = await run_check(_role_doc(), store=DraftStore(tmp_path), catalog=catalog)
+    assert result.errors == []
+    assert result.to_dict() == {"schema": [], "semantic": [], "lint": [], "skipped": []}
+
+
+def test_role_bearing_1_1_draft_passes_pydm_validation() -> None:
+    """FR7: the PyDM converter's own vendored schema accepts the same draft."""
+    from pydmconverter.ir.schema import validate_screen_json
+
+    assert validate_screen_json(_role_doc()) == []
 
 
 def test_valid_document_has_no_findings() -> None:

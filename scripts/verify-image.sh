@@ -2,6 +2,7 @@
 # Verify a CANOPY appliance image against the checkouts it should come from.
 #
 #   TRACE=<react-trace checkout> TRACE_REF=<ref> RT=<runtime checkout> \
+#   SDK=<canopy-sdk-js checkout> PYDM=<pydm-converter-tool checkout> \
 #       scripts/verify-image.sh <image>
 #
 # Exits 0 only when every check passes:
@@ -9,14 +10,17 @@
 #   - org.canopy.runtime.sha minus +dirty == RT HEAD
 #   - org.canopy.trace.sha              == the commit TRACE_REF resolves to in TRACE
 #   - org.canopy.trace.lockfile-sha256  == sha256 of that commit's pnpm-lock.yaml
+#   - org.canopy.sdk.sha                == SDK HEAD
+#   - org.canopy.pydm.sha               == PYDM HEAD
 #   - in the image: /app/viewer/index.html and /app/trace/index.html exist, the
 #     trace index uses relative ./assets/ URLs (no ="/assets/ or ="/favicon.svg),
-#     and `import pymongo` works; when the trace dist also ships
-#     /app/trace/correlation.html, that page passes the same URL checks (an
-#     image built from an upstream react-trace without it still verifies).
+#     and `import pymongo` and `import pydmconverter.scheme` work; when the
+#     trace dist also ships /app/trace/correlation.html, that page passes the
+#     same URL checks (an image built from an upstream react-trace without it
+#     still verifies).
 # An image built with `build-image.sh --worktree` carries `<sha>+dirty.<fp>`
 # labels instead; each is accepted only when the checkout's HEAD is <sha> and
-# its working tree still hashes to <fp> (canopy, trace), and for such a trace
+# its working tree still hashes to <fp> (canopy, sdk, trace), and for such a trace
 # label the lockfile hash is taken from TRACE's working-tree pnpm-lock.yaml.
 # A non-zero exit therefore means "rebuild with scripts/build-image.sh".
 set -euo pipefail
@@ -27,11 +31,13 @@ ROOT="$(cd "$HERE/.." && pwd)"
 
 usage() {
     cat <<EOF
-Usage: TRACE=<dir> TRACE_REF=<ref> RT=<dir> scripts/verify-image.sh <image>
+Usage: TRACE=<dir> TRACE_REF=<ref> RT=<dir> SDK=<dir> PYDM=<dir> scripts/verify-image.sh <image>
 
   TRACE      react-trace checkout the image's Trace was built from
   TRACE_REF  ref in TRACE whose commit the image must carry
   RT         canopy-screen-runtime checkout the viewer was built from
+  SDK        canopy-sdk-js checkout the viewer's SDK packages were built from
+  PYDM       pydm-converter-tool checkout the PyDMConverter wheel was built from
   <image>    image to check, e.g. canopy:dev
 EOF
 }
@@ -39,7 +45,7 @@ EOF
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac
 
 missing=()
-for var in TRACE TRACE_REF RT; do
+for var in TRACE TRACE_REF RT SDK PYDM; do
     [ -n "${!var:-}" ] || missing+=("$var")
 done
 if [ "${#missing[@]}" -gt 0 ] || [ "$#" -ne 1 ]; then
@@ -82,6 +88,8 @@ TRACE_SHA="$(git -C "$TRACE" rev-parse --verify --quiet "${TRACE_REF}^{commit}")
 LOCK_SHA256="$(git -C "$TRACE" show "$TRACE_SHA:pnpm-lock.yaml" | sha256_stdin)"
 CAN_HEAD="$(git -C "$ROOT" rev-parse --verify HEAD)"
 RT_HEAD="$(git -C "$RT" rev-parse --verify HEAD)"
+SDK_HEAD="$(git -C "$SDK" rev-parse --verify HEAD)"
+PYDM_HEAD="$(git -C "$PYDM" rev-parse --verify HEAD)"
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 \
     || { echo "$PROG: image $IMAGE not found" >&2; exit 1; }
@@ -105,6 +113,12 @@ case "$canopy_label" in
 esac
 runtime_label="$(label org.canopy.runtime.sha)"
 check "org.canopy.runtime.sha (minus +dirty)" "${runtime_label%%+dirty*}" "$RT_HEAD"
+sdk_label="$(label org.canopy.sdk.sha)"
+case "$sdk_label" in
+    *+dirty.*) check "org.canopy.sdk.sha (working tree)" "$sdk_label" "$(tree_state "$SDK")" ;;
+    *) check org.canopy.sdk.sha "$sdk_label" "$SDK_HEAD" ;;
+esac
+check org.canopy.pydm.sha "$(label org.canopy.pydm.sha)" "$PYDM_HEAD"
 trace_label="$(label org.canopy.trace.sha)"
 case "$trace_label" in
     *+dirty.*)
@@ -133,9 +147,10 @@ if docker run --rm --entrypoint sh "$IMAGE" -c '
     done
     [ -f /app/trace/correlation.html ] && echo "checked /app/trace/correlation.html"
     python -c "import pymongo" || { echo "import pymongo failed"; rc=1; }
+    python -c "import pydmconverter.scheme" || { echo "import pydmconverter.scheme failed"; rc=1; }
     exit $rc
 ' >&2; then
-    echo "$PROG: ok   image files, trace asset URLs, import pymongo"
+    echo "$PROG: ok   image files, trace asset URLs, import pymongo, import pydmconverter.scheme"
 else
     echo "$PROG: FAIL in-image checks (see above)" >&2
     fail=1

@@ -24,8 +24,8 @@
     "properties": {
       "pv": { "type": "string", "format": "pv-channel" },
       "onValue": { "type": ["number", "string"], "default": 1 },
-      "onColor": { "type": "string", "default": "#3ddc84" },
-      "offColor": { "type": "string", "default": "#888888" },
+      "onColor": { "anyOf": [{ "type": "string" }, { "type": "object", "additionalProperties": false, "required": ["$role", "fallback"], "properties": { "$role": { "type": "string", "minLength": 1, "maxLength": 64 }, "fallback": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }, "fallbackDark": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" } } }], "default": "#3ddc84" },
+      "offColor": { "anyOf": [{ "type": "string" }, { "type": "object", "additionalProperties": false, "required": ["$role", "fallback"], "properties": { "$role": { "type": "string", "minLength": 1, "maxLength": 64 }, "fallback": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }, "fallbackDark": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" } } }], "default": "#888888" },
       "alarmSensitive": { "type": "boolean", "default": true }
     }
   },

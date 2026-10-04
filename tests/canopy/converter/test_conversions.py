@@ -38,7 +38,8 @@ def test_convert_edl_returns_screen_ir():
         resp = _post(client)
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) >= {"screen", "warnings", "unknownWidgets", "formulas", "stats"}
+    assert set(body) >= {"screen", "warnings", "unknownWidgets", "formulas", "stats", "scheme"}
+    assert body["scheme"]["served"] == "canopy-default"
     assert body["screen"]["schemaVersion"] == "1.0"
     assert body["stats"]["widgetCount"] >= 1
     assert body["unknownWidgets"] == []
@@ -338,7 +339,9 @@ def test_convert_bob_upload_returns_screen_ir():
         resp = _post(client, filename="synthetic.bob", content=BOB)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["screen"]["schemaVersion"] == "1.0"
+    # The app converts with the canopy-default scheme, so the .bob's named colors become
+    # roles and the screen is stamped 1.1 (1.1 iff a role is present).
+    assert body["screen"]["schemaVersion"] == "1.1"
     assert body["stats"]["widgetCount"] >= 2
     assert body["unknownWidgets"] == []
 
@@ -347,7 +350,7 @@ def test_convert_bob_with_explicit_kind_without_suffix():
     with TestClient(app) as client:
         resp = _post(client, filename="noext", content=BOB, data={"kind": "bob"})
     assert resp.status_code == 200, resp.text
-    assert resp.json()["screen"]["schemaVersion"] == "1.0"
+    assert resp.json()["screen"]["schemaVersion"] == "1.1"  # roles from the canopy-default scheme
 
 
 def test_validate_bob_upload_is_ok():
@@ -390,7 +393,7 @@ async def test_batch_task_converts_bob_entry():
     row = next(r for r in manifest["rows"] if r["path"] == "panels/a.bob")
     assert row["status"] == "succeeded"
     screen = json.loads(await redis.get(row["resultKey"]))
-    assert screen["schemaVersion"] == "1.0"
+    assert screen["schemaVersion"] == "1.1"  # the batch worker converts with the scheme too
 
 
 async def test_batch_task_skip_message_names_bob():

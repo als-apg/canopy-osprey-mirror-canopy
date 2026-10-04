@@ -1,0 +1,7 @@
+{
+  "id": "broken",
+  "extends": "canopy-default",
+  "roles": {
+    "Beam": "@NoSuchRole"
+  }
+}

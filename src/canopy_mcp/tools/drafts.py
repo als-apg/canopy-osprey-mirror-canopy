@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import re
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,6 @@ from fastmcp.exceptions import ToolError
 
 from canopy_mcp.check.findings import Finding
 from canopy_mcp.config import Settings, get_settings
-from canopy_mcp.merge import merge_patch
 from canopy_mcp.server import mcp
 from canopy_mcp.store import DraftNotFound, DraftStore, RevConflict
 from canopy_mcp.tools._common import read_draft, refused, validate_id
@@ -143,6 +143,73 @@ async def _gated_write(
     }
 
 
+#: The SDK's ``ColorRole`` shape, mirrored from ``pydmconverter.scheme`` for when that module is missing.
+_ROLE_KEYS = frozenset({"$role", "fallback", "fallbackDark"})
+_ROLE_HEX = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
+_ROLE_MAX_LENGTH = 64
+
+
+def _is_color_role(node: Any) -> bool:
+    if not isinstance(node, dict) or not set(node) <= _ROLE_KEYS:
+        return False
+    role = node.get("$role")
+    if not isinstance(role, str) or not 1 <= len(role.encode("utf-16-le")) // 2 <= _ROLE_MAX_LENGTH:
+        return False
+
+    def is_hex(value: Any) -> bool:
+        return isinstance(value, str) and _ROLE_HEX.fullmatch(value) is not None
+
+    return is_hex(node.get("fallback")) and ("fallbackDark" not in node or is_hex(node["fallbackDark"]))
+
+
+def _contains_color_role(node: Any) -> bool:
+    if _is_color_role(node):
+        return True
+    if isinstance(node, dict):
+        return any(_contains_color_role(value) for value in node.values())
+    if isinstance(node, list | tuple):
+        return any(_contains_color_role(value) for value in node)
+    return False
+
+
+def _stamp_schema_version(doc: Any) -> str:
+    """``"1.1"`` iff ``doc`` holds a well-formed colour role, else ``"1.0"``; never raises.
+
+    Uses ``pydmconverter.scheme.stamp_schema_version`` when the installed converter
+    has it, and otherwise (for example the PyPI 1.0.5 release) a local walk with
+    the same rule, so an edit never fails for want of the converter.
+    """
+    try:
+        from pydmconverter.scheme import stamp_schema_version
+    except ImportError:
+        return "1.1" if _contains_color_role(doc) else "1.0"
+    return stamp_schema_version(doc)
+
+
+def _stamp(doc: dict[str, Any]) -> None:
+    """Set ``doc["schemaVersion"]`` from its content, so the check gate validates the stamped version."""
+    doc["schemaVersion"] = _stamp_schema_version(doc)
+
+
+def _merge_node(target: Any, patch: Any) -> Any:
+    """RFC 7396 merge (as :func:`canopy_mcp.merge.merge_patch`), except that a patch value carrying ``$role`` replaces its target whole.
+
+    A colour role is one value, not an object to merge into: merging a role over
+    another would keep a stale ``fallbackDark``, and over a hex it is a plain swap.
+    """
+    if not isinstance(patch, dict) or "$role" in patch:
+        return copy.deepcopy(patch)
+    result = dict(target) if isinstance(target, dict) else {}
+    for key, value in patch.items():
+        if value is None:
+            result.pop(key, None)
+        elif isinstance(value, dict) and "$role" not in value:
+            result[key] = _merge_node(result.get(key), value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
 def _dicts(findings: Iterable[Finding]) -> list[dict[str, Any]]:
     return [f.to_dict() for f in findings]
 
@@ -157,6 +224,7 @@ async def _edit(draft_id: str, base_rev: str, edit: Callable[[dict[str, Any]], N
     edit(new)  # raises ToolError on bad arguments, before any rev refusal
     if not base_rev or base_rev != current:
         return _stale(draft_id, base_rev, current)
+    _stamp(new)
     return await _gated_write(store, settings, draft_id, new, base, base_rev)
 
 
@@ -200,6 +268,9 @@ async def new_screen(
             return _stale(id, base_rev, None)
     elif base_rev:
         return _stale(id, base_rev, None)
+    if isinstance(screen, dict):
+        screen = copy.deepcopy(screen)  # never stamp the caller's document
+        _stamp(screen)
     return await _gated_write(store, settings, id, screen, base, base_rev if current is not None else None)
 
 
@@ -232,7 +303,7 @@ async def patch_node(screen_id: str, node_id: str, base_rev: str, set: dict[str,
 
     def edit(doc: dict[str, Any]) -> None:
         node, _ = _find(doc, node_id)
-        patched = merge_patch(node, set)
+        patched = _merge_node(node, set)
         node.clear()
         node.update(patched)
 
