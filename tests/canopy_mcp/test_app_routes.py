@@ -8,8 +8,9 @@ from contextlib import asynccontextmanager
 import pytest
 from starlette.testclient import TestClient
 
-from canopy_mcp.app import create_app
+from canopy_mcp.app import McpProxyGuard, create_app
 from canopy_mcp.store import DraftStore
+from canopy_mcp.access import AccessGate
 from canopy_mcp.config import Settings
 from canopy_mcp.static import ASSET_CACHE_CONTROL, inject_base, safe_prefix
 
@@ -70,6 +71,44 @@ def test_post_mcp_initialize_answers_without_redirect(client: TestClient) -> Non
 def test_mcp_refused_when_proxied(client: TestClient, header: str) -> None:
     r = client.post("/mcp", json=INITIALIZE, headers={**MCP_HEADERS, header: "/panel/canopy"})
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+def test_mcp_with_a_trailing_slash_redirects_and_is_never_the_transport(client: TestClient, method: str) -> None:
+    r = client.request(method, "/mcp/", json=INITIALIZE, headers=MCP_HEADERS, follow_redirects=False)
+    assert r.status_code == 307
+    assert r.headers["location"].endswith("/mcp")
+    assert "serverInfo" not in r.text
+
+
+def test_mcp_with_a_trailing_slash_is_refused_when_proxied(client: TestClient) -> None:
+    headers = {**MCP_HEADERS, "x-forwarded-prefix": "/panel/canopy"}
+    r = client.post("/mcp/", json=INITIALIZE, headers=headers, follow_redirects=False)
+    assert r.status_code == 403
+
+
+def test_without_an_access_token_the_proxy_guard_is_the_outermost_middleware(client: TestClient) -> None:
+    classes = [m.cls for m in client.app.user_middleware]
+    assert classes[0] is McpProxyGuard
+    assert AccessGate not in classes
+
+
+def test_without_an_access_token_no_route_asks_for_a_credential(client: TestClient) -> None:
+    """Walks ``app.routes``: no route answers the credential refusal when none is configured."""
+    refused = {}
+    sockets = []
+    for route in client.app.routes:
+        path = re.sub(r"\{[^}]+\}", "x", route.path)
+        if "WebSocket" in type(route).__name__:
+            sockets.append(path)
+            continue
+        for method in sorted(route.methods or ["GET", "POST"]):
+            r = client.request(method, path, follow_redirects=False)
+            if r.status_code == 401:
+                refused[f"{method} {path}"] = r.status_code
+    assert refused == {}
+    assert set(sockets) == {"/hare/v1/ws/pvs", "/fox/v1/ws/formulas"}
+    assert len(client.app.routes) > 20
 
 
 def test_proxy_headers_do_not_block_viewer(client: TestClient) -> None:
@@ -231,6 +270,7 @@ def test_health(client: TestClient) -> None:
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+    assert list(r.json()) == ["status"]
 
 
 def test_lifespan_opens_client_and_runs_hooks_in_order(settings: Settings) -> None:

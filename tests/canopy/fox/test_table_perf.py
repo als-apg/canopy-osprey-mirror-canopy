@@ -187,6 +187,11 @@ async def test_three_concurrent_10000_by_9_evals(monkeypatch):
     lag_delta = np.percentile(busy, 99) - np.percentile(idle, 99)
     assert lag_delta < 0.020, f"lag p99 delta {lag_delta * 1e3:.1f} ms"
     assert encode_threads and main_thread not in encode_threads  # encode off the loop
+    # An encode is counted when its worker thread starts and posted after the await
+    # returns, so one may still be in flight here: let it post before comparing.
+    settle = asyncio.get_running_loop().time() + 2.0
+    while len(encode_threads) != posts["results"] and asyncio.get_running_loop().time() < settle:
+        await asyncio.sleep(0.01)
     assert len(encode_threads) == posts["results"]  # one encode per broadcast
     for c in collectors:
         assert max(len(r) for r in c.raw if isinstance(r, str)) <= 2_500_000

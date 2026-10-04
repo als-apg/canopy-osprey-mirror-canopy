@@ -11,6 +11,11 @@ Two sources describe a widget type, and neither is complete on its own:
   ``consumes``. Types the renderer copies through ``verbatim`` consume nothing
   by name.
 
+With ``CANOPY_WIDGETS_DIR`` set, the widget details are read from that
+directory's ``*.json`` files (one registry detail per file) instead, and
+``/beaver`` is never requested; ``ir-map.json`` still comes from the viewer
+build.
+
 The catalog has one entry per ``ir-map.json`` type. Its props are the union of
 the Beaver ``propSchema`` properties and the renderer's ``consumes`` list, and
 each prop records which source(s) named it. A ``verbatim`` type Beaver does
@@ -169,6 +174,32 @@ async def fetch_registry(client: httpx.AsyncClient) -> list[dict[str, Any]]:
     return list(await asyncio.gather(*(detail(widget_id) for widget_id in ids)))
 
 
+def load_widget_files(widgets_dir: Path) -> list[dict[str, Any]]:
+    """Read every widget detail (``*.json``) in ``widgets_dir``, sorted by file name.
+
+    Each file holds what ``GET /beaver/v1/widgets/{id}`` returns. A copy of
+    ``ir-map.json`` in the directory is not a widget and is skipped. Refuses a
+    directory without widget files, like an empty registry.
+    """
+    directory = Path(widgets_dir)
+    try:
+        paths = sorted(p for p in directory.glob("*.json") if p.name != IR_MAP_FILENAME and p.is_file())
+    except OSError as exc:
+        raise CatalogError(f"cannot list {directory}: {exc}") from exc
+    if not paths:
+        raise CatalogError(f"{directory} holds no widget files; is CANOPY_WIDGETS_DIR a widget registry?")
+    details = []
+    for path in paths:
+        try:
+            detail = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CatalogError(f"cannot read {path}: {exc}") from exc
+        if not isinstance(detail, dict) or not isinstance(detail.get("id"), str):
+            raise CatalogError(f"{path} is not a widget detail (an object with a string id)")
+        details.append(detail)
+    return details
+
+
 # --- Join -------------------------------------------------------------------
 
 
@@ -243,9 +274,15 @@ def build_catalog(details: list[dict[str, Any]], ir_map: dict[str, dict[str, Any
 
 
 async def load_catalog(settings: Settings | None = None, client: httpx.AsyncClient | None = None) -> Catalog:
-    """Build the catalog from the live registry and the viewer's ``ir-map.json``."""
+    """Build the catalog from the widget details and the viewer's ``ir-map.json``.
+
+    The details come from ``CANOPY_WIDGETS_DIR`` when it is set, without any
+    request to the backend, and from the live registry otherwise.
+    """
     settings = settings or get_settings()
     ir_map = load_ir_map(settings.viewer_dist)
+    if settings.widgets_dir is not None:
+        return build_catalog(load_widget_files(settings.widgets_dir), ir_map)
     async with borrowed_client(client, settings) as http:
         details = await fetch_registry(http)
     return build_catalog(details, ir_map)

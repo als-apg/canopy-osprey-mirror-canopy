@@ -42,10 +42,13 @@ jobs:
         python-version: "3.12"
 
     - name: Install dependencies
-      run: uv sync --group dev
+      run: uv sync --group dev --all-extras
+
+    - name: Check import contracts
+      run: uv run --all-extras lint-imports
 
     - name: Test with pytest
-      run: uv run coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v
       env:
         COVERAGE_FILE: ".coverage.linux"
 
@@ -55,6 +58,34 @@ jobs:
         name: coverage-linux
         path: .coverage.linux
         include-hidden-files: true
+
+  # The appliance set again, against the dependency versions an OSPREY image ships
+  # (ci/osprey-pins.txt) instead of uv.lock: the data modules, the EPICS backend and
+  # the MCP server.
+  tests-pins:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      with:
+        python-version: "3.12"
+
+    - name: Test under the OSPREY pins
+      run: >-
+        ci/run-under-pins.sh
+        tests/canopy/hare
+        tests/canopy/vole
+        tests/canopy/fox
+        tests/canopy/mole
+        tests/canopy/epics
+        tests/canopy/core/test_keys_file.py
+        tests/canopy/test_module_selection.py
+        tests/canopy/test_closed_meta.py
+        tests/canopy_mcp
 
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
   # skips when Postgres is unreachable)
@@ -79,10 +110,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: uv sync --group dev
+      run: uv sync --group dev --all-extras
 
     - name: Test with pytest
-      run: uv run coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v
       env:
         COVERAGE_FILE: ".coverage.${{ matrix.python-version }}.${{ matrix.os }}"
 

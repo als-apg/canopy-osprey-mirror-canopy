@@ -10,6 +10,10 @@ exercised end to end:
 - ``:TABLE``              -> a small NTTable-style table (index/value/status columns)
 - anything else           -> a scalar
 
+A name under ``SIM:NEVER:`` stands for a PV no IOC serves: reads come back
+disconnected, a monitor reports ``connected=False`` once and then stays silent, and
+writes fail. A ``ca://`` or ``pva://`` prefix is accepted and ignored.
+
 Each PV's phase is a stable function of its name, so values are deterministic per
 process. Severity thresholds let the alarm-styling path be exercised too.
 """
@@ -20,12 +24,16 @@ import zlib
 import asyncio
 from dataclasses import dataclass
 
-from canopy.epics.base import Subscription, EventCallback
+from canopy.epics.base import Subscription, EventCallback, PVWriteFailed
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind, TableValue, PVWriteValue
 from canopy.contracts.sample import AlarmSeverity
+from canopy.epics.pv_protocol import strip_protocol_prefix
 
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
 _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
+
+# Names under this prefix (after any protocol prefix) simulate a PV that never connects.
+NEVER_CONNECTING_PREFIX = "SIM:NEVER:"
 
 
 class SimulationConnector:
@@ -99,9 +107,22 @@ class SimulationConnector:
             return AlarmSeverity.MINOR
         return AlarmSeverity.NO_ALARM
 
+    @staticmethod
+    def _never_connects(pv: str) -> bool:
+        return strip_protocol_prefix(pv).startswith(NEVER_CONNECTING_PREFIX)
+
     def _value_for(self, pv: str) -> PVValue:
-        kind = self._kind_for(pv)
         now = time.time_ns()
+        if self._never_connects(pv):
+            return PVValue(
+                pv=pv,
+                value=None,
+                severity=AlarmSeverity.INVALID,
+                ts_ns=now,
+                connected=False,
+                error="simulated PV that never connects",
+            )
+        kind = self._kind_for(pv)
         if pv in self._overrides:
             # A prior `put` pinned this PV's value; return it verbatim (keeping
             # the name-derived kind) so put -> get round-trips.
@@ -144,13 +165,16 @@ class SimulationConnector:
         return self._value_for(pv)
 
     async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
-        # Record the write so subsequent `get`/monitor ticks reflect it. The
-        # simulation backend never rejects a write (it has no live IOC to fail).
+        # Record the write so subsequent `get`/monitor ticks reflect it.
         # `_overrides` is never evicted, but it's bounded in practice by the small
         # set of distinct PVs a developer writes to in a dev/test session.
+        if self._never_connects(pv):
+            raise PVWriteFailed(f"Simulated write to {pv} failed: the PV never connects")
         self._overrides[pv] = value
 
     async def describe(self, pv: str) -> PVMeta:
+        if self._never_connects(pv):
+            return PVMeta(pv=pv)
         kind = self._kind_for(pv)
         if kind is ValueKind.ENUM:
             return PVMeta(pv=pv, value_kind=kind, enum_choices=list(_ENUM_CHOICES), writable=True)
@@ -187,6 +211,9 @@ class SimulationConnector:
     async def _run(self, pv: str, on_event: EventCallback) -> None:
         # Emit an initial value immediately, then once per tick.
         on_event(self._value_for(pv))
+        if self._never_connects(pv):
+            # One not-connected report, then silence until the monitor is closed.
+            await asyncio.Event().wait()
         while True:
             await asyncio.sleep(self._interval)
             on_event(self._value_for(pv))

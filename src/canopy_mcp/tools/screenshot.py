@@ -15,6 +15,9 @@ If the wait runs out the screenshot is still taken: a screen whose PVs never
 connect is exactly what the agent needs to see. ``pv`` then reports
 ``disconnected``, as it does for ``mock``: only a live Hare connection is
 ``connected``. Nothing is written to disk; the PNG goes back inline.
+
+A server running without a browser (see :mod:`canopy_mcp.browser`) answers
+every call with a tool error saying screenshots are unavailable.
 """
 
 import struct
@@ -24,7 +27,6 @@ from urllib.parse import quote, urlencode
 from fastmcp.tools import ToolResult
 from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
-from playwright.async_api import Error as PlaywrightError
 
 from canopy_mcp.config import get_settings
 from canopy_mcp.store import DraftNotFound, DraftStore, InvalidDraftId
@@ -149,6 +151,15 @@ def _draft_size(draft_id: str) -> dict[str, Any] | None:
     return size if isinstance(size, dict) else None
 
 
+def _playwright_errors() -> tuple[type[BaseException], ...]:
+    """Playwright's error class, or nothing to catch when it is not installed."""
+    try:
+        from playwright.async_api import Error
+    except ImportError:
+        return ()
+    return (Error,)
+
+
 @mcp.tool
 async def screenshot(id: str, macros: dict[str, str] | None = None) -> ToolResult:
     """Render draft ``id`` in the viewer and return it as a PNG image.
@@ -166,6 +177,6 @@ async def screenshot(id: str, macros: dict[str, str] | None = None) -> ToolResul
         raise ToolError(str(exc)) from exc
     except BrowserNotStarted as exc:
         raise ToolError(str(exc)) from exc
-    except PlaywrightError as exc:
+    except _playwright_errors() as exc:
         raise ToolError(f"screenshot failed: {exc}") from exc
     return ToolResult(content=[Image(data=data, format="png"), info], structured_content=info)

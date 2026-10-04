@@ -22,3 +22,13 @@ def test_epics_backend_selected_by_name():
 def test_unknown_backend_raises():
     with pytest.raises(EpicsBackendUnavailable):
         build_connector(EpicsConfig(backend="bogus"))
+
+
+def test_module_class_path_selects_an_out_of_tree_backend():
+    conn = build_connector(EpicsConfig(backend="canopy.epics.backends.simulation:SimulationConnector"))
+    assert isinstance(conn, SimulationConnector)
+
+
+def test_module_class_path_that_does_not_import_raises():
+    with pytest.raises(EpicsBackendUnavailable, match="canopy_no_such_module"):
+        build_connector(EpicsConfig(backend="canopy_no_such_module:Connector"))

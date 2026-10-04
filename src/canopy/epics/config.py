@@ -33,6 +33,12 @@ class EpicsConfig(BaseSettings):
     # Treat a CA DBR_CHAR array as a string rather than a numeric waveform.
     char_array_as_string: bool = True
 
+    # How long a monitor waits for its channel before reporting it not connected.
+    # A PV that has not connected by then yields one `connected=False` value, so a
+    # client can tell "no such PV" from "still waiting". It updates normally if it
+    # connects later. Applies to every backend.
+    connect_report_s: float = 1.5
+
     # Max waveform length we will serialize as JSON and fan out to WebSocket clients.
     # Longer arrays are truncated and flagged via PVValue.error. This is a downstream
     # serialization/display guard applied after the array is already in hand, and is distinct

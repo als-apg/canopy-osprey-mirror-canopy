@@ -5,7 +5,9 @@ The served viewer reads live values over ``WS /hare/v1/ws/pvs`` and
 server's own ``X-API-Key`` (``CANOPY_API_KEY``) on the upstream handshake. The
 upstream handshake is built from scratch -- no client header is copied and any
 ``api_key`` query parameter is dropped -- so a browser can neither see the key
-nor substitute its own.
+nor substitute its own. An upstream that is not accepting connections yet is
+retried for ``CANOPY_RELAY_CONNECT_RETRY_S`` seconds (default 0: one attempt)
+before the browser's handshake is refused with close code 1011.
 
 ``GET /mole/v1/{path}`` (the Trace tab's archiver reads) is forwarded the same
 way over HTTP: only ``Accept`` and the server key go upstream, ``api_key`` is
@@ -18,6 +20,7 @@ WebSocket connections to any other path fall through to Starlette's default,
 which refuses the handshake.
 """
 
+import time
 import posixpath
 from urllib.parse import quote, unquote, urlsplit, urlencode, urlunsplit, unquote_plus
 from collections.abc import Callable, Iterable, Awaitable
@@ -41,6 +44,8 @@ MOLE_PREFIX = "/mole/v1/"
 MOLE_TIMEOUT = 15.0
 API_KEY_QUERY = "api_key"
 OPEN_TIMEOUT = 10.0
+# Pause between connect attempts inside the retry window.
+CONNECT_RETRY_INTERVAL = 0.1
 
 # Close codes that describe a closure but may not be sent in a close frame.
 _UNSENDABLE_CLOSE_CODES = {1005, 1006, 1015}
@@ -93,15 +98,19 @@ async def _pipe(websocket: WebSocket, upstream: ClientConnection) -> None:
         tg.start_soon(upstream_to_client)
 
 
-def make_relay(settings: Settings, path: str) -> Callable[[WebSocket], Awaitable[None]]:
-    """The WebSocket endpoint relaying ``path`` to the backend."""
-    headers = auth_headers(settings)
+async def _connect_upstream(url: str, headers: dict[str, str], retry_s: float) -> ClientConnection:
+    """Open the upstream connection, retrying a failed connect for ``retry_s`` seconds.
 
-    async def relay(websocket: WebSocket) -> None:
-        url = upstream_ws_url(settings.base_url, path, websocket.query_params.multi_items())
+    Only a connection that could not be made (refused, unreachable) is
+    retried: that is a backend still coming up. A connect that timed out or an
+    upstream that answered and rejected the handshake is final. The last
+    failure propagates once the window is over.
+    """
+    deadline = time.monotonic() + retry_s
+    while True:
         try:
             # compression=None: the in-cluster hop never negotiates permessage-deflate.
-            upstream = await connect(
+            return await connect(
                 url,
                 additional_headers=headers,
                 open_timeout=OPEN_TIMEOUT,
@@ -109,6 +118,23 @@ def make_relay(settings: Settings, path: str) -> Callable[[WebSocket], Awaitable
                 user_agent_header=None,
                 compression=None,
             )
+        except TimeoutError:
+            raise
+        except OSError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            await anyio.sleep(min(CONNECT_RETRY_INTERVAL, remaining))
+
+
+def make_relay(settings: Settings, path: str) -> Callable[[WebSocket], Awaitable[None]]:
+    """The WebSocket endpoint relaying ``path`` to the backend."""
+    headers = auth_headers(settings)
+
+    async def relay(websocket: WebSocket) -> None:
+        url = upstream_ws_url(settings.base_url, path, websocket.query_params.multi_items())
+        try:
+            upstream = await _connect_upstream(url, headers, settings.relay_connect_retry_s)
         except (OSError, TimeoutError, InvalidHandshake):
             # Closing before accept refuses the client's handshake.
             await websocket.close(code=1011)

@@ -1,11 +1,14 @@
 from typing import Protocol, Annotated
+from pathlib import Path
 from dataclasses import dataclass
+from urllib.parse import parse_qs
 
 from fastapi import Security, WebSocket, status
 from fastapi.security import APIKeyHeader
+from starlette.types import Scope
 from fastapi.exceptions import WebSocketException
 
-from canopy.core.config import get_settings
+from canopy.core.config import Settings, get_settings
 from canopy.core.errors import (
     ErrorCode,
     InvalidAPIKey,
@@ -63,6 +66,50 @@ class EnvKeyRegistry:
     def get(self, token: str) -> APIKey | None:
         return self._keys.get(token)
 
+    def __len__(self) -> int:
+        return len(self._keys)
+
+
+class KeysFileError(RuntimeError):
+    """The configured keys file cannot supply a registry. Never carries file content."""
+
+
+def load_keys_file(path: str | Path) -> EnvKeyRegistry:
+    """Build the registry from a keys file (the ``CANOPY_API_KEYS`` grammar).
+
+    Entries are separated by commas or line breaks. Unlike the environment
+    value, the file is read strictly: one that cannot be read, holds no key, or
+    holds an entry that is not ``<token>:<scope>[+<scope>]`` with scopes
+    ``read`` / ``write`` raises ``KeysFileError``. A deployment that names a
+    file must never run on a registry other than the one the file spells out.
+    """
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else type(exc).__name__
+        raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: cannot be read ({reason})") from None
+    entries = [entry.strip() for entry in raw.replace("\r", "\n").replace("\n", ",").split(",") if entry.strip()]
+    if not entries:
+        raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: holds no API key")
+    for number, entry in enumerate(entries, start=1):
+        token, separator, scopes = entry.partition(":")
+        well_formed = (
+            bool(separator)
+            and bool(token)
+            and not any(char.isspace() for char in entry)
+            and all(scope in ("read", "write") for scope in scopes.split("+"))
+        )
+        if not well_formed:
+            raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: entry {number} is not <token>:<scope>[+<scope>]")
+    return EnvKeyRegistry(",".join(entries))
+
+
+def build_key_registry(settings: Settings) -> KeyRegistry:
+    """The registry these settings describe: the keys file when one is set, else ``api_keys``."""
+    if settings.api_keys_file:
+        return load_keys_file(settings.api_keys_file)
+    return EnvKeyRegistry(settings.api_keys)
+
 
 _registry: KeyRegistry | None = None
 
@@ -73,10 +120,20 @@ def bind_key_registry(registry: KeyRegistry) -> None:
     _registry = registry
 
 
+def load_key_registry() -> KeyRegistry:
+    """Build the registry from the current settings and bind it.
+
+    Called while the app is composed, so a bad keys file stops the process
+    before it serves anything instead of surfacing on the first request.
+    """
+    registry = build_key_registry(get_settings())
+    bind_key_registry(registry)
+    return registry
+
+
 def _get_registry() -> KeyRegistry:
-    global _registry
     if _registry is None:
-        _registry = EnvKeyRegistry(get_settings().api_keys)
+        return load_key_registry()
     return _registry
 
 
@@ -140,6 +197,25 @@ async def ws_get_api_key(websocket: WebSocket) -> APIKey:
             reason=f"{ErrorCode.INVALID_API_KEY.value}: invalid API key",
         )
     return key
+
+
+def key_from_scope(scope: Scope) -> APIKey | None:
+    """Resolve the API key carried by a raw ASGI scope, or ``None``.
+
+    For code that runs outside dependency injection. Reads what the route
+    dependencies read: the ``X-API-Key`` header, and for a WebSocket also the
+    ``api_key`` query parameter (browsers cannot set headers on a handshake).
+    """
+    token = next(
+        (value.decode("latin-1") for name, value in scope.get("headers", ()) if name.lower() == b"x-api-key"),
+        None,
+    )
+    if not token and scope["type"] == "websocket":
+        query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+        token = next(iter(query.get("api_key", ())), None)
+    if not token:
+        return None
+    return _get_registry().get(token)
 
 
 def ws_require_read_access(key: Annotated[APIKey, Security(ws_get_api_key)]) -> APIKey:

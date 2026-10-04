@@ -1,5 +1,9 @@
 """The screenshot tool and the shared Chromium it renders in.
 
+The browser is optional: the first tests pin that a server without
+``playwright`` or without a Chromium still starts and that ``screenshot`` then
+answers "unavailable".
+
 The browser tests need a Chromium from ``playwright install chromium``; without
 one they are skipped. They serve a stub viewer build through the real app on a
 real port, because Chromium has to fetch the page over HTTP. The stub stands in
@@ -7,10 +11,11 @@ for the viewer: it exposes ``window.__canopy.pvStatus`` and a screen root, and
 takes the status it settles on from the ``STATUS`` macro so each test can pick it.
 """
 
+import sys
 import time
-import shutil
 import socket
 import threading
+import subprocess
 from pathlib import Path
 from collections.abc import Iterator
 
@@ -18,6 +23,7 @@ import pytest
 import uvicorn
 from mcp.types import ImageContent
 from fastmcp.exceptions import ToolError
+from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
 from canopy_mcp.config import Settings
@@ -32,8 +38,15 @@ from canopy_mcp.tools.screenshot import (
     viewport_for,
 )
 
-FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
 ROOT_W, ROOT_H = 240, 120
+
+# A page with no ``window.__canopy`` and no screen root.
+PLAIN_INDEX = """<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>plain page</title></head>
+  <body style="margin:0"><div id="root"></div></body>
+</html>
+"""
 
 STUB_INDEX = f"""<!doctype html>
 <html lang="en">
@@ -122,11 +135,85 @@ def test_get_browser_before_start_raises() -> None:
         get_browser()
 
 
-async def test_tool_without_browser_is_a_tool_error() -> None:
+async def test_tool_without_browser_answers_unavailable() -> None:
     from canopy_mcp.tools.screenshot import screenshot
 
-    with pytest.raises(ToolError, match="not running"):
+    with pytest.raises(ToolError, match="unavailable"):
         await screenshot("bts/view")
+
+
+# --- No browser on the host -----------------------------------------------------
+
+
+@pytest.fixture
+def no_playwright(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every ``import playwright...`` fail, as on a host without the package."""
+    for name in [name for name in sys.modules if name == "playwright" or name.startswith("playwright.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, "playwright", None)
+
+
+def test_the_modules_import_without_playwright() -> None:
+    """Registering the tools and building the app must not import playwright."""
+    code = (
+        "import sys\n"
+        "sys.modules['playwright'] = None\n"
+        "import canopy_mcp.browser, canopy_mcp.tools.screenshot\n"
+        "from canopy_mcp.app import create_app\n"
+        "from canopy_mcp.config import Settings\n"
+        "create_app(Settings(), startup_hooks=[])\n"
+        "assert not [n for n in sys.modules if n.startswith('playwright.')]\n"
+        "print('ok')\n"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip().endswith("ok")
+
+
+async def test_browser_start_without_playwright_is_an_import_error(no_playwright: None) -> None:
+    browser = Browser("http://127.0.0.1:1")
+    with pytest.raises(ImportError):
+        await browser.start()
+    assert not browser.running
+
+
+def test_server_without_playwright_starts_and_screenshot_is_unavailable(
+    no_playwright: None, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The default Chromium hook cannot launch anything: the server starts anyway."""
+    from fastmcp import Client
+
+    from canopy_mcp.app import chromium_hook
+    from canopy_mcp.server import mcp
+
+    app = create_app(Settings(drafts_dir=tmp_path / "drafts"), startup_hooks=[chromium_hook])
+    with caplog.at_level("WARNING", logger="canopy_mcp.browser"), TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert app.state.browser is None
+        with pytest.raises(BrowserNotStarted):
+            get_browser()
+
+        async def call() -> None:
+            async with Client(mcp) as mcp_client:
+                await mcp_client.call_tool("screenshot", {"id": "bts/view"})
+
+        with pytest.raises(ToolError, match="unavailable"):
+            client.portal.call(call)
+    assert "screenshots are unavailable" in caplog.text
+
+
+async def test_hook_with_a_chromium_that_fails_to_launch_yields_no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    async def no_chromium(self: Browser) -> None:
+        raise RuntimeError("Executable doesn't exist")
+
+    monkeypatch.setattr(Browser, "start", no_chromium)
+    app = SimpleNamespace(state=SimpleNamespace())
+    async with browser_hook("http://127.0.0.1:1")(app) as browser:
+        assert browser is None and app.state.browser is None
+        with pytest.raises(BrowserNotStarted, match="unavailable"):
+            get_browser()
 
 
 # --- Live Chromium --------------------------------------------------------------
@@ -155,11 +242,10 @@ def _free_port() -> int:
 
 
 def _dist(root: Path, index: str | None) -> Path:
-    """A viewer build: the fixture dist, with ``index.html`` replaced when given."""
+    """A viewer build holding ``index`` as its page, or :data:`PLAIN_INDEX` when ``None``."""
     dist = root / "dist"
-    shutil.copytree(FIXTURE_DIST, dist)
-    if index is not None:
-        (dist / "index.html").write_text(index, encoding="utf-8")
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text(PLAIN_INDEX if index is None else index, encoding="utf-8")
     return dist
 
 
@@ -205,7 +291,7 @@ def stub_server(chromium: None, tmp_path_factory: pytest.TempPathFactory) -> Ite
 
 @pytest.fixture(scope="module")
 def fixture_server(chromium: None, tmp_path_factory: pytest.TempPathFactory) -> Iterator[_Server]:
-    """The fixture dist as-is: a page with no ``window.__canopy`` and no screen root."""
+    """A page with no ``window.__canopy`` and no screen root."""
     with _Server(_settings(tmp_path_factory.mktemp("fixture"), None), []) as server:
         yield server
 

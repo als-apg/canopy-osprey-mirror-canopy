@@ -121,12 +121,14 @@ class EpicsConnector:
         unprefixed_pva_fallback: bool = False,
         char_array_as_string: bool = True,
         max_array_elements: int = 100_000,
+        connect_report_s: float = 1.5,
     ) -> None:
         self._ca_timeout = ca_timeout_s
         self._pva_timeout = pva_timeout_s
         self._fallback = unprefixed_pva_fallback
         self._char_array_as_string = char_array_as_string
         self._max_array_elements = max_array_elements
+        self._connect_report = connect_report_s
         self._loop: asyncio.AbstractEventLoop | None = None
         self._pva_context = None
 
@@ -138,6 +140,7 @@ class EpicsConnector:
             unprefixed_pva_fallback=cfg.unprefixed_pva_fallback,
             char_array_as_string=cfg.char_array_as_string,
             max_array_elements=cfg.max_array_elements,
+            connect_report_s=cfg.connect_report_s,
         )
 
     async def start(self) -> None:
@@ -324,7 +327,15 @@ class EpicsConnector:
             except Exception:
                 logger.exception("CA monitor callback for %s failed", pv)
 
-        subscription = camonitor(stripped, callback, notify_disconnect=True, format=FORMAT_TIME)
+        # `connect_timeout` makes aioca report a channel that has not connected
+        # within the bound as one disconnect; it still updates if it connects later.
+        subscription = camonitor(
+            stripped,
+            callback,
+            notify_disconnect=True,
+            format=FORMAT_TIME,
+            connect_timeout=self._connect_report,
+        )
         return _CaSubscription(subscription)
 
     def _subscribe_pva(self, pv: str, stripped: str, on_event: EventCallback) -> Subscription:
@@ -333,6 +344,19 @@ class EpicsConnector:
         # p4p's asyncio Context requires a coroutine callback and invokes it on the
         # loop thread, so on_event can be called directly without marshaling.
         connected_once = False
+
+        def report_not_connected():
+            # The channel has not connected within the bound: say so once. The
+            # monitor stays open, so a PV that appears later updates normally.
+            if connected_once:
+                return
+            try:
+                on_event(self._disconnected(pv, f"not connected within {self._connect_report:g} s"))
+            except Exception:
+                logger.exception("PVA not-connected report for %s failed", pv)
+
+        loop = self._loop or asyncio.get_event_loop()
+        timer = loop.call_later(self._connect_report, report_not_connected)
 
         async def callback(value):
             nonlocal connected_once
@@ -343,7 +367,8 @@ class EpicsConnector:
                 if isinstance(value, Exception):
                     # p4p reports the initial not-yet-connected state before the first
                     # value. Suppress that so a live PV doesn't flicker disconnected on
-                    # subscribe. Only report drops once we've actually connected.
+                    # subscribe. Only report drops once we've actually connected; a
+                    # channel that never connects is reported by the timer above.
                     if not connected_once:
                         return
                     pvvalue = self._disconnected(pv, str(value))
@@ -355,7 +380,7 @@ class EpicsConnector:
                 logger.exception("PVA monitor callback for %s failed", pv)
 
         monitor = ctx.monitor(stripped, callback, notify_disconnect=True)
-        return _PvaSubscription(monitor)
+        return _PvaSubscription(monitor, timer)
 
     # --- conversions ----------------------------------------------------- #
 
@@ -498,8 +523,11 @@ class _CaSubscription:
 @dataclass
 class _PvaSubscription:
     sub: object
+    timer: asyncio.TimerHandle | None = None
 
     async def close(self) -> None:
+        if self.timer is not None:
+            self.timer.cancel()
         try:
             self.sub.close()
         except Exception:

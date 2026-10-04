@@ -26,8 +26,10 @@
 #
 # Plain pip on python:3.12 (ALS convention). pip ignores canopy's
 # [tool.uv.sources] path link, which is why the PyDMConverter wheel is passed
-# explicitly in the same `pip install` as canopy. pymongo is a core canopy
-# dependency, so the [mcp] extra is the only one needed.
+# explicitly in the same `pip install` as canopy. The image serves every canopy
+# module, the MCP server and the converter, so it installs all three extras:
+# data (Postgres, Redis job queue), mcp and convert (PyDMConverter, satisfied
+# by that wheel).
 
 # --- pydm-build: wheel of pydm-converter-tool --------------------------------
 FROM python:3.12 AS pydm-build
@@ -99,7 +101,7 @@ ENV CANOPY_TRACE_DIST=/app/trace
 # (the PyDMConverter wheel is already built, so nothing else can pick it up).
 RUN --mount=type=bind,from=canopy,target=/ctx/canopy,rw \
     SETUPTOOLS_SCM_PRETEND_VERSION="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CANOPY}" \
-    pip install --no-cache-dir /wheels/*.whl '/ctx/canopy[mcp]'
+    pip install --no-cache-dir /wheels/*.whl '/ctx/canopy[data,mcp,convert]'
 
 # Chromium for canopy_mcp's screenshot tool, at a fixed world-readable path so
 # the browser is visible to whichever uid the container runs as.
