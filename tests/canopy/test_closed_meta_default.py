@@ -4,31 +4,16 @@ The cases that hold on an install without the ``data`` extra live in
 ``test_closed_meta.py``.
 """
 
-import re
-
 import pytest
 from starlette.testclient import WebSocketDenialResponse
 from fastapi.testclient import TestClient
 
 from canopy.main import app, build_app
 from tests.conftest import READ_HEADERS
+from tests.canopy.test_closed_meta import _walk
 from canopy.core.config import ALL_MODULES
 
 OPEN = ("GET", "/health")
-
-
-def _walk(application, prefix: str = ""):
-    """Yield ``(kind, method, path)`` for every route, recursing into mounted apps."""
-    for route in application.routes:
-        kind = type(route).__name__
-        path = prefix + re.sub(r"\{[^}]+\}", "x", route.path)
-        if kind == "Mount":
-            yield from _walk(route.app, path)
-        elif "WebSocket" in kind:
-            yield ("websocket", "", path)
-        else:
-            for method in sorted(route.methods):
-                yield ("http", method, path)
 
 
 @pytest.fixture(scope="module")
