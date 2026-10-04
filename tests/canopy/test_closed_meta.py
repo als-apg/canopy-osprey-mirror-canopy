@@ -35,6 +35,10 @@ def _walk(app, prefix: str = ""):
     """Yield ``(kind, method, path)`` for every route, recursing into mounted apps."""
     for route in app.routes:
         kind = type(route).__name__
+        if kind == "_IncludedRouter":
+            # Newer FastAPI keeps each include_router() as one entry with no path of its own.
+            yield from _walk(route.original_router, prefix + route.include_context.prefix)
+            continue
         path = prefix + route.path
         if kind == "Mount":
             yield from _walk(route.app, path)
