@@ -44,6 +44,16 @@ is absent: no catalog, not an empty one.
 ``/views`` and ``/views/{id}`` are served by :mod:`canopy_mcp.views` from
 ``<drafts_dir>/views/``, beside (never inside) ``screens/``, so a view is
 neither listed in the drafts manifest nor served under ``/drafts``.
+
+``config.json`` also carries ``colorScheme``: the flat scheme plus ``meta`` from
+:func:`canopy.core.color_scheme.get_color_scheme`, which reads ``CANOPY_THEME_FILE``
+itself (``canopy-default`` when unset). It is omitted when the flattener is
+unavailable. It describes only what this server sees, never the converter's
+scheme. The document holds no secret, so it is served with
+``Access-Control-Allow-Origin: *`` for cross-origin fetches by the Builder.
+
+``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
+only when that scheme had load errors (it is then served as ``canopy-default``).
 """
 
 import re
@@ -57,6 +67,7 @@ from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
 
+from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp.store import SCREEN_SUFFIX, DraftStore, InvalidDraftId, contained_file
 from canopy_mcp.config import Settings
 
@@ -114,6 +125,9 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
         config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
     if _trace_page(settings, CORRELATION_PAGE) is not None:
         config["correlation"] = {"path": CORRELATION_PATH, "query": settings.correlation_default_query}
+    flat = get_color_scheme().flat_json
+    if flat is not None:
+        config["colorScheme"] = flat
     return config
 
 
@@ -192,7 +206,10 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         return FileResponse(target, headers={"Cache-Control": ASSET_CACHE_CONTROL})
 
     async def config(request: Request) -> Response:
-        return JSONResponse(viewer_config(settings), headers={"Cache-Control": DRAFT_CACHE_CONTROL})
+        return JSONResponse(
+            viewer_config(settings),
+            headers={"Cache-Control": DRAFT_CACHE_CONTROL, "Access-Control-Allow-Origin": "*"},
+        )
 
     async def manifest(request: Request) -> Response:
         body = json.dumps(store.manifest(), ensure_ascii=False).encode("utf-8")
@@ -256,7 +273,11 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         return _missing()
 
     async def health(request: Request) -> Response:
-        return JSONResponse({"status": "ok"})
+        body: dict[str, Any] = {"status": "ok"}
+        degraded = get_color_scheme().degraded
+        if degraded:
+            body["degraded"] = list(degraded)
+        return JSONResponse(body)
 
     return [
         Route("/", index, methods=["GET", "HEAD"]),

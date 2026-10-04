@@ -13,8 +13,8 @@ import json
 import subprocess
 
 import pytest
-from starlette.testclient import WebSocketDenialResponse
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketDenialResponse
 
 from canopy.core import security
 from canopy.main import build_app
@@ -140,7 +140,7 @@ def test_every_websocket_route_is_refused_without_a_key(closed_app, routes):
 def test_get_health_answers_without_a_key(closed_app):
     resp = TestClient(closed_app).get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "healthy"}
+    assert resp.json() == {"status": "healthy", "degraded": []}
 
 
 @pytest.mark.parametrize(

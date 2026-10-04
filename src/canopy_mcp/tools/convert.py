@@ -33,6 +33,13 @@ file per request), and writes them as drafts beside each other:
   ``dropped_prop`` items. It is measured after the image copy, so a copied
   image leaves no ``unresolved_ref``; neither the ref classification above nor
   the copy emits queue items itself.
+* **Scheme guard.** Each conversion's ``scheme`` (the color scheme the
+  converter applied) is kept; the parent's is returned as ``scheme``. When
+  ``CANOPY_THEME_FILE`` is set, ``overwrite=true`` refuses before any write
+  unless every unit reports a ``scheme``, they all agree, it is not
+  ``canopy-default``-served, carries no ``errors``, and its ``(id, sha256)``
+  equal this server's own ``colorScheme.meta``: overwriting a themed draft
+  with a conversion made against another scheme would silently re-color it.
 """
 
 from __future__ import annotations
@@ -59,6 +66,7 @@ from canopy_mcp.tools import drafts
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
+from canopy.core.color_scheme import DEFAULT_ID, THEME_FILE_ENV, get_color_scheme
 from canopy_mcp.check.refs import (
     dirname,
     iter_refs,
@@ -89,6 +97,7 @@ class _Unit:
     doc: dict[str, Any] = field(default_factory=dict)
     dropped: list[dict[str, Any]] = field(default_factory=list)
     source_path: str | None = None  # realpath of the legacy file; None in content mode
+    scheme: dict[str, Any] | None = None  # the response's ``scheme``; None when absent or null
 
     @classmethod
     def from_file(cls, draft_id: str, kind: str, path: str) -> _Unit:
@@ -148,11 +157,36 @@ async def _post(client: httpx.AsyncClient, unit: _Unit) -> None:
         metadata = screen["metadata"] = {}
     metadata["title"] = unit.title
     unit.doc = screen
+    scheme = body.get("scheme")
+    unit.scheme = scheme if isinstance(scheme, dict) else None
     unit.dropped = [
         {"draftId": unit.draft_id, "nodeId": d.get("nodeId"), "code": "dropped_prop", "props": list(d.get("props", []))}
         for d in body.get("droppedProps") or []
         if isinstance(d, dict)
     ]
+
+
+def _scheme_problem(units: list[_Unit]) -> str | None:
+    """Why the units' conversions must not overwrite drafts under ``CANOPY_THEME_FILE``, or ``None``."""
+    missing = [u.draft_id for u in units if u.scheme is None]
+    if missing:
+        return f"the converter reported no scheme for {', '.join(map(repr, missing))}"
+    first = units[0].scheme
+    assert first is not None
+    differing = [u.draft_id for u in units[1:] if u.scheme != first]
+    if differing:
+        return f"the conversions of {', '.join(map(repr, differing))} used a different scheme than the parent's"
+    if first.get("served") == DEFAULT_ID:
+        return f"the converter served {DEFAULT_ID!r} instead of the configured scheme"
+    if first.get("errors"):
+        return f"the converter's scheme has {len(first['errors'])} error(s)"
+    own = get_color_scheme().meta
+    if (first.get("id"), first.get("sha256")) != (own.get("id"), own.get("sha256")):
+        return (
+            f"the converter's scheme (id={first.get('id')!r}, sha256={first.get('sha256')!r}) differs from "
+            f"this server's (id={own.get('id')!r}, sha256={own.get('sha256')!r})"
+        )
+    return None
 
 
 def _sibling_sources(siblings: dict[str, str]) -> dict[str, str]:
@@ -307,7 +341,14 @@ async def convert_legacy(
     from beside each legacy source into the store next to the draft that
     references them; ``overwrite=true`` also replaces a differing stored image.
 
-    Returns ``{draftId, rev, url, drafts, assets, queue}``: ``drafts`` lists
+    When ``CANOPY_THEME_FILE`` is set, ``overwrite=true`` refuses
+    (``reason: scheme_mismatch``, nothing written) unless every conversion
+    reports the same scheme, served without errors, whose ``id`` and
+    ``sha256`` match this server's.
+
+    Returns ``{draftId, rev, url, drafts, assets, queue, scheme}``: ``scheme``
+    is the converter's ``{id, sha256, served, errors}`` for the parent
+    (``null`` when it reported none); ``drafts`` lists
     every draft written or reused with its ``rev``; ``assets`` has one entry
     ``{draftId, ref, path, bytes, status, detail?}`` per image ref, ``path``
     the served ``screens/...`` path (``null`` when the ref has none), ``bytes``
@@ -368,6 +409,17 @@ async def convert_legacy(
         for unit in units[1:]:
             await _post(client, unit)
 
+    if overwrite and os.environ.get(THEME_FILE_ENV, "").strip():
+        problem = _scheme_problem(units)
+        if problem is not None:
+            return refused(
+                id,
+                "scheme_mismatch",
+                f"refused: overwrite needs a conversion made with this server's color scheme, but {problem}. "
+                "Nothing was written.",
+                scheme=parent.scheme,
+            )
+
     # Decide every draft's fate before writing any.
     to_write: dict[str, tuple[dict[str, Any], str | None]] = {}
     revs: dict[str, str] = {}
@@ -402,6 +454,7 @@ async def convert_legacy(
         ],
         "assets": assets,
         "queue": queue,
+        "scheme": parent.scheme,
     }
 
 

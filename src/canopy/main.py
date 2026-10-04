@@ -18,6 +18,8 @@ from canopy.core.config import (
 from canopy.core.errors import ErrorCode, register_canopy_error_handler
 from canopy.core.logging import configure_logging
 from canopy.core.security import key_from_scope, load_key_registry
+from canopy.contracts.base import CanopyModel
+from canopy.core.color_scheme import get_color_scheme
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -83,6 +85,13 @@ class _ClosedMeta:
             )
 
 
+class HealthDTO(CanopyModel):
+    """``/health``: ``degraded`` names the parts serving a fallback (``color-scheme`` on a bad scheme file)."""
+
+    status: str
+    degraded: list[str] = []
+
+
 def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) -> FastAPI:
     """Compose the Canopy API from the named modules.
 
@@ -142,8 +151,16 @@ def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) 
         app.mount(f"/{name}", module.app)
 
     @app.get("/health", tags=["meta"])
-    async def health() -> dict[str, str]:
-        return {"status": "healthy"}
+    async def health() -> HealthDTO:
+        if "converter" in selected:
+            # Import here: the converter module is loaded only when selected.
+            from canopy.converter.config import get_converter_config
+
+            # The converter's scheme, from the same cached load its lifespan made: no new log line here.
+            scheme = get_color_scheme(get_converter_config().scheme_path)
+        else:
+            scheme = get_color_scheme(None)
+        return HealthDTO(status="healthy", degraded=list(scheme.degraded))
 
     @app.get("/", tags=["meta"])
     async def root() -> dict[str, str]:

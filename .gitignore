@@ -63,3 +63,4 @@ dmypy.json
 
 # JetBrains
 .idea/
+.claude/.logs/

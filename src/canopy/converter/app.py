@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from canopy.converter import gateway
 from canopy.core.errors import register_canopy_error_handler
+from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.config import get_converter_config
 from canopy.converter.runtime import mark_started
 from canopy.converter.api.v1.router import router as v1_router
@@ -33,13 +34,21 @@ async def converter_lifespan():
     # Seam #1: pick the widget registry by config — the Beaver gateway when
     # enabled, else the vendored snapshot shipped with pydmconverter.
     registry = build_registry(config)
-    service = ConversionService(registry=registry)
+    # The color scheme is flattened once per process (get_color_scheme caches per
+    # path); the service receives the loaded result and never loads one itself.
+    service = ConversionService(
+        registry=registry,
+        scheme=get_color_scheme(config.scheme_path),
+        color_def_path=config.color_def_path,
+    )
     gateway.bind(service)
     mark_started()
     logger.info(
-        "Converter started: colors_list=%s, beaver_gateway=%s",
+        "Converter started: colors_list=%s, beaver_gateway=%s, scheme=%s, color_def=%s",
         config.colors_list_path,
         config.use_beaver_gateway,
+        (service.scheme_meta or {}).get("served"),
+        config.color_def_path,
     )
     try:
         yield

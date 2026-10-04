@@ -15,12 +15,7 @@ from fastapi.testclient import TestClient
 
 from canopy.main import build_app
 from tests.conftest import READ_HEADERS
-from canopy.core.config import (
-    ALL_MODULES,
-    Settings,
-    parse_modules,
-    resolve_modules,
-)
+from canopy.core.config import ALL_MODULES, Settings, parse_modules, resolve_modules
 
 FIVE = ("hare", "vole", "fox", "mole", "converter")
 FIVE_IN_ORDER = ("mole", "hare", "vole", "fox", "converter")
@@ -99,7 +94,7 @@ def test_build_app_refuses_an_unknown_name():
 
 def test_the_five_module_app_starts_and_serves(five_app):
     with TestClient(five_app) as client:
-        assert client.get("/health").json() == {"status": "healthy"}
+        assert client.get("/health").json() == {"status": "healthy", "degraded": []}
         assert client.get("/").json()["name"] == "Canopy"
         assert client.get("/converter/v1/health/watchdog").status_code == 200
 

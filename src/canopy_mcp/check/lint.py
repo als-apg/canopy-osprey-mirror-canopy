@@ -1,6 +1,6 @@
 """Lint: checks that need the widget catalog, Fox or the PV directory.
 
-Three passes, each tolerant of malformed input (the schema pass reports it):
+Four passes, each tolerant of malformed input (the schema pass reports it):
 
 * **props** — every node's ``props`` validated (draft-07) against its catalog
   entry's Beaver ``propSchema``. A type the catalog does not know is error
@@ -19,17 +19,23 @@ Three passes, each tolerant of malformed input (the schema pass reports it):
   (non-2xx, connection error, timeout) the pass reports
   ``{check: 'raccoon', reason}`` in ``skipped`` and no per-node PV finding —
   never a pass that was not verified.
+* **roles** — every colour role (``{"$role", "fallback"}``) in ``props`` (nested
+  objects and arrays included), rule condition values and rule defaults checked
+  against the roles of the served flat scheme. A role the scheme does not define
+  is warning ``unknown_role`` (never an error: roles are open, and the fallback
+  paints). When the scheme cannot be flattened the pass is skipped.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 from jsonschema import Draft7Validator
 
+from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp import fox
 from canopy_mcp.catalog import Catalog
 from canopy_mcp.check.findings import Finding, node_id, pointer
@@ -75,12 +81,20 @@ async def check_lint(
     *,
     client: httpx.AsyncClient | None = None,
     settings: Settings | None = None,
+    roles: Collection[str] | None = None,
 ) -> LintResult:
-    """All lint findings for ``doc``, plus any check that could not run."""
+    """All lint findings for ``doc``, plus any check that could not run.
+
+    ``roles`` are the colour roles the viewer defines; by default the served
+    scheme's (``canopy.core.color_scheme.get_color_scheme``).
+    """
     if not isinstance(doc, dict):
         return LintResult()
+    if roles is None:
+        roles = served_roles()
     result = LintResult()
     result.findings += prop_findings(doc, catalog)
+    result.findings += role_findings(doc, roles)
     result.findings += await formula_findings(doc)
     pv_found, skipped = await pv_findings(collect_pvs(doc), client=client, settings=settings)
     result.findings += pv_found
@@ -103,7 +117,12 @@ def _validator(schema: dict[str, Any]) -> Draft7Validator:
 
 
 def prop_findings(doc: Any, catalog: Catalog) -> list[Finding]:
-    """Catalog-driven type and prop findings, in document order."""
+    """Catalog-driven type and prop findings, in document order.
+
+    Colour props carry the registry's inline colour def (a string or a
+    ``{"$role", "fallback"}`` role), so a role-bearing draft validates here; a
+    malformed role is an ``invalid_prop`` on the colour prop.
+    """
     out: list[Finding] = []
     for path, node in iter_nodes(doc):
         ntype = node.get("type")
@@ -157,6 +176,68 @@ def _prop_parts(error: Any) -> tuple[str | int, ...]:
         if missing:
             return (missing[0],)
     return ()
+
+
+# --- roles -----------------------------------------------------------------
+
+
+def served_roles() -> list[str] | None:
+    """Role names of the served flat scheme, or ``None`` when it is unavailable."""
+    flat = get_color_scheme().flat_json
+    roles = flat.get("roles") if isinstance(flat, dict) else None
+    return [r for r in roles if isinstance(r, str)] if isinstance(roles, list) else None
+
+
+def _is_role(value: Any) -> bool:
+    return isinstance(value, dict) and isinstance(value.get("$role"), str)
+
+
+def _iter_roles(value: Any, path: Path) -> Iterator[tuple[str, Path]]:
+    """Every colour role inside ``value`` (itself included), depth-first."""
+    if _is_role(value):
+        yield value["$role"], path
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_roles(item, (*path, key))
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            yield from _iter_roles(item, (*path, i))
+
+
+def role_findings(doc: Any, roles: Collection[str] | None) -> list[Finding]:
+    """``unknown_role`` warnings in document order; none when ``roles`` is ``None``."""
+    if roles is None or not isinstance(doc, dict):
+        return []
+    known = frozenset(roles)
+    out: list[Finding] = []
+    for path, node in iter_nodes(doc):
+        nid = node_id(node)
+        refs: list[tuple[str, Path]] = []
+        props = node.get("props")
+        if isinstance(props, dict):
+            refs += _iter_roles(props, (*path, "props"))
+        rules = node.get("rules")
+        for r, rule in enumerate(rules if isinstance(rules, list) else []):
+            if not isinstance(rule, dict):
+                continue
+            conditions = rule.get("conditions")
+            for c, condition in enumerate(conditions if isinstance(conditions, list) else []):
+                if isinstance(condition, dict) and _is_role(condition.get("value")):
+                    refs.append((condition["value"]["$role"], (*path, "rules", r, "conditions", c, "value")))
+            if _is_role(rule.get("default")):
+                refs.append((rule["default"]["$role"], (*path, "rules", r, "default")))
+        for name, role_path in refs:
+            if name not in known:
+                out.append(
+                    Finding(
+                        nid,
+                        "unknown_role",
+                        pointer(role_path),
+                        "warning",
+                        f"color role '{name}' on '{nid}' is not in the color scheme; its fallback will paint",
+                    )
+                )
+    return out
 
 
 # --- formulas --------------------------------------------------------------

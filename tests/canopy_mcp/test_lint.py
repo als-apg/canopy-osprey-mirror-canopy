@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from canopy.core.color_scheme import THEME_FILE_ENV, clear_color_scheme_cache
 from canopy_mcp import fox
 from canopy_mcp.catalog import build_catalog
 from canopy_mcp.check.lint import (
@@ -16,6 +17,7 @@ from canopy_mcp.check.lint import (
     collect_pvs,
     normalize_pv,
     pv_findings,
+    role_findings,
 )
 from canopy_mcp.check.semantic import INERT_IN_OSPREY_TYPES
 from canopy_mcp.client import make_client
@@ -250,6 +252,81 @@ async def test_raccoon_batches_at_limit(httpx_mock, client):
     requests = httpx_mock.get_requests()
     assert [len(json.loads(r.content)["pvs"]) for r in requests] == [RACCOON_BATCH, 1]
     assert findings == [] and skipped == []
+
+
+# --- roles ------------------------------------------------------------------
+
+
+@pytest.fixture
+def default_scheme(monkeypatch):
+    monkeypatch.delenv(THEME_FILE_ENV, raising=False)
+    clear_color_scheme_cache()
+    yield
+    clear_color_scheme_cache()
+
+
+def _role(name, fallback="#102030"):
+    return {"$role": name, "fallback": fallback}
+
+
+async def test_known_role_no_finding(default_scheme):
+    node = _node("f", "frame", props={"backgroundColor": _role("Display_Background", "#ffffff")})
+    result = await check_lint(_doc(node), _catalog())
+    assert result.findings == []
+
+
+async def test_unknown_role_in_prop_warns(default_scheme):
+    node = _node("f", "frame", props={"backgroundColor": _role("site.beamline_blue")})
+    result = await check_lint(_doc(node), _catalog())
+    assert _codes(result.findings) == [("f", "unknown_role", "warning")]
+    finding = result.findings[0]
+    assert finding.path == "/root/children/0/props/backgroundColor"
+    assert "site.beamline_blue" in finding.message
+    assert "'f'" in finding.message
+    assert "fallback" in finding.message
+
+
+async def test_unknown_role_in_nested_array_warns(default_scheme):
+    curves = [{"y_channel": "loc://a", "color": _role("Text")}, {"y_channel": "loc://b", "color": _role("Nope")}]
+    result = await check_lint(_doc(_node("w", "waveform-plot", props={"curves": curves})), _catalog())
+    assert _codes(result.findings) == [("w", "unknown_role", "warning")]
+    assert result.findings[0].path == "/root/children/0/props/curves/1/color"
+
+
+async def test_unknown_role_in_rule_default_warns(default_scheme):
+    rule = {
+        "name": "alarm",
+        "property": "foregroundColor",
+        "pvs": [{"name": "loc://x"}],
+        "conditions": [{"op": "==", "value": _role("MAJOR")}],
+        "default": _role("Mystery"),
+    }
+    result = await check_lint(_doc(_node("f", "frame", props={}, rules=[rule])), _catalog())
+    assert _codes(result.findings) == [("f", "unknown_role", "warning")]
+    assert result.findings[0].path == "/root/children/0/rules/0/default"
+    assert "Mystery" in result.findings[0].message
+
+
+async def test_unknown_role_in_rule_condition_value_warns(default_scheme):
+    rule = {"conditions": [{"op": "==", "value": 1}, {"op": "==", "value": _role("Odd")}], "default": "#000000"}
+    result = await check_lint(_doc(_node("f", "frame", props={}, rules=[rule])), _catalog())
+    assert _codes(result.findings) == [("f", "unknown_role", "warning")]
+    assert result.findings[0].path == "/root/children/0/rules/0/conditions/1/value"
+
+
+def test_role_findings_skip_without_scheme():
+    doc = _doc(_node("f", "frame", props={"backgroundColor": _role("Anything")}))
+    assert role_findings(doc, None) == []
+    assert _codes(role_findings(doc, ["Text"])) == [("f", "unknown_role", "warning")]
+
+
+def test_role_findings_tolerate_malformed_input():
+    doc = _doc(
+        _node("f", "frame", props=["not", "a", "dict"], rules="nope"),
+        _node("g", "frame", rules=[None, {"conditions": 3}]),
+    )
+    assert role_findings(doc, ["Text"]) == []
+    assert role_findings(None, ["Text"]) == []
 
 
 # --- fixtures ---------------------------------------------------------------

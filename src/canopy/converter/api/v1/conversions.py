@@ -1,6 +1,6 @@
 import json
 from uuid import uuid4
-from typing import Annotated
+from typing import Any, Annotated
 from pathlib import Path
 
 from fastapi import File, Form, Request, Security, APIRouter, UploadFile
@@ -25,6 +25,7 @@ from canopy.converter.schemas.conversions import (
     BatchScreenDTO,
     DroppedPropsDTO,
     UnknownWidgetDTO,
+    SchemeMetaDTO,
     FormulaSummaryDTO,
     ValidateResultDTO,
     ConversionStatsDTO,
@@ -64,6 +65,18 @@ async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
     return data
 
 
+def _scheme_dto(meta: dict[str, Any] | None) -> SchemeMetaDTO | None:
+    """The DTO form of a scheme meta: every field but ``flatHash`` (``None`` when scheme-free)."""
+    if meta is None:
+        return None
+    return SchemeMetaDTO(
+        id=meta.get("id"),
+        sha256=meta.get("sha256"),
+        served=meta["served"],
+        errors=list(meta.get("errors") or []),
+    )
+
+
 def _to_dto(result: ConversionResult, warnings: list[str]) -> ScreenConversionResultDTO:
     return ScreenConversionResultDTO(
         screen=result.screen,
@@ -78,6 +91,7 @@ def _to_dto(result: ConversionResult, warnings: list[str]) -> ScreenConversionRe
             rule_count=result.stats.rule_count,
         ),
         dropped_props=[DroppedPropsDTO(node_id=d.node_id, props=list(d.props)) for d in result.dropped_props],
+        scheme=_scheme_dto(result.scheme),
     )
 
 
@@ -124,7 +138,13 @@ async def validate_conversion(
         resolved = _resolve_kind(kind, file.filename)
         result = await run_in_threadpool(lambda: service.convert(data, kind=resolved))
     except (UnsupportedInput, ConversionFailed) as exc:
-        return ValidateResultDTO(ok=False, warnings=[exc.detail])
+        # No result to read the scheme from: report the service's own, so a failed
+        # dry run still tells the Builder which scheme an import would use.
+        return ValidateResultDTO(
+            ok=False,
+            warnings=[exc.detail],
+            scheme=_scheme_dto(getattr(service, "scheme_meta", None)),
+        )
     formula_warnings = await validate_formulas(result.formulas, validate=fox_validate)
     return ValidateResultDTO(
         ok=True,
@@ -132,6 +152,7 @@ async def validate_conversion(
         unknown_widgets=[
             UnknownWidgetDTO(original_class=u.original_class, count=u.count) for u in result.unknown_widgets
         ],
+        scheme=_scheme_dto(result.scheme),
     )
 
 

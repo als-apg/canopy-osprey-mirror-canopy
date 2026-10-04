@@ -4,7 +4,9 @@ Everything runs through ``--dry-run`` (or verify's usage check) against
 throwaway git repositories under ``tmp_path``: the scripts are copied into a
 temp canopy repo together with the real Dockerfile.appliance, and docker, pnpm,
 uv and uvx are replaced by stubs that record any call and fail, so a dry run
-that tried to build would be caught.
+that tried to build would be caught. The runtime repo links the SDK repo the way
+a real one does (``apps/viewer/node_modules/@slaclab/<pkg>`` symlinks into
+``<sdk>/packages/<pkg>``, with ``node_modules/`` ignored).
 """
 
 from __future__ import annotations
@@ -24,13 +26,15 @@ BUILD = REPO / "scripts" / "build-image.sh"
 VERIFY = REPO / "scripts" / "verify-image.sh"
 DOCKERFILE = REPO / "docker" / "Dockerfile.appliance"
 
-SIX_ARGS = {
+EIGHT_ARGS = {
     "CANOPY_SHA",
     "RUNTIME_SHA",
     "TRACE_SHA",
     "TRACE_LOCK_SHA256",
     "CANOPY_VERSION",
     "PYDM_VERSION",
+    "SDK_SHA",
+    "PYDM_SHA",
 }
 LOCK_TEXT = "lockfileVersion: '9.0'\n"
 
@@ -73,8 +77,26 @@ def world(tmp_path: Path) -> dict:
     git(can, "add", "-A")
     git(can, "commit", "-q", "-m", "init")
 
-    pydm = make_repo(tmp_path / "pydm", {"pyproject.toml": "[project]\nname='PyDMConverter'\n"})
-    rt = make_repo(tmp_path / "rt", {"package.json": "{}\n", "apps/viewer/package.json": "{}\n"})
+    pydm = make_repo(
+        tmp_path / "pydm",
+        {"pyproject.toml": "[project]\nname='PyDMConverter'\n", "pydmconverter/__init__.py": ""},
+    )
+    sdk = make_repo(
+        tmp_path / "sdk",
+        {
+            "package.json": "{}\n",
+            "packages/screen-ir/package.json": '{"name": "@slaclab/canopy-screen-ir"}\n',
+            "packages/client/package.json": '{"name": "@slaclab/canopy-client"}\n',
+        },
+    )
+    rt = make_repo(
+        tmp_path / "rt",
+        {".gitignore": "node_modules/\n", "package.json": "{}\n", "apps/viewer/package.json": "{}\n"},
+    )
+    link_dir = rt / "apps" / "viewer" / "node_modules" / "@slaclab"
+    link_dir.mkdir(parents=True)
+    for pkg, sub in (("canopy-screen-ir", "screen-ir"), ("canopy-client", "client")):
+        (link_dir / pkg).symlink_to(os.path.relpath(sdk / "packages" / sub, link_dir))
     trace = make_repo(tmp_path / "trace", {"package.json": "{}\n", "pnpm-lock.yaml": LOCK_TEXT})
     git(trace, "branch", "feature")
     # A second commit on main that drops the lockfile: main has none, feature has one.
@@ -92,19 +114,30 @@ def world(tmp_path: Path) -> dict:
     env = {
         k: v
         for k, v in os.environ.items()
-        if k not in {"PYDM", "RT", "TRACE", "TRACE_REF", "TAG", "PLATFORM", "CANOPY_VERSION", "PYDM_VERSION"}
+        if k
+        not in {"PYDM", "RT", "SDK", "TRACE", "TRACE_REF", "TAG", "PLATFORM", "CANOPY_VERSION", "PYDM_VERSION"}
     }
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["TMPDIR"] = str(tmp_path)
     env.update(
         PYDM=str(pydm),
         RT=str(rt),
+        SDK=str(sdk),
         TRACE=str(trace),
         TRACE_REF="feature",
         CANOPY_VERSION="1.2.3",
         PYDM_VERSION="4.5.6",
     )
-    return {"can": can, "pydm": pydm, "rt": rt, "trace": trace, "env": env, "marker": marker}
+    return {
+        "can": can,
+        "pydm": pydm,
+        "rt": rt,
+        "sdk": sdk,
+        "trace": trace,
+        "env": env,
+        "marker": marker,
+        "bin": bin_dir,
+    }
 
 
 def run(world: dict, script: str, *args: str, unset: tuple[str, ...] = (), **extra: str):
@@ -192,7 +225,7 @@ def test_unknown_argument_is_a_usage_error(world):
 def test_help_lists_inputs(world):
     proc = run(world, "build-image.sh", "--help", unset=("PYDM", "RT", "TRACE", "TRACE_REF"))
     assert proc.returncode == 0
-    for name in ("PYDM", "RT", "TRACE", "TRACE_REF", "TAG", "PLATFORM", "--no-trace", "--dry-run"):
+    for name in ("PYDM", "RT", "SDK", "TRACE", "TRACE_REF", "TAG", "PLATFORM", "--no-trace", "--dry-run"):
         assert name in proc.stdout
 
 
@@ -204,7 +237,7 @@ def test_argv_carries_all_build_args_and_contexts(world):
     argv = ok_argv(proc)
     assert argv[:2] == ["docker", "build"]
     args = pairs(argv, "--build-arg")
-    assert set(args) == SIX_ARGS
+    assert set(args) == EIGHT_ARGS
     contexts = pairs(argv, "--build-context")
     assert {"canopy", "pydm-src", "runtime", "viewer", "pydm", "trace-src"} <= set(contexts)
     assert "trace" not in contexts  # the trace stage is built from trace-src
@@ -226,21 +259,99 @@ def test_resolved_shas_and_lock_hash(world):
     assert args["RUNTIME_SHA"] == head(world["rt"])
     assert args["CANOPY_VERSION"] == "1.2.3"
     assert args["PYDM_VERSION"] == "4.5.6"
+    assert args["SDK_SHA"] == head(world["sdk"])
+    assert args["PYDM_SHA"] == head(world["pydm"])
     assert trace_sha in proc.stderr  # resolved SHA is printed
 
 
-def test_dirty_only_for_tracked_changes(world):
-    (world["rt"] / "untracked.txt").write_text("x\n")
+def test_canopy_dirty_only_for_tracked_changes(world):
     (world["can"] / "untracked.txt").write_text("x\n")
     args = pairs(ok_argv(dry(world)), "--build-arg")
-    assert args["RUNTIME_SHA"] == head(world["rt"])
     assert args["CANOPY_SHA"] == head(world["can"])
+    assert args["RUNTIME_SHA"] == head(world["rt"])
 
-    (world["rt"] / "package.json").write_text('{"x": 1}\n')
     (world["can"] / "docker" / "Dockerfile.appliance").write_text(DOCKERFILE.read_text() + "\n")
     args = pairs(ok_argv(dry(world)), "--build-arg")
-    assert args["RUNTIME_SHA"] == head(world["rt"]) + "+dirty"
     assert args["CANOPY_SHA"] == head(world["can"]) + "+dirty"
+
+
+@pytest.mark.parametrize("which", ["rt", "sdk"])
+@pytest.mark.parametrize("change", ["untracked", "tracked"])
+def test_dirty_rt_or_sdk_is_refused(world, which, change):
+    repo = world[which]
+    if change == "untracked":
+        (repo / "untracked.txt").write_text("x\n")
+    else:
+        (repo / "package.json").write_text('{"x": 1}\n')
+    proc = dry(world)
+    assert proc.returncode != 0
+    assert which.upper() in proc.stderr and "clean" in proc.stderr
+    assert_no_tool_called(world)
+
+
+def test_untracked_pydm_wheel_input_is_refused(world):
+    (world["pydm"] / "pydmconverter" / "x.py").write_text("x = 1\n")
+    proc = dry(world)
+    assert proc.returncode != 0
+    assert "PYDM" in proc.stderr and "pydmconverter/x.py" in proc.stderr
+    assert_no_tool_called(world)
+
+
+def test_untracked_pydm_pyproject_is_refused(world):
+    git(world["pydm"], "rm", "-q", "--cached", "pyproject.toml")
+    git(world["pydm"], "commit", "-q", "-m", "untrack pyproject")
+    proc = dry(world)
+    assert proc.returncode != 0
+    assert "pyproject.toml" in proc.stderr
+
+
+def test_untracked_pydm_lockfile_passes(world):
+    (world["pydm"] / "uv.lock").write_text("version = 1\n")
+    (world["pydm"] / "notes.txt").write_text("x\n")
+    args = pairs(ok_argv(dry(world)), "--build-arg")
+    assert args["PYDM_SHA"] == head(world["pydm"])
+
+
+def test_sdk_derived_from_the_runtime_link_when_unset(world):
+    proc = dry(world, unset=("SDK",))
+    args = pairs(ok_argv(proc), "--build-arg")
+    assert args["SDK_SHA"] == head(world["sdk"])
+    assert str(world["sdk"].resolve()) in proc.stderr
+    assert_no_tool_called(world)
+
+
+def test_sdk_mismatch_is_refused(world, tmp_path):
+    other = make_repo(tmp_path / "other-sdk", {"packages/screen-ir/package.json": "{}\n"})
+    proc = dry(world, SDK=str(other))
+    assert proc.returncode != 0
+    assert "SDK" in proc.stderr and "link" in proc.stderr
+    assert_no_tool_called(world)
+
+
+def test_sdk_given_through_a_symlink_matches(world, tmp_path):
+    alias = tmp_path / "sdk-alias"
+    alias.symlink_to(world["sdk"])
+    args = pairs(ok_argv(dry(world, SDK=str(alias))), "--build-arg")
+    assert args["SDK_SHA"] == head(world["sdk"])
+
+
+def test_missing_runtime_link_is_refused(world):
+    (world["rt"] / "apps" / "viewer" / "node_modules" / "@slaclab" / "canopy-screen-ir").unlink()
+    for unset in ((), ("SDK",)):
+        proc = dry(world, unset=unset)
+        assert proc.returncode != 0
+        assert "canopy-screen-ir" in proc.stderr
+    assert_no_tool_called(world)
+
+
+def test_client_link_into_another_sdk_is_refused(world, tmp_path):
+    other = make_repo(tmp_path / "other-sdk", {"packages/client/package.json": "{}\n"})
+    link = world["rt"] / "apps" / "viewer" / "node_modules" / "@slaclab" / "canopy-client"
+    link.unlink()
+    link.symlink_to(other / "packages" / "client")
+    proc = dry(world)
+    assert proc.returncode != 0
+    assert "canopy-client" in proc.stderr
 
 
 def test_no_trace_passes_with_empty_trace_contexts(world):
@@ -249,7 +360,7 @@ def test_no_trace_passes_with_empty_trace_contexts(world):
     contexts = pairs(argv, "--build-context")
     assert {"trace-src", "trace"} <= set(contexts)
     args = pairs(argv, "--build-arg")
-    assert set(args) == SIX_ARGS
+    assert set(args) == EIGHT_ARGS
     assert args["TRACE_SHA"] == "" and args["TRACE_LOCK_SHA256"] == ""
     assert_no_tool_called(world)
 
@@ -274,6 +385,34 @@ def test_build_args_are_declared_in_the_dockerfile(world):
         assert set(args) <= declared
 
 
+def final_stage(text: str) -> str:
+    return text[text.rindex("\nFROM ") :]
+
+
+def test_sdk_and_pydm_labels_and_args_in_the_final_stage():
+    final = final_stage(DOCKERFILE.read_text())
+    declared = set(re.findall(r"^ARG (\w+)", final, re.M))
+    assert {"SDK_SHA", "PYDM_SHA"} <= declared
+    assert 'org.canopy.sdk.sha="${SDK_SHA}"' in final
+    assert 'org.canopy.pydm.sha="${PYDM_SHA}"' in final
+
+
+def test_dockerfile_smoke_step_after_install():
+    final = final_stage(DOCKERFILE.read_text())
+    install = final.index("pip install")
+    assert final.index("import pydmconverter.scheme") > install
+    assert final.index("converter/data/schemes/canopy-default.json") > install
+
+
+def test_real_build_builds_the_linked_sdk_then_the_viewer_closure():
+    text = BUILD.read_text()
+    sdk_build = text.index("@slaclab/canopy-screen-ir")
+    assert "@slaclab/canopy-client" in text
+    viewer = text.index("pnpm --filter 'viewer...' build")
+    assert text.rindex("@slaclab/canopy-client") < viewer and sdk_build < viewer
+    assert "pnpm --filter viewer build" not in text
+
+
 def test_no_uv_sources_pin():
     text = BUILD.read_text()
     assert "tool.uv.sources" not in text and "uv add" not in text
@@ -282,7 +421,7 @@ def test_no_uv_sources_pin():
 # --- verify-image.sh: usage ------------------------------------------------------
 
 
-@pytest.mark.parametrize("var", ["TRACE_REF", "TRACE", "RT"])
+@pytest.mark.parametrize("var", ["TRACE_REF", "TRACE", "RT", "SDK", "PYDM"])
 def test_verify_without_input_is_usage_error(world, var):
     proc = run(world, "verify-image.sh", "canopy:dev", unset=(var,))
     assert proc.returncode == 2
@@ -294,6 +433,72 @@ def test_verify_without_image_is_usage_error(world):
     proc = run(world, "verify-image.sh")
     assert proc.returncode == 2
     assert_no_tool_called(world)
+
+
+def test_verify_help_lists_sdk_and_pydm(world):
+    proc = run(world, "verify-image.sh", "--help")
+    assert proc.returncode == 0
+    assert "SDK" in proc.stdout and "PYDM" in proc.stdout
+
+
+# --- verify-image.sh: label comparison against a fake docker ---------------------
+
+FAKE_DOCKER = """#!/bin/sh
+# image inspect [-f '{{ index .Config.Labels "KEY" }}'] IMAGE -> KEY's value from $LABELS
+if [ "$1" = image ] && [ "$2" = inspect ]; then
+    if [ "$3" = -f ]; then
+        key=$(printf '%s' "$4" | sed 's/.*"\\(.*\\)".*/\\1/')
+        grep "^$key=" "$LABELS" | cut -d= -f2-
+    fi
+    exit 0
+fi
+[ "$1" = run ] && exit 0
+exit 97
+"""
+
+
+def verify_labels(world: dict, tmp_path: Path, **override: str):
+    labels = {
+        "org.canopy.sha": head(world["can"]),
+        "org.canopy.runtime.sha": head(world["rt"]),
+        "org.canopy.trace.sha": git(world["trace"], "rev-parse", "feature"),
+        "org.canopy.trace.lockfile-sha256": hashlib.sha256(LOCK_TEXT.encode()).hexdigest(),
+        "org.canopy.sdk.sha": head(world["sdk"]),
+        "org.canopy.pydm.sha": head(world["pydm"]),
+    }
+    labels.update({k.replace("_", "."): v for k, v in override.items()})
+    path = tmp_path / "labels"
+    path.write_text("".join(f"{k}={v}\n" for k, v in labels.items()))
+    docker = world["bin"] / "docker"
+    docker.write_text(FAKE_DOCKER)
+    docker.chmod(0o755)
+    return run(world, "verify-image.sh", "canopy:test", LABELS=str(path))
+
+
+def test_verify_accepts_matching_sdk_and_pydm_labels(world, tmp_path):
+    proc = verify_labels(world, tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "ok   org.canopy.sdk.sha" in proc.stdout
+    assert "ok   org.canopy.pydm.sha" in proc.stdout
+
+
+@pytest.mark.parametrize("label", ["org_canopy_sdk_sha", "org_canopy_pydm_sha"])
+def test_verify_refuses_a_mismatched_sdk_or_pydm_label(world, tmp_path, label):
+    proc = verify_labels(world, tmp_path, **{label: "0" * 40})
+    assert proc.returncode == 1
+    assert f"FAIL {label.replace('_', '.')}" in proc.stderr
+
+
+def test_verify_accepts_a_working_tree_sdk_label(world, tmp_path):
+    (world["sdk"] / "untracked.txt").write_text("x\n")
+    git(world["trace"], "checkout", "-q", "feature")
+    sdk_label = pairs(ok_argv(dry(world, "--worktree")), "--build-arg")["SDK_SHA"]
+    assert FP.fullmatch(sdk_label.removeprefix(head(world["sdk"])))
+    proc = verify_labels(world, tmp_path, org_canopy_sdk_sha=sdk_label)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    (world["sdk"] / "untracked.txt").write_text("y\n")
+    proc = verify_labels(world, tmp_path, org_canopy_sdk_sha=sdk_label)
+    assert proc.returncode == 1
 
 
 # --- build-image.sh --worktree ------------------------------------------------------
@@ -329,4 +534,16 @@ def test_worktree_labels_pin_working_tree_content(world):
     changed = pairs(ok_argv(dry(world, "--worktree")), "--build-arg")
     assert changed["TRACE_SHA"] != args["TRACE_SHA"]
     assert changed["CANOPY_SHA"] == args["CANOPY_SHA"]
+    assert_no_tool_called(world)
+
+
+def test_worktree_is_exempt_from_the_clean_tree_refusals(world):
+    git(world["trace"], "checkout", "-q", "feature")
+    (world["rt"] / "untracked.txt").write_text("x\n")
+    (world["sdk"] / "package.json").write_text('{"x": 1}\n')
+    (world["pydm"] / "pydmconverter" / "x.py").write_text("x = 1\n")
+    args = pairs(ok_argv(dry(world, "--worktree")), "--build-arg")
+    assert FP.fullmatch(args["RUNTIME_SHA"].removeprefix(head(world["rt"])))
+    assert FP.fullmatch(args["SDK_SHA"].removeprefix(head(world["sdk"])))
+    assert args["PYDM_SHA"] == head(world["pydm"])  # the wheel is still built from HEAD
     assert_no_tool_called(world)

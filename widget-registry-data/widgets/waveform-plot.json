@@ -24,7 +24,12 @@
       "title": { "type": "string" },
       "curves": {
         "type": "array",
-        "items": { "type": "object" },
+        "items": {
+          "type": "object",
+          "properties": {
+            "color": { "anyOf": [{ "type": "string" }, { "type": "object", "additionalProperties": false, "required": ["$role", "fallback"], "properties": { "$role": { "type": "string", "minLength": 1, "maxLength": 64 }, "fallback": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }, "fallbackDark": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" } } }] }
+          }
+        },
         "description": "Per-curve config (y_channel, x_channel, color, lineStyle, ...)."
       },
       "yAxes": {
