@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     debug: bool = False
     api_keys: str = ""
 
+    # Path of a file holding the key registry, in the same grammar as api_keys.
+    # When set it is the only source: api_keys is ignored, and a file that is
+    # missing, unreadable or holds no key stops startup instead of leaving an
+    # app that answers with the wrong registry. Empty counts as unset.
+    api_keys_file: str | None = None
+
+    # Require a registry key on every route of the composed app except
+    # GET /health -- the routes that carry no key dependency of their own
+    # (/, the docs and OpenAPI pages, the per-module watchdogs) included.
+    closed_meta: bool = False
+
     # Comma-separated names of the modules to mount (see ALL_MODULES); empty
     # means all of them. Kept a plain string because pydantic-settings would
     # JSON-decode a list-typed field. Modules left out are never imported, so
