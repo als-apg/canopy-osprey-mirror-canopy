@@ -29,7 +29,6 @@ SCHEMA_FILES = {
 }
 SUPPORTED_VERSIONS = tuple(sorted(SCHEMA_FILES, key=lambda v: tuple(int(p) for p in v.split("."))))
 LATEST_VERSION = SUPPORTED_VERSIONS[-1]
-SCHEMA_FILE = SCHEMA_FILES[LATEST_VERSION]
 SCHEMA_CODE = "schema"
 
 
