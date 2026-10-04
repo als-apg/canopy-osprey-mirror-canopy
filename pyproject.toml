@@ -56,6 +56,13 @@ docs = [
     "mkdocstrings-python",
 ]
 
+[tool.uv.sources]
+# Interim: the unreleased pydm-converter-tool branch carrying the .bob adapter,
+# checked out beside this repo. Replace with the merged commit once it lands, e.g.
+#   pydmconverter = { git = "https://github.com/slaclab/pydm-converter-tool.git", rev = "<merged-sha>" }
+# and drop this block entirely once a PyPI release includes it.
+pydmconverter = { path = "../../../../pydm-converter-tool/.claude/worktrees/panel-builder", editable = true }
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"

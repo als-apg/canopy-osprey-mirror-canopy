@@ -282,7 +282,7 @@ requires-dist = [
     { name = "playwright", marker = "extra == 'mcp'", specifier = ">=1.45" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.4" },
-    { name = "pydmconverter", specifier = ">=1.0.5" },
+    { name = "pydmconverter", editable = "../../../../pydm-converter-tool/.claude/worktrees/panel-builder" },
     { name = "pymongo", specifier = ">=4.17" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "redis", specifier = ">=5.0" },
@@ -2003,13 +2003,26 @@ wheels = [
 
 [[package]]
 name = "pydmconverter"
-version = "1.0.5"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../../../../pydm-converter-tool/.claude/worktrees/panel-builder" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1f/60/656385a665dbb62b12209f79528538994a10a04c376c06b91ae8bbb236db/pydmconverter-1.0.5.tar.gz", hash = "sha256:fef6fb8ba622195dd2c0c62f63ec9e841d15cb7a4c657ae4ff17c83a7e1671cc", size = 291713, upload-time = "2026-07-10T22:33:19.716Z" }
+
+[package.metadata]
+requires-dist = [
+    { name = "jsonschema", specifier = ">=4" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pydm", marker = "extra == 'dev'" },
+    { name = "pydm", marker = "extra == 'gui'" },
+    { name = "pyqt5", marker = "extra == 'dev'" },
+    { name = "pyqt5", marker = "extra == 'gui'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "pytest-mock", marker = "extra == 'dev'" },
+    { name = "pytest-qt", marker = "extra == 'dev'" },
+]
+provides-extras = ["gui", "dev"]
 
 [[package]]
 name = "pyee"
