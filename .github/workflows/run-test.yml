@@ -42,10 +42,13 @@ jobs:
         python-version: "3.12"
 
     - name: Install dependencies
-      run: uv sync --group dev
+      run: uv sync --group dev --all-extras
+
+    - name: Check import contracts
+      run: uv run --all-extras lint-imports
 
     - name: Test with pytest
-      run: uv run coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v
       env:
         COVERAGE_FILE: ".coverage.linux"
 
@@ -79,10 +82,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: uv sync --group dev
+      run: uv sync --group dev --all-extras
 
     - name: Test with pytest
-      run: uv run coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v
       env:
         COVERAGE_FILE: ".coverage.${{ matrix.python-version }}.${{ matrix.os }}"
 
