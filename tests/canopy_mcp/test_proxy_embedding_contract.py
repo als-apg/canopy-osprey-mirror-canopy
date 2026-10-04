@@ -173,3 +173,21 @@ def test_mcp_refused_through_the_proxy(client: TestClient, header: str) -> None:
     value = FORWARDED_PREFIX if header == "x-forwarded-prefix" else "s"
     r = client.post("/mcp", json=INITIALIZE, headers={**MCP_HEADERS, header: value})
     assert r.status_code == 403
+
+
+def test_mcp_is_reachable_through_the_proxy_with_the_access_credential(dist: Path, tmp_path: Path) -> None:
+    """Where a credential is configured it replaces the guard: the proxy that adds it is the way in."""
+    drafts = tmp_path / "drafts"
+    drafts.mkdir()
+    token_file = tmp_path / "front.access"
+    token_file.write_text("launch-credential\n")
+    settings = Settings(drafts_dir=drafts, viewer_dist=dist, pv_mode="hare", api_key="k", access_token_file=token_file)
+    headers = {**MCP_HEADERS, "x-forwarded-prefix": FORWARDED_PREFIX}
+    with TestClient(create_app(settings, startup_hooks=[])) as c:
+        assert c.post("/mcp", json=INITIALIZE, headers=headers).status_code == 401
+        r = c.post("/mcp", json=INITIALIZE, headers={**headers, "X-Canopy-Access": "launch-credential"})
+        assert r.status_code == 200
+        assert "serverInfo" in r.text
+        embed = c.get("/embed/drafts/x", headers={**headers, "X-Canopy-Access": "launch-credential"})
+        assert embed.status_code == 200
+        assert c.get("/embed/drafts/x", headers=headers).status_code == 401

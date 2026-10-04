@@ -30,7 +30,11 @@ def error_reason(response: httpx.Response) -> str:
 
 
 def auth_headers(settings: Settings) -> dict[str, str]:
-    """The ``X-API-Key`` header for ``settings.api_key``; empty when no key is set."""
+    """The ``X-API-Key`` header for ``settings.api_key``; empty when no key is set.
+
+    ``settings.api_key`` already holds the key from ``CANOPY_API_KEY_FILE``
+    when that file is configured, so the file's key is what goes upstream.
+    """
     return {API_KEY_HEADER: settings.api_key} if settings.api_key else {}
 
 

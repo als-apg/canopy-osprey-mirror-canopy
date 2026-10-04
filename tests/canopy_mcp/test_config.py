@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from canopy_mcp import __main__ as entry
+from canopy_mcp.access import CredentialFileError
 from canopy_mcp.client import API_KEY_HEADER, make_client
 from canopy_mcp.config import Settings, get_settings
 
@@ -20,6 +21,9 @@ ENV_VARS = (
     "CANOPY_VIEWER_DIST",
     "CANOPY_PANEL_ID",
     "CANOPY_PV_MODE",
+    "CANOPY_API_KEY_FILE",
+    "CANOPY_ACCESS_TOKEN_FILE",
+    "CANOPY_SELF_URL",
 )
 
 
@@ -59,6 +63,43 @@ def test_settings_defaults():
     assert s.panel_id is None
     assert s.api_key == ""
     assert isinstance(s.drafts_dir, Path)
+    assert (s.api_key_file, s.access_token_file, s.self_url) == (None, None, None)
+
+
+def test_settings_read_the_file_and_self_url_variables(monkeypatch, tmp_path):
+    key_file = tmp_path / "front.read"
+    key_file.write_text("file-read-key\n")
+    monkeypatch.setenv("CANOPY_API_KEY_FILE", str(key_file))
+    monkeypatch.setenv("CANOPY_ACCESS_TOKEN_FILE", str(tmp_path / "front.access"))
+    monkeypatch.setenv("CANOPY_SELF_URL", "http://127.0.0.1:41000")
+
+    s = Settings()
+
+    assert s.api_key_file == key_file
+    assert s.access_token_file == tmp_path / "front.access"
+    assert s.self_url == "http://127.0.0.1:41000"
+
+
+def test_the_key_file_is_the_only_source_of_the_key_when_set(monkeypatch, tmp_path):
+    key_file = tmp_path / "front.read"
+    key_file.write_text("file-read-key\n")
+    monkeypatch.setenv("CANOPY_API_KEY", "env-key")
+    monkeypatch.setenv("CANOPY_API_KEY_FILE", str(key_file))
+    assert Settings().api_key == "file-read-key"
+    assert make_client().headers[API_KEY_HEADER] == "file-read-key"
+
+
+def test_a_key_file_that_cannot_be_read_is_not_replaced_by_the_env_key(monkeypatch, tmp_path):
+    monkeypatch.setenv("CANOPY_API_KEY", "env-key")
+    monkeypatch.setenv("CANOPY_API_KEY_FILE", str(tmp_path / "absent"))
+    with pytest.raises(CredentialFileError, match="CANOPY_API_KEY_FILE"):
+        Settings()
+
+
+def test_an_empty_file_variable_leaves_the_env_key_in_place(monkeypatch):
+    monkeypatch.setenv("CANOPY_API_KEY", "env-key")
+    monkeypatch.setenv("CANOPY_API_KEY_FILE", "")
+    assert Settings().api_key == "env-key"
 
 
 def test_pv_mode_rejects_unknown_value(monkeypatch):
@@ -135,6 +176,7 @@ def test_cli_defaults_bind_to_loopback():
 def test_cli_accepts_host_and_port():
     args = entry.parse_args(["--http", "--host", "0.0.0.0", "--port", "9123"])
     assert (args.host, args.port) == ("0.0.0.0", 9123)
+    assert args.fd is None
 
 
 def test_stdio_is_refused_with_clear_message(capsys, monkeypatch):

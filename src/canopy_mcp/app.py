@@ -13,6 +13,12 @@ proxy -- i.e. from a browser session -- so :class:`McpProxyGuard` refuses it
 with 403 before it reaches FastMCP. The viewer routes stay reachable through
 the proxy; that is what they are for.
 
+A deployment that sets ``CANOPY_ACCESS_TOKEN_FILE`` gets
+:class:`~canopy_mcp.access.AccessGate` in the guard's place: every route,
+``/mcp`` included, then answers only a request carrying the credential, and
+the proxy that adds it is how ``/mcp`` is reached. ``GET /health`` stays open.
+Either way ``/mcp/`` is a redirect to ``/mcp``, never the transport itself.
+
 One lifespan runs FastMCP's session manager, opens the shared backend
 ``httpx.AsyncClient`` (``app.state.http``) and then enters every
 :data:`STARTUP_HOOKS` entry in order; hooks are exited in reverse on shutdown.
@@ -34,6 +40,7 @@ from starlette.middleware import Middleware
 from starlette.applications import Starlette
 
 from canopy_mcp.store import DraftStore
+from canopy_mcp.access import AccessGate, read_secret_file
 from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.client import make_client
@@ -102,14 +109,23 @@ def create_app(
     settings: Settings | None = None,
     *,
     startup_hooks: list[StartupHook] | None = None,
-    self_url: str = DEFAULT_SELF_URL,
+    self_url: str | None = None,
 ) -> Starlette:
     """Build the app; ``startup_hooks`` defaults to the module's :data:`STARTUP_HOOKS`.
 
     ``self_url`` is the address this server listens on, which the screenshot
-    browser loads the viewer from.
+    browser loads the viewer from; left out, it is ``CANOPY_SELF_URL`` and then
+    :data:`DEFAULT_SELF_URL`.
+
+    A configured access-token file is read before anything else is built, so
+    one that cannot supply a credential raises here and nothing is served.
     """
     settings = settings or get_settings()
+    if settings.access_token_file is not None:
+        token = read_secret_file("CANOPY_ACCESS_TOKEN_FILE", settings.access_token_file)
+        guard = Middleware(AccessGate, token=token)
+    else:
+        guard = Middleware(McpProxyGuard)
     register_all()
     store = DraftStore(settings.drafts_dir)
     views = ViewStore(settings.drafts_dir)
@@ -133,7 +149,7 @@ def create_app(
         ],
         # FastMCP's own middleware (request context, host/origin guard) must
         # wrap its routes here too, since only the routes were lifted.
-        middleware=[Middleware(McpProxyGuard), *mcp_app.user_middleware],
+        middleware=[guard, *mcp_app.user_middleware],
         lifespan=lifespan,
     )
     for key in ("fastmcp_server", "path", "transport_type"):
@@ -141,7 +157,7 @@ def create_app(
     app.state.settings = settings
     app.state.store = store
     app.state.views = views
-    app.state.self_url = self_url.rstrip("/")
+    app.state.self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
     return app
 
 
