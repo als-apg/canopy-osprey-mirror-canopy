@@ -113,6 +113,21 @@ def test_chromium_hook_starts_and_stops_the_browser(tmp_path: Path, monkeypatch)
     assert events == ["start http://127.0.0.1:9999", "stop"]
 
 
+def test_chromium_hook_without_a_browser_does_not_block_startup(tmp_path: Path, monkeypatch) -> None:
+    from canopy_mcp import browser as browser_mod
+
+    async def no_chromium(self) -> None:
+        raise RuntimeError("Executable doesn't exist; run `playwright install chromium`")
+
+    monkeypatch.setattr(browser_mod.Browser, "start", no_chromium)
+    app = app_mod.create_app(Settings(drafts_dir=tmp_path / "drafts"), startup_hooks=[app_mod.chromium_hook])
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert app.state.browser is None
+        with pytest.raises(browser_mod.BrowserNotStarted):
+            browser_mod.get_browser()
+
+
 def test_self_url_defaults_to_the_launcher_address(tmp_path: Path) -> None:
     from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
 

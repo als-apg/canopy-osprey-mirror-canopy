@@ -7,13 +7,14 @@ query string (``pv=A:B&range=-1h``, plus Trace's axis and display settings as
 ``plot=<JSON>`` when the operator changed them), stored opaque and never
 parsed here, ``name`` what the viewer shows, and
 ``updated`` the ISO-8601 UTC time of the last write. Each lives at
-``<drafts_dir>/views/<id>.json``, a sibling of ``screens/``, so the drafts
-manifest (which walks only ``screens/``) never lists one and the ``/drafts``
-route (which serves only screens and images) never serves one.
+``<views dir>/<id>.json``. The views directory is ``CANOPY_VIEWS_DIR`` when
+that is set and ``<drafts_dir>/views`` otherwise, a sibling of ``screens/``,
+so the drafts manifest (which walks only ``screens/``) never lists one and
+the ``/drafts`` route (which serves only screens and images) never serves one.
 
 As in :mod:`canopy_mcp.store`, this process is the only writer: one
 ``asyncio.Lock`` serialises writes, and every file is replaced atomically
-(temp file in ``views/`` + ``os.replace``) so a reader never sees half a view.
+(temp file in the views directory + ``os.replace``) so a reader never sees half a view.
 
 HTTP surface (:func:`build_view_routes`), every response ``Cache-Control: no-cache``:
 
@@ -124,9 +125,15 @@ def _serialize(doc: dict[str, Any]) -> bytes:
 
 
 class ViewStore:
-    def __init__(self, root: Path | str):
+    """Views stored as ``<views>/<id>.json``.
+
+    ``views`` is ``views_dir`` when given, else ``<root>/views`` (``root`` being
+    the drafts directory). It is created on the first write.
+    """
+
+    def __init__(self, root: Path | str, *, views_dir: Path | str | None = None):
         self.root = Path(root)
-        self.views = self.root / "views"
+        self.views = Path(views_dir) if views_dir is not None else self.root / "views"
         self._lock = asyncio.Lock()
 
     def path_for(self, view_id: str) -> Path:

@@ -23,8 +23,12 @@ One lifespan runs FastMCP's session manager, opens the shared backend
 ``httpx.AsyncClient`` (``app.state.http``) and then enters every
 :data:`STARTUP_HOOKS` entry in order; hooks are exited in reverse on shutdown.
 The defaults load the widget catalog (:func:`catalog_hook`) and launch the
-screenshot Chromium (:func:`chromium_hook`). Building the app calls
-:func:`~canopy_mcp.server.register_all`, so every tool is on ``mcp``.
+screenshot Chromium (:func:`chromium_hook`); neither keeps the server from
+starting when it fails. Building the app calls
+:func:`~canopy_mcp.server.register_all`, so every tool is on ``mcp``, and then
+applies ``CANOPY_AUTHORING``: off takes the six authoring tools off ``mcp``,
+leaving the nine that only read. ``mcp`` is process-wide, so the last app
+built decides which tools every app in the process offers.
 """
 
 import logging
@@ -45,7 +49,7 @@ from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
-from canopy_mcp.server import mcp, register_all
+from canopy_mcp.server import mcp, register_all, set_authoring
 from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
 from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.static import build_routes
@@ -65,8 +69,8 @@ logger = logging.getLogger(__name__)
 async def catalog_hook(app: Starlette) -> AsyncIterator[None]:
     """Load the widget catalog once at startup, over the shared client.
 
-    A backend that is not up yet, or a viewer dist without ``ir-map.json``,
-    must not keep the server (and its viewer) from starting: the failure is
+    A backend that is not up yet, a viewer dist without ``ir-map.json`` or an
+    unreadable ``CANOPY_WIDGETS_DIR`` must not keep the server (and its viewer) from starting: the failure is
     logged and ``ensure_catalog`` retries on the first tool call that needs it.
     """
     try:
@@ -80,7 +84,7 @@ def chromium_hook(app: Starlette) -> AbstractAsyncContextManager[Any]:
     """Launch the screenshot Chromium at startup and close it on shutdown.
 
     It loads this server's own viewer routes, so it is pointed at
-    ``app.state.self_url``.
+    ``app.state.self_url``. A host without a browser starts anyway.
     """
     return browser_hook(app.state.self_url)(app)
 
@@ -127,8 +131,9 @@ def create_app(
     else:
         guard = Middleware(McpProxyGuard)
     register_all()
+    set_authoring(settings.authoring)
     store = DraftStore(settings.drafts_dir)
-    views = ViewStore(settings.drafts_dir)
+    views = ViewStore(settings.drafts_dir, views_dir=settings.views_dir)
     mcp_app = mcp.http_app(path=MCP_PATH)
 
     @asynccontextmanager

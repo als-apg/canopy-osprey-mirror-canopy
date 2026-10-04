@@ -17,7 +17,7 @@ from typing import Literal
 from pathlib import Path
 from functools import lru_cache
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from canopy_mcp.access import read_secret_file
@@ -55,11 +55,36 @@ class Settings(BaseSettings):
     # Build-time channel catalog (a JSON string[]) served on /channels for
     # Trace's PV autocomplete; unset or missing means no catalog (404).
     channels_file: Path | None = None
+    # Whether the six authoring tools (new_screen, patch_node, add_node,
+    # remove_node, delete_draft, convert_legacy) are offered; off leaves the
+    # nine read-only tools.
+    authoring: bool = True
+    # Directory holding the saved-view ``*.json`` files; unset means
+    # ``<drafts_dir>/views``.
+    views_dir: Path | None = None
+    # Seconds the WebSocket relays keep retrying an upstream that refuses the
+    # connection before they close the browser socket; 0 means one attempt.
+    relay_connect_retry_s: float = Field(default=0.0, ge=0)
+    # Directory of widget detail ``*.json`` files the catalog is built from
+    # instead of the backend's /beaver registry; unset means the registry.
+    widgets_dir: Path | None = None
 
-    @field_validator("api_key_file", "access_token_file", "self_url", mode="before")
+    @field_validator(
+        "api_key_file",
+        "access_token_file",
+        "self_url",
+        "authoring",
+        "views_dir",
+        "relay_connect_retry_s",
+        "widgets_dir",
+        mode="before",
+    )
     @classmethod
-    def _empty_counts_as_unset(cls, value: object) -> object:
-        return None if value == "" else value
+    def _empty_counts_as_unset(cls, value: object, info: ValidationInfo) -> object:
+        # A manifest that renders a variable empty gets the default, not an error.
+        if value == "" and info.field_name is not None:
+            return cls.model_fields[info.field_name].default
+        return value
 
     @model_validator(mode="after")
     def _read_the_key_file(self) -> "Settings":
