@@ -17,7 +17,8 @@
 # neither blocks the build nor enters it, and the checkouts are left untouched.
 #
 # The exports have no .git, so the two Python versions are computed in the
-# source checkouts first (setuptools_scm) and pretended to the wheel builds.
+# source checkouts first (setuptools_scm) and pretended to the wheel builds;
+# a computed version whose +g<node> does not match the commit built is refused.
 #
 # STAGED.json is written last: a directory without it is not a payload.
 #
@@ -49,8 +50,10 @@ Optional inputs (environment):
   RT_SHA          commit of RT to build (default: its HEAD)
   SDK_SHA         commit of SDK to build (default: its HEAD)
   PYDM_SHA        commit of PYDM to build (default: its HEAD)
-  CANOPY_VERSION  PEP 440 version of canopy (default: setuptools_scm on this checkout)
-  PYDM_VERSION    PEP 440 version of PyDMConverter (default: setuptools_scm on PYDM)
+  CANOPY_VERSION  PEP 440 version of canopy (default: setuptools_scm on this checkout,
+                  whose +g<node> must be a prefix of CANOPY_SHA)
+  PYDM_VERSION    PEP 440 version of PyDMConverter (default: setuptools_scm on PYDM,
+                  whose +g<node> must be a prefix of PYDM_SHA)
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -140,12 +143,31 @@ else
 fi
 
 # PEP 440 versions from the source checkouts (an export has no .git).
+# setuptools_scm describes the checkout's HEAD, not the recorded commit, so a
+# computed version must name the commit that is built: its local `+g<node>`
+# has to be a prefix of that commit's SHA, or the wheel would claim a commit it
+# was not built from. A version passed in explicitly is used as given.
 scm_version() { (cd "$1" && uvx --from setuptools-scm python -m setuptools_scm); }
-CANOPY_VERSION="${CANOPY_VERSION:-$(scm_version "$ROOT")}"
-PYDM_VERSION="${PYDM_VERSION:-$(scm_version "$PYDM")}"
-[ -n "$CANOPY_VERSION" ] || die "no canopy version (set CANOPY_VERSION)"
-[ -n "$PYDM_VERSION" ] || die "no PyDMConverter version (set PYDM_VERSION)"
-echo "$PROG: canopy $CANOPY_VERSION, PyDMConverter $PYDM_VERSION" >&2
+NODE_RE='\+g([0-9a-f]+)(\.|$)'
+pick_version() { # <label> <given version> <checkout> <sha> <variable name>; prints the version
+    local version node
+    if [ -n "$2" ]; then
+        echo "$PROG: $1 version $2 (given by $5, used as is)" >&2
+        printf '%s\n' "$2"
+        return
+    fi
+    version="$(scm_version "$3")" || die "setuptools_scm failed in $3 (set $5)"
+    [ -n "$version" ] || die "no $1 version (set $5)"
+    [[ "$version" =~ $NODE_RE ]] \
+        || die "$1 version $version from setuptools_scm has no +g<commit>; it cannot be matched to $4 (set $5)"
+    node="${BASH_REMATCH[1]}"
+    [ "${4#"$node"}" != "$4" ] \
+        || die "$1 version $version from setuptools_scm names +g$node, but the commit built is $4 (set $5, or build the checkout's HEAD)"
+    echo "$PROG: $1 version $version (setuptools_scm, +g$node matches $4)" >&2
+    printf '%s\n' "$version"
+}
+CANOPY_VERSION="$(pick_version canopy "${CANOPY_VERSION:-}" "$ROOT" "$CANOPY_SHA" CANOPY_VERSION)"
+PYDM_VERSION="$(pick_version PyDMConverter "${PYDM_VERSION:-}" "$PYDM" "$PYDM_SHA" PYDM_VERSION)"
 
 # --- detached exports (one temp root, removed on exit) -----------------------
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/canopy-payload.XXXXXX")"
