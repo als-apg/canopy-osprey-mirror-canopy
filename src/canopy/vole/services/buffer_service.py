@@ -195,11 +195,25 @@ class BufferService:
             return [], []
         return ring.slice_from(ts_from_ns), ring.outages
 
+    def in_open_outage(self, pv: str) -> bool:
+        """True while ``pv``'s connection is down (an outage opened and not yet closed)."""
+        return self._store.in_open_outage(pv)
+
     def open_outage(self, pv: str, now_ns: int) -> None:
+        """Open an outage on ``pv`` and tell its subscribers, so live formulas re-evaluate now.
+
+        A disconnect stores no sample, so without this notification a formula
+        would keep its last value until the PV came back.
+        """
         self._store.open_outage(pv, now_ns)
+        if self._notifier is not None:
+            self._notifier.notify(pv)
 
     def close_outage(self, pv: str, now_ns: int) -> None:
+        """Close ``pv``'s open outage and tell its subscribers."""
         self._store.close_outage(pv, now_ns)
+        if self._notifier is not None:
+            self._notifier.notify(pv)
 
     # --- reads ----------------------------------------------------------- #
 

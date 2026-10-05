@@ -26,6 +26,17 @@ class FormulaInputMissing(FoxError):
     error_code = ErrorCode.FORMULA_INPUT_MISSING
 
 
+class FormulaInputOutage(FormulaInputMissing):
+    """An input is in an open Vole outage: its connection is down right now.
+
+    Raised before any read, so neither the ring's last (stale) sample nor an
+    archive refill stands in for a value that is no longer known. Shares
+    ``FormulaInputMissing``'s code, so it stays retryable on the wire; a live
+    subscription forwards it at once instead of waiting out the input-wait
+    silence, since the outage is already a fact rather than a value on its way.
+    """
+
+
 class FormulaTypeError(FoxError):
     status_code = 422
     error_code = ErrorCode.FORMULA_TYPE_ERROR

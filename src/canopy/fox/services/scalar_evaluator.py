@@ -6,11 +6,25 @@ expression as a scalar, and returns a ``ScalarResult``.
 
 from canopy.fox.ports import DataSource
 from canopy.fox.config import FoxConfig
-from canopy.fox.errors import FormulaTypeError, FormulaInputMissing
+from canopy.fox.errors import FormulaTypeError, FormulaInputOutage, FormulaInputMissing
 from canopy.contracts.sample import AlarmSeverity
 from canopy.contracts.formula import FormulaSpec, ScalarResult
 from canopy.fox.services.parser import ParsedFormula
 from canopy.fox.services.evaluator import worst_severity, evaluate_scalar
+
+
+def raise_on_open_outage(spec: FormulaSpec, parsed: ParsedFormula, data_source: DataSource) -> None:
+    """Raise ``FormulaInputOutage`` naming every bound input whose connection is down now.
+
+    Runs before any ``read_latest``: the ring still holds the last sample from
+    before the drop, and a read of a missing ring may refill it from the
+    archive -- neither is the PV's current value.
+    """
+    in_outage = list(
+        dict.fromkeys(pv for pv in (spec.bindings[t] for t in parsed.tokens) if data_source.in_open_outage(pv))
+    )
+    if in_outage:
+        raise FormulaInputOutage(f"PVs disconnected: {in_outage}")
 
 
 async def evaluate_scalar_formula(
@@ -24,6 +38,8 @@ async def evaluate_scalar_formula(
     severities: list[AlarmSeverity] = []
     inputs_used: dict[str, int] = {}
     missing: list[str] = []
+
+    raise_on_open_outage(spec, parsed, data_source)
 
     for idx, token in enumerate(parsed.tokens):
         pv = spec.bindings[token]

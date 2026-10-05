@@ -199,6 +199,11 @@ class PerPVRing:
             intervals.append((self._open_outage_since_ns, None))
         return intervals
 
+    @property
+    def outage_open(self) -> bool:
+        """True while an outage is open (the PV's connection is down now)."""
+        return self._open_outage_since_ns is not None
+
     def open_outage(self, now_ns: int) -> None:
         if self._open_outage_since_ns is None:
             self._open_outage_since_ns = now_ns
