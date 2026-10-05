@@ -1,3 +1,5 @@
+"""Canopy API entrypoint: composes every module's sub-app and lifespan into one FastAPI app."""
+
 import json
 import logging
 from html import escape

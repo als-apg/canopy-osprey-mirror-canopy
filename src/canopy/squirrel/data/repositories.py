@@ -10,6 +10,7 @@ atomic fast path and ``SnapshotValueRepository.bulk_create`` is the ORM fallback
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from collections.abc import Callable, Awaitable
 
 from sqlalchemy import or_, any_, func, delete, insert, select, update
@@ -94,10 +95,33 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         return snapshot
 
     async def search(
-        self, title: str | None = None, tag_ids: list[str] | None = None, limit: int = 100
+        self,
+        title: str | None = None,
+        tag_ids: list[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 100,
     ) -> list[Snapshot]:
-        """Search snapshots by title (case-insensitive contains) and/or by tags
-        (snapshots containing PVs with ANY of ``tag_ids``)."""
+        """Search snapshots by title, tags and/or creation time.
+
+        Parameters
+        ----------
+        title : str | None
+            Case-insensitive substring match against the snapshot title.
+        tag_ids : list[str] | None
+            Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+        start : datetime | None
+            Lower bound on ``created_at``, inclusive.
+        end : datetime | None
+            Upper bound on ``created_at``, inclusive.
+        limit : int
+            Maximum number of rows returned.
+
+        Returns
+        -------
+        list[Snapshot]
+            Matching snapshots ordered by ``created_at`` descending.
+        """
         query = select(Snapshot)
 
         if title:
@@ -111,6 +135,12 @@ class SnapshotRepository(BaseRepository[Snapshot]):
                 .where(pv_tag.c.tag_id.in_(tag_ids))
             )
             query = query.where(Snapshot.id.in_(snapshot_ids_with_tags))
+
+        if start is not None:
+            query = query.where(Snapshot.created_at >= start)
+
+        if end is not None:
+            query = query.where(Snapshot.created_at <= end)
 
         query = query.order_by(Snapshot.created_at.desc()).limit(limit)
         result = await self.session.execute(query)

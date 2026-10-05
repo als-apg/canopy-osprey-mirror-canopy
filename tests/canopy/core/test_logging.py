@@ -124,6 +124,27 @@ class TestConfigureLogging:
         configure_logging()
         assert logging.getLogger().level == logging.DEBUG
 
+    def test_level_env_ignores_surrounding_whitespace(self, isolated_logging):
+        isolated_logging.setenv("CANOPY_LOG_LEVEL", " warning ")
+        get_settings.cache_clear()
+        configure_logging()
+        assert logging.getLogger().level == logging.WARNING
+
+    def test_unknown_level_env_falls_back_to_info_and_warns(self, isolated_logging, capsys):
+        isolated_logging.setenv("CANOPY_LOG_LEVEL", "verbose")
+        get_settings.cache_clear()
+
+        configure_logging()
+
+        assert logging.getLogger().level == logging.INFO
+        assert "Unknown log level 'verbose', falling back to INFO" in capsys.readouterr().out
+
+    def test_explicit_level_overrides_env(self, isolated_logging):
+        isolated_logging.setenv("CANOPY_LOG_LEVEL", "DEBUG")
+        get_settings.cache_clear()
+        configure_logging(logging.ERROR)
+        assert logging.getLogger().level == logging.ERROR
+
     def test_unwritable_log_path_warns_through_configured_handlers(self, isolated_logging, tmp_path, capsys):
         blocker = tmp_path / "not-a-dir"
         blocker.write_text("")
