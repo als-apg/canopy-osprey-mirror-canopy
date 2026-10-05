@@ -20,9 +20,8 @@ def raise_on_open_outage(spec: FormulaSpec, parsed: ParsedFormula, data_source: 
     before the drop, and a read of a missing ring may refill it from the
     archive -- neither is the PV's current value.
     """
-    in_outage = list(
-        dict.fromkeys(pv for pv in (spec.bindings[t] for t in parsed.tokens) if data_source.in_open_outage(pv))
-    )
+    pvs = dict.fromkeys(spec.bindings[t] for t in parsed.tokens)
+    in_outage = [pv for pv in pvs if data_source.in_open_outage(pv)]
     if in_outage:
         raise FormulaInputOutage(f"PVs disconnected: {in_outage}")
 
