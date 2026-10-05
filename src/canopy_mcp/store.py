@@ -16,6 +16,7 @@ import re
 import json
 import asyncio
 import hashlib
+import logging
 import tempfile
 from typing import Any, Literal
 from pathlib import Path
@@ -31,6 +32,21 @@ ASSET_SEGMENT = re.compile(r"[A-Za-z0-9 ._-]+")
 _IMAGE_MAGIC = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM", b"\x00\x00\x01\x00")
 
 AssetStatus = Literal["written", "reused", "replaced"]
+
+logger = logging.getLogger(__name__)
+
+# ``(path, exception type)`` pairs ``DraftStore.manifest`` has already warned about. The
+# viewer polls the manifest every second, so an unreadable draft warns once per process
+# (across every store instance), not once per poll.
+_MANIFEST_WARNED: set[tuple[Path, type[BaseException]]] = set()
+
+
+def _warn_manifest_once(path: Path, exc: BaseException, consequence: str) -> None:
+    key = (path, type(exc))
+    if key in _MANIFEST_WARNED:
+        return
+    _MANIFEST_WARNED.add(key)
+    logger.warning("draft manifest: %s: %s: %s (%s)", path, type(exc).__name__, exc, consequence)
 
 
 class InvalidDraftId(ValueError):
@@ -306,9 +322,13 @@ class DraftStore:
             path = self.path_for(draft_id)
             try:
                 doc, rev = self.read(draft_id)
-            except (DraftNotFound, OSError):
+            except (DraftNotFound, FileNotFoundError):
                 continue  # deleted between listing and reading
-            except ValueError:
+            except OSError as exc:
+                _warn_manifest_once(path, exc, "left out of the manifest")
+                continue
+            except ValueError as exc:
+                _warn_manifest_once(path, exc, "listed with its id as the title")
                 doc, rev = None, self._rev_of(path)
             title = doc.get("metadata", {}).get("title") if isinstance(doc, dict) else None
             if not isinstance(title, str) or not title:

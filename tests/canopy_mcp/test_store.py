@@ -3,9 +3,11 @@
 import os
 import json
 import asyncio
+import logging
 
 import pytest
 
+import canopy_mcp.store as store_module
 from canopy_mcp.store import (
     MAX_ASSET_BYTES,
     DraftStore,
@@ -258,6 +260,96 @@ async def test_manifest_is_computed_per_call_and_tolerates_bad_files(store):
     assert entries["a"]["title"] == "A"
     assert entries["broken"]["title"] == "broken"
     assert entries["untitled"]["title"] == "untitled"
+
+
+# --- manifest warnings ------------------------------------------------------
+# The viewer polls the manifest every second, so an unreadable draft must warn once per
+# (path, exception type) per process — not once per poll, and not once per DraftStore.
+
+STORE_LOGGER = "canopy_mcp.store"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_manifest_warnings(monkeypatch):
+    monkeypatch.setattr(store_module, "_MANIFEST_WARNED", set())
+
+
+def _manifest_warnings(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == STORE_LOGGER and r.levelno == logging.WARNING]
+
+
+def _fail_read_for(monkeypatch, draft_id: str, exc: BaseException) -> None:
+    real_read = DraftStore.read
+
+    def read(self, wanted):
+        if wanted == draft_id:
+            raise exc
+        return real_read(self, wanted)
+
+    monkeypatch.setattr(DraftStore, "read", read)
+
+
+async def test_manifest_warns_once_for_non_json_and_keeps_entry(store, tmp_path, caplog):
+    await store.write("a", _doc("A"), None)
+    store.path_for("broken").write_text("{not json")
+    with caplog.at_level(logging.WARNING, logger=STORE_LOGGER):
+        first = {e["id"]: e for e in store.manifest()["screens"]}
+        second = {e["id"]: e for e in store.manifest()["screens"]}
+        # A second store over the same tree is the same process: still no second warning.
+        third = {e["id"]: e for e in DraftStore(tmp_path / "drafts").manifest()["screens"]}
+    for entries in (first, second, third):
+        assert entries["broken"]["title"] == "broken"
+        assert entries["broken"]["rev"] == store.rev("broken")
+        assert entries["a"]["title"] == "A"
+    warnings = _manifest_warnings(caplog)
+    assert len(warnings) == 1
+    assert str(store.path_for("broken")) in warnings[0].getMessage()
+
+
+async def test_manifest_warns_once_for_os_error_and_drops_entry(store, tmp_path, monkeypatch, caplog):
+    await store.write("a", _doc("A"), None)
+    await store.write("locked", _doc("Locked"), None)
+    _fail_read_for(monkeypatch, "locked", PermissionError(13, "Permission denied"))
+    with caplog.at_level(logging.WARNING, logger=STORE_LOGGER):
+        ids = [[e["id"] for e in store.manifest()["screens"]] for _ in range(3)]
+        ids.append([e["id"] for e in DraftStore(tmp_path / "drafts").manifest()["screens"]])
+    assert ids == [["a"]] * 4
+    warnings = _manifest_warnings(caplog)
+    assert len(warnings) == 1
+    message = warnings[0].getMessage()
+    assert str(store.path_for("locked")) in message
+    assert "PermissionError" in message
+
+
+async def test_manifest_warns_once_per_exception_type_on_one_path(store, monkeypatch, caplog):
+    await store.write("flaky", _doc("Flaky"), None)
+    with caplog.at_level(logging.WARNING, logger=STORE_LOGGER):
+        _fail_read_for(monkeypatch, "flaky", PermissionError(13, "Permission denied"))
+        store.manifest()
+        store.manifest()
+        _fail_read_for(monkeypatch, "flaky", IsADirectoryError(21, "Is a directory"))
+        store.manifest()
+        store.manifest()
+    warnings = _manifest_warnings(caplog)
+    assert len(warnings) == 2
+    assert "PermissionError" in warnings[0].getMessage()
+    assert "IsADirectoryError" in warnings[1].getMessage()
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [FileNotFoundError(2, "No such file or directory"), DraftNotFound("gone")],
+    ids=["FileNotFoundError", "DraftNotFound"],
+)
+async def test_manifest_never_warns_for_a_vanished_draft(store, monkeypatch, caplog, exc):
+    await store.write("a", _doc("A"), None)
+    await store.write("gone", _doc("Gone"), None)
+    _fail_read_for(monkeypatch, "gone", exc)
+    with caplog.at_level(logging.DEBUG, logger=STORE_LOGGER):
+        ids = [e["id"] for e in store.manifest()["screens"]]
+        store.manifest()
+    assert ids == ["a"]
+    assert _manifest_warnings(caplog) == []
 
 
 # --- resolve_static ---------------------------------------------------------
