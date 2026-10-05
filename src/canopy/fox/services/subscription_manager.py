@@ -80,7 +80,7 @@ logger = logging.getLogger(__name__)
 # WebSocket text frames.
 SendFn = Callable[[Any], Awaitable[None]]
 OnChangeFn = Callable[[str, Callable[[str], Awaitable[None]]], Callable[[], None]]
-SubscribeFn = Callable[[list[str]], Awaitable[None]]
+SubscribeFn = Callable[..., Awaitable[None]]  # (pvs, *, wait_seed=...) where supported
 
 
 @dataclass(frozen=True)
@@ -325,10 +325,11 @@ class SubscriptionManager:
                 unsub_fn = self._on_change(pv, self._make_notify_callback(shared))
                 shared.unsub_fns.append(unsub_fn)
 
-            if shared.t0_ns == 0:
-                await self._subscribe_latest(pvs)
-            else:
-                await self._subscribe_live(pvs)
+            # No seed wait on either branch: the WS read loop awaits this inline, so a
+            # dead input would hold the client's socket for the connector's read
+            # timeout. The eval loop reports a missing input instead.
+            subscribe = self._subscribe_latest if shared.t0_ns == 0 else self._subscribe_live
+            await self._subscribe_without_seed_wait(subscribe, pvs)
             shared.dirty.set()
             shared.task = asyncio.create_task(self._eval_loop(shared))
 
@@ -677,12 +678,16 @@ class SubscriptionManager:
 
     async def _subscribe_table_inputs(self, pvs: list[str]) -> None:
         """Vole live ingest without the broker's seed wait (a dead PV must not hold the eval)."""
+        await self._subscribe_without_seed_wait(self._subscribe_live, pvs)
+
+    @staticmethod
+    async def _subscribe_without_seed_wait(subscribe: SubscribeFn, pvs: list[str]) -> None:
         try:
-            await self._subscribe_live(pvs, wait_seed=False)
+            await subscribe(pvs, wait_seed=False)
         except TypeError as exc:
             if "wait_seed" not in str(exc):
                 raise
-            await self._subscribe_live(pvs)  # an injected subscribe without the keyword
+            await subscribe(pvs)  # an injected subscribe without the keyword
 
     async def _post_wait(
         self, shared: _SharedEval, message: str, code: ErrorCode = ErrorCode.FORMULA_INPUT_MISSING
