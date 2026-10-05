@@ -26,3 +26,13 @@ def test_summary_reports_backend():
     assert body["backend"] == "simulation"
     assert body["connectorOk"] is True
     assert body["warmMonitors"] == 0
+    # The built-in simulation connector exposes no identity: all three null.
+    assert body["label"] is None
+    assert body["notice"] is None
+    assert body["binding"] is None
+
+
+def test_summary_requires_a_key():
+    with TestClient(app) as client:
+        resp = client.get("/hare/v1/health/summary")
+    assert resp.status_code == 401

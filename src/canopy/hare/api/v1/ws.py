@@ -38,7 +38,9 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
       — only the dynamic ``PVValue`` (value/severity/ts/``valueKind``); metadata is
       not re-sent. ``value`` is a scalar, a string, an enum index, a 1-D waveform
       list, or a ``{labels, columns}`` table per ``valueKind``.
-    - ``{"type": "heartbeat", "timestamp": T, "backend": "simulation"}``
+    - ``{"type": "heartbeat", "timestamp": T, "backend": "simulation", "label": L, "notice": N,
+      "binding": B}`` -- the first frame of every socket, then periodic. ``label``,
+      ``notice`` and ``binding`` are the connector's identity, ``null`` when it has none.
     - ``{"type": "pong", "timestamp": T}``
     - ``{"type": "error", "code": "bad_request", "message": "..."}`` (``code`` is an
       `ErrorCode`, matching the REST error envelope's ``code`` field). On a
@@ -51,6 +53,9 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
     client_id = uuid.uuid4().hex
     broker.add_client(client_id, websocket)
     try:
+        # The heartbeat opens every socket, so a client learns the backend and
+        # its identity before any data frame.
+        await websocket.send_json(broker.heartbeat_frame())
         while True:
             # A malformed frame (non-JSON, non-object, wrong field types) sends an
             # error frame and keeps the connection open -- one bad message must

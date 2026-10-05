@@ -24,8 +24,9 @@ async def watchdog() -> HeartbeatDTO:
 
 @router.get("/summary", dependencies=[Security(require_read_access)])
 async def summary(broker: PVBrokerDep) -> HealthSummaryDTO:
-    """Broker rollup: backend, active monitors, connected clients, subscriptions."""
+    """Broker rollup: backend and its identity, active monitors, connected clients, subscriptions."""
     status = broker.status()
+    frame = broker.heartbeat_frame()
     return HealthSummaryDTO(
         status="ok" if status["running"] else "degraded",
         backend=status.get("backend") or "unknown",
@@ -34,4 +35,7 @@ async def summary(broker: PVBrokerDep) -> HealthSummaryDTO:
         active_monitors=status["active_monitors"],
         warm_monitors=status.get("warm_monitors", 0),
         subscriptions=status["subscriptions"],
+        label=frame["label"],
+        notice=frame["notice"],
+        binding=frame["binding"],
     )
