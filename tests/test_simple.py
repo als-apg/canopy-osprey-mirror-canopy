@@ -57,6 +57,7 @@ def test_docs_ui_lists_main_and_module_specs() -> None:
         )
     ]
     assert '"urls.primaryName": "Canopy"' in response.text
+    assert "validatorUrl: null" in response.text
     assert "swagger-ui-standalone-preset.js" in response.text
     assert 'layout: "StandaloneLayout"' in response.text
 
