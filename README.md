@@ -36,8 +36,8 @@ Then exercise it:
 - **Live stream.** Open `frontend-demos/hare-example.html` in a browser, click **Connect**,
   then **Subscribe**. The page defaults to `ws://localhost:8000/hare/v1/ws/pvs?api_key=dev`.
 
-- **Interactive docs.** The mounted Hare app serves Swagger UI at
-  <http://localhost:8000/hare/docs>.
+- **Interactive docs.** <http://localhost:8000/docs> provides one Swagger UI
+  with a service dropdown for Canopy and each mounted module.
 
 ### EPICS Interaction
 

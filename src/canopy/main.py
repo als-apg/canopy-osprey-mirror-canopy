@@ -1,9 +1,12 @@
 """Canopy API entrypoint: composes every module's sub-app and lifespan into one FastAPI app."""
 
+import json
 import logging
+from html import escape
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from canopy import __version__
@@ -35,6 +38,20 @@ from canopy.converter.app import converter_lifespan
 configure_logging()
 logger = logging.getLogger(__name__)
 
+API_MODULES = (
+    ("mole", "Mole"),
+    ("hare", "Hare"),
+    ("raccoon", "Raccoon"),
+    ("vole", "Vole"),
+    ("fox", "Fox"),
+    ("beaver", "Beaver"),
+    ("squirrel", "Squirrel"),
+    ("magpie", "Magpie"),
+    ("jobs", "Jobs"),
+    ("converter", "Converter"),
+    ("analytics", "Analytics"),
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,6 +79,8 @@ app = FastAPI(
     description="Control-system display platform — backend API",
     version=__version__,
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
 )
 
 app.add_middleware(
@@ -90,6 +109,43 @@ app.mount("/analytics", analytics_app)
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
     return {"status": "healthy"}
+
+
+@app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
+async def docs_ui(request: Request) -> HTMLResponse:
+    root_path = request.scope.get("root_path", "").rstrip("/")
+    specs = [
+        {"url": f"{root_path}/openapi.json", "name": "Canopy"},
+        *[{"url": f"{root_path}/{path}/openapi.json", "name": name} for path, name in API_MODULES],
+    ]
+    serialized_specs = json.dumps(specs).replace("<", "\\u003c")
+    return HTMLResponse(
+        f"""<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<title>{escape(f"{app.title} - Swagger UI")}</title>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+<script>
+const ui = SwaggerUIBundle({{
+    dom_id: "#swagger-ui",
+    urls: {serialized_specs},
+    "urls.primaryName": "Canopy",
+    presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIStandalonePreset
+    ],
+    layout: "StandaloneLayout",
+}});
+</script>
+</body>
+</html>"""
+    )
 
 
 @app.get("/", tags=["meta"])
