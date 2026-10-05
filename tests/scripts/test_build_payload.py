@@ -9,8 +9,8 @@ their working directory, so the payload's content shows which tree was built.
 
 from __future__ import annotations
 
-import json
 import os
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -39,9 +39,13 @@ cat marker.txt > "$out/$name-$version-py3-none-any.whl"
 ls > "$out/$name.files"
 """
 
+# Like setuptools_scm, the version names the checkout's HEAD as ``+g<7 hex>``;
+# STUB_SCM_VERSION replaces it outright.
 UVX_STUB = r"""#!/bin/sh
 printf 'uvx\t%s\t%s\n' "$PWD" "$*" >> "$STUB_LOG"
-if grep -q PyDMConverter pyproject.toml; then echo 4.5.6; else echo 1.2.3.dev4+gabc1234; fi
+[ -z "${STUB_SCM_VERSION:-}" ] || { echo "$STUB_SCM_VERSION"; exit 0; }
+node="$(git rev-parse HEAD | cut -c1-7)"
+if grep -q PyDMConverter pyproject.toml; then echo "4.5.6+g$node"; else echo "1.2.3.dev4+g$node"; fi
 """
 
 PNPM_STUB = r"""#!/bin/sh
@@ -124,6 +128,22 @@ def head(path: Path) -> str:
 
 def first(path: Path) -> str:
     return git(path, "rev-parse", "HEAD~1")
+
+
+def canopy_version(world: dict) -> str:
+    """The version the uvx stub computes for the canopy checkout's HEAD."""
+    return f"1.2.3.dev4+g{head(world['canopy'])[:7]}"
+
+
+def pydm_version(world: dict) -> str:
+    return f"4.5.6+g{head(world['pydm'])[:7]}"
+
+
+def wheel_names(world: dict) -> list[str]:
+    return [
+        f"canopy-{canopy_version(world)}-py3-none-any.whl",
+        f"pydmconverter-{pydm_version(world)}-py3-none-any.whl",
+    ]
 
 
 @pytest.fixture
@@ -232,10 +252,7 @@ def staged(world: dict) -> dict:
 def test_payload_holds_wheels_viewer_trace_widgets_and_staged(world):
     ok(build(world))
     out = world["out"]
-    assert sorted(p.name for p in out.glob("*.whl")) == [
-        "canopy-1.2.3.dev4+gabc1234-py3-none-any.whl",
-        "pydmconverter-4.5.6-py3-none-any.whl",
-    ]
+    assert sorted(p.name for p in out.glob("*.whl")) == wheel_names(world)
     assert (out / "viewer" / "index.html").read_text().startswith("canopy-screen-runtime v2\n")
     assert json.loads((out / "viewer" / "ir-map.json").read_text()) == {"arc": {}}
     assert (out / "trace" / "index.html").read_text() == "react-trace v2\n"
@@ -251,8 +268,8 @@ def test_staged_names_five_commits_and_both_versions(world):
         "sdk": head(world["sdk"]),
         "pydm": head(world["pydm"]),
         "trace": head(world["trace"]),
-        "canopy_version": "1.2.3.dev4+gabc1234",
-        "pydm_version": "4.5.6",
+        "canopy_version": canopy_version(world),
+        "pydm_version": pydm_version(world),
     }
 
 
@@ -269,13 +286,16 @@ def test_recorded_shas_are_built_instead_of_head(world):
         "SDK_SHA": first(world["sdk"]),
         "PYDM_SHA": first(world["pydm"]),
     }
-    ok(build(world, **shas))
+    # A computed version would name HEAD, not the recorded commit; given versions are used as is.
+    versions = {"CANOPY_VERSION": "1.2.2", "PYDM_VERSION": "4.5.5"}
+    ok(build(world, **shas, **versions))
     out = world["out"]
     s = staged(world)
     assert (s["canopy"], s["runtime"], s["sdk"], s["pydm"]) == tuple(shas.values())
     assert s["trace"] == head(world["trace"])
-    assert (out / "canopy-1.2.3.dev4+gabc1234-py3-none-any.whl").read_text() == "canopy v1\n"
-    assert (out / "pydmconverter-4.5.6-py3-none-any.whl").read_text() == "pydm-converter-tool v1\n"
+    assert (s["canopy_version"], s["pydm_version"]) == ("1.2.2", "4.5.5")
+    assert (out / "canopy-1.2.2-py3-none-any.whl").read_text() == "canopy v1\n"
+    assert (out / "pydmconverter-4.5.5-py3-none-any.whl").read_text() == "pydm-converter-tool v1\n"
     assert (out / "viewer" / "index.html").read_text() == "canopy-screen-runtime v1\ncanopy-sdk-js v1\n"
 
 
@@ -384,14 +404,17 @@ def test_versions_come_from_the_source_checkouts_and_are_pretended(world):
     assert all("setuptools_scm" in argv for _, argv in scm)
     # The uv stub names each wheel after the pretended version it was handed.
     names = sorted(p.name for p in world["out"].glob("*.whl"))
-    assert names == ["canopy-1.2.3.dev4+gabc1234-py3-none-any.whl", "pydmconverter-4.5.6-py3-none-any.whl"]
+    assert names == wheel_names(world)
     first_build = next(i for i, c in enumerate(calls(world)) if c[0] != "uvx")
     assert all(c[0] != "uvx" for c in calls(world)[first_build:])  # versions before any export is built
 
 
 def test_given_versions_are_used_as_they_are(world):
-    ok(build(world, CANOPY_VERSION="7.0.0", PYDM_VERSION="8.0.0"))
+    proc = build(world, CANOPY_VERSION="7.0.0", PYDM_VERSION="8.0.0")
+    ok(proc)
     assert not [c for c in calls(world) if c[0] == "uvx"]
+    assert "canopy version 7.0.0 (given by CANOPY_VERSION" in proc.stderr
+    assert "PyDMConverter version 8.0.0 (given by PYDM_VERSION" in proc.stderr
     s = staged(world)
     assert (s["canopy_version"], s["pydm_version"]) == ("7.0.0", "8.0.0")
     assert (world["out"] / "canopy-7.0.0-py3-none-any.whl").is_file()
@@ -479,6 +502,30 @@ def test_failed_build_leaves_no_payload(world, failure):
     assert proc.returncode != 0
     assert not (world["out"] / "STAGED.json").exists()
     assert not world["out"].exists() or list(world["out"].iterdir()) == []
+
+
+def test_refuses_scm_version_not_matching_staged_sha(world):
+    recorded = first(world["canopy"])
+    proc = build(world, CANOPY_SHA=recorded)
+    assert proc.returncode != 0
+    assert f"+g{head(world['canopy'])[:7]}" in proc.stderr
+    assert recorded in proc.stderr
+    assert "CANOPY_VERSION" in proc.stderr
+    assert [c[0] for c in calls(world)] == ["uvx"]  # refused before any export is built
+    assert not world["out"].exists()
+
+
+def test_computed_version_without_node_is_refused(world):
+    proc = build(world, STUB_SCM_VERSION="1.2.3")
+    assert proc.returncode != 0
+    assert "has no +g" in proc.stderr
+    assert not world["out"].exists()
+
+
+def test_computed_version_with_a_dirty_suffix_is_accepted(world):
+    version = f"1.2.3.dev4+g{head(world['canopy'])[:7]}.d20261004"
+    ok(build(world, STUB_SCM_VERSION=version, PYDM_VERSION="4.5.6"))
+    assert staged(world)["canopy_version"] == version
 
 
 def test_checkouts_sharing_a_directory_name_are_refused(world, tmp_path):

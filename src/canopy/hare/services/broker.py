@@ -19,8 +19,8 @@ import time
 import asyncio
 import logging
 from typing import Protocol, runtime_checkable
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
 from collections.abc import Callable, Iterable, Awaitable
 
 from canopy.epics.base import PVConnector, Subscription
@@ -627,15 +627,30 @@ class PVBroker:
             if getattr(channel, "wants_flush_marker", False):
                 await self._send(client_id, marker)
 
+    def heartbeat_frame(self) -> dict:
+        """The heartbeat frame: backend plus the connector's identity.
+
+        ``label``, ``notice`` and ``binding`` come from the connector's ``label``,
+        ``notice`` and ``binding_id`` attributes, read on every call (``None`` when
+        the connector has none), so a change of target shows on the next frame.
+        One builder for the heartbeat loop, the first frame of every ``ws_pvs``
+        socket and ``GET /health/summary``.
+        """
+        connector = self._connector
+        return {
+            "type": "heartbeat",
+            "timestamp": time.time(),
+            "backend": getattr(connector, "backend_name", None),
+            "label": getattr(connector, "label", None),
+            "notice": getattr(connector, "notice", None),
+            "binding": getattr(connector, "binding_id", None),
+        }
+
     async def _heartbeat_loop(self) -> None:
         while self._running:
             await asyncio.sleep(self._config.heartbeat_interval_s)
             try:
-                message = {
-                    "type": "heartbeat",
-                    "timestamp": time.time(),
-                    "backend": getattr(self._connector, "backend_name", None),
-                }
+                message = self.heartbeat_frame()
                 for client_id in list(self._channels):
                     await self._send(client_id, message)
             except asyncio.CancelledError:

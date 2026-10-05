@@ -39,6 +39,7 @@ import orjson
 from canopy.fox.ports import (
     PinFn,
     UnpinFn,
+    RingSlice,
     RingSliceFn,
     WatermarkFn,
     SamplesSinceFn,
@@ -47,13 +48,13 @@ from canopy.fox.ports import (
     LastAtOrBeforeFn,
     FetchLastBeforeFn,
     FetchWindowBudgetedFn,
-    RingSlice,
 )
 from canopy.fox.errors import (
     TABLE_UPDATE_UNSUPPORTED_MESSAGE,
     TableLimit,
-    SubscriptionLimitExceeded,
+    FormulaInputOutage,
     TableUpdateUnsupported,
+    SubscriptionLimitExceeded,
     is_retryable,
 )
 from canopy.core.errors import ErrorCode, CanopyError
@@ -758,12 +759,15 @@ class SubscriptionManager:
         The first ``input_wait_notify_s`` of a wait stay silent -- on a fresh
         subscribe the inputs normally land within milliseconds. After that the
         listeners get one error frame flagged ``retryable``; it is re-sent only
-        if the reason changes, never on every retry.
+        if the reason changes, never on every retry. A ``FormulaInputOutage``
+        skips the silence.
         """
         now = time.monotonic()
         if shared.waiting_since is None:
             shared.waiting_since = now
-        if now - shared.waiting_since < self._input_wait_notify_s:
+        # An open outage is not a value on its way: the input's connection is down
+        # now, so the client hears at once (still once per reason).
+        if not isinstance(exc, FormulaInputOutage) and now - shared.waiting_since < self._input_wait_notify_s:
             return
         frame = {"type": "error", "code": exc.error_code.value, "message": exc.detail, "retryable": True}
         if shared.last_frame == frame:

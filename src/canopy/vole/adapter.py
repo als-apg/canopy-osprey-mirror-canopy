@@ -18,8 +18,8 @@ import numpy as np
 
 from canopy.fox.ports import RingSlice, SampleRecord, AlignedWindow
 from canopy.core.clock import Clock
-from canopy.vole.buffer.ring import StoredSample
 from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
+from canopy.vole.buffer.ring import StoredSample
 from canopy.contracts.formula import IndexMode, AlignmentMode
 from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.services.buffer_service import BufferService
@@ -203,6 +203,10 @@ class VoleDataSource:
                 severities[pv] = aligned_sevs
 
         return AlignedWindow(ts_ns=ts_ns, arrays=arrays, severities=severities)
+
+    def in_open_outage(self, name: str) -> bool:
+        """True while ``name``'s Hare connection is down, whether or not it has a ring yet."""
+        return self._buffer.in_open_outage(strip_protocol_prefix(name))
 
     async def read_latest(self, pv: str) -> Sample | None:
         # Latest-value reads (scalar/waveform inputs on subscribe_latest's size-1

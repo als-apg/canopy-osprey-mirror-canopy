@@ -22,6 +22,12 @@ class FakeDataSource:
     """Scriptable data source for Fox tests."""
 
     latest: dict[str, Sample] = field(default_factory=dict)
+    # Names whose Vole outage is open right now; empty by default, so
+    # ``in_open_outage`` answers False unless a test scripts an outage.
+    outages: set[str] = field(default_factory=set)
+
+    def in_open_outage(self, name: str) -> bool:
+        return name in self.outages
 
     async def read_aligned(
         self,

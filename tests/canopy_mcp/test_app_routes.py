@@ -185,7 +185,9 @@ def test_config_json(client: TestClient) -> None:
     assert body["screensPath"] == "drafts"
     assert isinstance(body["themes"], dict)
     assert body["views"] == {"path": "views"}
-    assert set(body) == {"pvMode", "screensPath", "themes", "views", "colorScheme"}
+    assert set(body) == {"pvMode", "screensPath", "themes", "views", "colorScheme", "backend", "binding"}
+    # conftest stubs DATA's summary to "no DATA": both identity fields are null.
+    assert body["backend"] is None and body["binding"] is None
     assert "sekrit-key" not in r.text
     assert not any("key" in k.lower() for k in body)
 
@@ -193,7 +195,9 @@ def test_config_json(client: TestClient) -> None:
 def test_config_json_mock_mode(drafts: Path) -> None:
     s = Settings(drafts_dir=drafts, viewer_dist=FIXTURE_DIST, pv_mode="mock")
     with TestClient(create_app(s, startup_hooks=[])) as c:
-        assert c.get("/config.json").json()["pvMode"] == "mock"
+        body = c.get("/config.json").json()
+        assert body["pvMode"] == "mock"
+        assert "backend" not in body and "binding" not in body
 
 
 # --- drafts ----------------------------------------------------------------------
