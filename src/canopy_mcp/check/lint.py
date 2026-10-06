@@ -56,6 +56,8 @@ _NOT_CHECKABLE_CHARS = frozenset("%*?(|[")
 _PV_PROPS = ("pv", "readbackPV")
 #: Keys inside ``props.curves[]`` items that name a PV.
 _CURVE_PV_KEYS = ("y_channel", "x_channel")
+#: Key inside ``props.curves[]`` items that names a list of PVs (``pv-array-plot``).
+_CURVE_PV_LIST_KEY = "y_channels"
 
 Path = tuple[str | int, ...]
 
@@ -296,6 +298,10 @@ def _iter_pvs(doc: dict[str, Any]) -> Iterator[PvRef]:
                     for key in _CURVE_PV_KEYS:
                         if isinstance(curve.get(key), str):
                             yield PvRef(curve[key], nid, (*path, "props", "curves", c, key))
+                    channels = curve.get(_CURVE_PV_LIST_KEY)
+                    for k, channel in enumerate(channels if isinstance(channels, list) else []):
+                        if isinstance(channel, str):
+                            yield PvRef(channel, nid, (*path, "props", "curves", c, _CURVE_PV_LIST_KEY, k))
             actions = props.get("actions")
             for a, action in enumerate(actions if isinstance(actions, list) else []):
                 if isinstance(action, dict) and action.get("type") == "write_pv" and isinstance(action.get("pvName"), str):
