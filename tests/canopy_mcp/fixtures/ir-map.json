@@ -39,6 +39,10 @@
     "consumes": [],
     "verbatim": true
   },
+  "pv-array-plot": {
+    "consumes": ["title", "curves", "yAxes", "xLabels", "mode", "scale"],
+    "verbatim": false
+  },
   "pv-button": {
     "consumes": [
       "pv",

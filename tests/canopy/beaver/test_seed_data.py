@@ -26,7 +26,7 @@ def _seed_config() -> BeaverConfig:
 # Hardcoded so an accidental add/deletion of a seed widget def fails here rather
 # than passing tautologically against the same directory the loader reads. Bump
 # this when the seed widget set changes.
-_EXPECTED_WIDGET_COUNT = 32
+_EXPECTED_WIDGET_COUNT = 33
 
 
 def test_seed_catalog_loads():
