@@ -147,10 +147,13 @@ class WriteBinding(TypedDict):
 # --- macros ----------------------------------------------------------------------
 
 
+def _macro_name(match: re.Match[str]) -> str:
+    return match.group(1) if match.group(1) is not None else match.group(2)
+
+
 def _substitute(template: str, macros: Macros) -> str:
     def repl(match: re.Match[str]) -> str:
-        name = match.group(1) if match.group(1) is not None else match.group(2)
-        value = macros.get(name)
+        value = macros.get(_macro_name(match))
         return value if isinstance(value, str) else match.group(0)
 
     return _MACRO_RE.sub(repl, template)
@@ -161,7 +164,7 @@ def _has_macro(template: str) -> bool:
 
 
 def _macro_names(template: str) -> set[str]:
-    return {m.group(1) if m.group(1) is not None else m.group(2) for m in _MACRO_RE.finditer(template)}
+    return {_macro_name(m) for m in _MACRO_RE.finditer(template)}
 
 
 def _substitute_deep(value: Any, macros: Macros) -> Any:
@@ -250,15 +253,20 @@ def _channels_of(value: Any, key: str | None, out: list[str]) -> None:
                 _channels_of(v, k, out)
 
 
-def _node_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
-    """The PV channels a node's (substituted) props name: trimmed, blanks dropped, nothing else dropped."""
+def _raw_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
+    """The PV channel strings a node's props name, as they stand (none for an embed or unmapped type)."""
     if ntype == EMBED_TYPE or _is_unmapped(ntype):
         return []
     names: list[str] = []
     for key, value in props.items():
         if key not in _SKIPPED_PROPS:
             _channels_of(value, key, names)
-    return [name.strip() for name in names if name.strip()]
+    return names
+
+
+def _node_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
+    """The PV channels a node's (substituted) props name: trimmed, blanks dropped, nothing else dropped."""
+    return [name.strip() for name in _raw_channels(ntype, props) if name.strip()]
 
 
 def _find_formula(formulas: Any, name: Any) -> dict[str, Any] | None:
@@ -423,14 +431,19 @@ class _Visit:
     empty_defaults: set[str]
 
 
+def _props_of(node: dict[str, Any]) -> dict[str, Any]:
+    """A node's base props as written, or ``{}`` when it carries none."""
+    props = node.get("props")
+    return props if isinstance(props, dict) else {}
+
+
 def _walk_mounted(root: Any, macros: Macros, hidden: bool):
     """``(raw node, substituted props, hidden)`` for every node the renderer walks, in document order."""
 
     def walk(node: Any, chain: list[Any], hidden: bool):
         if not isinstance(node, dict) or node.get("id") in chain:
             return
-        raw_props = node.get("props")
-        props = _substitute_deep(raw_props, macros) if isinstance(raw_props, dict) else {}
+        props = _substitute_deep(_props_of(node), macros)
         hidden = hidden or props.get("visible") is False
         yield node, props, hidden
         if not _mounts_children(node.get("type")):
@@ -462,6 +475,40 @@ def _embed_slots(doc: dict[str, Any], macros: Macros, hidden: bool):
         index += 1
 
 
+def _embed_instance(
+    parent: _Instance,
+    index: int,
+    node: dict[str, Any],
+    file: str,
+    node_macros: dict[str, Any] | None,
+    hidden: bool,
+    ref: str,
+    child: dict[str, Any],
+) -> _Instance:
+    """The instance an embed slot of ``parent`` mounts for the loaded ``child`` document."""
+    passed = _child_macros(parent.macros, node_macros)
+    # A name stays empty-defaulted unless the embed sets it; a value the
+    # embed authors non-empty that comes out empty took an empty default.
+    authored = _props_of(node).get("macros")
+    authored = authored if isinstance(authored, dict) else {}
+    inherited = {name for name in parent.empty_defaults if name not in (node_macros or {})}
+    inherited |= {
+        name for name, value in authored.items() if isinstance(value, str) and value != "" and passed.get(name) == ""
+    }
+    child_macros, child_empty = _resolve_screen_macros(child, passed)
+    return _Instance(
+        doc=child,
+        macros=child_macros,
+        empty_defaults=inherited | child_empty,
+        depth=parent.depth + 1,
+        key=f"{parent.key}/{index}:{node.get('id')}",
+        screen_ref=ref,
+        chain=[*parent.chain, file],
+        ancestors=[*parent.ancestors, ref],
+        hidden=hidden,
+    )
+
+
 def _walk(
     doc: dict[str, Any],
     store: DraftStore,
@@ -485,10 +532,9 @@ def _walk(
             ntype = raw.get("type")
             channels = _node_channels(ntype, props)
             rule_channels = _rule_channels(raw.get("rules"), formulas, instance.macros)
-            raw_props = raw.get("props") if isinstance(raw.get("props"), dict) else {}
             unresolved = any(
                 _is_unresolved(written, _substitute(written, instance.macros), instance.empty_defaults)
-                for written in _strings(raw_props)
+                for written in _strings(_props_of(raw))
             )
             node: ExpandedNode = {
                 "screen": screen or "",
@@ -517,31 +563,7 @@ def _walk(
             child = resolver.load(ref)
             if child is None:
                 continue
-            passed = _child_macros(instance.macros, node_macros)
-            # A name stays empty-defaulted unless the embed sets it; a value the
-            # embed authors non-empty that comes out empty took an empty default.
-            authored = node.get("props", {}).get("macros") if isinstance(node.get("props"), dict) else None
-            authored = authored if isinstance(authored, dict) else {}
-            inherited = {name for name in instance.empty_defaults if name not in (node_macros or {})}
-            inherited |= {
-                name
-                for name, value in authored.items()
-                if isinstance(value, str) and value != "" and passed.get(name) == ""
-            }
-            child_macros, child_empty = _resolve_screen_macros(child, passed)
-            children.append(
-                _Instance(
-                    doc=child,
-                    macros=child_macros,
-                    empty_defaults=inherited | child_empty,
-                    depth=instance.depth + 1,
-                    key=f"{instance.key}/{index}:{node.get('id')}",
-                    screen_ref=ref,
-                    chain=[*instance.chain, file],
-                    ancestors=[*instance.ancestors, ref],
-                    hidden=node_hidden,
-                )
-            )
+            children.append(_embed_instance(instance, index, node, file, node_macros, node_hidden, ref, child))
         for child_instance in children:
             yield from visit(child_instance)
 
@@ -554,7 +576,7 @@ def _walk(
             key="",
             screen_ref=screen_path or "",
             chain=[],
-            ancestors=[_resolve_against_chain(None, [], screen_path)] if screen_path else [],
+            ancestors=[_normalise(screen_path)] if screen_path else [],
             hidden=False,
         )
     )
@@ -600,16 +622,6 @@ def expanded_pvs(
     return sorted(pvs, key=lambda name: name.encode("utf-16-be"))
 
 
-def _raw_channels(ntype: Any, raw_props: dict[str, Any]) -> list[str]:
-    if ntype == EMBED_TYPE or _is_unmapped(ntype):
-        return []
-    names: list[str] = []
-    for key, value in raw_props.items():
-        if key not in _SKIPPED_PROPS:
-            _channels_of(value, key, names)
-    return names
-
-
 def list_write_bindings(store: DraftStore) -> list[WriteBinding]:
     """Every PV the stored screens can write, one row per binding.
 
@@ -632,7 +644,7 @@ def list_write_bindings(store: DraftStore) -> list[WriteBinding]:
             continue
         for visit in _walk(doc, store, draft_id, None, False, set()):
             node, raw = visit.node, visit.raw
-            raw_props = raw.get("props") if isinstance(raw.get("props"), dict) else {}
+            raw_props = _props_of(raw)
             written: list[tuple[str, str]] = []
             if node["type"] in INERT_IN_OSPREY_TYPES:
                 written += [(node["type"], name) for name in _raw_channels(node["type"], raw_props)]
