@@ -49,6 +49,7 @@ class AnalyticsService:
                 # only whether a valid key was presented and with what scopes.
                 "has_api_key": api_key is not None,
                 "api_key_scopes": _scopes(api_key),
+                "api_key_name": api_key.name if api_key is not None else None,
             }
             logger.info("analytics event: %s", event.event, extra=fields)
         except Exception:
@@ -58,4 +59,4 @@ class AnalyticsService:
 def _scopes(api_key: APIKey | None) -> str | None:
     if api_key is None:
         return None
-    return "+".join(s for s, on in (("read", api_key.read), ("write", api_key.write)) if on)
+    return "+".join(s for s, on in (("read", api_key.read), ("write", api_key.write), ("admin", api_key.admin)) if on)

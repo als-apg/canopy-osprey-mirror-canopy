@@ -1,6 +1,6 @@
 """Tests for Vole health endpoints."""
 
-from tests.conftest import READ_HEADERS, WRITE_HEADERS
+from tests.conftest import READ_HEADERS, ADMIN_HEADERS, WRITE_HEADERS
 
 
 class TestHealthEndpoints:
@@ -36,6 +36,13 @@ class TestDebugEndpoints:
         assert resp.status_code == 200
 
     def test_evict_pv(self, vole_client):
-        resp = vole_client.post("/vole/v1/_debug/evict/PV:TEST", headers=WRITE_HEADERS)
+        resp = vole_client.post("/vole/v1/_debug/evict/PV:TEST", headers=ADMIN_HEADERS)
         assert resp.status_code == 200
         assert resp.json()["pv"] == "PV:TEST"
+
+    def test_evict_pv_requires_admin_not_write(self, vole_client):
+        # Dropping a ring buffer is an operational action, not a data write —
+        # a write-scoped key must not be able to do it.
+        resp = vole_client.post("/vole/v1/_debug/evict/PV:TEST", headers=WRITE_HEADERS)
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "insufficient_admin_access"

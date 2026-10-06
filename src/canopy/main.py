@@ -24,16 +24,21 @@ from canopy.beaver.app import app as beaver_app
 from canopy.beaver.app import beaver_lifespan
 from canopy.magpie.app import app as magpie_app
 from canopy.magpie.app import magpie_lifespan
+from canopy.core.config import get_settings
 from canopy.core.errors import register_canopy_error_handler
 from canopy.raccoon.app import app as raccoon_app
 from canopy.raccoon.app import raccoon_lifespan
 from canopy.core.logging import configure_logging
+from canopy.core.modules import tag_module
 from canopy.squirrel.app import app as squirrel_app
 from canopy.squirrel.app import squirrel_lifespan
 from canopy.analytics.app import app as analytics_app
 from canopy.analytics.app import analytics_lifespan
 from canopy.converter.app import app as converter_app
 from canopy.converter.app import converter_lifespan
+from canopy.core.security import bind_key_registry
+from canopy.core.keys.routes import router as api_keys_router
+from canopy.core.keys.registry import build_key_registry
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -56,6 +61,13 @@ API_MODULES = (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Compose per-module lifespans. Mounted sub-apps don't run their own."""
+    # Env keys first, then the database: the handful of long-lived credentials in
+    # the deployment secret keep working when Postgres is unreachable, including on
+    # a cold start when the cache has nothing stale to serve. Parsed before anything
+    # can serve, so a bad CANOPY_API_KEYS surfaces in the startup log instead of as
+    # an unexplained 401 on the first request.
+    settings = get_settings()
+    bind_key_registry(build_key_registry(settings))
     async with (
         mole_lifespan(),
         hare_lifespan(),
@@ -92,6 +104,9 @@ app.add_middleware(
 )
 
 register_canopy_error_handler(app)
+tag_module(app, "core")
+
+app.include_router(api_keys_router)
 
 app.mount("/mole", mole_app)
 app.mount("/hare", hare_app)
@@ -104,6 +119,18 @@ app.mount("/magpie", magpie_app)
 app.mount("/jobs", jobs_app)
 app.mount("/converter", converter_app)
 app.mount("/analytics", analytics_app)
+
+tag_module(mole_app, "mole")
+tag_module(hare_app, "hare")
+tag_module(raccoon_app, "raccoon")
+tag_module(vole_app, "vole")
+tag_module(fox_app, "fox")
+tag_module(beaver_app, "beaver")
+tag_module(squirrel_app, "squirrel")
+tag_module(magpie_app, "magpie")
+tag_module(jobs_app, "jobs")
+tag_module(converter_app, "converter")
+tag_module(analytics_app, "analytics")
 
 
 @app.get("/health", tags=["meta"])

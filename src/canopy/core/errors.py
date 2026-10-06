@@ -24,6 +24,11 @@ class ErrorCode(StrEnum):
     INVALID_API_KEY = auto()
     INSUFFICIENT_READ_ACCESS = auto()
     INSUFFICIENT_WRITE_ACCESS = auto()
+    INSUFFICIENT_ADMIN_ACCESS = auto()
+    INSUFFICIENT_MODULE_ACCESS = auto()
+    API_KEY_NOT_FOUND = auto()
+    API_KEY_SELF_DEACTIVATION = auto()
+    KEY_STORE_UNAVAILABLE = auto()
 
     # Mole
     ARCHIVER_NOT_CONFIGURED = auto()
@@ -145,6 +150,51 @@ class InsufficientReadAccess(CanopyError):
 class InsufficientWriteAccess(CanopyError):
     status_code = 403
     error_code = ErrorCode.INSUFFICIENT_WRITE_ACCESS
+
+
+class InsufficientAdminAccess(CanopyError):
+    status_code = 403
+    error_code = ErrorCode.INSUFFICIENT_ADMIN_ACCESS
+
+
+class InsufficientModuleAccess(CanopyError):
+    """The key resolved, but is not scoped to the module this route belongs to.
+
+    Orthogonal to read/write/admin — a key can have every scope and still be
+    refused here if its ``modules`` set doesn't include this mount.
+    """
+
+    status_code = 403
+    error_code = ErrorCode.INSUFFICIENT_MODULE_ACCESS
+
+
+class ApiKeyNotFound(CanopyError):
+    status_code = 404
+    error_code = ErrorCode.API_KEY_NOT_FOUND
+
+
+class ApiKeySelfDeactivation(CanopyError):
+    """Refused an admin key's request to deactivate itself over HTTP.
+
+    Locking yourself out is recoverable via the CLI (it talks to the database
+    directly), but that recovery path is out-of-band from a running deployment —
+    worth a deliberate ``force=true`` rather than a request that happened to name
+    the wrong id.
+    """
+
+    status_code = 400
+    error_code = ErrorCode.API_KEY_SELF_DEACTIVATION
+
+
+class KeyStoreUnavailable(CanopyError):
+    """The key store could not be reached and no cached entry could answer.
+
+    Deliberately distinct from `InvalidAPIKey`: 503 tells an operator the backend
+    is down, where a 401 would send them hunting for a bad token.
+    """
+
+    status_code = 503
+    error_code = ErrorCode.KEY_STORE_UNAVAILABLE
 
 
 def register_canopy_error_handler(app: FastAPI) -> None:

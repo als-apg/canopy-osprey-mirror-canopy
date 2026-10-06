@@ -51,6 +51,7 @@ def test_valid_key_enriches_but_token_not_logged(caplog):
     (record,) = _analytics_records(caplog)
     assert record.has_api_key is True
     assert record.api_key_scopes == "read"
+    assert record.api_key_name == "env:1"
     # The credential itself must never appear in the record.
     assert "test-read" not in str(record.__dict__)
 

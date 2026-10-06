@@ -21,7 +21,7 @@ uv run pytest tests/ -v
 Start the API with an API key registered:
 
 ```bash
-CANOPY_API_KEYS="dev:read+write" uv run uvicorn canopy.main:app
+CANOPY_API_KEYS="dev:read+write@*" uv run uvicorn canopy.main:app
 ```
 
 Then exercise it:
@@ -54,7 +54,7 @@ EPICS_CA_ADDR_LIST=127.0.0.1 EPICS_CA_AUTO_ADDR_LIST=NO \
 Replace the value of EPICS_CA_ADDR_LIST in this command as needed:
 
 ```bash
-CANOPY_API_KEYS="dev:read+write" CANOPY_EPICS__BACKEND=epics \
+CANOPY_API_KEYS="dev:read+write@*" CANOPY_EPICS__BACKEND=epics \
   EPICS_CA_ADDR_LIST=127.0.0.1 EPICS_CA_AUTO_ADDR_LIST=NO \
   uv run uvicorn canopy.main:app
 ```

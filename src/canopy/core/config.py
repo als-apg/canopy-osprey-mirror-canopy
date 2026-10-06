@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     log_path: str | None = None
     log_level: str = "INFO"
 
+    # API key cache. `api_key_cache_ttl_s` is also the revocation latency: a key
+    # deactivated in the database keeps working until its cached entry expires.
+    # `api_key_max_stale_s` bounds how long a cached key may be served while
+    # Postgres is unreachable, so an outage can't keep a revoked key alive forever.
+    api_key_cache_ttl_s: float = 60.0
+    api_key_negative_cache_ttl_s: float = 5.0
+    api_key_max_stale_s: float = 3600.0
+
     database_url: str = "postgresql+asyncpg://canopy:canopy@localhost:5432/canopy"
     database_pool_size: int = 5
     database_max_overflow: int = 10
