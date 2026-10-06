@@ -1,0 +1,67 @@
+{
+  "id": "pv-array-plot",
+  "version": "1.0.0",
+  "displayName": "PV Array Plot",
+  "description": "A bar or line plot with one point per scalar PV, grouped into curves.",
+  "category": "plots",
+  "paletteIcon": "waveform-plot.svg",
+
+  "reactComponent": {
+    "name": "PVArrayPlot",
+    "module": "@canopy/widgets"
+  },
+
+  "propSchema": {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "title": { "type": "string" },
+      "curves": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "color": { "anyOf": [{ "type": "string" }, { "type": "object", "additionalProperties": false, "required": ["$role", "fallback"], "properties": { "$role": { "type": "string", "minLength": 1, "maxLength": 64 }, "fallback": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }, "fallbackDark": { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" } } }] },
+            "y_channels": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "description": "Per-curve config: name, color and y_channels (one scalar PV per point)."
+      },
+      "yAxes": {
+        "type": "array",
+        "items": { "type": "object" },
+        "description": "Per-axis config (name, label, ...)."
+      },
+      "xLabels": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["bar", "line"]
+      },
+      "scale": {
+        "type": "number",
+        "description": "Multiplier applied to each value before it is drawn."
+      }
+    }
+  },
+
+  "inspectorSchema": {
+    "groups": [
+      { "name": "Display", "fields": ["title", "mode", "scale"] },
+      { "name": "Curves", "fields": ["curves"] },
+      { "name": "Axes", "fields": ["yAxes", "xLabels"] }
+    ]
+  },
+
+  "defaults": { "width": 400, "height": 300 },
+
+  "supportsPv": false,
+  "supportsRules": true,
+  "supportsChildren": false
+}

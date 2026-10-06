@@ -1,0 +1,4042 @@
+{
+  "mappedTypes": [
+    "arc",
+    "ellipse",
+    "frame",
+    "group",
+    "group-box",
+    "image-view",
+    "line",
+    "polygon",
+    "pv-array-plot",
+    "pv-button",
+    "pv-byte-led",
+    "pv-checkbox",
+    "pv-enum-combobox",
+    "pv-gauge",
+    "pv-label",
+    "pv-led",
+    "pv-meter",
+    "pv-progress-bar",
+    "pv-radio-group",
+    "pv-slider",
+    "pv-spinbox",
+    "pv-tabs",
+    "pv-tank",
+    "pv-text-input",
+    "pv-thermometer",
+    "pv-toggle",
+    "qwidget-container",
+    "rectangle",
+    "regular-button",
+    "related-display-button",
+    "scroll-area",
+    "shell-command-button",
+    "tabs",
+    "text-label",
+    "waveform-plot",
+    "xy-plot"
+  ],
+  "cases": [
+    {
+      "name": "macros: defaults < caller < embed node, macro-in-macro, both spellings, unresolved, empty default",
+      "screenPath": "mac/top",
+      "docs": {
+        "mac/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "mac-top",
+          "metadata": {
+            "title": "mac-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [
+            {
+              "name": "P",
+              "default": "${SYS}:${SUB}"
+            },
+            {
+              "name": "SUB",
+              "default": "BPM"
+            },
+            {
+              "name": "OVR",
+              "default": "dflt"
+            },
+            {
+              "name": "E",
+              "default": ""
+            },
+            {
+              "name": "SYS",
+              "default": "LB"
+            },
+            {
+              "name": "LEAFNAME",
+              "default": "leaf"
+            },
+            {
+              "name": "LEAFFILE",
+              "default": "x.screen.json"
+            }
+          ],
+          "root": {
+            "id": "mac-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "m1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "${P}:X"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "m2",
+                "type": "pv-label",
+                "props": {
+                  "pv": "$(OVR):Y"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "m3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "A${E}B"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "m4",
+                "type": "pv-label",
+                "props": {
+                  "pv": "${NOPE}:Z"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "m5",
+                "type": "embedded-display",
+                "props": {
+                  "file": "${LEAFFILE}",
+                  "macros": {
+                    "DEV": "${P}:7",
+                    "OVR": "node"
+                  }
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "mac/leaf": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "mac-leaf",
+          "metadata": {
+            "title": "mac-leaf",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [
+            {
+              "name": "DEV",
+              "default": "none"
+            },
+            {
+              "name": "LOCAL",
+              "default": "L-${DEV}"
+            }
+          ],
+          "root": {
+            "id": "mac-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "l1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "${DEV}:$(LOCAL)"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "l2",
+                "type": "pv-label",
+                "props": {
+                  "pv": "${OVR}:${SYS}"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "mac/top",
+      "macros": {
+        "SYS": "SR",
+        "OVR": "caller",
+        "LEAFFILE": "${LEAFNAME}.screen.json"
+      },
+      "expect": {
+        "nodes": [
+          {
+            "screen": "mac/top",
+            "instance": "",
+            "nodeId": "mac-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "mac/top",
+            "instance": "",
+            "nodeId": "m1",
+            "type": "pv-label",
+            "props": {
+              "pv": "SR:BPM:X"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "mac/top",
+            "instance": "",
+            "nodeId": "m2",
+            "type": "pv-label",
+            "props": {
+              "pv": "caller:Y"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "mac/top",
+            "instance": "",
+            "nodeId": "m3",
+            "type": "pv-label",
+            "props": {
+              "pv": "AB"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "mac/top",
+            "instance": "",
+            "nodeId": "m4",
+            "type": "pv-label",
+            "props": {
+              "pv": "${NOPE}:Z"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "mac/top",
+            "instance": "",
+            "nodeId": "m5",
+            "type": "embedded-display",
+            "props": {
+              "file": "${LEAFNAME}.screen.json",
+              "macros": {
+                "DEV": "SR:BPM:7",
+                "OVR": "node"
+              }
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "mac/leaf",
+            "instance": "/0:m5",
+            "nodeId": "mac-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "mac/leaf",
+            "instance": "/0:m5",
+            "nodeId": "l1",
+            "type": "pv-label",
+            "props": {
+              "pv": "SR:BPM:7:L-SR:BPM:7"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "mac/leaf",
+            "instance": "/0:m5",
+            "nodeId": "l2",
+            "type": "pv-label",
+            "props": {
+              "pv": "node:SR"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "AB",
+          "SR:BPM:7:L-SR:BPM:7",
+          "SR:BPM:X",
+          "caller:Y",
+          "node:SR"
+        ]
+      }
+    },
+    {
+      "name": "viewer mode (screenPath null): refs resolve against the declaring document; dotted embed name",
+      "screenPath": null,
+      "docs": {
+        "nest/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "nest-top",
+          "metadata": {
+            "title": "nest-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [
+            {
+              "name": "N",
+              "default": "7"
+            }
+          ],
+          "root": {
+            "id": "nest-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "n1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "sub/mid.screen.json",
+                  "macros": {
+                    "DEV": "Q${N}"
+                  }
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "nest/sub/mid": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "nest-mid",
+          "metadata": {
+            "title": "nest-mid",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "nest-mid-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "n2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "../parts/inner.v1.screen.json",
+                  "macros": {
+                    "SIG": "RB"
+                  }
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "nest/parts/inner.v1": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "nest-inner",
+          "metadata": {
+            "title": "nest-inner",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "nest-inner-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "n3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "${DEV}:${SIG}"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "nest/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "nest/top",
+            "instance": "",
+            "nodeId": "nest-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/top",
+            "instance": "",
+            "nodeId": "n1",
+            "type": "embedded-display",
+            "props": {
+              "file": "sub/mid.screen.json",
+              "macros": {
+                "DEV": "Q7"
+              }
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/sub/mid",
+            "instance": "/0:n1",
+            "nodeId": "nest-mid-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/sub/mid",
+            "instance": "/0:n1",
+            "nodeId": "n2",
+            "type": "embedded-display",
+            "props": {
+              "file": "../parts/inner.v1.screen.json",
+              "macros": {
+                "SIG": "RB"
+              }
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/parts/inner.v1",
+            "instance": "/0:n1/0:n2",
+            "nodeId": "nest-inner-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/parts/inner.v1",
+            "instance": "/0:n1/0:n2",
+            "nodeId": "n3",
+            "type": "pv-label",
+            "props": {
+              "pv": "Q7:RB"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "Q7:RB"
+        ]
+      }
+    },
+    {
+      "name": "screenPath given: the same nesting resolves root-relative",
+      "screenPath": "nest/top",
+      "docs": {
+        "nest/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "nest-top",
+          "metadata": {
+            "title": "nest-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [
+            {
+              "name": "N",
+              "default": "7"
+            }
+          ],
+          "root": {
+            "id": "nest-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "n1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "sub/mid.screen.json",
+                  "macros": {
+                    "DEV": "Q${N}"
+                  }
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "nest/sub/mid": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "nest-mid",
+          "metadata": {
+            "title": "nest-mid",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "nest-mid-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "n2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "../parts/inner.v1.screen.json",
+                  "macros": {
+                    "SIG": "RB"
+                  }
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "nest/parts/inner.v1": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "nest-inner",
+          "metadata": {
+            "title": "nest-inner",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "nest-inner-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "n3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "${DEV}:${SIG}"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "nest/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "nest/top",
+            "instance": "",
+            "nodeId": "nest-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/top",
+            "instance": "",
+            "nodeId": "n1",
+            "type": "embedded-display",
+            "props": {
+              "file": "sub/mid.screen.json",
+              "macros": {
+                "DEV": "Q7"
+              }
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/sub/mid",
+            "instance": "/0:n1",
+            "nodeId": "nest-mid-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/sub/mid",
+            "instance": "/0:n1",
+            "nodeId": "n2",
+            "type": "embedded-display",
+            "props": {
+              "file": "../parts/inner.v1.screen.json",
+              "macros": {
+                "SIG": "RB"
+              }
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/parts/inner.v1",
+            "instance": "/0:n1/0:n2",
+            "nodeId": "nest-inner-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "nest/parts/inner.v1",
+            "instance": "/0:n1/0:n2",
+            "nodeId": "n3",
+            "type": "pv-label",
+            "props": {
+              "pv": "Q7:RB"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "Q7:RB"
+        ]
+      }
+    },
+    {
+      "name": "depth 8: a chain of ten documents expands to depth 8",
+      "screenPath": "deep/d0",
+      "docs": {
+        "deep/d0": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d0",
+          "metadata": {
+            "title": "deep-d0",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d0-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d0l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:0"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d0e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d1.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d1": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d1",
+          "metadata": {
+            "title": "deep-d1",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d1-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d1l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:1"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d1e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d2.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d2": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d2",
+          "metadata": {
+            "title": "deep-d2",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d2-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d2l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:2"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d2e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d3.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d3": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d3",
+          "metadata": {
+            "title": "deep-d3",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d3-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d3l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:3"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d3e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d4.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d4": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d4",
+          "metadata": {
+            "title": "deep-d4",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d4-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d4l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:4"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d4e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d5.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d5": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d5",
+          "metadata": {
+            "title": "deep-d5",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d5-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d5l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:5"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d5e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d6.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d6": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d6",
+          "metadata": {
+            "title": "deep-d6",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d6-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d6l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:6"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d6e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d7.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d7": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d7",
+          "metadata": {
+            "title": "deep-d7",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d7-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d7l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:7"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d7e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d8.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d8": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d8",
+          "metadata": {
+            "title": "deep-d8",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d8-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d8l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:8"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "d8e",
+                "type": "embedded-display",
+                "props": {
+                  "file": "d9.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "deep/d9": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "deep-d9",
+          "metadata": {
+            "title": "deep-d9",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "deep-d9-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "d9l",
+                "type": "pv-label",
+                "props": {
+                  "pv": "DEEP:9"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "deep/d0",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "deep/d0",
+            "instance": "",
+            "nodeId": "deep-d0-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d0",
+            "instance": "",
+            "nodeId": "d0l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:0"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d0",
+            "instance": "",
+            "nodeId": "d0e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d1.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d1",
+            "instance": "/0:d0e",
+            "nodeId": "deep-d1-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d1",
+            "instance": "/0:d0e",
+            "nodeId": "d1l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:1"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d1",
+            "instance": "/0:d0e",
+            "nodeId": "d1e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d2.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d2",
+            "instance": "/0:d0e/0:d1e",
+            "nodeId": "deep-d2-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d2",
+            "instance": "/0:d0e/0:d1e",
+            "nodeId": "d2l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:2"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d2",
+            "instance": "/0:d0e/0:d1e",
+            "nodeId": "d2e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d3.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d3",
+            "instance": "/0:d0e/0:d1e/0:d2e",
+            "nodeId": "deep-d3-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d3",
+            "instance": "/0:d0e/0:d1e/0:d2e",
+            "nodeId": "d3l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:3"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d3",
+            "instance": "/0:d0e/0:d1e/0:d2e",
+            "nodeId": "d3e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d4.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d4",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e",
+            "nodeId": "deep-d4-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d4",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e",
+            "nodeId": "d4l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:4"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d4",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e",
+            "nodeId": "d4e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d5.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d5",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e",
+            "nodeId": "deep-d5-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d5",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e",
+            "nodeId": "d5l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:5"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d5",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e",
+            "nodeId": "d5e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d6.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d6",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e",
+            "nodeId": "deep-d6-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d6",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e",
+            "nodeId": "d6l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:6"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d6",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e",
+            "nodeId": "d6e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d7.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d7",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e/0:d6e",
+            "nodeId": "deep-d7-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d7",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e/0:d6e",
+            "nodeId": "d7l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:7"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d7",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e/0:d6e",
+            "nodeId": "d7e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d8.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d8",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e/0:d6e/0:d7e",
+            "nodeId": "deep-d8-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "deep/d8",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e/0:d6e/0:d7e",
+            "nodeId": "d8l",
+            "type": "pv-label",
+            "props": {
+              "pv": "DEEP:8"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "deep/d8",
+            "instance": "/0:d0e/0:d1e/0:d2e/0:d3e/0:d4e/0:d5e/0:d6e/0:d7e",
+            "nodeId": "d8e",
+            "type": "embedded-display",
+            "props": {
+              "file": "d9.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          }
+        ],
+        "pvs": [
+          "DEEP:0",
+          "DEEP:1",
+          "DEEP:2",
+          "DEEP:3",
+          "DEEP:4",
+          "DEEP:5",
+          "DEEP:6",
+          "DEEP:7",
+          "DEEP:8"
+        ]
+      }
+    },
+    {
+      "name": "cycle, screenPath given: the top is on the path, so a self-embed and a->b->a stop at once",
+      "screenPath": "cyc/a",
+      "docs": {
+        "cyc/a": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "cyc-a",
+          "metadata": {
+            "title": "cyc-a",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "cyc-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "a1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "CYC:A"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "a2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "b.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "a3",
+                "type": "embedded-display",
+                "props": {
+                  "file": "a.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "cyc/b": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "cyc-b",
+          "metadata": {
+            "title": "cyc-b",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "cyc-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "b1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "CYC:B"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "b2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "a.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "cyc/a",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "cyc-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "a1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:A"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "a2",
+            "type": "embedded-display",
+            "props": {
+              "file": "b.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "a3",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/0:a2",
+            "nodeId": "cyc-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/0:a2",
+            "nodeId": "b1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:B"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/0:a2",
+            "nodeId": "b2",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          }
+        ],
+        "pvs": [
+          "CYC:A",
+          "CYC:B"
+        ]
+      }
+    },
+    {
+      "name": "cycle, viewer mode: the top is not on the path, so each self-cycle expands the top once more",
+      "screenPath": null,
+      "docs": {
+        "cyc/a": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "cyc-a",
+          "metadata": {
+            "title": "cyc-a",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "cyc-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "a1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "CYC:A"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "a2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "b.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "a3",
+                "type": "embedded-display",
+                "props": {
+                  "file": "a.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "cyc/b": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "cyc-b",
+          "metadata": {
+            "title": "cyc-b",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "cyc-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "b1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "CYC:B"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "b2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "a.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "cyc/a",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "cyc-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "a1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:A"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "a2",
+            "type": "embedded-display",
+            "props": {
+              "file": "b.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "",
+            "nodeId": "a3",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/0:a2",
+            "nodeId": "cyc-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/0:a2",
+            "nodeId": "b1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:B"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/0:a2",
+            "nodeId": "b2",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/0:a2/0:b2",
+            "nodeId": "cyc-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/0:a2/0:b2",
+            "nodeId": "a1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:A"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/0:a2/0:b2",
+            "nodeId": "a2",
+            "type": "embedded-display",
+            "props": {
+              "file": "b.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/0:a2/0:b2",
+            "nodeId": "a3",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/1:a3",
+            "nodeId": "cyc-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/1:a3",
+            "nodeId": "a1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:A"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/1:a3",
+            "nodeId": "a2",
+            "type": "embedded-display",
+            "props": {
+              "file": "b.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/a",
+            "instance": "/1:a3",
+            "nodeId": "a3",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/1:a3/0:a2",
+            "nodeId": "cyc-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/1:a3/0:a2",
+            "nodeId": "b1",
+            "type": "pv-label",
+            "props": {
+              "pv": "CYC:B"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "cyc/b",
+            "instance": "/1:a3/0:a2",
+            "nodeId": "b2",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          }
+        ],
+        "pvs": [
+          "CYC:A",
+          "CYC:B"
+        ]
+      }
+    },
+    {
+      "name": "unloadable embeds keep their index; an empty file takes none",
+      "screenPath": "bad/top",
+      "docs": {
+        "bad/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "bad-top",
+          "metadata": {
+            "title": "bad-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "bad-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "u0",
+                "type": "embedded-display",
+                "props": {
+                  "file": "nothere.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "broken.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "future.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u3",
+                "type": "embedded-display",
+                "props": {
+                  "file": "../../../above.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u4",
+                "type": "embedded-display",
+                "props": {
+                  "file": "../../outside.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u5",
+                "type": "embedded-display",
+                "props": {
+                  "file": ""
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u6",
+                "type": "embedded-display",
+                "props": {},
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "u7",
+                "type": "embedded-display",
+                "props": {
+                  "file": "ok.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "bad/future": {
+          "schemaVersion": "9.9",
+          "kind": "screen",
+          "id": "bad-future",
+          "metadata": {
+            "title": "bad-future",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "bad-future-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "f1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "FUTURE:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "bad/ok": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "bad-ok",
+          "metadata": {
+            "title": "bad-ok",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "bad-ok-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "o1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "OK:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {
+        "bad/broken": "{ this is not json"
+      },
+      "invalidDocs": [
+        "bad/future"
+      ],
+      "top": "bad/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "bad-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u0",
+            "type": "embedded-display",
+            "props": {
+              "file": "nothere.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u1",
+            "type": "embedded-display",
+            "props": {
+              "file": "broken.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u2",
+            "type": "embedded-display",
+            "props": {
+              "file": "future.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u3",
+            "type": "embedded-display",
+            "props": {
+              "file": "../../../above.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u4",
+            "type": "embedded-display",
+            "props": {
+              "file": "../../outside.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u5",
+            "type": "embedded-display",
+            "props": {
+              "file": ""
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u6",
+            "type": "embedded-display",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/top",
+            "instance": "",
+            "nodeId": "u7",
+            "type": "embedded-display",
+            "props": {
+              "file": "ok.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/ok",
+            "instance": "/5:u7",
+            "nodeId": "bad-ok-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "bad/ok",
+            "instance": "/5:u7",
+            "nodeId": "o1",
+            "type": "pv-label",
+            "props": {
+              "pv": "OK:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "OK:PV"
+        ]
+      }
+    },
+    {
+      "name": "leading /, screenPath given: the runtime strips it; the ref is root-relative",
+      "screenPath": "ls/top",
+      "docs": {
+        "ls/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "ls-top",
+          "metadata": {
+            "title": "ls-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "ls-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "s1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "/screens/ls/sub/leaf.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "s2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "/sub/leaf.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "ls/sub/leaf": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "ls-leaf",
+          "metadata": {
+            "title": "ls-leaf",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "ls-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "s3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "LEAF:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "ls/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "ls/top",
+            "instance": "",
+            "nodeId": "ls-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/top",
+            "instance": "",
+            "nodeId": "s1",
+            "type": "embedded-display",
+            "props": {
+              "file": "/screens/ls/sub/leaf.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/top",
+            "instance": "",
+            "nodeId": "s2",
+            "type": "embedded-display",
+            "props": {
+              "file": "/sub/leaf.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/sub/leaf",
+            "instance": "/0:s1",
+            "nodeId": "ls-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/sub/leaf",
+            "instance": "/0:s1",
+            "nodeId": "s3",
+            "type": "pv-label",
+            "props": {
+              "pv": "LEAF:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "LEAF:PV"
+        ]
+      }
+    },
+    {
+      "name": "leading /, viewer mode: the stripped ref is joined to the top document's directory",
+      "screenPath": null,
+      "docs": {
+        "ls/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "ls-top",
+          "metadata": {
+            "title": "ls-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "ls-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "s1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "/screens/ls/sub/leaf.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "s2",
+                "type": "embedded-display",
+                "props": {
+                  "file": "/sub/leaf.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "ls/sub/leaf": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "ls-leaf",
+          "metadata": {
+            "title": "ls-leaf",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "ls-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "s3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "LEAF:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "ls/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "ls/top",
+            "instance": "",
+            "nodeId": "ls-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/top",
+            "instance": "",
+            "nodeId": "s1",
+            "type": "embedded-display",
+            "props": {
+              "file": "/screens/ls/sub/leaf.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/top",
+            "instance": "",
+            "nodeId": "s2",
+            "type": "embedded-display",
+            "props": {
+              "file": "/sub/leaf.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/sub/leaf",
+            "instance": "/1:s2",
+            "nodeId": "ls-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ls/sub/leaf",
+            "instance": "/1:s2",
+            "nodeId": "s3",
+            "type": "pv-label",
+            "props": {
+              "pv": "LEAF:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "LEAF:PV"
+        ]
+      }
+    },
+    {
+      "name": "viewer mode: one file reached through two spellings expands twice before the cycle guard sees it",
+      "screenPath": null,
+      "docs": {
+        "gtb/A": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "gtb-a",
+          "metadata": {
+            "title": "gtb-a",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "gtb-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "t1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "B.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "gtb/B": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "gtb-b",
+          "metadata": {
+            "title": "gtb-b",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "gtb-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "t2",
+                "type": "pv-label",
+                "props": {
+                  "pv": "B:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "t3",
+                "type": "embedded-display",
+                "props": {
+                  "file": "../gtb/B.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "gtb/A",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "gtb/A",
+            "instance": "",
+            "nodeId": "gtb-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "gtb/A",
+            "instance": "",
+            "nodeId": "t1",
+            "type": "embedded-display",
+            "props": {
+              "file": "B.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "gtb/B",
+            "instance": "/0:t1",
+            "nodeId": "gtb-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "gtb/B",
+            "instance": "/0:t1",
+            "nodeId": "t2",
+            "type": "pv-label",
+            "props": {
+              "pv": "B:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "gtb/B",
+            "instance": "/0:t1",
+            "nodeId": "t3",
+            "type": "embedded-display",
+            "props": {
+              "file": "../gtb/B.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "gtb/B",
+            "instance": "/0:t1/0:t3",
+            "nodeId": "gtb-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "gtb/B",
+            "instance": "/0:t1/0:t3",
+            "nodeId": "t2",
+            "type": "pv-label",
+            "props": {
+              "pv": "B:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "gtb/B",
+            "instance": "/0:t1/0:t3",
+            "nodeId": "t3",
+            "type": "embedded-display",
+            "props": {
+              "file": "../gtb/B.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          }
+        ],
+        "pvs": [
+          "B:PV"
+        ]
+      }
+    },
+    {
+      "name": "channels: loc://, fox://, y_channels, actions and rules props, rule-only, loc-only rules, formula rules",
+      "screenPath": "ch/top",
+      "docs": {
+        "ch/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "ch-top",
+          "metadata": {
+            "title": "ch-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [
+            {
+              "name": "S",
+              "default": "CH"
+            }
+          ],
+          "formulas": [
+            {
+              "name": "sum",
+              "expression": "{a}+{b}",
+              "bindings": {
+                "a": "${S}:A",
+                "b": "fox://half"
+              }
+            },
+            {
+              "name": "half",
+              "expression": "{0}/2",
+              "bindings": {
+                "0": "${S}:H"
+              }
+            },
+            {
+              "name": "locals",
+              "expression": "{0}",
+              "bindings": {
+                "0": "loc://k"
+              }
+            }
+          ],
+          "root": {
+            "id": "ch-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "c1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "loc://tab"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "c2",
+                "type": "pv-label",
+                "props": {
+                  "pv": "fox://sum"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "c3",
+                "type": "pv-array-plot",
+                "props": {
+                  "title": "orbit",
+                  "mode": "bar",
+                  "curves": [
+                    {
+                      "name": "X",
+                      "y_channels": [
+                        "${S}:BPM1:X",
+                        "${S}:BPM2:X",
+                        "loc://skip",
+                        ""
+                      ]
+                    }
+                  ],
+                  "yAxes": []
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "c4",
+                "type": "pv-button",
+                "props": {
+                  "pv": "${S}:GO",
+                  "label": "Go",
+                  "actions": [
+                    {
+                      "type": "write_pv",
+                      "pvName": "${S}:WRITE",
+                      "value": "1"
+                    }
+                  ]
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "c5",
+                "type": "regular-button",
+                "props": {
+                  "text": "Menu",
+                  "rules": {
+                    "pv": "NOT:A:PV"
+                  },
+                  "actions": [
+                    {
+                      "type": "write_pv",
+                      "pvName": "ALSO:WRITE",
+                      "value": "0"
+                    }
+                  ]
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "c6",
+                "type": "text-label",
+                "props": {
+                  "text": "alarm"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "r1",
+                    "name": "r1",
+                    "targetProperty": "foregroundColor",
+                    "default": null,
+                    "pvs": [
+                      {
+                        "name": "${S}:ALARM",
+                        "trigger": true
+                      }
+                    ],
+                    "conditions": [
+                      {
+                        "expression": "{0} > 0",
+                        "value": "#ff0000"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "c7",
+                "type": "text-label",
+                "props": {
+                  "text": "local"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "r2",
+                    "name": "r2",
+                    "targetProperty": "foregroundColor",
+                    "default": null,
+                    "pvs": [
+                      {
+                        "name": "loc://flag",
+                        "trigger": true
+                      }
+                    ],
+                    "conditions": [
+                      {
+                        "expression": "{0} > 0",
+                        "value": "#ff0000"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "c8",
+                "type": "rectangle",
+                "props": {},
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "r3",
+                    "name": "r3",
+                    "targetProperty": "visible",
+                    "default": true,
+                    "formula": "sum"
+                  }
+                ]
+              },
+              {
+                "id": "c9",
+                "type": "rectangle",
+                "props": {},
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "r4",
+                    "name": "r4",
+                    "targetProperty": "visible",
+                    "default": true,
+                    "formula": "locals"
+                  }
+                ]
+              },
+              {
+                "id": "c10",
+                "type": "text-label",
+                "props": {
+                  "text": "fox rule pv"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "r5",
+                    "name": "r5",
+                    "targetProperty": "foregroundColor",
+                    "default": null,
+                    "pvs": [
+                      {
+                        "name": "fox://half",
+                        "trigger": true
+                      }
+                    ],
+                    "conditions": [
+                      {
+                        "expression": "{0} > 0",
+                        "value": "#ff0000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "ch/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "ch-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c1",
+            "type": "pv-label",
+            "props": {
+              "pv": "loc://tab"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c2",
+            "type": "pv-label",
+            "props": {
+              "pv": "fox://sum"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c3",
+            "type": "pv-array-plot",
+            "props": {
+              "title": "orbit",
+              "mode": "bar",
+              "curves": [
+                {
+                  "name": "X",
+                  "y_channels": [
+                    "CH:BPM1:X",
+                    "CH:BPM2:X",
+                    "loc://skip",
+                    ""
+                  ]
+                }
+              ],
+              "yAxes": []
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c4",
+            "type": "pv-button",
+            "props": {
+              "pv": "CH:GO",
+              "label": "Go",
+              "actions": [
+                {
+                  "type": "write_pv",
+                  "pvName": "CH:WRITE",
+                  "value": "1"
+                }
+              ]
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c5",
+            "type": "regular-button",
+            "props": {
+              "text": "Menu",
+              "rules": {
+                "pv": "NOT:A:PV"
+              },
+              "actions": [
+                {
+                  "type": "write_pv",
+                  "pvName": "ALSO:WRITE",
+                  "value": "0"
+                }
+              ]
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c6",
+            "type": "text-label",
+            "props": {
+              "text": "alarm"
+            },
+            "ruleChannels": [
+              "CH:ALARM"
+            ],
+            "machineBound": true
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c7",
+            "type": "text-label",
+            "props": {
+              "text": "local"
+            },
+            "ruleChannels": [
+              "loc://flag"
+            ],
+            "machineBound": false
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c8",
+            "type": "rectangle",
+            "props": {},
+            "ruleChannels": [
+              "CH:A",
+              "fox://half"
+            ],
+            "machineBound": true
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c9",
+            "type": "rectangle",
+            "props": {},
+            "ruleChannels": [
+              "loc://k"
+            ],
+            "machineBound": false
+          },
+          {
+            "screen": "ch/top",
+            "instance": "",
+            "nodeId": "c10",
+            "type": "text-label",
+            "props": {
+              "text": "fox rule pv"
+            },
+            "ruleChannels": [
+              "fox://half"
+            ],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "CH:A",
+          "CH:ALARM",
+          "CH:BPM1:X",
+          "CH:BPM2:X",
+          "CH:GO",
+          "CH:H"
+        ]
+      }
+    },
+    {
+      "name": "node set = what the renderer mounts: no descent into embedded-display, unknown-widget or unmapped children",
+      "screenPath": "um/top",
+      "docs": {
+        "um/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "um-top",
+          "metadata": {
+            "title": "um-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "um-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "v1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "leaf.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "children": [
+                  {
+                    "id": "v2",
+                    "type": "pv-label",
+                    "props": {
+                      "pv": "UNDER:EMBED"
+                    },
+                    "geometry": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 10,
+                      "height": 10
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "v3",
+                "type": "unknown-widget",
+                "props": {
+                  "originalClass": "Mystery",
+                  "channel": "UNKNOWN:OWN"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "children": [
+                  {
+                    "id": "v4",
+                    "type": "pv-label",
+                    "props": {
+                      "pv": "UNDER:UNKNOWN"
+                    },
+                    "geometry": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 10,
+                      "height": 10
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "v5",
+                "type": "edm-mystery",
+                "props": {
+                  "pv": "UNMAPPED:OWN"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "children": [
+                  {
+                    "id": "v6",
+                    "type": "pv-label",
+                    "props": {
+                      "pv": "UNDER:UNMAPPED"
+                    },
+                    "geometry": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 10,
+                      "height": 10
+                    }
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "r6",
+                    "name": "r6",
+                    "targetProperty": "foregroundColor",
+                    "default": null,
+                    "pvs": [
+                      {
+                        "name": "UNMAPPED:RULE",
+                        "trigger": true
+                      }
+                    ],
+                    "conditions": [
+                      {
+                        "expression": "{0} > 0",
+                        "value": "#ff0000"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "v7",
+                "type": "group",
+                "props": {},
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "children": [
+                  {
+                    "id": "v8",
+                    "type": "pv-label",
+                    "props": {
+                      "pv": "UNDER:GROUP"
+                    },
+                    "geometry": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 10,
+                      "height": 10
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "um/leaf": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "um-leaf",
+          "metadata": {
+            "title": "um-leaf",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "um-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "v9",
+                "type": "pv-label",
+                "props": {
+                  "pv": "LEAF:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "um/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "um/top",
+            "instance": "",
+            "nodeId": "um-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "um/top",
+            "instance": "",
+            "nodeId": "v1",
+            "type": "embedded-display",
+            "props": {
+              "file": "leaf.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "um/top",
+            "instance": "",
+            "nodeId": "v3",
+            "type": "unknown-widget",
+            "props": {
+              "originalClass": "Mystery",
+              "channel": "UNKNOWN:OWN"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "um/top",
+            "instance": "",
+            "nodeId": "v5",
+            "type": "edm-mystery",
+            "props": {
+              "pv": "UNMAPPED:OWN"
+            },
+            "ruleChannels": [
+              "UNMAPPED:RULE"
+            ],
+            "machineBound": true
+          },
+          {
+            "screen": "um/top",
+            "instance": "",
+            "nodeId": "v7",
+            "type": "group",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "um/top",
+            "instance": "",
+            "nodeId": "v8",
+            "type": "pv-label",
+            "props": {
+              "pv": "UNDER:GROUP"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          },
+          {
+            "screen": "um/leaf",
+            "instance": "/0:v1",
+            "nodeId": "um-leaf-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "um/leaf",
+            "instance": "/0:v1",
+            "nodeId": "v9",
+            "type": "pv-label",
+            "props": {
+              "pv": "LEAF:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "LEAF:PV",
+          "UNDER:GROUP",
+          "UNMAPPED:RULE"
+        ]
+      }
+    },
+    {
+      "name": "a rule retargeting an embed's file: keys and PVs follow base props",
+      "screenPath": "rr/top",
+      "docs": {
+        "rr/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "rr-top",
+          "metadata": {
+            "title": "rr-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "rr-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "q1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "a.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "r7",
+                    "name": "r7",
+                    "targetProperty": "file",
+                    "default": "a.screen.json",
+                    "pvs": [
+                      {
+                        "name": "SEL",
+                        "trigger": true
+                      }
+                    ],
+                    "conditions": [
+                      {
+                        "expression": "{0} > 0",
+                        "value": "b.screen.json"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "rr/a": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "rr-a",
+          "metadata": {
+            "title": "rr-a",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "rr-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "q2",
+                "type": "pv-label",
+                "props": {
+                  "pv": "A:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "rr/b": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "rr-b",
+          "metadata": {
+            "title": "rr-b",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "rr-b-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "q3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "B:PV"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "rr/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "rr/top",
+            "instance": "",
+            "nodeId": "rr-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "rr/top",
+            "instance": "",
+            "nodeId": "q1",
+            "type": "embedded-display",
+            "props": {
+              "file": "a.screen.json"
+            },
+            "ruleChannels": [
+              "SEL"
+            ],
+            "machineBound": true
+          },
+          {
+            "screen": "rr/a",
+            "instance": "/0:q1",
+            "nodeId": "rr-a-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "rr/a",
+            "instance": "/0:q1",
+            "nodeId": "q2",
+            "type": "pv-label",
+            "props": {
+              "pv": "A:PV"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "A:PV",
+          "SEL"
+        ]
+      }
+    }
+  ]
+}

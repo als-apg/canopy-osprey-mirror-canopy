@@ -78,6 +78,8 @@ class HareIngestService:
         self._broker = broker
         self._channel = VoleChannel(self)
         self._subscribed_pvs: set[str] = set()
+        # Canonical name -> the subscribed names that feed its ring (``X`` and ``ca://X`` alike).
+        self._by_canonical: dict[str, set[str]] = {}
         self._running = False
         self._watermark_ns = 0
         self._seen: set[str] = set()  # PVs that have stored at least one sample
@@ -95,6 +97,7 @@ class HareIngestService:
         if self._subscribed_pvs:
             await self._broker.unsubscribe(self.CLIENT_ID, list(self._subscribed_pvs))
             self._subscribed_pvs.clear()
+            self._by_canonical.clear()
         await self._broker.remove_client(self.CLIENT_ID)
         logger.info("HareIngestService stopped")
 
@@ -113,6 +116,8 @@ class HareIngestService:
             else:
                 accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs, wait_seed=False)
             self._subscribed_pvs.update(accepted)
+            for pv in accepted:
+                self._by_canonical.setdefault(strip_protocol_prefix(pv), set()).add(pv)
             logger.debug("Vole subscribed to %d/%d new PVs: %s", len(accepted), len(new_pvs), accepted[:5])
         return [pv for pv in pvs if pv in self._subscribed_pvs]
 
@@ -125,9 +130,29 @@ class HareIngestService:
         self._subscribed_pvs -= set(to_unsub)
         for pv in to_unsub:
             name = strip_protocol_prefix(pv)
+            aliases = self._by_canonical.get(name)
+            if aliases is not None:
+                aliases.discard(pv)
+                if not aliases:
+                    del self._by_canonical[name]
             self._seen.discard(name)
             self._disconnected.discard(name)
         logger.debug("Vole unsubscribed from %d PVs", len(to_unsub))
+
+    async def unsubscribe_canonical(self, names: list[str]) -> None:
+        """Unsubscribe every subscribed name whose canonical form is one of ``names``.
+
+        A ring is keyed by the canonical name while subscriptions keep the name
+        as bound, so dropping ring ``X`` must release ``ca://X`` and ``X`` alike;
+        otherwise the name stays subscribed and a later subscribe gets no seed.
+        """
+        to_unsub = [pv for name in names for pv in self._by_canonical.get(strip_protocol_prefix(name), ())]
+        if to_unsub:
+            await self.unsubscribe(to_unsub)
+
+    def is_subscribed(self, name: str) -> bool:
+        """True while some subscribed name feeds ``name``'s ring (compared on canonical names)."""
+        return strip_protocol_prefix(name) in self._by_canonical
 
     @property
     def subscribed_pvs(self) -> set[str]:

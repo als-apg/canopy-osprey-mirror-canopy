@@ -168,6 +168,33 @@ def test_collect_pvs_sources():
     assert sorted(r.name for r in collect_pvs(doc)) == ["B", "P", "Q", "R", "W", "X", "Y"]
 
 
+def test_collect_pvs_reads_y_channels_item_by_item():
+    curves = [
+        {"name": "x", "y_channels": ["BPM:1:X", "BPM:2:X"]},
+        {"name": "y", "y_channels": ["BPM:1:Y", 7, None, "loc://k"], "y_channel": "SINGLE"},
+        {"name": "bad", "y_channels": "NOT:A:LIST"},
+    ]
+    doc = _doc(_node("a", "pv-array-plot", props={"curves": curves}))
+    refs = collect_pvs(doc)
+    assert [(r.name, r.node_id, r.path) for r in refs] == [
+        ("BPM:1:X", "a", ("root", "children", 0, "props", "curves", 0, "y_channels", 0)),
+        ("BPM:2:X", "a", ("root", "children", 0, "props", "curves", 0, "y_channels", 1)),
+        ("SINGLE", "a", ("root", "children", 0, "props", "curves", 1, "y_channel")),
+        ("BPM:1:Y", "a", ("root", "children", 0, "props", "curves", 1, "y_channels", 0)),
+        ("loc://k", "a", ("root", "children", 0, "props", "curves", 1, "y_channels", 3)),
+    ]
+
+
+async def test_y_channels_reach_raccoon(httpx_mock, client):
+    httpx_mock.add_response(url=URL, method="POST", json={"known": ["A:1"], "unknown": ["A:2"]})
+    doc = _doc(_node("a", "pv-array-plot", props={"curves": [{"name": "c", "y_channels": ["A:1", "A:2"]}]}))
+    findings, skipped = await pv_findings(collect_pvs(doc), client=client)
+    sent = json.loads(httpx_mock.get_requests()[0].content)
+    assert sorted(sent["pvs"]) == ["A:1", "A:2"]
+    assert [(f.node_id, f.path) for f in findings] == [("a", "/root/children/0/props/curves/0/y_channels/1")]
+    assert skipped == []
+
+
 # --- pvs: raccoon transport -------------------------------------------------
 
 

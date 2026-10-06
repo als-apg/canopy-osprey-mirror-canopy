@@ -33,7 +33,7 @@ UNDOCUMENTED = {"pv-toggle", "pv-tabs", "pv-gauge", "pv-tank", "pv-thermometer"}
 
 
 def _registry_details() -> list[dict]:
-    """The 32 checked-in Beaver widget files, as GET /beaver/v1/widgets/{id} returns them."""
+    """The 33 checked-in Beaver widget files, as GET /beaver/v1/widgets/{id} returns them."""
     return [json.loads(p.read_text()) for p in sorted(REGISTRY_DIR.glob("*.json"))]
 
 
@@ -178,7 +178,7 @@ def test_join_coverage_every_beaver_id_is_an_ir_type_and_every_ir_type_has_an_en
     details = _registry_details()
     ir_map = _ir_map()
     beaver_ids = [d["id"] for d in details]
-    assert len(beaver_ids) == 32
+    assert len(beaver_ids) == 33
 
     assert join_coverage(beaver_ids, list(ir_map)) == []
     assert set(beaver_ids) <= set(ir_map)
@@ -254,7 +254,7 @@ async def test_load_catalog_end_to_end(settings):
     registry = Registry(_registry_details())
     async with registry.client(settings) as client:
         catalog = await load_catalog(settings, client)
-    assert len(catalog.entries) == 37 + 1
+    assert len(catalog.entries) == 38 + 1
 
 
 async def test_load_catalog_refuses_empty_registry(settings):
@@ -280,7 +280,7 @@ async def test_ensure_catalog_loads_once(settings):
         count = len(registry.requests)
         second = await ensure_catalog(settings, client)
     assert first is second
-    assert len(registry.requests) == count == 33
+    assert len(registry.requests) == count == 34
 
 
 # --- Tools ------------------------------------------------------------------
@@ -295,7 +295,7 @@ def loaded():
 
 async def test_list_widgets_tool(loaded):
     result = await widget_tools.list_widgets()
-    assert result["total"] == 38
+    assert result["total"] == 39
     by_type = {w["type"]: w for w in result["widgets"]}
     assert set(by_type) == set(loaded.entries)
     assert by_type["pv-tank"]["undocumented"] is True

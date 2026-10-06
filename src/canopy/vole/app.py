@@ -37,8 +37,9 @@ async def vole_lifespan():
 
     async def _on_evict(pvs: list[str]) -> None:
         nonlocal ingest
+        # Evicted keys are canonical ring names; release every name that fed them.
         if ingest is not None:
-            await ingest.unsubscribe(pvs)
+            await ingest.unsubscribe_canonical(pvs)
 
     eviction = EvictionService(store, config, on_evict=_on_evict)
     notifier = ChangeNotifier()

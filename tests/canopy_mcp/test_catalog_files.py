@@ -98,19 +98,19 @@ def test_widgets_dir_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatc
 
 def test_every_widget_file_is_read(widgets_dir: Path) -> None:
     details = load_widget_files(widgets_dir)
-    assert len(details) == 32
+    assert len(details) == 33
     assert details == _details()
 
 
 def test_an_ir_map_in_the_widgets_dir_is_not_a_widget(widgets_dir: Path) -> None:
     shutil.copy(IR_MAP_FIXTURE, widgets_dir / "ir-map.json")
-    assert len(load_widget_files(widgets_dir)) == 32
+    assert len(load_widget_files(widgets_dir)) == 33
 
 
 def test_files_that_are_not_json_files_are_ignored(widgets_dir: Path) -> None:
     (widgets_dir / "README.md").write_text("not a widget")
     (widgets_dir / "nested.json").mkdir()
-    assert len(load_widget_files(widgets_dir)) == 32
+    assert len(load_widget_files(widgets_dir)) == 33
 
 
 @pytest.mark.parametrize("content", ["{not json", "[]", "{}", '{"id": 7}'])
