@@ -4037,6 +4037,320 @@
           "SEL"
         ]
       }
+    },
+    {
+      "name": "hidden nodes: a base-hidden embed keeps its index and is not expanded; a hidden node and everything under it is not listed",
+      "screenPath": "hid/top",
+      "docs": {
+        "hid/top": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "hid-top",
+          "metadata": {
+            "title": "hid-top",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "hid-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "E1",
+                "type": "embedded-display",
+                "props": {
+                  "file": "e1.screen.json",
+                  "visible": false
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              },
+              {
+                "id": "HC",
+                "type": "group",
+                "props": {
+                  "visible": false
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "children": [
+                  {
+                    "id": "E2",
+                    "type": "embedded-display",
+                    "props": {
+                      "file": "e2.screen.json"
+                    },
+                    "geometry": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 10,
+                      "height": 10
+                    }
+                  },
+                  {
+                    "id": "H2",
+                    "type": "pv-label",
+                    "props": {
+                      "pv": "HID:UNDER"
+                    },
+                    "geometry": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 10,
+                      "height": 10
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "H1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "HID:OWN",
+                  "visible": false
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                },
+                "rules": [
+                  {
+                    "id": "h-rule",
+                    "name": "h-rule",
+                    "targetProperty": "color",
+                    "default": "#000000",
+                    "pvs": [
+                      {
+                        "name": "HID:RULE",
+                        "trigger": true
+                      }
+                    ],
+                    "conditions": [
+                      {
+                        "expression": "{0} == 1",
+                        "value": "#ff0000"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "E3",
+                "type": "embedded-display",
+                "props": {
+                  "file": "e3.screen.json"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "hid/e1": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "hid-e1",
+          "metadata": {
+            "title": "hid-e1",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "hid-e1-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "x1",
+                "type": "pv-label",
+                "props": {
+                  "pv": "HID:E1"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "hid/e2": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "hid-e2",
+          "metadata": {
+            "title": "hid-e2",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "hid-e2-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "x2",
+                "type": "pv-label",
+                "props": {
+                  "pv": "HID:E2"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        },
+        "hid/e3": {
+          "schemaVersion": "1.0",
+          "kind": "screen",
+          "id": "hid-e3",
+          "metadata": {
+            "title": "hid-e3",
+            "source": {
+              "type": "hand-authored"
+            },
+            "size": {
+              "width": 100,
+              "height": 100
+            }
+          },
+          "macros": [],
+          "root": {
+            "id": "hid-e3-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "geometry": {
+              "x": 0,
+              "y": 0,
+              "width": 10,
+              "height": 10
+            },
+            "children": [
+              {
+                "id": "x3",
+                "type": "pv-label",
+                "props": {
+                  "pv": "HID:E3"
+                },
+                "geometry": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 10,
+                  "height": 10
+                }
+              }
+            ]
+          }
+        }
+      },
+      "docsRaw": {},
+      "invalidDocs": [],
+      "top": "hid/top",
+      "macros": {},
+      "expect": {
+        "nodes": [
+          {
+            "screen": "hid/top",
+            "instance": "",
+            "nodeId": "hid-top-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "hid/top",
+            "instance": "",
+            "nodeId": "E3",
+            "type": "embedded-display",
+            "props": {
+              "file": "e3.screen.json"
+            },
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "hid/e3",
+            "instance": "/1:E3",
+            "nodeId": "hid-e3-root",
+            "type": "absolute-canvas",
+            "props": {},
+            "ruleChannels": [],
+            "machineBound": false
+          },
+          {
+            "screen": "hid/e3",
+            "instance": "/1:E3",
+            "nodeId": "x3",
+            "type": "pv-label",
+            "props": {
+              "pv": "HID:E3"
+            },
+            "ruleChannels": [],
+            "machineBound": true
+          }
+        ],
+        "pvs": [
+          "HID:E3"
+        ]
+      }
     }
   ]
 }
