@@ -400,15 +400,20 @@ class SnapshotService:
         snapshot_values_data = []
         for pv_id, data_dict in pv_data.items():
             setpoint = data_dict.get("setpoint")
+            readback = data_dict.get("readback")
+            # The row's alarm is the setpoint's, or the readback's when there is no
+            # setpoint reading (a readback-only PV), the same fallback the meta-PV
+            # read path uses.
+            alarm_source = setpoint or readback
             snapshot_values_data.append(
                 {
                     "snapshot_id": snapshot.id,
                     "pv_id": pv_id,
                     "pv_name": data_dict.get("address", ""),
                     "setpoint_value": setpoint,
-                    "readback_value": data_dict.get("readback"),
-                    "status": setpoint.get("status") if setpoint else None,
-                    "severity": setpoint.get("severity") if setpoint else None,
+                    "readback_value": readback,
+                    "status": alarm_source.get("status") if alarm_source else None,
+                    "severity": alarm_source.get("severity") if alarm_source else None,
                     "timestamp": now,
                 }
             )

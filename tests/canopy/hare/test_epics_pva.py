@@ -6,6 +6,7 @@ import pytest
 
 pytest.importorskip("p4p.server")
 
+from p4p import Type, Value
 from p4p.nt import NTScalar
 from p4p.server import Server
 from p4p.server.thread import SharedPV
@@ -13,6 +14,7 @@ from p4p.server.thread import SharedPV
 from canopy.epics.base import PVWriteFailed
 from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
+from canopy.epics.backends import epics_backend
 from canopy.epics.backends.epics_backend import EpicsConnector
 
 PV_NAME = "CANOPY:TEST:PVA"
@@ -52,8 +54,71 @@ async def test_pva_get(pva_server):
         assert value.value == 1.0
         # A server without an explicit timestamp reports secondsPastEpoch=0
         assert value.ts_ns > 0
+        assert value.alarm_status == 0
     finally:
         await conn.close()
+
+
+@pytest.mark.parametrize("message,expected", [("HIHI", 3), ("LOLO", 5), ("pump tripped", None)])
+async def test_pva_alarm_status_comes_from_the_alarm_message(pva_server, message, expected):
+    pva_server.post(9.5, severity=2, message=message)
+    conn = EpicsConnector.from_config(EpicsConfig(backend="epics", pva_timeout_s=5.0))
+    await conn.start()
+    try:
+        value = await conn.get(f"pva://{PV_NAME}")
+        assert value.value == 9.5
+        assert value.alarm_status == expected
+    finally:
+        await conn.close()
+
+
+def _alarm_value(severity=None, status=None, message=None):
+    """A p4p NTScalar carrying the given alarm fields, so the dotted-path lookups go through p4p itself."""
+    kwargs = {}
+    if severity is not None:
+        kwargs["severity"] = severity
+    if message is not None:
+        kwargs["message"] = message
+    value = NTScalar("d").wrap(1.0, **kwargs)
+    if status is not None:
+        # wrap() has no status argument, so set the category directly
+        value["alarm.status"] = status
+    return value
+
+
+@pytest.mark.parametrize(
+    "severity,status,message,expected",
+    [
+        (2, 1, "HIHI", 3),
+        (1, 1, "LOW_ALARM", 6),
+        (0, 0, "", 0),
+        (2, 1, "", None),
+        (2, 1, "pump tripped", None),
+        # A message with no severity supplied by the caller
+        (None, None, "HIHI", 3),
+    ],
+)
+def test_pva_alarm_status_reads_the_message_not_the_category(severity, status, message, expected):
+    value = _alarm_value(severity, status, message)
+    assert epics_backend._pva_alarm_status(value, severity) == expected
+
+
+def test_pva_alarm_status_is_none_without_an_alarm_structure():
+    value = Value(Type([("value", "d")]), {"value": 1.0})
+    assert epics_backend._pva_alarm_status(value, None) is None
+
+
+@pytest.mark.parametrize(
+    "severity,status,message,expected",
+    [
+        (2, 1, "NO_ALARM", None),
+        (0, 0, "LOW", 0),
+        (0, 3, "HIHI", None),
+    ],
+)
+def test_pva_alarm_status_ignores_a_message_that_contradicts_severity(severity, status, message, expected):
+    value = _alarm_value(severity, status, message)
+    assert epics_backend._pva_alarm_status(value, severity) == expected
 
 
 async def test_pva_monitor_delivers_updates(pva_server):

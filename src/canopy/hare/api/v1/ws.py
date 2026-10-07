@@ -35,9 +35,9 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
       per-channel metadata (``valueKind``, units, precision, ``enumChoices``,
       display/control/alarm limits) a client reads once to configure a display.
     - ``{"type": "diff", "data": {"PV1": {...PVValue}}, "count": N, "timestamp": T}``
-      — only the dynamic ``PVValue`` (value/severity/ts/``valueKind``); metadata is
-      not re-sent. ``value`` is a scalar, a string, an enum index, a 1-D waveform
-      list, or a ``{labels, columns}`` table per ``valueKind``.
+      — only the dynamic ``PVValue`` (value/severity/``alarmStatus``/ts/``valueKind``);
+      metadata is not re-sent. ``value`` is a scalar, a string, an enum index, a 1-D
+      waveform list, or a ``{labels, columns}`` table per ``valueKind``.
     - ``{"type": "heartbeat", "timestamp": T, "backend": "simulation"}``
     - ``{"type": "pong", "timestamp": T}``
     - ``{"type": "error", "code": "bad_request", "message": "..."}`` (``code`` is an

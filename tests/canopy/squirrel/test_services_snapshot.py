@@ -57,8 +57,8 @@ class FakeEpicsIO:
         return out
 
 
-def _ev(value: Any, severity: int = 0) -> EpicsValue:
-    return EpicsValue(value=value, severity=severity, timestamp=datetime.now(UTC), connected=True)
+def _ev(value: Any, severity: int = 0, status: int | None = None) -> EpicsValue:
+    return EpicsValue(value=value, status=status, severity=severity, timestamp=datetime.now(UTC), connected=True)
 
 
 async def _seed_pv(session: AsyncSession, setpoint, readback=None, *, abs_tol=0.0, rel_tol=0.0) -> Pv:
@@ -89,6 +89,29 @@ async def test_create_snapshot_persists_values_via_copy(db_session: AsyncSession
     assert by_name["A:SP"].setpoint_value.value == 1.0  # COPY'd JSONB read back
     assert by_name["A:SP"].readback_value.value == 0.9
     assert by_name["B:SP"].setpoint_value.value == 2.0
+
+
+async def test_create_snapshot_records_alarm_status(db_session: AsyncSession):
+    await _seed_pv(db_session, "A:SP", "A:RB")
+    await _seed_pv(db_session, None, "R:RB")
+    io = FakeEpicsIO(
+        {
+            "A:SP": _ev(9.5, severity=2, status=3),
+            "A:RB": _ev(8.0, severity=1, status=4),
+            "R:RB": _ev(-9.5, severity=2, status=5),
+        }
+    )
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
+
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="snap"))
+    full = await svc.get_by_id(summary.id)
+    by_name = {v.pv_name: v for v in full.pv_values}
+    both, readback_only = by_name["A:SP"], by_name["R:RB"]
+    assert (both.setpoint_value.status, both.readback_value.status) == (3, 4)
+    assert (both.status, both.severity) == (3, 2)  # the setpoint's alarm wins
+    assert readback_only.setpoint_value is None
+    assert readback_only.readback_value.status == 5
+    assert (readback_only.status, readback_only.severity) == (5, 2)
 
 
 async def test_create_skips_disconnected_reads(db_session: AsyncSession):
