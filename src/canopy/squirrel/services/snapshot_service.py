@@ -693,11 +693,24 @@ class SnapshotService:
         )
 
     def _values_within_tolerance(self, v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
-        """Absolute tolerance first, then relative (vs. ``|v1|``); non-numeric → exact match."""
+        """Absolute tolerance first, then relative (vs. ``|v1|``); non-numeric → exact match.
+
+        Waveform (list) values are compared element-wise under the same rule;
+        mismatched lengths are always "different" rather than raising.
+        """
         if v1 is None and v2 is None:
             return True
         if v1 is None or v2 is None:
             return False
+        if isinstance(v1, list) or isinstance(v2, list):
+            if not (isinstance(v1, list) and isinstance(v2, list)):
+                return False
+            if len(v1) != len(v2):
+                return False
+            return all(self._scalar_within_tolerance(e1, e2, abs_tol, rel_tol) for e1, e2 in zip(v1, v2))
+        return self._scalar_within_tolerance(v1, v2, abs_tol, rel_tol)
+
+    def _scalar_within_tolerance(self, v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
         try:
             f1, f2 = float(v1), float(v2)
             diff = abs(f1 - f2)

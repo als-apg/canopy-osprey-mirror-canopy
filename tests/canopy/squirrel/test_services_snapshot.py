@@ -306,3 +306,51 @@ async def test_compare_detects_value_difference(db_session: AsyncSession):
 
     cmp_same = await svc1.compare_snapshots(s1.id, s1.id)
     assert cmp_same.difference_count == 0  # a snapshot always matches itself
+
+
+async def test_create_and_restore_roundtrip_waveform_value(db_session: AsyncSession):
+    await _seed_pv(db_session, "WF:SP")
+    io = FakeEpicsIO({"WF:SP": _ev([1.0, 2.0, 3.0])})
+    svc = SnapshotService(db_session, io, restore_hooks=[_NoHook()])
+
+    summary = await svc.create_snapshot(NewSnapshotDTO(title="wf"))
+    full = await svc.get_by_id(summary.id)
+    by_name = {v.pv_name: v for v in full.pv_values}
+    assert by_name["WF:SP"].setpoint_value.value == [1.0, 2.0, 3.0]  # list round-trips through JSONB
+
+    io.writes.clear()
+    await svc.restore_snapshot(summary.id)
+    assert io.writes == {"WF:SP": [1.0, 2.0, 3.0]}  # written back unchanged
+
+
+async def test_compare_waveforms_within_tolerance_match(db_session: AsyncSession):
+    await _seed_pv(db_session, "WF:SP", abs_tol=0.1, rel_tol=0.0)
+    svc1 = SnapshotService(db_session, FakeEpicsIO({"WF:SP": _ev([1.0, 2.0, 3.0])}), restore_hooks=[_NoHook()])
+    s1 = await svc1.create_snapshot(NewSnapshotDTO(title="s1"))
+    svc2 = SnapshotService(db_session, FakeEpicsIO({"WF:SP": _ev([1.05, 2.0, 3.0])}), restore_hooks=[_NoHook()])
+    s2 = await svc2.create_snapshot(NewSnapshotDTO(title="s2"))
+
+    cmp = await svc1.compare_snapshots(s1.id, s2.id)
+    assert cmp.difference_count == 0 and cmp.match_count == 1  # within abs_tolerance element-wise
+
+
+async def test_compare_waveforms_outside_tolerance_on_one_element_differs(db_session: AsyncSession):
+    await _seed_pv(db_session, "WF:SP", abs_tol=0.1, rel_tol=0.0)
+    svc1 = SnapshotService(db_session, FakeEpicsIO({"WF:SP": _ev([1.0, 2.0, 3.0])}), restore_hooks=[_NoHook()])
+    s1 = await svc1.create_snapshot(NewSnapshotDTO(title="s1"))
+    svc2 = SnapshotService(db_session, FakeEpicsIO({"WF:SP": _ev([1.0, 2.5, 3.0])}), restore_hooks=[_NoHook()])
+    s2 = await svc2.create_snapshot(NewSnapshotDTO(title="s2"))
+
+    cmp = await svc1.compare_snapshots(s1.id, s2.id)
+    assert cmp.difference_count == 1 and cmp.match_count == 0  # one element outside tolerance is enough
+
+
+async def test_compare_waveforms_of_different_length_differs(db_session: AsyncSession):
+    await _seed_pv(db_session, "WF:SP", abs_tol=0.1, rel_tol=0.0)
+    svc1 = SnapshotService(db_session, FakeEpicsIO({"WF:SP": _ev([1.0, 2.0, 3.0])}), restore_hooks=[_NoHook()])
+    s1 = await svc1.create_snapshot(NewSnapshotDTO(title="s1"))
+    svc2 = SnapshotService(db_session, FakeEpicsIO({"WF:SP": _ev([1.0, 2.0])}), restore_hooks=[_NoHook()])
+    s2 = await svc2.create_snapshot(NewSnapshotDTO(title="s2"))
+
+    cmp = await svc1.compare_snapshots(s1.id, s2.id)
+    assert cmp.difference_count == 1  # length mismatch reports as a difference, not an error
