@@ -5,7 +5,7 @@ skipped rather than failing on import. Tests marked ``live`` need a running
 canopy stack and only run when ``CANOPY_LIVE=1``.
 
 The FastMCP instance is one per process, so an app built with authoring off
-takes the six authoring tools away from every later test. ``restore_authoring``
+takes the seven authoring tools away from every later test. ``restore_authoring``
 puts them back after each test.
 
 In hare mode ``GET /config.json`` asks DATA for its health summary. A test
@@ -44,7 +44,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture(autouse=True)
 def restore_authoring() -> Iterator[None]:
-    """Re-add any authoring tool a test's app removed, so the next test sees all fifteen."""
+    """Re-add any authoring tool a test's app removed, so the next test sees every tool."""
     yield
     removed = authoring_snapshot()
     if not removed:

@@ -17,11 +17,13 @@ from starlette.testclient import TestClient
 from canopy_mcp.app import create_app
 from canopy_mcp.urls import draft_url, embed_path
 from canopy_mcp.store import DraftStore, ReadOnlyStore, InvalidDraftId, open_stores
+from canopy_mcp.tools import push as push_module
 from canopy_mcp.tools import check as check_module
 from canopy_mcp.tools import drafts, _common, convert, screenshot
 from canopy_mcp.config import Settings
 from canopy_mcp.server import AUTHORING_TOOLS
 from canopy_mcp.catalog import set_catalog, build_catalog
+from canopy_mcp.tools.push import request_push
 from canopy_mcp.tools.check import check
 from canopy_mcp.tools.drafts import (
     add_node,
@@ -106,7 +108,7 @@ def roots(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _patch_settings(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
-    for module in (drafts, convert, check_module, screenshot, _common):
+    for module in (drafts, convert, check_module, screenshot, push_module, _common):
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     drafts.reset_stores()
     ir_map = {t: {"consumes": [], "verbatim": False} for t in ("group", "label", "embedded-display")}
@@ -440,11 +442,12 @@ async def _call_authoring_tool(name: str, draft_id: str, rev: str) -> dict:
         "delete_draft": lambda: delete_draft(draft_id, rev),
         # No converter is mocked: a request would fail the test (pytest-httpx refuses it).
         "convert_legacy": lambda: convert_legacy(draft_id, content="<display/>", kind="bob", overwrite=True),
+        "request_push": lambda: request_push(draft_id, "sr", "note"),
     }
     return await calls[name]()
 
 
-def test_the_six_authoring_tools_are_the_ones_covered() -> None:
+def test_the_seven_authoring_tools_are_the_ones_covered() -> None:
     assert set(AUTHORING_TOOLS) == {
         "new_screen",
         "patch_node",
@@ -452,7 +455,12 @@ def test_the_six_authoring_tools_are_the_ones_covered() -> None:
         "remove_node",
         "delete_draft",
         "convert_legacy",
+        "request_push",
     }
+
+
+# request_push copies a draft into a bundle for review; it never writes the store.
+STORE_WRITING_TOOLS = tuple(name for name in AUTHORING_TOOLS if name != "request_push")
 
 
 @pytest.mark.parametrize("tool", AUTHORING_TOOLS)
@@ -505,10 +513,13 @@ async def test_a_draft_ref_into_the_reserved_segment_is_unresolved_not_an_error(
     result = await new_screen("top", doc)
 
     assert "refused" not in result
-    assert [(w["nodeId"], w["code"], w["reason"]) for w in result["warnings"]] == [("e", "unresolved_ref", "missing")]
+    assert [(w["nodeId"], w["code"], w.get("reason")) for w in result["warnings"]] == [
+        ("e", "root_relative_ref", None),
+        ("e", "unresolved_ref", "missing"),
+    ]
 
 
-@pytest.mark.parametrize("tool", AUTHORING_TOOLS)
+@pytest.mark.parametrize("tool", STORE_WRITING_TOOLS)
 async def test_an_unwritable_personal_store_refuses_with_the_same_reason(
     personal_only: Settings, roots: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, httpx_mock, tool: str
 ) -> None:
