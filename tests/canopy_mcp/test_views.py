@@ -1,6 +1,8 @@
 """Saved views: the ViewStore on disk and the /views HTTP routes."""
 
+import os
 import json
+import errno
 from pathlib import Path
 from datetime import datetime
 
@@ -8,7 +10,13 @@ import pytest
 from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
-from canopy_mcp.views import MAX_BODY_BYTES, ViewStore, InvalidView, ViewNotFound, InvalidViewId
+from canopy_mcp.views import (
+    MAX_BODY_BYTES,
+    ViewStore,
+    InvalidView,
+    ViewNotFound,
+    InvalidViewId,
+)
 from canopy_mcp.config import Settings
 
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
@@ -130,7 +138,7 @@ async def test_failed_replace_keeps_old_file(store: ViewStore, monkeypatch: pyte
     def boom(src: str, dst: str) -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr("canopy_mcp.views.os.replace", boom)
+    monkeypatch.setattr("canopy_mcp.store.os.replace", boom)
     with pytest.raises(OSError):
         await store.put("v", "new", "")
     assert store.get("v")["name"] == "old"
@@ -315,6 +323,81 @@ def test_cross_site_writes_are_403(client: TestClient, drafts: Path, site: str) 
     assert (drafts / "views" / "keep.json").exists()
     # Reads are not guarded.
     assert client.get("/views/keep", headers={"sec-fetch-site": site}).status_code == 200
+
+
+def _refuse(code: int):
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise OSError(code, os.strerror(code))
+
+    return refuse
+
+
+@pytest.mark.parametrize("code", [errno.EROFS, errno.EACCES, errno.EPERM])
+def test_put_on_an_unwritable_views_dir_is_403_read_only_store(
+    client: TestClient, drafts: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    _put(client, "keep", {"name": "Keep", "query": ""})
+    kept = (drafts / "views" / "keep.json").read_bytes()
+    monkeypatch.setattr("canopy_mcp.store.os.replace", _refuse(code))
+    for view_id in ("keep", "new"):
+        r = _put(client, view_id, {"name": "n", "query": "pv=A"})
+        assert r.status_code == 403
+        assert r.headers["cache-control"] == "no-cache"
+        body = r.json()
+        assert body["code"] == "read_only_store"
+        assert body["error"].startswith("read_only_store")
+        assert str(drafts) not in body["error"]
+    assert sorted(p.name for p in (drafts / "views").iterdir()) == ["keep.json"]
+    assert (drafts / "views" / "keep.json").read_bytes() == kept
+
+
+@pytest.mark.parametrize("code", [errno.EROFS, errno.EACCES, errno.EPERM])
+def test_delete_on_an_unwritable_views_dir_is_403_read_only_store(
+    client: TestClient, drafts: Path, monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    _put(client, "keep", {"name": "Keep", "query": ""})
+    monkeypatch.setattr("canopy_mcp.store.os.unlink", _refuse(code))
+    r = client.delete("/views/keep")
+    assert r.status_code == 403
+    assert r.headers["cache-control"] == "no-cache"
+    assert r.json()["code"] == "read_only_store"
+    assert r.json()["error"].startswith("read_only_store")
+    assert (drafts / "views" / "keep.json").exists()
+    # Reads still answer.
+    assert client.get("/views/keep").status_code == 200
+    assert [v["id"] for v in client.get("/views").json()["views"]] == ["keep"]
+
+
+def test_a_missing_view_on_an_unwritable_views_dir_is_still_404(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No views directory exists yet: the delete answers from the lookup, not from the refusal.
+    monkeypatch.setattr("canopy_mcp.store.os.unlink", _refuse(errno.EROFS))
+    assert client.delete("/views/absent").status_code == 404
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
+def test_a_0555_views_dir_answers_403_and_keeps_serving(client: TestClient, drafts: Path) -> None:
+    _put(client, "keep", {"name": "Keep", "query": ""})
+    views = drafts / "views"
+    views.chmod(0o555)
+    try:
+        assert _put(client, "new", {"name": "n", "query": ""}).status_code == 403
+        assert _put(client, "keep", {"name": "n", "query": ""}).status_code == 403
+        assert client.delete("/views/keep").status_code == 403
+        assert client.delete("/views/absent").status_code == 404
+        assert client.get("/views/keep").json()["name"] == "Keep"
+    finally:
+        views.chmod(0o755)
+    assert [p.name for p in views.iterdir()] == ["keep.json"]
+
+
+def test_a_cross_site_write_is_refused_before_the_store_is_asked(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("canopy_mcp.store.os.replace", _refuse(errno.EROFS))
+    r = _put(client, "v", {"name": "n", "query": ""}, {"sec-fetch-site": "cross-site"})
+    assert (r.status_code, r.json()) == (403, {"error": "cross-site writes are refused"})
 
 
 @pytest.mark.parametrize("site", ["same-origin", "none"])
