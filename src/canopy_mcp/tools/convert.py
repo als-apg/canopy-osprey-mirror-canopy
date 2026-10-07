@@ -66,13 +66,7 @@ from canopy_mcp.store import (
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
-from canopy_mcp.check.refs import (
-    dirname,
-    iter_refs,
-    resolve_ref,
-    iter_image_refs,
-    resolve_image_ref,
-)
+from canopy_mcp.check.refs import resolve, iter_refs, screen_path, iter_image_refs
 from canopy_mcp.tools.check import run_check
 from canopy.core.color_scheme import DEFAULT_ID, THEME_FILE_ENV, get_color_scheme
 from canopy_mcp.tools._common import (
@@ -87,7 +81,7 @@ CONVERT_TIMEOUT_S = 60.0
 KINDS = frozenset(SOURCE_KINDS.values())
 
 # The check codes that go to the queue; inert_in_osprey and lint findings stay in check only.
-QUEUE_CODES: tuple[str, ...] = ("warning", "unknown_widget", "unresolved_ref", "nested_ref_base")
+QUEUE_CODES: tuple[str, ...] = ("warning", "unknown_widget", "unresolved_ref")
 
 
 @dataclass
@@ -213,11 +207,11 @@ def _siblings_of(parent: _Unit, parent_id: str, path: str | None, kind: str, sou
     """The sibling units the parent's refs resolve to (first appearance order, de-duplicated)."""
     units: list[_Unit] = []
     seen = {parent_id}
-    base = dirname(parent_id)
+    top = screen_path(parent_id)
     for _node_id, _path, raw, _embedded in iter_refs(parent.doc):
-        target, reason = resolve_ref(raw, base)
-        if reason is not None or target is None or target in seen:
-            continue  # absolute, above_root, invalid_id: not written (check reports it)
+        target = resolve(top, (), raw).draft_id
+        if target is None or target in seen:
+            continue  # absolute, above_root, invalid_id, another root: not written (check reports it)
         key = ir_ref_key(raw)
         assert key is not None
         source = sources.get(key)
@@ -256,10 +250,12 @@ async def _copy_one(
     unit: _Unit, ref: str, store: DraftStore, overwrite: bool, seen: dict[str, bytes]
 ) -> dict[str, Any]:
     """Copy one image ref of ``unit`` into the store and report it (FR6 lookup order)."""
-    relpath, status = resolve_image_ref(ref, dirname(unit.draft_id))
-    if relpath is None:
-        return _asset(unit, ref, None, None, status or "invalid_ref")
-    path = f"screens/{relpath}"
+    found = resolve(screen_path(unit.draft_id), (), ref, kind="image")
+    if found.path is None:
+        # A ref into another root is reported as the climb out of this one that it is.
+        return _asset(unit, ref, None, None, "external" if found.external else found.reason or "above_root")
+    path, relpath = found.path, found.relpath
+    assert relpath is not None
     if unit.source_path is None:
         return _asset(unit, ref, path, None, "no_source")
     source = os.path.realpath(os.path.join(os.path.dirname(unit.source_path), ref))
@@ -369,7 +365,7 @@ async def convert_legacy(
     embedded screen): ``check(draftId)`` findings with code ``warning``
     (converter notes; clear one with ``patch_node`` ``set:{warnings:[]}``),
     ``unknown_widget`` (with ``originalClass``; replace with ``remove_node`` +
-    ``add_node``), ``unresolved_ref`` and ``nested_ref_base``, plus
+    ``add_node``) and ``unresolved_ref``, plus
     ``dropped_prop`` items ``{nodeId, props}`` naming legacy properties the IR
     could not carry. ``dropped_prop`` names mix source vocabulary (``.bob`` /
     ``.edl`` attribute names dropped by the source adapters) and Qt vocabulary

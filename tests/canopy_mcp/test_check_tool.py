@@ -1,23 +1,23 @@
 """The ``check`` tool: argument rules and composition of the four passes."""
 
+import sys
 import json
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import httpx
 import pytest
-from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
+from fastmcp.exceptions import ToolError
 
-from canopy_mcp.catalog import build_catalog, set_catalog
-from canopy_mcp.check.lint import RACCOON_VALIDATE_PATH
-from canopy_mcp.check.semantic import iter_nodes
+from canopy_mcp.store import DraftStore
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
-from canopy_mcp.store import DraftStore
+from canopy_mcp.catalog import set_catalog, build_catalog
+from canopy_mcp.check.lint import RACCOON_VALIDATE_PATH
 from canopy_mcp.tools.check import CheckResult, check, run_check
+from canopy_mcp.check.semantic import iter_nodes
 
 BASE = "http://canopy.test"
 RACCOON = BASE + RACCOON_VALIDATE_PATH
@@ -120,7 +120,9 @@ async def test_each_pass_lands_in_its_own_bucket(httpx_mock: HTTPXMock, client, 
     assert set(result) == {"schema", "semantic", "lint", "skipped"}
     assert {f["code"] for f in result["schema"]} == {"schema"}
     assert all(f["path"].startswith("/root/children/1/geometry") for f in result["schema"])
-    assert {("dup", "duplicate_node_id"), ("emb", "unresolved_ref")} <= {(f["nodeId"], f["code"]) for f in result["semantic"]}
+    assert {("dup", "duplicate_node_id"), ("emb", "unresolved_ref")} <= {
+        (f["nodeId"], f["code"]) for f in result["semantic"]
+    }
     assert ("lbl", "invalid_prop", "/root/children/0/props/precision") in _keys(result["lint"])
     assert ("lbl", "unknown_pv", "/root/children/0/props/pv") in _keys(result["lint"])
     assert result["skipped"] == []
@@ -131,23 +133,31 @@ async def test_each_pass_lands_in_its_own_bucket(httpx_mock: HTTPXMock, client, 
 
 async def test_clean_document_has_no_findings(httpx_mock: HTTPXMock, client, store):
     httpx_mock.add_response(method="POST", url=RACCOON, json={"known": ["A:B"], "unknown": []})
-    result = await run_check(_doc(_node("lbl", "pv-label", {"pv": "A:B"})), store=store, catalog=_catalog(), client=client)
+    result = await run_check(
+        _doc(_node("lbl", "pv-label", {"pv": "A:B"})), store=store, catalog=_catalog(), client=client
+    )
     assert result.to_dict() == {"schema": [], "semantic": [], "lint": [], "skipped": []}
     assert result.findings == [] and result.errors == []
 
 
 async def test_raccoon_outage_is_reported_in_skipped(httpx_mock: HTTPXMock, client, store):
     httpx_mock.add_response(method="POST", url=RACCOON, status_code=500, json={"code": "adapter_misconfigured"})
-    result = await run_check(_doc(_node("lbl", "pv-label", {"pv": "A:B"})), store=store, catalog=_catalog(), client=client)
+    result = await run_check(
+        _doc(_node("lbl", "pv-label", {"pv": "A:B"})), store=store, catalog=_catalog(), client=client
+    )
     assert result.skipped == [{"check": "raccoon", "reason": "adapter_misconfigured"}]
     assert result.lint == []
 
 
 async def test_stored_draft_is_read_and_refs_carry_doc_id(store, client):
-    """draft_id alone: the stored a/top is checked; the nested ref finding names its document."""
+    """draft_id alone: the stored draft is checked; a finding in an embedded screen names its document."""
     result = (await run_check(draft_id="a/top", store=store, catalog=_catalog(), client=client)).to_dict()
-    nested = [f for f in result["semantic"] if f["code"] == "nested_ref_base"]
-    assert nested and nested[0]["docId"] == "a/sub/child"
+    # a/sub/child's ref resolves beside a/sub/child, so the stored a/top has no ref finding
+    assert [f for f in result["semantic"] if f["code"].endswith("_ref")] == []
+    outer = _doc(_node("emb", "embedded-display", {"file": "reasons.screen.json"}))
+    result = (await run_check(outer, "a/outer", store=store, catalog=_catalog(), client=client)).to_dict()
+    nested = [f for f in result["semantic"] if f["code"] == "unresolved_ref"]
+    assert nested and {f["docId"] for f in nested} == {"a/reasons"}
     assert all("docId" not in f for f in result["schema"] + result["lint"])
 
 
@@ -179,12 +189,12 @@ async def test_tool_uses_settings_store_and_process_catalog(httpx_mock: HTTPXMoc
     get_settings.cache_clear()
     set_catalog(_catalog())
     try:
-        result = await check(draft_id="a/top")
+        result = await check(draft_id="a/reasons")
     finally:
         set_catalog(None)
         get_settings.cache_clear()
     assert isinstance(result, dict) and set(result) == {"schema", "semantic", "lint", "skipped"}
-    assert "nested_ref_base" in {f["code"] for f in result["semantic"]}
+    assert "unresolved_ref" in {f["code"] for f in result["semantic"]}
     json.dumps(result)  # plain JSON for the MCP response
 
 

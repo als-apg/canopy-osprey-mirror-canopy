@@ -323,7 +323,7 @@ async def test_sc3a_btsview_queue(mcp: _Mcp, drafts_dir: Path) -> None:
     queue = result["queue"]
     codes = Counter(item["code"] for item in queue)
     assert codes == Counter({"dropped_prop": 12, "warning": 2, "unresolved_ref": 3}), codes
-    assert codes["unknown_widget"] == 0 and codes["nested_ref_base"] == 0
+    assert codes["unknown_widget"] == 0
 
     warnings = Counter(i["draftId"] for i in queue if i["code"] == "warning")
     assert warnings == Counter({"bts/BTSView": 1, "bts/embedded/_tv": 1})
@@ -533,8 +533,8 @@ async def test_sc6_draft_traversal_is_404(server: _Server) -> None:
 async def test_sc6_nested_ref_base(mcp: _Mcp, drafts_dir: Path) -> None:
     shutil.copytree(REFS_DRAFTS, drafts_dir)
     checked = await mcp.call("check", draft_id="a/top")
-    nested = [f for f in checked["semantic"] if f["code"] == "nested_ref_base"]
-    assert [(f["nodeId"], f["docId"], f["severity"]) for f in nested] == [("child-embed", "a/sub/child", "warning")]
+    # The child's ref resolves beside the child (a/sub/x), so the retired code and its stand-ins are absent.
+    assert [f for f in checked["semantic"] if f["code"].endswith(("_ref", "_ref_base"))] == []
 
 
 async def test_sc6_lint_with_a_mocked_transport(server: _Server) -> None:
