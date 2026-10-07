@@ -1,0 +1,283 @@
+"""The ``canopy-panel-builder`` skill: one source file, shipped with the package and installed byte for byte.
+
+``src/canopy_mcp/skill/SKILL.md`` is the only source. Deployments hold copies
+that are compared with it by bytes, so the file is read and written as bytes
+everywhere, and its whitespace is asserted here: the repository's whitespace
+hooks cover ``.py`` and ``.txt`` only.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+import json
+import tomllib
+import subprocess
+from fnmatch import fnmatch
+from pathlib import Path
+from importlib.resources import files
+
+import pytest
+
+from canopy_mcp import skill
+from canopy_mcp.skill import __main__ as cli
+from canopy_mcp.server import AUTHORING_TOOLS, mcp, register_all
+from canopy_mcp.check.schema import check_schema
+from canopy_mcp.check.semantic import iter_nodes, check_semantic
+
+REPO = Path(__file__).resolve().parents[2]
+SOURCE = REPO / "src" / "canopy_mcp" / "skill" / "SKILL.md"
+INSTALLED = Path(".claude") / "skills" / "canopy-panel-builder" / "SKILL.md"
+
+SOURCE_BYTES = SOURCE.read_bytes()
+TEXT = SOURCE_BYTES.decode("utf-8")
+
+
+async def _tool_names() -> set[str]:
+    register_all()
+    return {tool.name for tool in await mcp.list_tools()}
+
+
+# --- one source, the same bytes everywhere -------------------------------------------------
+
+
+def test_the_package_serves_the_bytes_of_the_source_file() -> None:
+    assert (files("canopy_mcp.skill") / "SKILL.md").read_bytes() == SOURCE_BYTES
+    assert skill.skill_bytes() == SOURCE_BYTES
+
+
+def test_the_skill_is_named_after_the_directory_it_installs_into() -> None:
+    assert skill.SKILL_NAME == "canopy-panel-builder"
+    assert skill.skill_path(Path("project")) == Path("project") / INSTALLED
+
+
+def test_install_writes_the_same_bytes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["install", str(tmp_path)]) == 0
+
+    target = tmp_path / INSTALLED
+    assert target.read_bytes() == SOURCE_BYTES
+    assert capsys.readouterr().out.strip() == str(target)
+    # Nothing but the skill: no temporary file is left beside it.
+    assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
+
+
+def test_install_is_idempotent(tmp_path: Path) -> None:
+    assert cli.main(["install", str(tmp_path)]) == 0
+    target = tmp_path / INSTALLED
+    first = target.stat()
+
+    assert cli.main(["install", str(tmp_path)]) == 0
+
+    assert target.read_bytes() == SOURCE_BYTES
+    # An up-to-date copy is left alone, not rewritten.
+    assert (target.stat().st_ino, target.stat().st_mtime_ns) == (first.st_ino, first.st_mtime_ns)
+    assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
+
+
+def test_install_replaces_a_copy_that_differs(tmp_path: Path) -> None:
+    target = tmp_path / INSTALLED
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"an older skill\n")
+
+    assert cli.main(["install", str(tmp_path)]) == 0
+
+    assert target.read_bytes() == SOURCE_BYTES
+    assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
+
+
+def test_install_keeps_what_else_the_project_holds(tmp_path: Path) -> None:
+    other = tmp_path / ".claude" / "skills" / "another" / "SKILL.md"
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"mine\n")
+
+    assert cli.main(["install", str(tmp_path)]) == 0
+
+    assert other.read_bytes() == b"mine\n"
+    assert (tmp_path / INSTALLED).read_bytes() == SOURCE_BYTES
+
+
+def test_install_creates_a_project_directory_that_does_not_exist_yet(tmp_path: Path) -> None:
+    project = tmp_path / "new" / "project"
+
+    assert cli.main(["install", str(project)]) == 0
+
+    assert (project / INSTALLED).read_bytes() == SOURCE_BYTES
+
+
+def test_install_refuses_a_target_that_is_not_a_directory(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    occupied = tmp_path / "project"
+    occupied.write_bytes(b"a file\n")
+
+    assert cli.main(["install", str(occupied)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("canopy_mcp.skill: ")
+    assert str(occupied) in captured.err
+    assert occupied.read_bytes() == b"a file\n"
+
+
+@pytest.mark.parametrize("argv", [[], ["install"], ["remove", "x"]])
+def test_a_command_line_without_install_and_a_directory_is_a_usage_error(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(argv)
+    assert exit_info.value.code == 2
+
+
+def test_install_runs_isolated_and_needs_no_server_dependency(tmp_path: Path) -> None:
+    """``python -I -m canopy_mcp.skill install``: the documented command, with nothing but the package."""
+    done = subprocess.run(
+        [sys.executable, "-I", "-m", "canopy_mcp.skill", "install", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert (tmp_path / INSTALLED).read_bytes() == SOURCE_BYTES
+
+    heavy = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys, canopy_mcp.skill.__main__\n"
+            "print(sorted(m for m in ('fastmcp', 'playwright', 'canopy_mcp.server', 'uvicorn') if m in sys.modules))",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert heavy.returncode == 0, heavy.stderr
+    assert heavy.stdout.strip() == "[]"
+
+
+# --- the file itself ----------------------------------------------------------------------
+
+
+def test_the_skill_has_no_trailing_whitespace_and_ends_in_exactly_one_newline() -> None:
+    assert b"\r" not in SOURCE_BYTES
+    assert b"\t" not in SOURCE_BYTES
+    assert SOURCE_BYTES.endswith(b"\n")
+    assert not SOURCE_BYTES.endswith(b"\n\n")
+    assert not SOURCE_BYTES.startswith((b"\n", b"\xef\xbb\xbf"))
+    trailing = [number for number, line in enumerate(TEXT.split("\n"), start=1) if line != line.rstrip()]
+    assert trailing == []
+
+
+def test_the_skill_is_ascii() -> None:
+    """Copies are compared by bytes, so no character may have two encodings or an invisible twin."""
+    assert [char for char in TEXT if ord(char) > 126 or (ord(char) < 32 and char != "\n")] == []
+
+
+def test_the_frontmatter_names_the_skill() -> None:
+    match = re.match(r"---\n(.*?)\n---\n", TEXT, flags=re.DOTALL)
+    assert match is not None
+    fields = dict(line.split(": ", 1) for line in match.group(1).split("\n"))
+    assert set(fields) == {"name", "description"}
+    assert fields["name"] == skill.SKILL_NAME
+    assert 40 <= len(fields["description"]) <= 1024
+
+
+async def test_the_skill_names_every_tool_the_server_registers() -> None:
+    names = await _tool_names()
+    assert len(names) == 16
+    documented = set(re.findall(r"^\| `([a-z_]+)` \|", TEXT, flags=re.MULTILINE))
+    assert documented == names
+
+
+async def test_the_skill_marks_exactly_the_authoring_tools_as_writing() -> None:
+    rows = dict(re.findall(r"^\| `([a-z_]+)` \| (reads|writes) \|", TEXT, flags=re.MULTILINE))
+    assert set(rows) == await _tool_names()
+    assert {name for name, kind in rows.items() if kind == "writes"} == set(AUTHORING_TOOLS)
+    assert "16 tools" in TEXT
+    assert "nine" in TEXT and "seven" in TEXT
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "`CANOPY_DRAFTS_DIR`",
+        "your screens root",
+        "`<your screens root>/screens/rf/status.screen.json`",
+        "`CANOPY_PV_MODE=mock`",
+        "\npython -m canopy_mcp.report <root> --write\n",
+        "when the server offers push",
+        "`push_unavailable`",
+        "`evicted`",
+        "`rid`",
+        "`base_rev`",
+        "`stale_rev`",
+        "`library/<id>`",
+        "`schemaVersion`",
+    ],
+)
+def test_the_skill_covers(phrase: str) -> None:
+    assert phrase in TEXT
+
+
+def test_the_example_screen_passes_the_schema_and_semantic_checks() -> None:
+    """The one document an agent copies from must be one the server would take."""
+    blocks = re.findall(r"```json\n(.*?)\n```", TEXT, flags=re.DOTALL)
+    assert len(blocks) == 1
+    document = json.loads(blocks[0])
+    assert check_schema(document) == []
+    assert check_semantic(document) == []
+    known = {path.stem for path in (REPO / "widget-registry-data" / "widgets").glob("*.json")}
+    assert {node["type"] for _, node in iter_nodes(document)} <= known
+
+
+def test_the_skill_tells_the_agent_to_relay_evicted_requests_to_the_user() -> None:
+    paragraph = next(block for block in TEXT.split("\n\n") if "`evicted`" in block)
+    assert "user" in paragraph
+    assert "rid" in paragraph
+
+
+def test_the_skill_is_generic() -> None:
+    """One text for every deployment: it names no integration, host or absolute path."""
+    lowered = TEXT.lower()
+    assert "osprey" not in lowered
+    assert "/users/" not in lowered and "/home/" not in lowered and "/app/" not in lowered
+
+
+# --- the pointer on the server ------------------------------------------------------------
+
+
+def test_the_server_instructions_point_at_the_skill_in_one_line() -> None:
+    assert isinstance(mcp.instructions, str)
+    assert "\n" not in mcp.instructions
+    assert skill.SKILL_NAME in mcp.instructions
+    assert "python -m canopy_mcp.skill install" in mcp.instructions
+
+
+# --- the wheel ----------------------------------------------------------------------------
+
+
+def test_the_wheel_target_ships_the_package_directory_with_its_markdown() -> None:
+    """The real-wheel check is the payload build's; this pins the configuration it relies on."""
+    hatch = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["hatch"]["build"]
+    wheel = hatch["targets"]["wheel"]
+    assert "src/canopy_mcp" in wheel["packages"]
+
+    shipped = ["src/canopy_mcp/skill/SKILL.md", "canopy_mcp/skill/SKILL.md", "skill/SKILL.md", "SKILL.md", "x.md"]
+    excludes = [*hatch.get("exclude", []), *wheel.get("exclude", [])]
+    hits = [
+        pattern
+        for pattern in excludes
+        if any(fnmatch(path, pattern.lstrip("/")) or fnmatch(path, f"*{pattern}") for path in shipped)
+    ]
+    assert hits == []
+    # A narrowing table would drop the file as surely as an exclude.
+    assert "only-include" not in wheel and "include" not in wheel
+    assert "only-include" not in hatch and "include" not in hatch
+
+
+def test_the_source_file_is_not_ignored_by_git() -> None:
+    """hatchling leaves out what git ignores, so an ignore rule would empty the wheel of the skill."""
+    done = subprocess.run(
+        ["git", "check-ignore", "-q", str(SOURCE.relative_to(REPO))],
+        cwd=REPO,
+        capture_output=True,
+        check=False,
+    )
+    assert done.returncode == 1, done.stderr

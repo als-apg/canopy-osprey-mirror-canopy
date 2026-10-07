@@ -17,7 +17,11 @@ from concurrent.futures import ThreadPoolExecutor
 from fastmcp import FastMCP
 from fastmcp.tools import Tool
 
-mcp = FastMCP("canopy")
+mcp = FastMCP(
+    "canopy",
+    instructions="Build Canopy screens by the canopy-panel-builder skill (.claude/skills/canopy-panel-builder/SKILL.md; "
+    "`python -m canopy_mcp.skill install <project dir>` writes it).",
+)
 
 _TOOLS_PACKAGE = "canopy_mcp.tools"
 

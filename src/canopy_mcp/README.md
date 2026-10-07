@@ -11,12 +11,16 @@ uv sync --extra mcp
 uv run playwright install --with-deps chromium
 ```
 
-The second command is required. The `screenshot` tool renders drafts in a
-headless Chromium, which the server launches at startup and keeps for its
-lifetime, so a server without Chromium fails to start. It does not wait for the
-first screenshot to fail. `--with-deps` also installs the system libraries
-Chromium needs on Linux (the canopy image). On a developer Mac,
+The second command is needed only for the `screenshot` tool, which renders
+screens in a headless Chromium. `--with-deps` also installs the system
+libraries Chromium needs on Linux. On a developer Mac,
 `uv run playwright install chromium` is enough.
+
+The browser is lazy. Nothing launches at startup: the first `screenshot` call
+launches Chromium, and the server stops it again 300 s after the last capture.
+A server without Playwright or without Chromium still starts. Its `screenshot`
+tool then answers that screenshots are unavailable, and every other tool
+works.
 
 ## Run
 
@@ -28,12 +32,99 @@ Only the streamable-HTTP transport is supported. The same port serves the MCP
 endpoint (`/mcp`), the embedded viewer (`/embed/...`), the draft screens
 (`/drafts/...`) and the saved views (`/views`).
 
+`--fd N` serves on a listening socket the parent process already holds, passed
+down as descriptor `N`, instead of binding `--host` and `--port`. A supervisor
+that keeps the socket across restarts loses no connection attempt while the
+server is down.
+
+## Switches
+
+The server reads its settings from the environment. An empty value counts as
+unset.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CANOPY_BASE_URL` | `http://127.0.0.1:8000` | Where the canopy backend is reachable. |
+| `CANOPY_API_KEY_FILE` | unset | File holding the read-scope key sent to the backend. When set, `CANOPY_API_KEY` is ignored. |
+| `CANOPY_ACCESS_TOKEN_FILE` | unset | File holding the credential every request except `GET /health` must carry as `X-Canopy-Access`. Unset means no credential is asked for. |
+| `CANOPY_SELF_URL` | loopback on the served port | The address the screenshot browser reaches this server at. |
+| `CANOPY_DRAFTS_DIR` | `drafts` | The store the tools write to. Screens are `<dir>/screens/<id>.screen.json`. |
+| `CANOPY_LIBRARY_DIR` | unset | A read-only screen library served beside the drafts. Its screens are `library/<id>` to the tools and `/embed/library/<id>` to the viewer. Only its `screens/` subtree is served. |
+| `CANOPY_AUTHORING` | `1` | `0` takes the seven authoring tools off the server. |
+| `CANOPY_PUSH_DIR` | unset | Where `request_push` writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
+| `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |
+| `CANOPY_PV_MODE` | `hare` | `mock` makes the served viewer draw PVs from the mock service instead of the backend. |
+| `CANOPY_VIEWER_DIST` | unset | The built viewer. |
+| `CANOPY_WIDGETS_DIR` | unset | A directory of widget detail `*.json` files to build the widget catalog from, instead of asking the backend. |
+| `CANOPY_BROWSER_SANDBOX` | `0` | `1` launches the screenshot Chromium with its own sandbox. Off by default, because the sandbox needs privileges a container usually lacks. If Chromium cannot start with it, `screenshot` answers unavailable and names this switch. |
+
+A secret file that is named but cannot supply its secret ends the launch with
+a non-zero status before any socket is bound.
+
+## Tools
+
+The server offers 16 tools. Nine only read. Seven are authoring tools: they
+create, change or delete drafts, or file a draft for the shared library. With
+`CANOPY_AUTHORING=0` the server offers the nine.
+
+| Tool | Kind | What it does |
+|---|---|---|
+| `list_widgets` | read | Lists the widget types a screen may use. |
+| `get_widget` | read | Describes one widget type and its props. |
+| `get_schema` | read | Returns the Screen-IR JSON Schema. |
+| `check` | read | Reports schema, semantic, ref and lint findings for a document or a stored screen. |
+| `get_screen` | read | Returns one screen and its rev. |
+| `list_drafts` | read | Lists the drafts, then the library screens. |
+| `search_pvs` | read | Searches the PV directory by a glob pattern. |
+| `read_pv` | read | Reads one PV once. |
+| `screenshot` | read | Renders a screen as a PNG. |
+| `new_screen` | authoring | Saves a whole document as a draft. |
+| `patch_node` | authoring | Changes one node by JSON Merge Patch. |
+| `add_node` | authoring | Appends one node to a container. |
+| `remove_node` | authoring | Removes one node and its children. |
+| `delete_draft` | authoring | Deletes a draft. |
+| `convert_legacy` | authoring | Converts a `.bob`, `.opi`, `.edl` or `.ui` panel and its sub-screens into drafts. |
+| `request_push` | authoring | Files a draft and everything it refers to as a bundle for an administrator to review. Nothing is published by the call. |
+
+No tool writes a PV. Every write to a screen is checked against the rev the
+caller last saw, so an agent and a person editing in the viewer cannot
+overwrite each other. A library screen (`library/<id>`) can be read, checked
+and screenshotted. An authoring tool refuses it with `read_only_store`.
+
+## The skill
+
+`skill/SKILL.md` tells an agent how to use the tools. It is the single source
+of that text and ships in the wheel as package data. Install it into a project
+with:
+
+```sh
+python -m canopy_mcp.skill install <dir>
+```
+
+This writes the same bytes to
+`<dir>/.claude/skills/canopy-panel-builder/SKILL.md` and prints the path.
+Running it again is safe. The server's MCP `instructions` point at the skill.
+
+## The report
+
+```sh
+python -m canopy_mcp.report <root> [--served-at personal|library] (--emit|--write|--check)
+```
+
+`<root>` is a store root, the directory that holds `screens/`. The report
+lists what the screens of the tree can write, run, open and load. `--write`
+puts it beside `screens/` as `WRITE-BINDINGS.json` and `WRITE-BINDINGS.md`,
+`--check` recomputes it and exits non-zero on a mismatch or a refusal, and
+`--emit` prints it without writing. Run `--write` before committing a screen
+tree that carries a report.
+
 ## Saved views
 
 A saved view is a named Trace query. The viewer finds the API through
 `config.json` (`"views": {"path": "views"}`). Each view is stored as
 `<CANOPY_DRAFTS_DIR>/views/<id>.json`, next to `screens/` rather than inside
 it, so views never show up in the drafts manifest or under `/drafts`.
+`CANOPY_VIEWS_DIR` names another directory for them.
 
 | Request | Answer |
 |---|---|
@@ -56,13 +147,21 @@ Every response carries `Cache-Control: no-cache`. The routes are reachable
 through the OSPREY proxy in the same way as the drafts and carry no auth of
 their own. As a CSRF guard, `PUT` and `DELETE` answer 403 when a
 `Sec-Fetch-Site` header is present and is neither `same-origin` nor `none`.
-Writes are atomic (temp file plus `os.replace`).
+Writes are atomic (temp file plus `os.replace`). A views directory that cannot
+be written answers `PUT` and `DELETE` with 403 and the code `read_only_store`.
 
 ## Screenshots
 
-`screenshot(id, macros)` loads this server's own `/embed/drafts/<id>?<macros>`
-in the pv mode the server is configured for (`CANOPY_PV_MODE`). It waits up to
+`screenshot(id, macros, theme)` loads this server's own
+`/embed/drafts/<id>?<macros>`, or `/embed/library/<id>` for a library screen,
+in the pv mode the server is configured for (`CANOPY_PV_MODE`). `theme` is
+`light` or `dark`; left out, the viewer's default applies. It waits up to
 4 s for web fonts and for the viewer's PV connection to settle, then returns
 the screen as an inline PNG plus `{width, height, pv}`. `pv` is `connected`
 only when live PVs were reached, and `disconnected` otherwise, mock mode
 included. Nothing is written to disk.
+
+The page is locked to the server's own origin. A request to any other origin
+is aborted, and so is a same-origin request that is not `GET`, `HEAD` or
+`OPTIONS`. The access credential is added to each same-origin request and
+never follows a redirect.
