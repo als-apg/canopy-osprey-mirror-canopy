@@ -73,6 +73,24 @@ STUB_INDEX = f"""<!doctype html>
 </html>
 """
 
+# The viewer's own layout: the screen root sits behind a padding inside a scroller that fills
+# the window, so a root as large as the window starts out with its far edges out of view.
+PAD = 16
+PADDED_INDEX = f"""<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>padded stub viewer</title></head>
+  <body style="margin:0">
+    <main style="width:100vw;height:100vh;overflow:auto">
+      <div style="padding:{PAD}px;width:max-content">
+        <div data-testid="screen-root"
+             style="width:{ROOT_W}px;height:{ROOT_H}px;background:linear-gradient(135deg,#f00,#0f0,#00f)"></div>
+      </div>
+    </main>
+    <script>window.__canopy = {{ pvStatus: 'mock' }};</script>
+  </body>
+</html>
+"""
+
 
 # --- Pure helpers -------------------------------------------------------------
 
@@ -555,8 +573,15 @@ def test_stitch_png_refuses_strips_that_do_not_fit_together() -> None:
 
 
 class _FakeRoot:
-    def __init__(self, box: dict[str, float] | None) -> None:
-        self.box, self.shots = box, 0
+    """A root at ``box``; scrolling it into view moves it to ``scrolled`` (``box`` when not given)."""
+
+    def __init__(self, box: dict[str, float] | None, scrolled: dict[str, float] | None = None) -> None:
+        self.box, self.scrolled, self.shots, self.scrolls = box, scrolled, 0, 0
+
+    async def evaluate(self, _script: str) -> None:
+        self.scrolls += 1
+        if self.scrolled is not None:
+            self.box = self.scrolled
 
     async def bounding_box(self) -> dict[str, float] | None:
         return self.box
@@ -567,15 +592,20 @@ class _FakeRoot:
 
 
 class _FakePage:
-    def __init__(self) -> None:
+    """A page that, like the browser, cuts a clip down to what the viewport shows."""
+
+    def __init__(self, viewport: dict[str, int] | None = None) -> None:
+        self.viewport_size = {"width": 4096, "height": 4096} if viewport is None else viewport
         self.clips: list[dict[str, int] | None] = []
 
     async def screenshot(self, *, type: str, clip: dict[str, int] | None = None) -> bytes:  # noqa: A002
         self.clips.append(clip)
         if clip is None:
             return b"page"
-        rows = [bytes([clip["y"] % 256]) * (clip["width"] * 3)] * clip["height"]
-        return _encode_png(rows, clip["width"], 2, [1] * clip["height"])
+        width = min(clip["x"] + clip["width"], self.viewport_size["width"]) - clip["x"]
+        height = min(clip["y"] + clip["height"], self.viewport_size["height"]) - clip["y"]
+        rows = [bytes([clip["y"] % 256]) * (width * 3)] * height
+        return _encode_png(rows, width, 2, [1] * height)
 
 
 async def test_a_default_sized_screen_is_one_element_screenshot() -> None:
@@ -597,6 +627,66 @@ async def test_a_large_screen_is_captured_in_strips_that_cover_it_once() -> None
     assert tops[0] == 16 and sum(heights) == 1000 and max(heights) <= STRIP_ROWS
     assert all(top + height == nxt for top, height, nxt in zip(tops, heights, tops[1:], strict=False))
     assert 2500 * 1000 > STRIP_MIN_PIXELS >= 1280 * 800
+
+
+async def test_a_screen_as_large_as_the_viewport_is_scrolled_into_view_and_comes_back_whole() -> None:
+    """The viewer pads the root by 16 px inside a scroller: unscrolled, 16 px of each axis are out of view."""
+    page = _FakePage({"width": 4096, "height": 4096})
+    root = _FakeRoot(
+        {"x": 16, "y": 16, "width": 4096, "height": 4096}, scrolled={"x": 0, "y": 0, "width": 4096, "height": 4096}
+    )
+    data = await _shoot(page, root)
+    assert png_size(data) == (4096, 4096)
+    assert root.scrolls == 1 and root.shots == 0
+    assert len(page.clips) == 4096 // STRIP_ROWS
+    assert all(clip is not None and clip["x"] == 0 and clip["width"] == 4096 for clip in page.clips)
+    assert [clip["y"] for clip in page.clips if clip] == list(range(0, 4096, STRIP_ROWS))
+
+
+@pytest.mark.parametrize(
+    "box",
+    [
+        {"x": 16, "y": 0, "width": 4096, "height": 4096},  # past the right edge
+        {"x": 0, "y": 16, "width": 4096, "height": 4096},  # past the bottom edge
+        {"x": -16, "y": 0, "width": 4096, "height": 4096},  # past the left edge
+        {"x": 0, "y": -16, "width": 4096, "height": 4096},  # past the top edge
+        {"x": 0, "y": 0, "width": 5000, "height": 3000},  # wider than the viewport can be
+    ],
+)
+async def test_a_large_screen_the_viewport_cannot_show_whole_is_one_element_screenshot(box: dict[str, float]) -> None:
+    """Strips would lose what is out of view; the element screenshot reaches it."""
+    page, root = _FakePage({"width": 4096, "height": 4096}), _FakeRoot(box)
+    assert await _shoot(page, root) == b"element"
+    assert page.clips == [] and root.shots == 1
+
+
+async def test_a_large_screen_on_a_page_without_a_viewport_is_one_element_screenshot() -> None:
+    page, root = _FakePage(), _FakeRoot({"x": 0, "y": 0, "width": 2500, "height": 1000})
+    page.viewport_size = None  # type: ignore[assignment]
+    assert await _shoot(page, root) == b"element"
+    assert page.clips == [] and root.shots == 1
+
+
+async def test_strips_of_a_padded_root_as_large_as_the_viewport_give_the_whole_picture(
+    chromium: None, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real Chromium on the viewer's layout: a root that fills the viewport, 16 px in from the scroller's corner."""
+    settings = _settings(tmp_path_factory.mktemp("padded"), PADDED_INDEX)
+    with _Server(settings, []) as server:
+        browser = Browser(server.base_url, viewport={"width": ROOT_W, "height": ROOT_H})
+        await browser.start()
+        try:
+            whole, info = await capture(browser, "bts/view")
+            monkeypatch.setattr(screenshot_module, "STRIP_MIN_PIXELS", 0)
+            monkeypatch.setattr(screenshot_module, "STRIP_ROWS", 50)
+            striped, striped_info = await capture(browser, "bts/view")
+        finally:
+            await browser.stop()
+    assert info == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
+    assert striped_info == info
+    rows = _decode_png(striped)
+    assert rows == _decode_png(whole)
+    assert len({bytes(row) for row in rows}) > 1  # a gradient, so a shifted or cut frame would differ
 
 
 async def test_strips_and_one_shot_give_the_same_picture(

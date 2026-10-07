@@ -219,19 +219,47 @@ def stitch_png(strips: list[bytes]) -> bytes:
     return PNG_SIGNATURE + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", body) + _png_chunk(b"IEND", b"")
 
 
+# A clipped page capture is cut down to what the viewport shows, and the viewer keeps the
+# root behind a padding inside a scroller, so a root as large as the viewport starts out
+# with its far edges out of view.
+_SCROLL_INTO_VIEW_JS = "(el) => el.scrollIntoView({ block: 'start', inline: 'start', behavior: 'instant' })"
+
+
+def _in_view(box: dict[str, int], viewport: Any) -> bool:
+    """Whether ``box`` lies wholly inside ``viewport`` (``{width, height}``; anything else is no)."""
+    if not isinstance(viewport, dict):
+        return False
+    return (
+        box["x"] >= 0
+        and box["y"] >= 0
+        and box["x"] + box["width"] <= viewport.get("width", 0)
+        and box["y"] + box["height"] <= viewport.get("height", 0)
+    )
+
+
 async def _shoot(page: Any, root: Any) -> bytes:
-    """The PNG of ``root`` (the whole page without one); a large root is captured in strips."""
+    """The PNG of ``root`` (the whole page without one); a large root is captured in strips.
+
+    Strips are clips of the page, so they only reach what the viewport shows: the root is
+    scrolled into view first, and one that still does not fit is captured in one element
+    screenshot, which costs the memory but returns the whole frame.
+    """
     if root is None:
         return await page.screenshot(type="png")
     box = await root.bounding_box()
+    if box is None or round(box["width"]) * round(box["height"]) <= STRIP_MIN_PIXELS:
+        return await root.screenshot(type="png")
+    await root.evaluate(_SCROLL_INTO_VIEW_JS)
+    box = await root.bounding_box()
     if box is None:
         return await root.screenshot(type="png")
-    x, y, width, height = (round(box[key]) for key in ("x", "y", "width", "height"))
-    if width * height <= STRIP_MIN_PIXELS or x < 0 or y < 0:
+    at = {key: round(box[key]) for key in ("x", "y", "width", "height")}
+    if not _in_view(at, page.viewport_size):
         return await root.screenshot(type="png")
     strips = []
-    for top in range(0, height, STRIP_ROWS):
-        clip = {"x": x, "y": y + top, "width": width, "height": min(STRIP_ROWS, height - top)}
+    for top in range(0, at["height"], STRIP_ROWS):
+        rows = min(STRIP_ROWS, at["height"] - top)
+        clip = {"x": at["x"], "y": at["y"] + top, "width": at["width"], "height": rows}
         strips.append(await page.screenshot(type="png", clip=clip))
     return stitch_png(strips)
 
