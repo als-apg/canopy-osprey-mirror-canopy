@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # Directory of widget detail ``*.json`` files the catalog is built from
     # instead of the backend's /beaver registry; unset means the registry.
     widgets_dir: Path | None = None
+    # Whether the screenshot Chromium launches with its own sandbox on
+    # (``chromium_sandbox=True``); off by default, since the sandbox needs
+    # privileges a container usually lacks.
+    browser_sandbox: bool = False
 
     @field_validator(
         "api_key_file",
@@ -82,6 +86,7 @@ class Settings(BaseSettings):
         "relay_connect_retry_s",
         "widgets_dir",
         "library_dir",
+        "browser_sandbox",
         mode="before",
     )
     @classmethod

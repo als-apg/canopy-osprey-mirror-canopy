@@ -1,10 +1,11 @@
 """Every tool is registered on ``mcp`` and the app wires its startup hooks."""
 
-from contextlib import asynccontextmanager
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
+from fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from canopy_mcp import app as app_mod
@@ -90,13 +91,14 @@ def test_catalog_hook_failure_does_not_block_startup(tmp_path: Path, monkeypatch
     assert catalog_mod._catalog is None  # left for ensure_catalog to retry on first use
 
 
-def test_chromium_hook_starts_and_stops_the_browser(tmp_path: Path, monkeypatch) -> None:
+def test_chromium_hook_installs_and_stops_the_browser(tmp_path: Path, monkeypatch) -> None:
+    """The hook is entered with the server's own URL, no credential and the sandbox off, and exited on shutdown."""
     events: list[str] = []
 
-    def fake_browser_hook(base_url: str):
+    def fake_browser_hook(base_url: str, **kwargs):
         @asynccontextmanager
         async def hook(app):
-            events.append(f"start {base_url}")
+            events.append(f"start {base_url} {sorted(kwargs.items())}")
             yield
             events.append("stop")
 
@@ -108,24 +110,64 @@ def test_chromium_hook_starts_and_stops_the_browser(tmp_path: Path, monkeypatch)
         startup_hooks=[app_mod.chromium_hook],
         self_url="http://127.0.0.1:9999",
     )
+    started = "start http://127.0.0.1:9999 [('access_token', None), ('sandbox', False)]"
     with TestClient(app):
-        assert events == ["start http://127.0.0.1:9999"]
-    assert events == ["start http://127.0.0.1:9999", "stop"]
+        assert events == [started]
+    assert events == [started, "stop"]
 
 
-def test_chromium_hook_without_a_browser_does_not_block_startup(tmp_path: Path, monkeypatch) -> None:
+def test_chromium_hook_carries_the_credential_and_the_sandbox_switch(tmp_path: Path, monkeypatch) -> None:
+    seen: list[tuple[str, dict]] = []
+
+    def fake_browser_hook(base_url: str, **kwargs):
+        @asynccontextmanager
+        async def hook(app):
+            seen.append((base_url, kwargs))
+            yield
+
+        return hook
+
+    monkeypatch.setattr(app_mod, "browser_hook", fake_browser_hook)
+    token_file = tmp_path / "front.access"
+    token_file.write_text("registry-token-7\n")
+    settings = Settings(drafts_dir=tmp_path / "drafts", access_token_file=token_file, browser_sandbox=True)
+    app = app_mod.create_app(settings, startup_hooks=[app_mod.chromium_hook], self_url="http://127.0.0.1:9998")
+    with TestClient(app):
+        pass
+    assert seen == [("http://127.0.0.1:9998", {"access_token": "registry-token-7", "sandbox": True})]
+
+
+def test_chromium_hook_launches_nothing_and_a_failed_launch_does_not_block_startup(tmp_path: Path, monkeypatch) -> None:
+    """The hook installs the browser without launching; a host whose Chromium cannot launch still serves."""
+    from fastmcp import Client
+
     from canopy_mcp import browser as browser_mod
+    from canopy_mcp.server import mcp
 
-    async def no_chromium(self) -> None:
+    launches: list[bool] = []
+
+    async def no_chromium(playwright, *, sandbox: bool) -> None:
+        launches.append(sandbox)
         raise RuntimeError("Executable doesn't exist; run `playwright install chromium`")
 
-    monkeypatch.setattr(browser_mod.Browser, "start", no_chromium)
+    monkeypatch.setattr(browser_mod, "_launch_chromium", no_chromium)
     app = app_mod.create_app(Settings(drafts_dir=tmp_path / "drafts"), startup_hooks=[app_mod.chromium_hook])
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
-        assert app.state.browser is None
-        with pytest.raises(browser_mod.BrowserNotStarted):
-            browser_mod.get_browser()
+        browser = app.state.browser
+        assert isinstance(browser, browser_mod.Browser)
+        assert browser_mod.get_browser() is browser
+        assert launches == [] and not browser.running
+
+        async def call() -> None:
+            async with Client(mcp) as mcp_client:
+                await mcp_client.call_tool("screenshot", {"id": "bts/view"})
+
+        with pytest.raises(ToolError, match="unavailable"):
+            client.portal.call(call)
+        assert launches == [False] and not browser.running
+    with pytest.raises(browser_mod.BrowserNotStarted):
+        browser_mod.get_browser()
 
 
 def test_self_url_defaults_to_the_launcher_address(tmp_path: Path) -> None:

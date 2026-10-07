@@ -24,9 +24,10 @@ so a bad ``CANOPY_THEME_FILE`` logs its one ERROR at boot, not on the first
 request), then runs FastMCP's session manager, opens the shared backend
 ``httpx.AsyncClient`` (``app.state.http``) and then enters every
 :data:`STARTUP_HOOKS` entry in order; hooks are exited in reverse on shutdown.
-The defaults load the widget catalog (:func:`catalog_hook`) and launch the
-screenshot Chromium (:func:`chromium_hook`); neither keeps the server from
-starting when it fails. Building the app calls
+The defaults load the widget catalog (:func:`catalog_hook`) and install the
+lazy screenshot browser (:func:`chromium_hook`, which launches nothing until
+the first ``screenshot`` call); neither keeps the server from starting when
+it fails. Building the app calls
 :func:`~canopy_mcp.server.register_all`, so every tool is on ``mcp``, and then
 applies ``CANOPY_AUTHORING``: off takes the six authoring tools off ``mcp``,
 leaving the nine that only read. ``mcp`` is process-wide, so the last app
@@ -83,12 +84,18 @@ async def catalog_hook(app: Starlette) -> AsyncIterator[None]:
 
 
 def chromium_hook(app: Starlette) -> AbstractAsyncContextManager[Any]:
-    """Launch the screenshot Chromium at startup and close it on shutdown.
+    """Install the lazy screenshot browser; nothing launches until the first ``screenshot`` call.
 
     It loads this server's own viewer routes, so it is pointed at
-    ``app.state.self_url``. A host without a browser starts anyway.
+    ``app.state.self_url`` and, on a gated server, carries the access
+    credential on every request it makes there. On shutdown a running Chromium
+    is stopped under the browser's lock. A host without a browser starts anyway.
     """
-    return browser_hook(app.state.self_url)(app)
+    settings: Settings = app.state.settings
+    token = None
+    if settings.access_token_file is not None:
+        token = read_secret_file("CANOPY_ACCESS_TOKEN_FILE", settings.access_token_file)
+    return browser_hook(app.state.self_url, access_token=token, sandbox=settings.browser_sandbox)(app)
 
 
 # Entered in order at startup, after the shared client exists.

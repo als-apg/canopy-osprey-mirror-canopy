@@ -17,8 +17,9 @@ connect is exactly what the agent needs to see. ``pv`` then reports
 ``disconnected``, as it does for ``mock``: only a live Hare connection is
 ``connected``. Nothing is written to disk; the PNG goes back inline.
 
-A server running without a browser (see :mod:`canopy_mcp.browser`) answers
-every call with a tool error saying screenshots are unavailable.
+The browser (see :mod:`canopy_mcp.browser`) is launched by the first call and
+locked to this server's origin; a host where no browser can run answers every
+call with a tool error saying screenshots are unavailable.
 """
 
 import struct
@@ -106,7 +107,7 @@ def png_size(data: bytes) -> tuple[int, int]:
     return width, height
 
 
-MAX_VIEWPORT = 8192
+MAX_VIEWPORT = 4096
 
 
 def viewport_for(size: Any, default: dict[str, int]) -> dict[str, int]:

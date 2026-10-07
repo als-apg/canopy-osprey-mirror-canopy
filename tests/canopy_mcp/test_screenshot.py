@@ -1,14 +1,15 @@
 """The screenshot tool and the shared Chromium it renders in.
 
-The browser is optional: the first tests pin that a server without
-``playwright`` or without a Chromium still starts and that ``screenshot`` then
-answers "unavailable".
+The browser is optional and lazy: the first tests pin that a server without
+``playwright`` or without a Chromium still starts, that nothing is launched at
+startup, and that ``screenshot`` then answers "unavailable".
 
 The browser tests need a Chromium from ``playwright install chromium``; without
-one they are skipped. They serve a stub viewer build through the real app on a
-real port, because Chromium has to fetch the page over HTTP. The stub stands in
-for the viewer: it exposes ``window.__canopy.pvStatus`` and a screen root, and
-takes the status it settles on from the ``STATUS`` macro so each test can pick it.
+one they fail (a skip would hide a broken gate). They serve a stub viewer build
+through the real app on a real port, because Chromium has to fetch the page
+over HTTP. The stub stands in for the viewer: it exposes
+``window.__canopy.pvStatus`` and a screen root, and takes the status it
+settles on from the ``STATUS`` macro so each test can pick it.
 """
 
 import sys
@@ -32,8 +33,8 @@ from canopy_mcp.tools.screenshot import (
     PNG_SIGNATURE,
     SETTLE_TIMEOUT_S,
     capture,
-    pv_state,
     png_size,
+    pv_state,
     embed_url,
     viewport_for,
 )
@@ -158,7 +159,7 @@ def test_pv_state(status: str | None, pv: str) -> None:
         ({"width": 640, "height": 400}, {"width": 1280, "height": 800}),
         ({"width": 2410, "height": 900}, {"width": 2410, "height": 900}),
         ({"width": 2410}, {"width": 2410, "height": 800}),
-        ({"width": 99999, "height": True}, {"width": 8192, "height": 800}),
+        ({"width": 99999, "height": True}, {"width": 4096, "height": 800}),
         ({"width": "wide", "height": 1000.0}, {"width": 1280, "height": 1000}),
     ],
 )
@@ -213,17 +214,18 @@ def test_the_modules_import_without_playwright() -> None:
     assert done.stdout.strip().endswith("ok")
 
 
-async def test_browser_start_without_playwright_is_an_import_error(no_playwright: None) -> None:
+async def test_browser_start_without_playwright_is_unavailable(no_playwright: None) -> None:
     browser = Browser("http://127.0.0.1:1")
-    with pytest.raises(ImportError):
+    with pytest.raises(BrowserNotStarted, match="unavailable") as info:
         await browser.start()
+    assert isinstance(info.value.__cause__, ImportError)
     assert not browser.running
 
 
 def test_server_without_playwright_starts_and_screenshot_is_unavailable(
     no_playwright: None, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The default Chromium hook cannot launch anything: the server starts anyway."""
+    """The default hook installs a browser that cannot launch: the server starts anyway."""
     from fastmcp import Client
 
     from canopy_mcp.app import chromium_hook
@@ -232,9 +234,10 @@ def test_server_without_playwright_starts_and_screenshot_is_unavailable(
     app = create_app(Settings(drafts_dir=tmp_path / "drafts"), startup_hooks=[chromium_hook])
     with caplog.at_level("WARNING", logger="canopy_mcp.browser"), TestClient(app) as client:
         assert client.get("/health").status_code == 200
-        assert app.state.browser is None
-        with pytest.raises(BrowserNotStarted):
-            get_browser()
+        browser = app.state.browser
+        assert isinstance(browser, Browser) and not browser.running
+        assert get_browser() is browser
+        assert caplog.text == ""  # nothing was tried at startup
 
         async def call() -> None:
             async with Client(mcp) as mcp_client:
@@ -242,21 +245,32 @@ def test_server_without_playwright_starts_and_screenshot_is_unavailable(
 
         with pytest.raises(ToolError, match="unavailable"):
             client.portal.call(call)
+        assert not browser.running
     assert "screenshots are unavailable" in caplog.text
+    with pytest.raises(BrowserNotStarted):
+        get_browser()
 
 
-async def test_hook_with_a_chromium_that_fails_to_launch_yields_no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_hook_with_a_chromium_that_fails_to_launch_yields_an_unavailable_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from types import SimpleNamespace
 
-    async def no_chromium(self: Browser) -> None:
+    from canopy_mcp import browser as browser_mod
+
+    async def no_chromium(playwright, *, sandbox: bool) -> None:
         raise RuntimeError("Executable doesn't exist")
 
-    monkeypatch.setattr(Browser, "start", no_chromium)
+    monkeypatch.setattr(browser_mod, "_launch_chromium", no_chromium)
     app = SimpleNamespace(state=SimpleNamespace())
     async with browser_hook("http://127.0.0.1:1")(app) as browser:
-        assert browser is None and app.state.browser is None
+        assert isinstance(browser, Browser) and app.state.browser is browser
+        assert get_browser() is browser and not browser.running
         with pytest.raises(BrowserNotStarted, match="unavailable"):
-            get_browser()
+            await capture(browser, "bts/view")
+        assert not browser.running and not browser.lock.locked()
+    with pytest.raises(BrowserNotStarted, match="unavailable"):
+        get_browser()
 
 
 # --- Live Chromium --------------------------------------------------------------
@@ -275,7 +289,7 @@ def _chromium_installed() -> bool:
 @pytest.fixture(scope="module")
 def chromium() -> None:
     if not _chromium_installed():
-        pytest.skip("chromium not installed: run `playwright install chromium`")
+        pytest.fail("chromium not installed for this interpreter: run `python -m playwright install chromium`")
 
 
 def _free_port() -> int:
@@ -408,21 +422,23 @@ async def test_browser_start_stop_is_idempotent(stub_server: _Server) -> None:
     await browser.stop()
     assert not browser.running
     await browser.stop()
-    with pytest.raises(BrowserNotStarted):
-        async with browser.context():
-            pass
+    # Lazy: a capture after a stop launches a fresh Chromium rather than failing.
+    async with browser.context():
+        assert browser.running and browser._browser is not first
+    await browser.stop()
+    assert not browser.running
 
 
 async def test_screenshot_tool_over_mcp_with_lifespan_browser(
     chromium: None, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    """The hook launches Chromium at startup; the tool answers over MCP with an image."""
+    """Nothing launches at startup; the first tool call launches Chromium and answers over MCP with an image."""
     from fastmcp import Client
 
     settings = _settings(tmp_path_factory.mktemp("mcp"), STUB_INDEX)
     with _Server(settings, lambda base: [browser_hook(base)]) as server:
         browser = server.app.state.browser
-        assert browser.running  # launched at startup, before any call
+        assert not browser.running  # nothing launched at startup
         drafts = settings.drafts_dir
         before = sorted(p.relative_to(drafts) for p in drafts.rglob("*"))
         async with Client(f"{server.base_url}/mcp") as client:
@@ -432,11 +448,12 @@ async def test_screenshot_tool_over_mcp_with_lifespan_browser(
             )
             with pytest.raises(ToolError):
                 await client.call_tool("screenshot", {"id": "bts/view", "theme": "blue"})
+        assert browser.running  # launched by the first call, kept for the next
         assert themed.structured_content == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
         images = [block for block in result.content if isinstance(block, ImageContent)]
         assert len(images) == 1 and images[0].mimeType == "image/png"
         assert result.structured_content == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
-    assert not browser.running
+    assert not browser.running  # the lifespan exit stopped it
     assert sorted(p.relative_to(drafts) for p in drafts.rglob("*")) == before  # no file written
     with pytest.raises(BrowserNotStarted):
         get_browser()
