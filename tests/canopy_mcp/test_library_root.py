@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
 from canopy_mcp.urls import draft_url, embed_path
-from canopy_mcp.store import DraftStore, InvalidDraftId, open_stores
+from canopy_mcp.store import DraftStore, ReadOnlyStore, InvalidDraftId, open_stores
 from canopy_mcp.tools import check as check_module
 from canopy_mcp.tools import drafts, _common, convert, screenshot
 from canopy_mcp.config import Settings
@@ -65,6 +65,13 @@ def _embed(node_id: str, file: str) -> dict:
 
 def _unresolved(result: dict) -> list[str]:
     return [f["nodeId"] for f in result["semantic"] if f["code"] == "unresolved_ref"]
+
+
+def _raising(function):
+    async def method(self, *args, **kwargs):
+        return function(self, *args, **kwargs)
+
+    return method
 
 
 def _put(path: Path, content: dict | bytes | str) -> Path:
@@ -499,6 +506,32 @@ async def test_a_draft_ref_into_the_reserved_segment_is_unresolved_not_an_error(
 
     assert "refused" not in result
     assert [(w["nodeId"], w["code"], w["reason"]) for w in result["warnings"]] == [("e", "unresolved_ref", "missing")]
+
+
+@pytest.mark.parametrize("tool", AUTHORING_TOOLS)
+async def test_an_unwritable_personal_store_refuses_with_the_same_reason(
+    personal_only: Settings, roots: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, httpx_mock, tool: str
+) -> None:
+    """A drafts tree that answers EROFS or EACCES at the write is a refusal, with no server path in it."""
+
+    def unwritable(self, *args, **kwargs):
+        raise ReadOnlyStore(f"{self.root}: Read-only file system")
+
+    monkeypatch.setattr(DraftStore, "write_many", _raising(unwritable))
+    monkeypatch.setattr(DraftStore, "delete", _raising(unwritable))
+    httpx_mock.add_response(
+        url="http://canopy.test/converter/v1/conversions", method="POST", json={"screen": _doc("c")}, is_optional=True
+    )
+    before = _tree(roots[0])
+    rev = _common.get_store(personal_only).rev("mine/view")
+
+    # convert_legacy reaches its write only for an id with nothing stored under it.
+    result = await _call_authoring_tool(tool, "mine/fresh" if tool == "convert_legacy" else "mine/view", rev)
+
+    assert (result["refused"], result["reason"]) == (True, "read_only_store")
+    assert result["message"].startswith("read_only_store: ")
+    assert str(roots[0]) not in json.dumps(result)
+    assert _tree(roots[0]) == before
 
 
 # --- unset: nothing changes ---------------------------------------------------------

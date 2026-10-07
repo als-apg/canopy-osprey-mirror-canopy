@@ -37,7 +37,7 @@ from collections.abc import Callable, Iterable, Iterator
 from fastmcp.exceptions import ToolError
 
 from canopy_mcp.urls import draft_url
-from canopy_mcp.store import DraftStore, RevConflict, DraftNotFound
+from canopy_mcp.store import DraftStore, RevConflict, DraftNotFound, ReadOnlyStore
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
 from canopy_mcp.tools.check import run_check
@@ -49,6 +49,7 @@ from canopy_mcp.tools._common import (
     reset_stores,
     get_library_store,
     read_only_refusal,
+    unwritable_refusal,
 )
 from canopy_mcp.check.findings import Finding
 
@@ -131,6 +132,8 @@ async def _gated_write(
         rev = await store.write(draft_id, new, expect_rev)
     except RevConflict:
         return _stale(draft_id, expect_rev, store.rev(draft_id))
+    except ReadOnlyStore:
+        return unwritable_refusal(draft_id)
     return {
         "draftId": draft_id,
         "rev": rev,
@@ -363,6 +366,8 @@ async def delete_draft(id: str, base_rev: str) -> dict[str, Any]:
         await store.delete(id, base_rev)
     except RevConflict:
         return _stale(id, base_rev, store.rev(id))
+    except ReadOnlyStore:
+        return unwritable_refusal(id)
     except DraftNotFound as exc:
         raise ToolError(f"no draft stored under {id!r}") from exc
     return {"draftId": id, "deleted": True}

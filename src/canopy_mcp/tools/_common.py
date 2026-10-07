@@ -9,7 +9,9 @@ refuses ``library`` as a first segment.
 Bad arguments raise :class:`ToolError`; refusals are returned, not raised, as
 ``{draftId, refused: true, reason, message, ...}``. An authoring tool given a
 library id returns the ``read_only_store`` refusal (:func:`read_only_refusal`)
-before it reads, checks, converts or writes anything.
+before it reads, checks, converts or writes anything. A personal store whose
+tree turns out not to be writable gives the same reason at the write
+(:func:`unwritable_refusal`).
 """
 
 from __future__ import annotations
@@ -109,4 +111,13 @@ def read_only_refusal(draft_id: str, store: DraftStore) -> dict[str, Any] | None
     if not store.read_only:
         return None
     detail = f"{draft_id!r} is a {store.category} screen and cannot be changed here; copy it into your own drafts"
+    return refused(draft_id, ReadOnlyStore.code, str(ReadOnlyStore(detail)))
+
+
+def unwritable_refusal(draft_id: str) -> dict[str, Any]:
+    """The ``read_only_store`` refusal for a store that raised :class:`ReadOnlyStore` at the write.
+
+    The text is fixed, so no server path reaches the caller.
+    """
+    detail = "this server's drafts directory cannot be written; nothing was changed"
     return refused(draft_id, ReadOnlyStore.code, str(ReadOnlyStore(detail)))

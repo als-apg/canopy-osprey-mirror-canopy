@@ -60,6 +60,7 @@ from canopy_mcp.store import (
     DraftStore,
     RevConflict,
     AssetRefused,
+    ReadOnlyStore,
     doc_rev,
 )
 from canopy_mcp.client import make_client
@@ -74,7 +75,12 @@ from canopy_mcp.check.refs import (
 )
 from canopy_mcp.tools.check import run_check
 from canopy.core.color_scheme import DEFAULT_ID, THEME_FILE_ENV, get_color_scheme
-from canopy_mcp.tools._common import route, refused, read_only_refusal
+from canopy_mcp.tools._common import (
+    route,
+    refused,
+    read_only_refusal,
+    unwritable_refusal,
+)
 
 CONVERSIONS_PATH = "/converter/v1/conversions"
 CONVERT_TIMEOUT_S = 60.0
@@ -282,6 +288,8 @@ async def _copy_one(
         written = await store.write_asset(relpath, data, overwrite=overwrite)
     except AssetRefused as exc:
         return _asset(unit, ref, path, size, exc.reason, str(exc))
+    except ReadOnlyStore:
+        return _asset(unit, ref, path, size, "error", f"{ReadOnlyStore.code}: the drafts directory cannot be written")
     except OSError as exc:
         return _asset(unit, ref, path, size, "error", str(exc))
     seen[relpath] = data
@@ -444,6 +452,8 @@ async def convert_legacy(
             revs.update(await store.write_many(to_write))
         except RevConflict as exc:
             return _conflict(id, exc.conflicts, overwrite)
+        except ReadOnlyStore:
+            return unwritable_refusal(id)
 
     assets = await _copy_images(units, store, overwrite)
     queue = await _queue(units, store, settings)
