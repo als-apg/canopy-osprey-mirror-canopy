@@ -26,6 +26,7 @@ whatever the kill does, so the next capture launches a fresh Chromium.
 """
 
 import asyncio
+import inspect
 import logging
 from time import monotonic
 from typing import TYPE_CHECKING, Any
@@ -123,6 +124,18 @@ def redirect_refusal_supported() -> bool:
 
 def _sendable(code: int | None, default: int) -> int:
     return default if code is None or code in _UNSENDABLE_CLOSE_CODES else code
+
+
+# websockets >= 15 reads HTTP(S)_PROXY / WS(S)_PROXY from the environment unless told not to;
+# the relay must reach the server's own address directly, never a proxy that would see the header.
+_CONNECT_PROXY_KW: dict[str, Any] = {"proxy": None} if "proxy" in inspect.signature(connect.__init__).parameters else {}
+
+
+def _brief(exc: BaseException, secret: str | None = None) -> str:
+    """The first line of ``exc``, with ``secret`` redacted: Playwright's call logs repeat request headers."""
+    text = str(exc).strip()
+    first = text.splitlines()[0] if text else type(exc).__name__
+    return first.replace(secret, "<redacted>") if secret else first
 
 
 @dataclass(frozen=True)
@@ -240,6 +253,9 @@ class _Session:
         self.records.append((method, shown, urlsplit(url).path, decision))
         logger.debug("screenshot browser: %s %s%s -> %s", method, shown, urlsplit(url).path, decision)
 
+    def _brief(self, exc: BaseException) -> str:
+        return _brief(exc, self.access_token)
+
     def _spawn(self, coroutine: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         task = asyncio.create_task(coroutine)
         self.tasks.add(task)
@@ -252,7 +268,7 @@ class _Session:
         try:
             await self._route(route, request)
         except Exception as exc:  # the page is gone, or Playwright refused a late answer
-            logger.debug("screenshot browser: route handler for %s ended early: %s", request.method, exc)
+            logger.debug("screenshot browser: route handler for %s ended early: %s", request.method, self._brief(exc))
 
     async def _route(self, route: "Route", request: "Request") -> None:
         method = request.method.upper()
@@ -271,7 +287,7 @@ class _Session:
             response = await route.fetch(max_redirects=0, headers=headers)
         except Exception as exc:
             self._record(method, request.url, "aborted: fetch failed")
-            logger.debug("screenshot browser: fetch failed: %s", exc)
+            logger.debug("screenshot browser: fetch failed: %s", self._brief(exc))
             await route.abort()
             return
         if response.status in REDIRECT_STATUSES and any(name.lower() == "location" for name in response.headers):
@@ -311,9 +327,10 @@ class _Session:
                 max_size=None,
                 user_agent_header=None,
                 compression=None,
+                **_CONNECT_PROXY_KW,
             )
         except Exception as exc:  # refused, redirected, timed out, unreachable
-            logger.debug("screenshot browser: upstream WebSocket handshake failed: %s", exc)
+            logger.debug("screenshot browser: upstream WebSocket handshake failed: %s", self._brief(exc))
             await self._close_page_socket(ws, WS_INTERNAL_ERROR, "upstream handshake failed")
             return
         self.upstreams.add(upstream)
@@ -333,7 +350,7 @@ class _Session:
         except ConnectionClosed:
             return  # the other pump reports the upstream's closure to the page
         except Exception as exc:
-            logger.debug("screenshot browser: relay to upstream failed: %s", exc)
+            logger.debug("screenshot browser: relay to upstream failed: %s", self._brief(exc))
             await self._close_page_socket(ws, WS_INTERNAL_ERROR, "relay error")
 
     async def _pump_to_page(self, ws: "WebSocketRoute", upstream: ClientConnection) -> None:
@@ -343,7 +360,7 @@ class _Session:
         except ConnectionClosed:
             pass  # how the upstream ended is in its close code, below
         except Exception as exc:  # a page that is gone, or a frame it refused
-            logger.debug("screenshot browser: relay to page failed: %s", exc)
+            logger.debug("screenshot browser: relay to page failed: %s", self._brief(exc))
             await self._close_page_socket(ws, WS_INTERNAL_ERROR, "relay error")
             return
         code = upstream.close_code
@@ -358,7 +375,7 @@ class _Session:
         try:
             await ws.close(code=code, reason=reason)
         except Exception as exc:  # already closed with the page
-            logger.debug("screenshot browser: page socket close (%s) failed: %s", code, exc)
+            logger.debug("screenshot browser: page socket close (%s) failed: %s", code, self._brief(exc))
 
     async def teardown(self) -> None:
         """Close every relayed page socket, cancel every pump and close every upstream socket.
@@ -377,7 +394,7 @@ class _Session:
             try:
                 await asyncio.wait_for(upstream.close(), STOP_TIMEOUT_S)
             except Exception as exc:
-                logger.debug("screenshot browser: upstream close failed: %s", exc)
+                logger.debug("screenshot browser: upstream close failed: %s", self._brief(exc))
         self.upstreams.clear()
 
 

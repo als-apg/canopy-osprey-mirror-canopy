@@ -66,6 +66,22 @@ window.__ws = (url, send, wanted) => new Promise((resolve) => {
   setTimeout(() => { try { ws.close(); } catch (e) {} resolve(out); }, 8000);
 });
 window.__open_ws = (url) => { window.__sock = new WebSocket(url); return new Promise((r) => { window.__sock.onopen = () => r(true); window.__sock.onclose = () => r(false); }); };
+window.__worker = (wsUrl, fetchUrl) => new Promise((resolve) => {
+  const code = `self.onmessage = async (e) => {
+    const out = { fetch: null, ws: [] };
+    try { const r = await fetch(e.data.fetchUrl); out.fetch = { ok: true, status: r.status }; }
+    catch (error) { out.fetch = { ok: false, error: String(error) }; }
+    const ws = new WebSocket(e.data.wsUrl);
+    ws.onopen = () => out.ws.push('open');
+    ws.onmessage = (m) => { out.ws.push('message:' + m.data); ws.close(1000); };
+    ws.onerror = () => out.ws.push('error');
+    ws.onclose = (c) => { out.ws.push('close:' + c.code); postMessage(out); };
+  };`;
+  const worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+  worker.onmessage = (e) => resolve(e.data);
+  worker.postMessage({ wsUrl, fetchUrl });
+  setTimeout(() => resolve({ fetch: 'timeout', ws: ['timeout'] }), 8000);
+});
 </script>
 </body></html>
 """
@@ -491,6 +507,52 @@ async def test_no_socket_remains_after_a_capture(browser: Browser, origin: Recor
     await _wait_until(lambda: origin.open_sockets == 0)
     assert origin.open_sockets == 0
     assert session.tasks == set() and session.upstreams == set() and session.sockets == set()
+
+
+async def test_a_dedicated_worker_is_locked_to_the_origin_too(
+    browser: Browser, origin: Recorder, other: Recorder
+) -> None:
+    """Requests and sockets opened from a Worker go through the same lock: off-origin reaches nothing."""
+    async with browser.context() as context:
+        page = await context.new_page()
+        await page.goto(f"{origin.base_url}/page", wait_until="load")
+        result = await page.evaluate(
+            "([w, f]) => window.__worker(w, f)", [f"{other.ws_url}/ws", f"{other.base_url}/echo"]
+        )
+    assert result["fetch"]["ok"] is False
+    assert "open" not in result["ws"] and result["ws"][-1].startswith("close:")
+    assert other.requests == [] and other.handshakes == []
+
+
+async def test_a_dedicated_worker_fetch_is_relayed_and_its_socket_fails_closed(
+    browser: Browser, origin: Recorder
+) -> None:
+    """A Worker's fetch goes through the route handler with the credential.
+
+    Playwright's WebSocket routing is page-scoped (1.63): a socket opened from
+    a Worker is neither relayed nor let through directly -- it fails closed,
+    and no handshake without the credential reaches the server. The viewer
+    opens its PV socket from the page, so a capture is unaffected.
+    """
+    async with browser.context() as context:
+        page = await context.new_page()
+        await page.goto(f"{origin.base_url}/page", wait_until="load")
+        result = await page.evaluate(
+            "([w, f]) => window.__worker(w, f)", [f"{origin.ws_url}/ws", f"{origin.base_url}/echo"]
+        )
+    assert result["fetch"] == {"ok": True, "status": 200}
+    (received,) = origin.received("GET", "/echo")
+    assert received[2][HEADER] == [TOKEN]
+    assert "open" not in result["ws"] and result["ws"][-1].startswith("close:")
+    assert origin.handshakes == []  # nothing reached the server without the credential
+
+
+def test_brief_redacts_the_credential_and_keeps_one_line() -> None:
+    exc = RuntimeError(f"apiRequestContext.fetch: connect ECONNREFUSED\nCall log:\n  - {ACCESS_HEADER}: {TOKEN}")
+    assert browser_mod._brief(exc, TOKEN) == "apiRequestContext.fetch: connect ECONNREFUSED"
+    assert browser_mod._brief(RuntimeError(f"bad header {TOKEN} here"), TOKEN) == "bad header <redacted> here"
+    assert browser_mod._brief(RuntimeError(""), TOKEN) == "RuntimeError"
+    assert browser_mod._brief(RuntimeError("plain"), None) == "plain"
 
 
 # --- The gated server serves its own browser ------------------------------------------
