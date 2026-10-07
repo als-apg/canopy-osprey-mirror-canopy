@@ -18,15 +18,33 @@ import asyncio
 import hashlib
 import logging
 import tempfile
+import unicodedata
 from typing import Any, Literal
 from pathlib import Path
 from urllib.parse import unquote
+from collections.abc import Iterable
 
 ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*")
 SCREEN_SUFFIX = ".screen.json"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico"})
 MAX_ASSET_BYTES = 5 * 2**20
 ASSET_SEGMENT = re.compile(r"[A-Za-z0-9 ._-]+")
+# The suffixes a pushed image may carry: SVG is markup a browser executes, so it stays a draft.
+PUSH_IMAGE_SUFFIXES = IMAGE_SUFFIXES - {".svg"}
+# Path segments a pushed id or asset may not use, so that a pushed path stays clear of the
+# deployment ``.gitignore``'s unanchored patterns and of the names the image build context
+# prunes. Three rule kinds, each compared on ``segment.casefold()`` (the tables hold folded
+# forms): the exact names, a leading ``.`` or ``-``, and the endings. Read them through
+# ``is_reserved_segment``.
+RESERVED_SEGMENTS = frozenset(
+    {"var", "__pycache__", ".git", ".venv", ".pytest_cache", "prefetched-models", "claude.local.md", "dockerfile"}
+)
+RESERVED_PREFIXES = (".", "-")
+RESERVED_ENDINGS = (".swp", ".swo", ".pyc", ".pyo", ".pyd", ".log", ".pid")
+# The forbidden-character predicate by Unicode general category. ``Cc`` is C0, DEL and C1;
+# ``Cf`` is every format character, the bidi controls among them; ``Cs`` is a lone surrogate.
+_FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cf", "Cs"})
+_ALLOWED_CONTROLS = frozenset("\t\n\r")
 # Leading signatures of the raster formats a browser or Phoebus decodes; WEBP is the
 # RIFF container with ``WEBP`` at offset 8 and is checked separately.
 _IMAGE_MAGIC = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM", b"\x00\x00\x01\x00")
@@ -149,6 +167,93 @@ def contained_file(root: Path, relpath: Path | str) -> Path | None:
     if not target.is_relative_to(base) or not target.is_file():
         return None
     return target
+
+
+def is_reserved_segment(segment: str) -> bool:
+    """Whether ``segment`` is one the push grammar reserves.
+
+    True for a ``RESERVED_SEGMENTS`` name, a ``RESERVED_PREFIXES`` start or a
+    ``RESERVED_ENDINGS`` end, each compared on ``segment.casefold()``: ``__PYCACHE__``
+    and ``x.SWP`` are reserved. A pure check; it does not say whether the segment
+    matches ``ID_PATTERN`` or ``ASSET_SEGMENT``.
+    """
+    folded = segment.casefold()
+    return folded in RESERVED_SEGMENTS or folded.startswith(RESERVED_PREFIXES) or folded.endswith(RESERVED_ENDINGS)
+
+
+def is_forbidden_char(char: str) -> bool:
+    """Whether the single character ``char`` may not appear in a pushed string.
+
+    Forbidden: C0 controls other than tab, LF and CR, DEL, C1 controls, the bidi
+    controls and every other format character, and lone surrogates. This is the one
+    definition; anything that refuses or strips such characters asks here.
+    """
+    return char not in _ALLOWED_CONTROLS and unicodedata.category(char) in _FORBIDDEN_CATEGORIES
+
+
+def has_forbidden_char(text: str) -> bool:
+    """Whether any character of ``text`` is one ``is_forbidden_char`` names."""
+    return any(is_forbidden_char(char) for char in text)
+
+
+def first_forbidden_pointer(doc: Any) -> str | None:
+    """The JSON pointer of the first string in ``doc`` that holds a forbidden character, else ``None``.
+
+    ``doc`` is a decoded JSON value. The walk is depth-first in document order: an
+    object's members in their stored order, each key before its value, and a list by
+    index. An offending value reports its own pointer; an offending key reports the
+    pointer of the object that holds it, so a returned pointer never contains a
+    forbidden character itself. Pointers follow RFC 6901 (``~`` is written ``~0`` and
+    ``/`` is written ``~1``); the root is the empty string.
+    """
+    if isinstance(doc, str):
+        return "" if has_forbidden_char(doc) else None
+    # An explicit stack of (pointer, iterator) keeps the depth off the interpreter's.
+    stack: list[tuple[str, Any]] = []
+    if isinstance(doc, dict):
+        stack.append(("", iter(doc.items())))
+    elif isinstance(doc, list):
+        stack.append(("", iter(enumerate(doc))))
+    while stack:
+        pointer, members = stack[-1]
+        entry = next(members, None)
+        if entry is None:
+            stack.pop()
+            continue
+        key, value = entry
+        if isinstance(key, str):
+            if has_forbidden_char(key):
+                return pointer
+            token = key.replace("~", "~0").replace("/", "~1")
+        else:
+            token = str(key)
+        child = f"{pointer}/{token}"
+        if isinstance(value, str):
+            if has_forbidden_char(value):
+                return child
+        elif isinstance(value, dict):
+            stack.append((child, iter(value.items())))
+        elif isinstance(value, list):
+            stack.append((child, iter(enumerate(value))))
+    return None
+
+
+def casefold_collisions(paths: Iterable[str]) -> list[list[str]]:
+    """The names among ``paths`` and their directory prefixes that are not unique under ``str.casefold()``.
+
+    ``paths`` are ``/``-separated relative paths, read as a set. Every member and
+    every distinct directory prefix of a member is one name; names that share a
+    casefold collide. Each collision is the sorted list of its spellings, and the
+    collisions are sorted, so the answer does not depend on input order. A collision
+    with a single spelling is a path that is both a member and a directory. Empty
+    when a case-insensitive filesystem can hold the set as written.
+    """
+    members = set(paths)
+    directories = {path[:at] for path in members for at, char in enumerate(path) if char == "/"}
+    groups: dict[str, list[str]] = {}
+    for name in (*members, *directories):
+        groups.setdefault(name.casefold(), []).append(name)
+    return sorted(sorted(set(names)) for names in groups.values() if len(names) > 1)
 
 
 class DraftStore:
