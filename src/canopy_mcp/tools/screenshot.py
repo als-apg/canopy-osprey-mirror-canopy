@@ -22,6 +22,7 @@ locked to this server's origin; a host where no browser can run answers every
 call with a tool error saying screenshots are unavailable.
 """
 
+import zlib
 import struct
 from typing import Any, Literal
 from urllib.parse import quote, urlencode
@@ -131,6 +132,110 @@ def viewport_for(size: Any, default: dict[str, int]) -> dict[str, int]:
     return out
 
 
+# A capture is one bitmap in the browser, the GPU process and the protocol
+# message at once, so a 4096 x 4096 screen costs several hundred MiB on top of
+# the page. Above STRIP_MIN_PIXELS the screen is captured in bands of
+# STRIP_ROWS rows and the bands are joined here, which keeps the browser's
+# share to one band.
+STRIP_ROWS = 256
+STRIP_MIN_PIXELS = 2_000_000
+
+_PNG_CHANNELS = {0: 1, 2: 3, 4: 2, 6: 4}
+
+
+def _png_parts(data: bytes) -> tuple[bytes, bytes]:
+    """``(IHDR body, filtered scanlines)`` of a PNG."""
+    if not data.startswith(PNG_SIGNATURE):
+        raise ValueError("not a PNG")
+    header, idat, at = b"", [], len(PNG_SIGNATURE)
+    while at + 8 <= len(data):
+        (length,), kind = struct.unpack(">I", data[at : at + 4]), data[at + 4 : at + 8]
+        body = data[at + 8 : at + 8 + length]
+        if kind == b"IHDR":
+            header = body
+        elif kind == b"IDAT":
+            idat.append(body)
+        elif kind == b"IEND":
+            break
+        at += 12 + length
+    if len(header) != 13:
+        raise ValueError("PNG without an IHDR chunk")
+    return header, zlib.decompress(b"".join(idat))
+
+
+def _unfilter_first_row(row: bytes, bpp: int) -> bytes:
+    """A band's first scanline with filter 0, so it no longer depends on the row above.
+
+    The band was encoded with nothing above it; joined below another band the
+    same bytes would be read against that band's last row. With nothing above,
+    Up is the raw bytes and Paeth is Sub.
+    """
+    kind, out = row[0], bytearray(row[1:])
+    if kind in (1, 4):
+        for i in range(bpp, len(out)):
+            out[i] = (out[i] + out[i - bpp]) & 0xFF
+    elif kind == 3:
+        for i in range(bpp, len(out)):
+            out[i] = (out[i] + (out[i - bpp] >> 1)) & 0xFF
+    elif kind not in (0, 2):
+        raise ValueError(f"unknown PNG filter type {kind}")
+    return b"\x00" + bytes(out)
+
+
+def _png_chunk(kind: bytes, body: bytes) -> bytes:
+    return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+
+def stitch_png(strips: list[bytes]) -> bytes:
+    """One PNG of the given PNGs stacked top to bottom.
+
+    The strips must agree in width, bit depth and colour type and be
+    non-interlaced, 8 or 16 bit, not palette; anything else is a ``ValueError``.
+    Only each strip's first scanline is rewritten, the rest is copied as it was
+    filtered.
+    """
+    if not strips:
+        raise ValueError("no PNG to stitch")
+    layout, height, rows = None, 0, []
+    for strip in strips:
+        header, lines = _png_parts(strip)
+        width, strip_height, depth, colour, compression, filtering, interlace = struct.unpack(">IIBBBBB", header)
+        if colour not in _PNG_CHANNELS or depth not in (8, 16) or compression or filtering or interlace:
+            raise ValueError("PNG layout the stitcher does not handle")
+        if layout is None:
+            layout = (width, depth, colour)
+        elif layout != (width, depth, colour):
+            raise ValueError("PNG strips differ in width, bit depth or colour type")
+        bpp = _PNG_CHANNELS[colour] * depth // 8
+        stride = 1 + width * bpp
+        if len(lines) != stride * strip_height:
+            raise ValueError("PNG data does not match its header")
+        rows.append(_unfilter_first_row(lines[:stride], bpp))
+        rows.append(lines[stride:])
+        height += strip_height
+    width, depth, colour = layout  # type: ignore[misc]
+    header = struct.pack(">IIBBBBB", width, height, depth, colour, 0, 0, 0)
+    body = zlib.compress(b"".join(rows), 6)
+    return PNG_SIGNATURE + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", body) + _png_chunk(b"IEND", b"")
+
+
+async def _shoot(page: Any, root: Any) -> bytes:
+    """The PNG of ``root`` (the whole page without one); a large root is captured in strips."""
+    if root is None:
+        return await page.screenshot(type="png")
+    box = await root.bounding_box()
+    if box is None:
+        return await root.screenshot(type="png")
+    x, y, width, height = (round(box[key]) for key in ("x", "y", "width", "height"))
+    if width * height <= STRIP_MIN_PIXELS or x < 0 or y < 0:
+        return await root.screenshot(type="png")
+    strips = []
+    for top in range(0, height, STRIP_ROWS):
+        clip = {"x": x, "y": y + top, "width": width, "height": min(STRIP_ROWS, height - top)}
+        strips.append(await page.screenshot(type="png", clip=clip))
+    return stitch_png(strips)
+
+
 async def capture(
     browser: Browser,
     draft_id: str,
@@ -159,7 +264,7 @@ async def capture(
         await page.evaluate(_SETTLE_JS, {"settled": list(SETTLED_STATUSES), "timeoutMs": int(settle_timeout_s * 1000)})
         status = await page.evaluate(_STATUS_JS)
         root = await page.query_selector(SCREEN_ROOT_SELECTOR)
-        data = await root.screenshot(type="png") if root is not None else await page.screenshot(type="png")
+        data = await _shoot(page, root)
     width, height = png_size(data)
     return data, {"width": width, "height": height, "pv": pv_state(status)}
 

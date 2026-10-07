@@ -14,7 +14,9 @@ settles on from the ``STATUS`` macro so each test can pick it.
 
 import sys
 import time
+import zlib
 import socket
+import struct
 import threading
 import subprocess
 from pathlib import Path
@@ -27,15 +29,22 @@ from fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
+from canopy_mcp.tools import screenshot as screenshot_module
 from canopy_mcp.config import Settings
 from canopy_mcp.browser import Browser, BrowserNotStarted, get_browser, browser_hook
 from canopy_mcp.tools.screenshot import (
+    STRIP_ROWS,
     PNG_SIGNATURE,
     SETTLE_TIMEOUT_S,
+    STRIP_MIN_PIXELS,
+    _shoot,
     capture,
     png_size,
     pv_state,
     embed_url,
+    _png_chunk,
+    _png_parts,
+    stitch_png,
     viewport_for,
 )
 
@@ -457,3 +466,145 @@ async def test_screenshot_tool_over_mcp_with_lifespan_browser(
     assert sorted(p.relative_to(drafts) for p in drafts.rglob("*")) == before  # no file written
     with pytest.raises(BrowserNotStarted):
         get_browser()
+
+
+# --- Large screens: captured in strips, joined here -----------------------------
+
+
+def _paeth(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    return a if pa <= pb and pa <= pc else b if pb <= pc else c
+
+
+def _filter_row(kind: int, row: bytes, above: bytes, bpp: int) -> bytes:
+    out = bytearray([kind])
+    for i, value in enumerate(row):
+        a = row[i - bpp] if i >= bpp else 0
+        b = above[i]
+        c = above[i - bpp] if i >= bpp else 0
+        predicted = (0, a, b, (a + b) >> 1, _paeth(a, b, c))[kind]
+        out.append((value - predicted) & 0xFF)
+    return bytes(out)
+
+
+def _encode_png(rows: list[bytes], width: int, colour: int, filters: list[int]) -> bytes:
+    bpp = {2: 3, 6: 4}[colour]
+    above, lines = bytes(width * bpp), []
+    for kind, row in zip(filters, rows, strict=True):
+        lines.append(_filter_row(kind, row, above, bpp))
+        above = row
+    header = struct.pack(">IIBBBBB", width, len(rows), 8, colour, 0, 0, 0)
+    return (
+        PNG_SIGNATURE
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(b"".join(lines)))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def _decode_png(data: bytes) -> list[bytes]:
+    """The raw scanlines of an 8-bit RGB or RGBA PNG."""
+    header, lines = _png_parts(data)
+    width, height, _depth, colour = struct.unpack(">IIBB", header[:10])
+    bpp = {2: 3, 6: 4}[colour]
+    stride, above, rows = 1 + width * bpp, bytes(width * bpp), []
+    for n in range(height):
+        line = lines[n * stride : (n + 1) * stride]
+        row = bytearray(line[1:])
+        for i in range(len(row)):
+            a = row[i - bpp] if i >= bpp else 0
+            b = above[i]
+            c = above[i - bpp] if i >= bpp else 0
+            row[i] = (row[i] + (0, a, b, (a + b) >> 1, _paeth(a, b, c))[line[0]]) & 0xFF
+        above = bytes(row)
+        rows.append(above)
+    return rows
+
+
+@pytest.mark.parametrize("colour", [2, 6])
+@pytest.mark.parametrize("first_filter", [0, 1, 2, 3, 4])
+def test_stitch_png_keeps_every_pixel_whatever_filter_opens_a_strip(colour: int, first_filter: int) -> None:
+    width, bpp = 7, {2: 3, 6: 4}[colour]
+    rows = [bytes((x * 37 + y * 101 + x * y) % 256 for x in range(width * bpp)) for y in range(9)]
+    strips = [
+        _encode_png(rows[0:3], width, colour, [first_filter, 4, 3]),
+        _encode_png(rows[3:7], width, colour, [first_filter, 2, 1, 4]),
+        _encode_png(rows[7:9], width, colour, [first_filter, 3]),
+    ]
+    joined = stitch_png(strips)
+    assert png_size(joined) == (width, 9)
+    assert _decode_png(joined) == rows
+
+
+def test_stitch_png_of_one_strip_is_that_image() -> None:
+    rows = [bytes(range(12)), bytes(range(12, 24))]
+    assert _decode_png(stitch_png([_encode_png(rows, 4, 2, [4, 4])])) == rows
+
+
+def test_stitch_png_refuses_strips_that_do_not_fit_together() -> None:
+    row = bytes(12)
+    with pytest.raises(ValueError):
+        stitch_png([_encode_png([row], 4, 2, [0]), _encode_png([row], 3, 6, [0])])
+    with pytest.raises(ValueError):
+        stitch_png([_encode_png([row], 4, 2, [0]), _encode_png([row[:9]], 3, 2, [0])])
+    with pytest.raises(ValueError):
+        stitch_png([])
+    with pytest.raises(ValueError):
+        stitch_png([b"GIF89a"])
+
+
+class _FakeRoot:
+    def __init__(self, box: dict[str, float] | None) -> None:
+        self.box, self.shots = box, 0
+
+    async def bounding_box(self) -> dict[str, float] | None:
+        return self.box
+
+    async def screenshot(self, **_kwargs: object) -> bytes:
+        self.shots += 1
+        return b"element"
+
+
+class _FakePage:
+    def __init__(self) -> None:
+        self.clips: list[dict[str, int] | None] = []
+
+    async def screenshot(self, *, type: str, clip: dict[str, int] | None = None) -> bytes:  # noqa: A002
+        self.clips.append(clip)
+        if clip is None:
+            return b"page"
+        rows = [bytes([clip["y"] % 256]) * (clip["width"] * 3)] * clip["height"]
+        return _encode_png(rows, clip["width"], 2, [1] * clip["height"])
+
+
+async def test_a_default_sized_screen_is_one_element_screenshot() -> None:
+    page, root = _FakePage(), _FakeRoot({"x": 0, "y": 0, "width": 1280, "height": 800})
+    assert await _shoot(page, root) == b"element"
+    assert page.clips == [] and root.shots == 1
+    assert await _shoot(page, None) == b"page"
+    assert await _shoot(page, _FakeRoot(None)) == b"element"
+
+
+async def test_a_large_screen_is_captured_in_strips_that_cover_it_once() -> None:
+    page, root = _FakePage(), _FakeRoot({"x": 8, "y": 16, "width": 2500, "height": 1000})
+    data = await _shoot(page, root)
+    assert root.shots == 0
+    assert png_size(data) == (2500, 1000)
+    assert all(clip is not None and clip["x"] == 8 and clip["width"] == 2500 for clip in page.clips)
+    tops = [clip["y"] for clip in page.clips if clip]
+    heights = [clip["height"] for clip in page.clips if clip]
+    assert tops[0] == 16 and sum(heights) == 1000 and max(heights) <= STRIP_ROWS
+    assert all(top + height == nxt for top, height, nxt in zip(tops, heights, tops[1:], strict=False))
+    assert 2500 * 1000 > STRIP_MIN_PIXELS >= 1280 * 800
+
+
+async def test_strips_and_one_shot_give_the_same_picture(
+    stub_browser: Browser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    whole, info = await capture(stub_browser, "bts/view", {"STATUS": "mock"})
+    monkeypatch.setattr(screenshot_module, "STRIP_MIN_PIXELS", 0)
+    monkeypatch.setattr(screenshot_module, "STRIP_ROWS", 50)
+    striped, striped_info = await capture(stub_browser, "bts/view", {"STATUS": "mock"})
+    assert striped_info == info
+    assert _decode_png(striped) == _decode_png(whole)
