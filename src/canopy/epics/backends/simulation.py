@@ -310,7 +310,24 @@ class SimulationConnector:
         self._overrides[name] = value
 
     async def describe(self, pv: str) -> PVMeta:
-        kind = self._kind_for(pv)
+        """Describe a simulated PV's static metadata.
+
+        The metadata follows from the value kind its name suffix selects. A ``ca://`` /
+        ``pva://`` prefix doesn't change it: every spelling of a PV is described alike.
+
+        Parameters
+        ----------
+        pv : str
+            PV name; its suffix selects the value kind.
+
+        Returns
+        -------
+        PVMeta
+            The kind's units, limits, precision and enum choices, with `pv` echoing
+            the name as requested.
+        """
+        name = strip_protocol_prefix(pv)
+        kind = self._kind_for(name)
         if kind is ValueKind.ENUM:
             return PVMeta(pv=pv, value_kind=kind, enum_choices=list(_ENUM_CHOICES), writable=True)
         if kind is ValueKind.WAVEFORM:

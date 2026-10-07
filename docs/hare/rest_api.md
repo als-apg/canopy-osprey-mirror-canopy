@@ -33,7 +33,7 @@ curl -H "X-API-Key: dev" http://localhost:8000/hare/v1/pvs/TEST:SINE
 | `value` | varies | Payload per `valueKind` — number, string, enum index, array, or `{labels, columns}` table. `null` when disconnected |
 | `valueKind` | string | How to interpret `value` — see [values and metadata](index.md#values-and-metadata) |
 | `severity` | string | Alarm severity: `NO_ALARM`, `MINOR`, `MAJOR`, `INVALID` |
-| `alarmStatus` | int \| null | EPICS `menuAlarmStat` code behind `severity`: `0` NO_ALARM, `3` HIHI, `4` HIGH, `5` LOLO, `6` LOW, `7` STATE, `17` UDF, ... The same codes over `ca://` and `pva://`. `null` when the channel is disconnected, the backend supplies none, or a PV Access alarm message names no known status or contradicts `severity` |
+| `alarmStatus` | int \| null | EPICS `menuAlarmStat` code behind `severity`: `0` NO_ALARM, `3` HIHI, `4` HIGH, `5` LOLO, `6` LOW, `7` STATE, `17` UDF, ... The same codes over `ca://` and `pva://`. `null` when the channel is disconnected or the backend supplies none. Over `pva://` it is the code the alarm message names when that agrees with `severity` (NO_ALARM with severity `0`, any other status with a raised severity); when severity and the PV Access alarm status category are both `0` it is `0` whatever the message says; otherwise `null` |
 | `tsNs` | int | IOC timestamp in epoch nanoseconds |
 | `connected` | bool | `false` when the channel is disconnected |
 | `error` | string \| null | Connector error detail, when there is one |

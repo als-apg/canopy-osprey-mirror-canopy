@@ -81,9 +81,11 @@ class PVValue(CanopyModel):
         The EPICS ``menuAlarmStat`` code that accompanies `severity` (0 = NO_ALARM,
         3 = HIHI, 4 = HIGH, 5 = LOLO, 6 = LOW, 7 = STATE, 17 = UDF, ...), carried
         on the wire as `alarmStatus`. The same code set for Channel Access and PV
-        Access. `None` when the channel is disconnected, the backend supplies none,
-        or a PV Access alarm message names no known status or contradicts
-        `severity`.
+        Access. `None` when the channel is disconnected or the backend supplies
+        none. Over PV Access it is the code ``alarm.message`` names when that
+        agrees with `severity` (NO_ALARM with severity 0, any other status with a
+        raised severity); when severity and the ``alarm.status`` category are both
+        zero it is 0 (NO_ALARM) whatever the message says; otherwise `None`.
     ts_ns : int
         Value timestamp, in nanoseconds since the Unix epoch.
     connected : bool

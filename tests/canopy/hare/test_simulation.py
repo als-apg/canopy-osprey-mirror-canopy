@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from canopy.contracts.pv import PVValue, ValueKind
 from canopy.epics.config import EpicsConfig
 from canopy.epics.backends.simulation import SimulationConnector
@@ -75,6 +77,16 @@ async def test_scalar_describe_has_value_alarm_limits():
     meta = await conn.describe("SIM:X")
     assert meta.warning_low == -7.0 and meta.warning_high == 7.0
     assert meta.alarm_low == -9.0 and meta.alarm_high == 9.0
+
+
+@pytest.mark.parametrize("name", ["SIM:STATE:ENUM", "SIM:X"])
+async def test_describe_ignores_the_protocol_prefix(name):
+    conn = SimulationConnector.from_config(EpicsConfig())
+    bare = await conn.describe(name)
+    for spelling in (f"ca://{name}", f"pva://{name}"):
+        meta = await conn.describe(spelling)
+        assert meta.pv == spelling
+        assert meta.model_dump(exclude={"pv"}) == bare.model_dump(exclude={"pv"})
 
 
 async def test_put_scalar_round_trips():
