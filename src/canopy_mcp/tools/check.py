@@ -32,7 +32,7 @@ from canopy_mcp.catalog import Catalog, CatalogError, ensure_catalog
 from canopy_mcp.check.lint import check_lint
 from canopy_mcp.check.refs import check_refs
 from canopy_mcp.check.schema import check_schema
-from canopy_mcp.tools._common import read_draft, validate_id
+from canopy_mcp.tools._common import route, get_store, read_draft, validate_id
 from canopy_mcp.check.findings import Finding
 from canopy_mcp.check.semantic import check_semantic
 
@@ -76,6 +76,10 @@ async def run_check(
 ) -> CheckResult:
     """Run every pass on ``screen``, or on the stored draft ``draft_id`` when no screen is given.
 
+    Without ``store``, ``draft_id`` is the id a tool was given and is routed:
+    ``library/<id>`` is checked in the library store when one is configured.
+    With ``store``, ``draft_id`` is already an id inside that store.
+
     Raises :class:`ToolError` when neither argument is given, the id is invalid,
     the stored draft does not exist (or is not JSON), or the widget catalog
     cannot be loaded.
@@ -83,11 +87,16 @@ async def run_check(
     if screen is None and draft_id is None:
         raise ToolError("check needs a screen document or a draft_id")
     settings = settings or get_settings()
-    store = store or DraftStore(settings.drafts_dir)
-    if draft_id is not None:
-        validate_id(draft_id)
+    given = draft_id
+    if store is not None:
+        if draft_id is not None:
+            validate_id(draft_id)
+    elif draft_id is not None:
+        store, draft_id = route(draft_id, settings)
+    else:
+        store = get_store(settings)
     if screen is None:
-        screen, _ = read_draft(store, draft_id)  # type: ignore[arg-type]
+        screen, _ = read_draft(store, draft_id, given)  # type: ignore[arg-type]
     if catalog is None:
         try:
             catalog = await ensure_catalog(settings, client)
@@ -108,7 +117,7 @@ async def check(screen: dict[str, Any] | None = None, draft_id: str | None = Non
     """Check a Screen-IR document without saving it: schema, semantic, ref and lint findings.
 
     Pass exactly one source: ``screen`` (a document) or ``draft_id`` (a stored
-    draft). With ``screen``, ``draft_id`` is optional and only sets the
+    draft, or ``library/<id>`` for a screen of the shared library). With ``screen``, ``draft_id`` is optional and only sets the
     directory its ``embedded-display``/``open_display`` refs resolve in.
 
     Returns ``{schema, semantic, lint, skipped}``: each finding has ``nodeId``,

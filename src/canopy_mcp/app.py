@@ -44,7 +44,7 @@ from starlette.responses import PlainTextResponse
 from starlette.middleware import Middleware
 from starlette.applications import Starlette
 
-from canopy_mcp.store import DraftStore
+from canopy_mcp.store import open_stores
 from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.access import AccessGate, read_secret_file
 from canopy_mcp.client import make_client
@@ -134,7 +134,7 @@ def create_app(
         guard = Middleware(McpProxyGuard)
     register_all()
     set_authoring(settings.authoring)
-    store = DraftStore(settings.drafts_dir)
+    store, library = open_stores(settings.drafts_dir, settings.library_dir)
     views = ViewStore(settings.drafts_dir, views_dir=settings.views_dir)
     mcp_app = mcp.http_app(path=MCP_PATH)
 
@@ -152,7 +152,7 @@ def create_app(
         routes=[
             *mcp_app.routes,
             *build_forward_routes(settings),
-            *build_routes(settings, store),
+            *build_routes(settings, store, library),
             *build_view_routes(views),
         ],
         # FastMCP's own middleware (request context, host/origin guard) must
@@ -164,6 +164,7 @@ def create_app(
         setattr(app.state, key, getattr(mcp_app.state, key))
     app.state.settings = settings
     app.state.store = store
+    app.state.library = library
     app.state.views = views
     app.state.self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
     return app

@@ -35,6 +35,11 @@ ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*")
 SCREEN_SUFFIX = ".screen.json"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico"})
 MAX_ASSET_BYTES = 5 * 2**20
+# The manifest category of a personal store, and of the read-only library served beside one.
+# A library screen is ``library/<id>`` to the tools and ``/embed/library/<id>`` to the viewer,
+# so a personal store with a library beside it reserves ``library`` as a first id segment.
+DRAFTS = "drafts"
+LIBRARY = "library"
 ASSET_SEGMENT = re.compile(r"[A-Za-z0-9 ._-]+")
 # The suffixes a pushed image may carry: SVG is markup a browser executes, so it stays a draft.
 PUSH_IMAGE_SUFFIXES = IMAGE_SUFFIXES - {".svg"}
@@ -369,11 +374,23 @@ def casefold_collisions(paths: Iterable[str]) -> list[list[str]]:
 
 
 class DraftStore:
-    def __init__(self, root: Path | str, *, read_only: bool = False):
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        read_only: bool = False,
+        category: str = DRAFTS,
+        reserved: Iterable[str] = (),
+    ):
         self.root = Path(root)
         self.screens = self.root / "screens"
         # A read-only store refuses every mutation before it touches the disk; reads are unaffected.
         self.read_only = read_only
+        # The manifest category. A store of any other category than ``drafts`` is served under
+        # ``/drafts/<category>/``: its manifest paths carry that prefix and only ``screens/`` is served.
+        self.category = category
+        # First id segments this store neither lists, serves nor accepts (``check_id``).
+        self.reserved = frozenset(reserved)
         self._lock = asyncio.Lock()
         # path -> ((st_ino, st_mtime_ns, st_size), rev); a changed stat means re-hash.
         self._revs: dict[Path, tuple[tuple[int, int, int], str]] = {}
@@ -384,6 +401,23 @@ class DraftStore:
     def validate_id(draft_id: str) -> str:
         if not isinstance(draft_id, str) or not ID_PATTERN.fullmatch(draft_id):
             raise InvalidDraftId(f"invalid draft id: {draft_id!r}")
+        return draft_id
+
+    def reserves(self, draft_id: str) -> bool:
+        """Whether the first segment of ``draft_id`` is one this store reserves."""
+        return draft_id.split("/", 1)[0] in self.reserved
+
+    def check_id(self, draft_id: str) -> str:
+        """``draft_id`` when it is valid *in this store*, else :class:`InvalidDraftId`.
+
+        Stricter than :meth:`validate_id` by the reserved first segments, which only
+        an instance knows. :meth:`path_for` stays syntactic, so resolving a ref that
+        lands on a reserved id answers "no such file" instead of raising.
+        """
+        self.validate_id(draft_id)
+        if self.reserves(draft_id):
+            first = draft_id.split("/", 1)[0]
+            raise InvalidDraftId(f"invalid draft id: {draft_id!r} ({first!r} is reserved as a first segment)")
         return draft_id
 
     def path_for(self, draft_id: str) -> Path:
@@ -558,7 +592,14 @@ class DraftStore:
     # --- listing ------------------------------------------------------------
 
     def manifest(self) -> dict[str, list[dict[str, Any]]]:
-        """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape, computed fresh on each call."""
+        """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape, computed fresh on each call.
+
+        Entries carry the store's ``category``. ``path`` is what the viewer fetches under
+        ``/drafts/``: ``screens/<id>.screen.json`` for a personal store, and
+        ``<category>/screens/<id>.screen.json`` for any other. ``id`` is always the id
+        this store reads the screen by.
+        """
+        prefix = "" if self.category == DRAFTS else f"{self.category}/"
         screens = []
         for draft_id in self.list():
             path = self.path_for(draft_id)
@@ -579,9 +620,9 @@ class DraftStore:
                 {
                     "id": draft_id,
                     "kind": "ir",
-                    "category": "drafts",
+                    "category": self.category,
                     "title": title,
-                    "path": path.relative_to(self.root).as_posix(),
+                    "path": prefix + path.relative_to(self.root).as_posix(),
                     "rev": rev,
                 }
             )
@@ -592,7 +633,10 @@ class DraftStore:
 
         Only draft screens and images are served. Anything that could leave the
         root -- ``..`` in any encoding, absolute paths, backslashes, NUL, symlinks
-        pointing outside -- is refused.
+        pointing outside -- is refused. A store of another category than ``drafts``
+        serves only what lies under ``screens/``, and a reserved first segment (at
+        the root or under ``screens/``) is never served. Both rules apply to the
+        decoded path.
         """
         decoded = relpath
         for _ in range(5):  # undo nested percent-encoding (%252e -> %2e -> .)
@@ -605,18 +649,37 @@ class DraftStore:
         parts = _clean_parts(decoded)
         if parts is None:
             return None
+        if self.category != DRAFTS and parts[0] != "screens":
+            return None
+        if parts[0] in self.reserved or (parts[0] == "screens" and len(parts) > 1 and parts[1] in self.reserved):
+            return None
         name = parts[-1].lower()
         if not (name.endswith(SCREEN_SUFFIX) or Path(name).suffix in IMAGE_SUFFIXES):
             return None
         return contained_file(self.root, Path(*parts))
 
     def list(self) -> list[str]:
-        """Every stored draft id, sorted."""
+        """Every stored draft id, sorted; ids under a reserved first segment are left out."""
         if not self.screens.is_dir():
             return []
         ids = []
         for path in self.screens.rglob(f"*{SCREEN_SUFFIX}"):
             rel = path.relative_to(self.screens).as_posix()[: -len(SCREEN_SUFFIX)]
-            if ID_PATTERN.fullmatch(rel) and path.is_file():
+            if ID_PATTERN.fullmatch(rel) and not self.reserves(rel) and path.is_file():
                 ids.append(rel)
         return sorted(ids)
+
+
+def open_stores(drafts_dir: Path | str, library_dir: Path | str | None) -> tuple[DraftStore, DraftStore | None]:
+    """The personal store over ``drafts_dir`` and the read-only library store over ``library_dir``.
+
+    Without a library the personal store is exactly ``DraftStore(drafts_dir)`` and
+    the second item is ``None``. With one, the personal store reserves the
+    ``library`` first segment, so no personal id can shadow a library screen.
+    """
+    if library_dir is None:
+        return DraftStore(drafts_dir), None
+    return (
+        DraftStore(drafts_dir, reserved=(LIBRARY,)),
+        DraftStore(library_dir, read_only=True, category=LIBRARY),
+    )

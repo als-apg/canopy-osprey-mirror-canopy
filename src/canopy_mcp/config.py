@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Build-time channel catalog (a JSON string[]) served on /channels for
     # Trace's PV autocomplete; unset or missing means no catalog (404).
     channels_file: Path | None = None
+    # Read-only screen library served beside the drafts: its screens are
+    # ``library/<id>`` to the tools and ``/embed/library/<id>`` to the viewer,
+    # and only its ``screens/`` subtree is served. Unset means no library.
+    library_dir: Path | None = None
     # Whether the six authoring tools (new_screen, patch_node, add_node,
     # remove_node, delete_draft, convert_legacy) are offered; off leaves the
     # nine read-only tools.
@@ -77,6 +81,7 @@ class Settings(BaseSettings):
         "views_dir",
         "relay_connect_retry_s",
         "widgets_dir",
+        "library_dir",
         mode="before",
     )
     @classmethod

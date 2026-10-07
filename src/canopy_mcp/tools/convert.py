@@ -62,11 +62,9 @@ from canopy_mcp.store import (
     AssetRefused,
     doc_rev,
 )
-from canopy_mcp.tools import drafts
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
-from canopy.core.color_scheme import DEFAULT_ID, THEME_FILE_ENV, get_color_scheme
 from canopy_mcp.check.refs import (
     dirname,
     iter_refs,
@@ -75,7 +73,8 @@ from canopy_mcp.check.refs import (
     resolve_image_ref,
 )
 from canopy_mcp.tools.check import run_check
-from canopy_mcp.tools._common import refused, validate_id
+from canopy.core.color_scheme import DEFAULT_ID, THEME_FILE_ENV, get_color_scheme
+from canopy_mcp.tools._common import route, refused, read_only_refusal
 
 CONVERSIONS_PATH = "/converter/v1/conversions"
 CONVERT_TIMEOUT_S = 60.0
@@ -370,8 +369,9 @@ async def convert_legacy(
     ``check(draftId)`` re-measures the same queue.
     """
     settings = get_settings()
-    store = drafts.get_store(settings)
-    validate_id(id)
+    store, _ = route(id, settings)
+    if refusal := read_only_refusal(id, store):
+        return refusal
     if (path is None) == (content is None):
         raise ToolError("give exactly one of path (an absolute file path) or content (the legacy file text)")
     siblings = siblings or {}
@@ -405,7 +405,9 @@ async def convert_legacy(
 
     async with make_client(settings, timeout=CONVERT_TIMEOUT_S) as client:
         await _post(client, parent)
-        units = [parent, *_siblings_of(parent, id, abs_path, kind, sources)]
+        # A ref that lands on an id the store reserves is not written (check reports it).
+        siblings_found = _siblings_of(parent, id, abs_path, kind, sources)
+        units = [parent, *(unit for unit in siblings_found if not store.reserves(unit.draft_id))]
         for unit in units[1:]:
             await _post(client, unit)
 

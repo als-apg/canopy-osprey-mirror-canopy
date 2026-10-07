@@ -1,6 +1,7 @@
 """The ``screenshot`` tool: render a draft in the server's own viewer and return a PNG.
 
-The draft is loaded at ``/embed/drafts/<id>?<macros>`` on this process, so it
+The draft is loaded at ``/embed/drafts/<id>?<macros>`` on this process (a
+library screen, tool id ``library/<id>``, at ``/embed/library/<id>``), so it
 renders exactly as the agent's browser would see it, in the pv mode the
 server serves in ``config.json``. Before capturing, the page gets one shared,
 bounded wait (:data:`SETTLE_TIMEOUT_S`) for two things:
@@ -28,12 +29,12 @@ from fastmcp.tools import ToolResult
 from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
 
+from canopy_mcp.urls import embed_path
+from canopy_mcp.store import DRAFTS, DraftStore, DraftNotFound, InvalidDraftId
 from canopy_mcp.config import get_settings
-from canopy_mcp.store import DraftNotFound, DraftStore, InvalidDraftId
-from canopy_mcp.tools import drafts
 from canopy_mcp.server import mcp
 from canopy_mcp.browser import Browser, BrowserNotStarted, get_browser
-from canopy_mcp.urls import embed_path
+from canopy_mcp.tools._common import route
 
 # One budget for fonts + PV status, so the whole call stays under 5 s.
 SETTLE_TIMEOUT_S = 4.0
@@ -65,8 +66,12 @@ def embed_url(
     macros: dict[str, str] | None = None,
     *,
     theme: Theme | None = None,
+    category: str = DRAFTS,
 ) -> str:
     """The embed URL of ``draft_id`` on ``base_url``, macros as query parameters.
+
+    ``draft_id`` is the id inside its store and ``category`` that store's
+    manifest category (``drafts``, or ``library`` for a library screen).
 
     Pins the viewer's zoom to 100 %: the embed route opens large panels fitted
     to the frame, and a screenshot must capture the panel at its authored size.
@@ -79,7 +84,7 @@ def embed_url(
     if theme is not None and theme not in THEMES:
         raise ValueError(f"theme must be one of {', '.join(THEMES)}, not {theme!r}")
     DraftStore.validate_id(draft_id)
-    url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"))
+    url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"), category)
     query = {"_canopyZoom": "100", **{str(name): str(value) for name, value in (macros or {}).items()}}
     query["_canopyChrome"] = "0"
     if theme is not None:
@@ -119,7 +124,7 @@ def viewport_for(size: Any, default: dict[str, int]) -> dict[str, int]:
         return out
     for axis in ("width", "height"):
         value = size.get(axis)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if isinstance(value, bool) or not isinstance(value, int | float):
             continue
         out[axis] = max(out[axis], min(int(value), MAX_VIEWPORT))
     return out
@@ -133,13 +138,14 @@ async def capture(
     size: dict[str, Any] | None = None,
     settle_timeout_s: float = SETTLE_TIMEOUT_S,
     theme: Theme | None = None,
+    category: str = DRAFTS,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Render ``draft_id`` and return ``(png, {width, height, pv})``.
+    """Render ``draft_id`` of ``category`` and return ``(png, {width, height, pv})``.
 
     ``size`` is the screen's ``metadata.size``; the page is sized to fit it.
     ``theme`` renders the page in ``light`` or ``dark``; see :func:`embed_url`.
     """
-    url = embed_url(browser.base_url, draft_id, macros, theme=theme)
+    url = embed_url(browser.base_url, draft_id, macros, theme=theme, category=category)
     async with browser.context() as context:
         page = await context.new_page()
         viewport = viewport_for(size, browser.viewport)
@@ -157,10 +163,10 @@ async def capture(
     return data, {"width": width, "height": height, "pv": pv_state(status)}
 
 
-def _draft_size(draft_id: str) -> dict[str, Any] | None:
-    """``metadata.size`` of draft ``draft_id``, or ``None`` when it has none or does not exist."""
+def _draft_size(store: DraftStore, draft_id: str) -> dict[str, Any] | None:
+    """``metadata.size`` of ``draft_id`` in ``store``, or ``None`` when it has none or does not exist."""
     try:
-        doc, _ = drafts.get_store(get_settings()).read(draft_id)
+        doc, _ = store.read(draft_id)
     except (DraftNotFound, InvalidDraftId, OSError, ValueError):
         return None
     if not isinstance(doc, dict):
@@ -181,7 +187,7 @@ def _playwright_errors() -> tuple[type[BaseException], ...]:
 
 @mcp.tool
 async def screenshot(id: str, macros: dict[str, str] | None = None, theme: Theme | None = None) -> ToolResult:
-    """Render draft ``id`` in the viewer and return it as a PNG image.
+    """Render draft ``id`` (or ``library/<id>``, a shared library screen) in the viewer and return it as a PNG image.
 
     ``macros`` are passed to the screen as ``$(NAME)`` values. Also returns
     ``{width, height, pv}``; ``pv`` is ``connected`` only when the viewer
@@ -193,9 +199,12 @@ async def screenshot(id: str, macros: dict[str, str] | None = None, theme: Theme
     """
     if theme is not None and theme not in THEMES:
         raise ToolError(f"theme must be one of {', '.join(THEMES)}, not {theme!r}")
+    store, local_id = route(id, get_settings())
     try:
         browser = get_browser()
-        data, info = await capture(browser, id, macros, size=_draft_size(id), theme=theme)
+        data, info = await capture(
+            browser, local_id, macros, size=_draft_size(store, local_id), theme=theme, category=store.category
+        )
     except InvalidDraftId as exc:
         raise ToolError(str(exc)) from exc
     except BrowserNotStarted as exc:
