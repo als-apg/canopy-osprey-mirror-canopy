@@ -71,6 +71,7 @@ EXPECTED_TOOLS = {
     "patch_node",
     "read_pv",
     "remove_node",
+    "request_push",
     "screenshot",
     "search_pvs",
 }

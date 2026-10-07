@@ -29,7 +29,7 @@ lazy screenshot browser (:func:`chromium_hook`, which launches nothing until
 the first ``screenshot`` call); neither keeps the server from starting when
 it fails. Building the app calls
 :func:`~canopy_mcp.server.register_all`, so every tool is on ``mcp``, and then
-applies ``CANOPY_AUTHORING``: off takes the six authoring tools off ``mcp``,
+applies ``CANOPY_AUTHORING``: off takes the seven authoring tools off ``mcp``,
 leaving the nine that only read. ``mcp`` is process-wide, so the last app
 built decides which tools every app in the process offers.
 """

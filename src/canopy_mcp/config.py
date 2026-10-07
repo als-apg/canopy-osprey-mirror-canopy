@@ -59,10 +59,14 @@ class Settings(BaseSettings):
     # ``library/<id>`` to the tools and ``/embed/library/<id>`` to the viewer,
     # and only its ``screens/`` subtree is served. Unset means no library.
     library_dir: Path | None = None
-    # Whether the six authoring tools (new_screen, patch_node, add_node,
-    # remove_node, delete_draft, convert_legacy) are offered; off leaves the
-    # nine read-only tools.
+    # Whether the seven authoring tools (new_screen, patch_node, add_node,
+    # remove_node, delete_draft, convert_legacy, request_push) are offered;
+    # off leaves the nine read-only tools.
     authoring: bool = True
+    # Directory ``request_push`` writes its bundles into, one directory per
+    # request, for an administrator to review. Unset means the tool answers
+    # ``push_unavailable``.
+    push_dir: Path | None = None
     # Directory holding the saved-view ``*.json`` files; unset means
     # ``<drafts_dir>/views``.
     views_dir: Path | None = None
@@ -86,6 +90,7 @@ class Settings(BaseSettings):
         "relay_connect_retry_s",
         "widgets_dir",
         "library_dir",
+        "push_dir",
         "browser_sandbox",
         mode="before",
     )

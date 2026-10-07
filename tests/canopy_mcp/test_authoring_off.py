@@ -1,4 +1,4 @@
-"""``CANOPY_AUTHORING``: off leaves the nine read-only tools, on offers all fifteen.
+"""``CANOPY_AUTHORING``: off leaves the nine read-only tools, on offers all sixteen.
 
 The tools live on one process-wide FastMCP instance, so these tests also pin
 that turning authoring off can be repeated and undone, and that the FastMCP
@@ -42,7 +42,7 @@ def test_the_installed_fastmcp_can_remove_and_re_add_a_tool() -> None:
     assert callable(getattr(mcp, "add_tool", None))
 
 
-def test_authoring_tools_are_the_six_that_write() -> None:
+def test_authoring_tools_are_the_seven_that_write() -> None:
     assert set(AUTHORING_TOOLS) == {
         "new_screen",
         "patch_node",
@@ -50,6 +50,7 @@ def test_authoring_tools_are_the_six_that_write() -> None:
         "remove_node",
         "delete_draft",
         "convert_legacy",
+        "request_push",
     }
     assert not set(AUTHORING_TOOLS) & set(READ_TOOLS)
 
@@ -65,7 +66,7 @@ def test_authoring_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch,
     assert Settings().authoring is expected
 
 
-async def test_app_with_authoring_on_offers_fifteen_tools(tmp_path: Path) -> None:
+async def test_app_with_authoring_on_offers_sixteen_tools(tmp_path: Path) -> None:
     build(tmp_path)
     assert await tool_names() == sorted([*READ_TOOLS, *AUTHORING_TOOLS])
 
@@ -75,10 +76,10 @@ async def test_app_with_authoring_off_offers_the_nine_read_tools(tmp_path: Path)
     assert await tool_names() == sorted(READ_TOOLS)
 
 
-async def test_fifteen_tools_are_back_after_an_authoring_off_test() -> None:
+async def test_sixteen_tools_are_back_after_an_authoring_off_test() -> None:
     """Runs after the test above: the conftest fixture re-added what that app removed."""
     names = await tool_names()
-    assert len(names) == 15
+    assert len(names) == 16
     assert set(AUTHORING_TOOLS) <= set(names)
 
 
@@ -104,7 +105,7 @@ async def test_turning_authoring_on_twice_adds_nothing_twice(tmp_path: Path) -> 
     set_authoring(True)
     set_authoring(True)
     names = await tool_names()
-    assert len(names) == len(set(names)) == 15
+    assert len(names) == len(set(names)) == 16
 
 
 async def test_a_client_sees_and_reaches_only_the_read_tools(tmp_path: Path) -> None:

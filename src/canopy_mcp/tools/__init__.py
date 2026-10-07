@@ -3,9 +3,9 @@
 Each module decorates its tools with ``@mcp.tool`` at import time, so the
 imports below exist for that side effect. :func:`canopy_mcp.server.register_all`
 imports this package; nothing else needs to. ``drafts`` precedes ``convert``,
-which imports it.
+which imports it; ``push`` imports ``check`` itself.
 """
 
-from canopy_mcp.tools import pvs, check, drafts, convert, widgets, screenshot
+from canopy_mcp.tools import pvs, push, check, drafts, convert, widgets, screenshot
 
-__all__ = ["check", "convert", "drafts", "pvs", "screenshot", "widgets"]
+__all__ = ["check", "convert", "drafts", "push", "pvs", "screenshot", "widgets"]
