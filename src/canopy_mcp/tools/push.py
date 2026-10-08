@@ -106,7 +106,14 @@ from canopy_mcp.store import (
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
 from canopy_mcp.screens import PushRefused, push_closure
-from canopy_mcp.check.refs import ROOT_DIR, StoreTree, BufferTree, dirname, screen_path
+from canopy_mcp.check.refs import (
+    StoreTree,
+    BufferTree,
+    dirname,
+    dir_path,
+    screen_key,
+    screen_path,
+)
 from canopy_mcp.tools.check import run_check
 from canopy_mcp.tools._common import route, refused, read_only_refusal
 
@@ -258,8 +265,7 @@ def _snapshot(
 
 def _relative(path: str, source_dir: str) -> str:
     """The member ``path`` (a store path) as a path below ``source_dir``."""
-    source = f"{ROOT_DIR}{source_dir}/" if source_dir else ROOT_DIR
-    return path[len(source) :]
+    return path[len(dir_path(source_dir)) :]
 
 
 def _invalid_text(data: bytes) -> tuple[str, str] | None:
@@ -363,9 +369,9 @@ async def _check_errors(buffers: Mapping[str, bytes], settings: Settings) -> lis
     tree = BufferTree(buffers)
     errors: list[dict[str, Any]] = []
     for path in sorted(buffers):
-        if not path.endswith(SCREEN_SUFFIX):
+        screen = screen_key(path)
+        if screen is None:
             continue
-        screen = path[len(ROOT_DIR) : -len(SCREEN_SUFFIX)]
         result = await run_check(draft_id=screen, tree=tree, settings=settings)
         errors.extend({"screen": screen, **finding.to_dict()} for finding in result.errors)
     return errors

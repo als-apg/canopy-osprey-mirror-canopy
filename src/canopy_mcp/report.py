@@ -82,7 +82,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 from dataclasses import dataclass
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
 from importlib.metadata import PackageNotFoundError, version
 
 from canopy_mcp import screens
@@ -105,6 +105,7 @@ from canopy_mcp.check.refs import (
     resolve,
     screen_id,
     check_refs,
+    screen_key,
     screen_path,
 )
 from canopy_mcp.check.findings import pointer
@@ -156,8 +157,6 @@ EXIT_OK = 0
 EXIT_MISMATCH = 1
 EXIT_REFUSED = 3
 
-# `${NAME}` or `$(NAME)`, as the screen walk reads them.
-_MACRO_RE = re.compile(r"\$\{([A-Za-z0-9_]+)\}|\$\(([A-Za-z0-9_]+)\)")
 _HTTP_URL = re.compile(r"^https?://", re.IGNORECASE)
 _MARKUP = re.compile(r"[\\|<>\[\]`*_]")
 _FOLDED = str.maketrans({"\r": " ", "\n": " ", "\t": " "})
@@ -177,13 +176,7 @@ def _printable(value: Any) -> str:
 
 def _macro_names(value: Any) -> set[str]:
     """Every macro name referenced in a string anywhere inside ``value``."""
-    if isinstance(value, str):
-        return {a or b for a, b in _MACRO_RE.findall(value)}
-    if isinstance(value, dict):
-        return set().union(*(_macro_names(v) for v in value.values())) if value else set()
-    if isinstance(value, list):
-        return set().union(*(_macro_names(v) for v in value)) if value else set()
-    return set()
+    return {name for _parts, text in _strings(value, ()) for name in screens._macro_names(text)}
 
 
 def _declared_macros(doc: Any) -> list[dict[str, Any]]:
@@ -198,11 +191,6 @@ def _declared_macros(doc: Any) -> list[dict[str, Any]]:
 
 def _url_macro(name: str) -> bool:
     return name not in RESERVED_URL_PARAMS and not name.startswith(RESERVED_URL_PREFIX)
-
-
-def _screen_key(path: str) -> str:
-    """The name of the screen file ``path`` below ``screens/``, without the id rule."""
-    return path[len(ROOT_DIR) : -len(SCREEN_SUFFIX)]
 
 
 def _parse(data: bytes) -> tuple[Any, str | None]:
@@ -282,21 +270,15 @@ def _rule_retargets(screen: str, doc: dict[str, Any]) -> tuple[list[dict[str, An
     """The rules of ``doc`` a push refuses: ``(channel rows, ref rows)``."""
     channels: list[dict[str, Any]] = []
     refs: list[dict[str, Any]] = []
-    for path, node in iter_nodes(doc):
-        rules = node.get("rules")
-        for index, rule in enumerate(rules if isinstance(rules, list) else []):
-            target = rule.get("targetProperty") if isinstance(rule, dict) else None
-            code = screens._rule_retargets(target) if isinstance(target, str) else None
-            if code is None:
-                continue
-            row = {
-                "screen": screen,
-                "nodeId": node.get("id"),
-                "nodeType": node.get("type"),
-                "path": pointer((*path, "rules", index, "targetProperty")),
-                "targetProperty": target,
-            }
-            (refs if code == "rule_retargets_ref" else channels).append(row)
+    for path, node, index, target, code in screens._retargeting_rules(doc):
+        row = {
+            "screen": screen,
+            "nodeId": node.get("id"),
+            "nodeType": node.get("type"),
+            "path": pointer((*path, "rules", index, "targetProperty")),
+            "targetProperty": target,
+        }
+        (refs if code == "rule_retargets_ref" else channels).append(row)
     return channels, refs
 
 
@@ -325,13 +307,117 @@ def _is_embed_of(key: str, instance: str, node_id: Any) -> bool:
     return slot == "h" or slot.isdigit()
 
 
+def _url_macros(
+    draft_id: str, doc: dict[str, Any], instances: dict[str, dict[str, Any]], doc_of: Callable[[str], Any]
+) -> list[dict[str, Any]]:
+    """The macros a URL may set for the top screen ``draft_id``: declared by it or referenced under it."""
+    referenced: dict[str, set[str]] = {}
+    for screen in dict.fromkeys(row["screen"] for row in instances.values()):
+        for name in _macro_names(doc if screen == draft_id else doc_of(screen)):
+            referenced.setdefault(name, set()).add(screen)
+    declared = {decl["name"]: decl["default"] for decl in _declared_macros(doc)}
+    return [
+        {
+            "name": name,
+            "default": declared.get(name),
+            "declared": name in declared,
+            "referencedIn": sorted(referenced.get(name, ())),
+        }
+        for name in sorted(set(declared) | set(referenced))
+        if _url_macro(name)
+    ]
+
+
+def _node_rows(
+    draft_id: str,
+    nodes: list[screens.ExpandedNode],
+    instances: dict[str, dict[str, Any]],
+    served_at: ServedAt,
+    listing: frozenset[str],
+    rows: dict[str, list[dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Add the action and command-button rows of ``nodes`` to ``rows``; returns the unresolved refs and macros."""
+    unresolved_refs: list[dict[str, Any]] = []
+    unresolved_macros: list[dict[str, Any]] = []
+    for node in nodes:
+        where = {"screen": node["screen"], "instance": node["instance"], "nodeId": node["nodeId"]}
+        under_top = {"topScreen": draft_id, **where, "nodeType": node["type"]}
+        props = node["props"]
+        file = props.get("file")
+        if node["type"] == screens.EMBED_TYPE and isinstance(file, str) and file != "":
+            if not any(_is_embed_of(key, node["instance"], node["nodeId"]) for key in instances):
+                unresolved_refs.append({"kind": "embed", **where, "file": file})
+        actions = props.get("actions")
+        for action in actions if isinstance(actions, list) else []:
+            if not isinstance(action, dict):
+                continue
+            if action.get("type") == EXECUTE_ACTION:
+                rows["executeActions"].append(
+                    {
+                        **under_top,
+                        "command": action.get("command"),
+                        "description": action.get("description"),
+                        "hidden": node["hidden"],
+                    }
+                )
+            elif action.get("type") == OPEN_DISPLAY_ACTION and isinstance(action.get("file"), str):
+                found = resolve(
+                    f"{ROOT_DIR}{node['screen']}{SCREEN_SUFFIX}",
+                    (),
+                    action["file"],
+                    served_at=served_at,
+                    listing=listing,
+                )
+                rows["openDisplays"].append(
+                    {**under_top, "file": action["file"], "target": found.draft_id, "hidden": node["hidden"]}
+                )
+                if not found.ok:
+                    unresolved_refs.append({"kind": OPEN_DISPLAY_ACTION, **where, "file": action["file"]})
+        if node["type"] in COMMAND_BUTTON_TYPES:
+            rows["commandButtons"].append({**under_top, "hidden": node["hidden"]})
+        if node["unresolvedMacro"]:
+            unresolved_macros.append(where)
+    return unresolved_refs, unresolved_macros
+
+
+def _ref_rows(
+    draft_id: str,
+    doc: dict[str, Any],
+    tree: BufferTree,
+    served_at: ServedAt,
+    listing: frozenset[str],
+    doc_of: Callable[[str], Any],
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """``(row key, row)`` for every cross-root ref under ``draft_id``, and every root-relative one in a library."""
+    for finding in check_refs(doc, tree, draft_id, served_at=served_at, listing=listing):
+        found_at = finding.to_dict()
+        if finding.code == "cross_root_ref":
+            key = "crossRootRefs"
+        elif finding.code == "root_relative_ref" and served_at == LIBRARY:
+            key = "rootRelativeRefs"
+        else:
+            continue
+        screen = found_at.get("docId") or draft_id
+        yield (
+            key,
+            {
+                "topScreen": draft_id,
+                "screen": screen,
+                "nodeId": found_at["nodeId"],
+                "kind": found_at.get("kind"),
+                "path": found_at["path"],
+                "ref": _at(doc if screen == draft_id else doc_of(screen), found_at["path"]),
+            },
+        )
+
+
 def _build(root: Path, served_at: ServedAt) -> _Built:
     entries = scan(root)
     buffers: dict[str, bytes] = {}
     docs: dict[str, tuple[Any, str | None]] = {}
     for entry in entries:
         path = entry["path"]
-        if entry["kind"] != "file" or not path.startswith(ROOT_DIR) or not path.endswith(SCREEN_SUFFIX):
+        if entry["kind"] != "file" or screen_key(path) is None:
             continue
         data = (root / path).read_bytes()
         if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
@@ -371,66 +457,11 @@ def _build(root: Path, served_at: ServedAt) -> _Built:
             )
         reached.update(row["screen"] for key, row in instances.items() if key != "")
 
-        referenced: dict[str, set[str]] = {}
-        for screen in dict.fromkeys(row["screen"] for row in instances.values()):
-            for name in _macro_names(doc if screen == draft_id else doc_of(screen)):
-                referenced.setdefault(name, set()).add(screen)
-        declared = {decl["name"]: decl["default"] for decl in _declared_macros(doc)}
-        url_macros = [
-            {
-                "name": name,
-                "default": declared.get(name),
-                "declared": name in declared,
-                "referencedIn": sorted(referenced.get(name, ())),
-            }
-            for name in sorted(set(declared) | set(referenced))
-            if _url_macro(name)
-        ]
-
-        unresolved_refs: list[dict[str, Any]] = []
-        unresolved_macros: list[dict[str, Any]] = []
-        for node in nodes:
-            where = {"screen": node["screen"], "instance": node["instance"], "nodeId": node["nodeId"]}
-            under_top = {"topScreen": draft_id, **where, "nodeType": node["type"]}
-            props = node["props"]
-            file = props.get("file")
-            if node["type"] == screens.EMBED_TYPE and isinstance(file, str) and file != "":
-                if not any(_is_embed_of(key, node["instance"], node["nodeId"]) for key in instances):
-                    unresolved_refs.append({"kind": "embed", **where, "file": file})
-            actions = props.get("actions")
-            for action in actions if isinstance(actions, list) else []:
-                if not isinstance(action, dict):
-                    continue
-                if action.get("type") == EXECUTE_ACTION:
-                    rows["executeActions"].append(
-                        {
-                            **under_top,
-                            "command": action.get("command"),
-                            "description": action.get("description"),
-                            "hidden": node["hidden"],
-                        }
-                    )
-                elif action.get("type") == OPEN_DISPLAY_ACTION and isinstance(action.get("file"), str):
-                    found = resolve(
-                        f"{ROOT_DIR}{node['screen']}{SCREEN_SUFFIX}",
-                        (),
-                        action["file"],
-                        served_at=served_at,
-                        listing=listing,
-                    )
-                    rows["openDisplays"].append(
-                        {**under_top, "file": action["file"], "target": found.draft_id, "hidden": node["hidden"]}
-                    )
-                    if not found.ok:
-                        unresolved_refs.append({"kind": OPEN_DISPLAY_ACTION, **where, "file": action["file"]})
-            if node["type"] in COMMAND_BUTTON_TYPES:
-                rows["commandButtons"].append({**under_top, "hidden": node["hidden"]})
-            if node["unresolvedMacro"]:
-                unresolved_macros.append(where)
+        unresolved_refs, unresolved_macros = _node_rows(draft_id, nodes, instances, served_at, listing, rows)
         entry.update(
             {
                 "instances": list(instances.values()),
-                "urlMacros": url_macros,
+                "urlMacros": _url_macros(draft_id, doc, instances, doc_of),
                 "unresolvedRefs": unresolved_refs,
                 "unresolvedMacros": unresolved_macros,
             }
@@ -440,32 +471,15 @@ def _build(root: Path, served_at: ServedAt) -> _Built:
         rows["writeBindings"] += [
             dict(row) for row in screens.list_screen_write_bindings(tree, draft_id, listing=listing)
         ]
-        for finding in check_refs(doc, tree, draft_id, served_at=served_at, listing=listing):
-            found_at = finding.to_dict()
-            if finding.code == "cross_root_ref":
-                key = "crossRootRefs"
-            elif finding.code == "root_relative_ref" and served_at == LIBRARY:
-                key = "rootRelativeRefs"
-            else:
-                continue
-            screen = found_at.get("docId") or draft_id
-            rows[key].append(
-                {
-                    "topScreen": draft_id,
-                    "screen": screen,
-                    "nodeId": found_at["nodeId"],
-                    "kind": found_at.get("kind"),
-                    "path": found_at["path"],
-                    "ref": _at(doc if screen == draft_id else doc_of(screen), found_at["path"]),
-                }
-            )
+        for key, row in _ref_rows(draft_id, doc, tree, served_at, listing, doc_of):
+            rows[key].append(row)
 
     manifest_set = set(manifest_ids)
     templates: list[dict[str, Any]] = []
     for path, sha in judged.files:
-        if not path.endswith(SCREEN_SUFFIX):
+        screen = screen_key(path)
+        if screen is None:
             continue
-        screen = _screen_key(path)
         doc, error = docs[path]
         template: dict[str, Any] = {
             "path": path,
@@ -475,11 +489,10 @@ def _build(root: Path, served_at: ServedAt) -> _Built:
             "declaredMacros": _declared_macros(doc),
             "referencedMacros": sorted(_macro_names(doc)),
         }
+        templates.append(template)
         if error is not None:
             template["error"] = error
-            templates.append(template)
             continue
-        templates.append(template)
         rows["absoluteUrls"] += _absolute_urls(screen, doc)
         channels, refs = _rule_retargets(screen, doc)
         rows["ruleRetargetedChannels"] += channels
@@ -749,10 +762,15 @@ def _comparable(report: Any) -> Any:
     return out
 
 
-def _emit(root: Path, served_at: ServedAt) -> int:
-    built = _build(root, served_at)
+def _warn_refusals(built: _Built) -> None:
+    """Print what ``--check`` would refuse, as warnings: ``--emit`` and ``--write`` go ahead regardless."""
     for line in _refusals(built):
         _say(f"warning: --check refuses this tree: {line}")
+
+
+def _emit(root: Path, served_at: ServedAt) -> int:
+    built = _build(root, served_at)
+    _warn_refusals(built)
     document = {"json": built.report, "md": render_markdown(built.report)}
     sys.stdout.write(json.dumps(document, ensure_ascii=True) + "\n")
     return EXIT_OK
@@ -768,8 +786,7 @@ def _write(root: Path, served_at: ServedAt) -> int:
         # The JSON is what a freshness check reads, so it lands last.
         write_atomic(root / REPORT_MD, render_markdown(built.report).encode("ascii"))
         write_atomic(root / REPORT_JSON, _json_bytes(report))
-    for line in _refusals(built):
-        _say(f"warning: --check refuses this tree: {line}")
+    _warn_refusals(built)
     print(f"wrote {REPORT_JSON} and {REPORT_MD} ({len(built.report['files']['list'])} files)")
     return EXIT_OK
 

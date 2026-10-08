@@ -52,7 +52,7 @@ from typing import Any, TypedDict
 from dataclasses import dataclass
 from collections.abc import Collection
 
-from canopy_mcp.store import ID_PATTERN, SCREEN_SUFFIX, DraftStore
+from canopy_mcp.store import ID_PATTERN, DraftStore
 from canopy_mcp.check.refs import (
     IMAGE_PROPS,
     Tree,
@@ -60,10 +60,12 @@ from canopy_mcp.check.refs import (
     StoreTree,
     exists,
     resolve,
+    dir_path,
     fold_ref,
     join_ref,
     iter_refs,
     screen_id,
+    screen_key,
     screen_path,
     normalize_path,
     iter_image_refs,
@@ -132,7 +134,6 @@ EMBED_TYPE = "embedded-display"
 UNKNOWN_TYPE = "unknown-widget"
 _RENDERER_NATIVE_TYPES = frozenset({"absolute-canvas", EMBED_TYPE})
 MAX_DEPTH = 8
-ROOT_DIR = "screens/"
 LOC_PREFIX = "loc://"
 FOX_PREFIX = "fox://"
 WRITE_PV_ACTION = "write_pv"
@@ -385,16 +386,9 @@ def _as_tree(store: DraftStore | Tree) -> Tree:
     return StoreTree(store) if isinstance(store, DraftStore) else store
 
 
-def _screen_key(path: str) -> str | None:
-    """The name of a screen file below ``screens/``, without the id rule (a dotted name is a key)."""
-    if not path.startswith(ROOT_DIR) or not path.endswith(SCREEN_SUFFIX):
-        return None
-    return path[len(ROOT_DIR) : len(path) - len(SCREEN_SUFFIX)]
-
-
 def _load(tree: Tree, path: str, listing: Collection[str] | None) -> dict[str, Any] | None:
     """The screen document at store path ``path``, or ``None`` when the walk cannot load one there."""
-    if _screen_key(path) is None or not exists(tree, path, listing):
+    if screen_key(path) is None or not exists(tree, path, listing):
         return None
     try:
         doc = json.loads(tree.read(path))
@@ -554,7 +548,7 @@ def _walk(
         current = instance.doc
         formulas = current.get("formulas")
         group = _Group(pvs, formulas, instance.macros)
-        screen = draft_id if instance.key == "" else _screen_key(path_of(instance.screen_ref))
+        screen = draft_id if instance.key == "" else screen_key(path_of(instance.screen_ref))
         for raw, props, state in _walk_mounted(current.get("root"), instance.macros):
             if state != _SHOWN and not include_hidden:
                 continue
@@ -775,6 +769,17 @@ def _rule_retargets(target: str) -> str | None:
     return None
 
 
+def _retargeting_rules(doc: dict[str, Any]):
+    """``(node path, node, rule index, targetProperty, code)`` for every rule of ``doc`` a push refuses."""
+    for path, node in iter_nodes(doc):
+        rules = node.get("rules")
+        for index, rule in enumerate(rules if isinstance(rules, list) else []):
+            target = rule.get("targetProperty") if isinstance(rule, dict) else None
+            code = _rule_retargets(target) if isinstance(target, str) else None
+            if code is not None:
+                yield path, node, index, target, code
+
+
 class Refusal(TypedDict):
     """Why :func:`push_closure` refuses a screen: one ref or one rule.
 
@@ -875,7 +880,7 @@ def push_closure(
     back), and when a rule's ``targetProperty`` names one of ``RULE_REF_PROPS``
     or a PV channel key (whole, or as one name of a dotted or indexed target).
     """
-    source = f"{ROOT_DIR}{source_dir}/" if source_dir else ROOT_DIR
+    source = dir_path(source_dir)
     top = screen_path(id)
     refusals: list[Refusal] = []
 
@@ -928,18 +933,12 @@ def push_closure(
             refuse("unresolved_ref", declared_in, declared_by, declared_as, "unreadable", message)
             continue
 
-        for _path, node in iter_nodes(doc):
-            for rule in _rule_list(node.get("rules")):
-                target = rule.get("targetProperty")
-                if not isinstance(target, str):
-                    continue
-                code = _rule_retargets(target)
-                if code == "rule_retargets_ref":
-                    message = f"a rule retargets {target!r}, which names what the screen loads, does or binds"
-                    refuse(code, doc_path, node.get("id"), target, None, message)
-                elif code is not None:
-                    message = f"a rule retargets the PV channel {target!r}"
-                    refuse(code, doc_path, node.get("id"), target, None, message)
+        for _path, node, _index, target, code in _retargeting_rules(doc):
+            if code == "rule_retargets_ref":
+                message = f"a rule retargets {target!r}, which names what the screen loads, does or binds"
+            else:
+                message = f"a rule retargets the PV channel {target!r}"
+            refuse(code, doc_path, node.get("id"), target, None, message)
 
         for nid, _path, ref, embedded in iter_refs(doc):
             if ref == "":

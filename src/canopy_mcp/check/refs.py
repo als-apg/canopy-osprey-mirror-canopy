@@ -184,12 +184,22 @@ def screen_path(draft_id: str | None) -> str:
     return f"{ROOT_DIR}{draft_id}{SCREEN_SUFFIX}" if draft_id else ROOT_DIR
 
 
-def screen_id(path: str) -> str | None:
-    """The draft id a store path names, or ``None`` when it is not ``screens/<draft id>.screen.json``."""
+def screen_key(path: str) -> str | None:
+    """The name of a screen file below ``screens/``, without the id rule (a dotted name is a key)."""
     if not path.startswith(ROOT_DIR) or not path.endswith(SCREEN_SUFFIX):
         return None
-    draft_id = path[len(ROOT_DIR) : -len(SCREEN_SUFFIX)]
-    return draft_id if ID_PATTERN.fullmatch(draft_id) else None
+    return path[len(ROOT_DIR) : -len(SCREEN_SUFFIX)]
+
+
+def screen_id(path: str) -> str | None:
+    """The draft id a store path names, or ``None`` when it is not ``screens/<draft id>.screen.json``."""
+    draft_id = screen_key(path)
+    return draft_id if draft_id is not None and ID_PATTERN.fullmatch(draft_id) else None
+
+
+def dir_path(directory: str) -> str:
+    """The store path of the directory ``directory`` (draft-id space, ``""`` for the top level), with a final ``/``."""
+    return f"{ROOT_DIR}{directory}/" if directory else ROOT_DIR
 
 
 def read_screen(tree: Tree, draft_id: str) -> Any:
@@ -354,7 +364,7 @@ def resolve_ref(ref: str, base_dir: str) -> tuple[str | None, Reason | None]:
     with reason ``absolute``, ``above_root`` (a ref into the other root
     included) or ``invalid_id``.
     """
-    found = resolve(_dir_path(base_dir), (), ref)
+    found = resolve(dir_path(base_dir), (), ref)
     return found.draft_id, None if found.ok else found.reason or "above_root"
 
 
@@ -366,16 +376,12 @@ def resolve_image_ref(ref: str, base_dir: str) -> tuple[str | None, ImageStatus 
     with status ``external`` (fetched by the browser, not checked),
     ``invalid_ref`` or ``above_root`` (a ref into the other root included).
     """
-    found = resolve(_dir_path(base_dir), (), ref, kind="image")
+    found = resolve(dir_path(base_dir), (), ref, kind="image")
     if found.external:
         return None, "external"
     if not found.ok:
         return None, "invalid_ref" if found.reason == "invalid_ref" else "above_root"
     return found.relpath, None
-
-
-def _dir_path(base_dir: str) -> str:
-    return f"{ROOT_DIR}{base_dir}/" if base_dir else ROOT_DIR
 
 
 # --- findings -------------------------------------------------------------------------
