@@ -1,18 +1,13 @@
 """Process start-time tracking for the Jobs health endpoint.
 
 Kept separate from app.py so health routes can read uptime without importing
-the app module (avoids an import cycle).
+the app module (avoids an import cycle). Thin wrapper around the shared
+``canopy.core.runtime.ModuleRuntime`` so each module still owns a distinct
+instance behind its own import path.
 """
 
-import time
+from canopy.core.runtime import ModuleRuntime
 
-_started_monotonic = time.monotonic()
-
-
-def mark_started() -> None:
-    global _started_monotonic
-    _started_monotonic = time.monotonic()
-
-
-def uptime_s() -> float:
-    return time.monotonic() - _started_monotonic
+_runtime = ModuleRuntime()
+mark_started = _runtime.mark_started
+uptime_s = _runtime.uptime_s

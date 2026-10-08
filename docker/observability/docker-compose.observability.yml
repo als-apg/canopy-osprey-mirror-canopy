@@ -8,11 +8,21 @@
 # The api/worker containers write JSON logs to /tmp/canopy-logs (bind-mounted
 # in the base compose); Promtail tails that same host directory.
 # See docs/observability/ for the full guide.
+#
+# YAML anchors do not cross compose files, so this overlay carries its own copy
+# of the base file's json-file log cap.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
 
 services:
   loki:
     image: grafana/loki:3.0.0
     container_name: canopy-loki
+    logging: *default-logging
     command: -config.file=/etc/loki/config.yaml
     ports:
       - "${LOKI_HOST_PORT:-3100}:3100"
@@ -24,6 +34,7 @@ services:
   promtail:
     image: grafana/promtail:3.0.0
     container_name: canopy-promtail
+    logging: *default-logging
     command: -config.file=/etc/promtail/config.yaml
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml:ro
@@ -35,6 +46,7 @@ services:
   grafana:
     image: grafana/grafana:11.1.0
     container_name: canopy-grafana
+    logging: *default-logging
     ports:
       - "${GRAFANA_HOST_PORT:-3000}:3000"
     environment:

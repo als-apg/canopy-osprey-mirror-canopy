@@ -65,12 +65,40 @@ PVWriteValue = float | int | bool | str | list[float | int | bool | str]
 
 
 class PVValue(CanopyModel):
-    """A single live value of a PV — the dynamic, per-update payload."""
+    """A single live value of a PV — the dynamic, per-update payload.
+
+    Attributes
+    ----------
+    pv : str
+        Name of the PV the value belongs to.
+    value : PVValueType
+        The value itself; `None` when the channel is disconnected.
+    value_kind : ValueKind
+        Type discriminator telling a client how to read `value`.
+    severity : AlarmSeverity
+        EPICS alarm severity accompanying the value.
+    alarm_status : int | None
+        The EPICS ``menuAlarmStat`` code that accompanies `severity` (0 = NO_ALARM,
+        3 = HIHI, 4 = HIGH, 5 = LOLO, 6 = LOW, 7 = STATE, 17 = UDF, ...), carried
+        on the wire as `alarmStatus`. The same code set for Channel Access and PV
+        Access. `None` when the channel is disconnected or the backend supplies
+        none. Over PV Access it is the code ``alarm.message`` names when that
+        agrees with `severity` (NO_ALARM with severity 0, any other status with a
+        raised severity); when severity and the ``alarm.status`` category are both
+        zero it is 0 (NO_ALARM) whatever the message says; otherwise `None`.
+    ts_ns : int
+        Value timestamp, in nanoseconds since the Unix epoch.
+    connected : bool
+        Whether the channel was connected when the value was produced.
+    error : str | None
+        Per-value diagnostic, such as a truncated array or an unsupported type.
+    """
 
     pv: str
     value: PVValueType
     value_kind: ValueKind = ValueKind.SCALAR
     severity: AlarmSeverity
+    alarm_status: int | None = None
     ts_ns: int
     connected: bool = True
     error: str | None = None

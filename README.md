@@ -21,7 +21,7 @@ uv run pytest tests/ -v
 Start the API with an API key registered:
 
 ```bash
-CANOPY_API_KEYS="dev:read+write" uv run uvicorn canopy.main:app
+CANOPY_API_KEYS="dev:read+write@*" uv run uvicorn canopy.main:app
 ```
 
 Then exercise it:
@@ -36,8 +36,8 @@ Then exercise it:
 - **Live stream.** Open `frontend-demos/hare-example.html` in a browser, click **Connect**,
   then **Subscribe**. The page defaults to `ws://localhost:8000/hare/v1/ws/pvs?api_key=dev`.
 
-- **Interactive docs.** The mounted Hare app serves Swagger UI at
-  <http://localhost:8000/hare/docs>.
+- **Interactive docs.** <http://localhost:8000/docs> provides one Swagger UI
+  with a service dropdown for Canopy and each mounted module.
 
 ### EPICS Interaction
 
@@ -54,7 +54,7 @@ EPICS_CA_ADDR_LIST=127.0.0.1 EPICS_CA_AUTO_ADDR_LIST=NO \
 Replace the value of EPICS_CA_ADDR_LIST in this command as needed:
 
 ```bash
-CANOPY_API_KEYS="dev:read+write" CANOPY_EPICS__BACKEND=epics \
+CANOPY_API_KEYS="dev:read+write@*" CANOPY_EPICS__BACKEND=epics \
   EPICS_CA_ADDR_LIST=127.0.0.1 EPICS_CA_AUTO_ADDR_LIST=NO \
   uv run uvicorn canopy.main:app
 ```

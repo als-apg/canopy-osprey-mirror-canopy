@@ -19,8 +19,11 @@ RUN uv sync --frozen --extra data --extra convert --no-install-project
 
 COPY src/ ./src/
 COPY .git/ ./.git/
+COPY scripts/ ./scripts/
 
 RUN uv sync --frozen --extra data --extra convert
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 

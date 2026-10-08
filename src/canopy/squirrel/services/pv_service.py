@@ -23,6 +23,45 @@ from canopy.squirrel.data.repositories import (
     MetaPvRepository,
 )
 
+IDENTITY_KINDS: tuple[str, ...] = ("setpoint", "readback", "config")
+
+
+def _identity(
+    setpoint_address: str | None,
+    readback_address: str | None,
+    config_address: str | None,
+) -> tuple[str, str]:
+    """Resolve the identifying address of a PV.
+
+    A PV is identified by its first non-null address in the order setpoint, readback,
+    config. Two PVs are duplicates when their identities are equal, so a PV that owns a
+    setpoint never collides with a setpoint-less PV sharing its readback.
+
+    Parameters
+    ----------
+    setpoint_address : str | None
+        Normalized setpoint address.
+    readback_address : str | None
+        Normalized readback address.
+    config_address : str | None
+        Normalized config address.
+
+    Returns
+    -------
+    tuple[str, str]
+        The identity kind (``"setpoint"``, ``"readback"`` or ``"config"``) and the address
+        carrying it.
+
+    Raises
+    ------
+    BadRequest
+        If every address is ``None``.
+    """
+    for kind, address in zip(IDENTITY_KINDS, (setpoint_address, readback_address, config_address)):
+        if address:
+            return kind, address
+    raise BadRequest("At least one address (setpoint, readback, or config) is required")
+
 
 class PvService:
     """PV registry + meta-PV management. Owns no transaction — the caller commits."""
@@ -81,17 +120,54 @@ class PvService:
         pvs = await self.pv_repo.get_by_ids([pv_id])
         return self._to_dto(pvs[0]) if pvs else None
 
+    async def _find_by_identity(self, kind: str, address: str) -> Pv | None:
+        """Look up the PV already holding an identity.
+
+        Parameters
+        ----------
+        kind : str
+            Identity kind as returned by ``_identity``.
+        address : str
+            Address carrying the identity.
+
+        Returns
+        -------
+        Pv | None
+            The PV owning that identity, or ``None`` when the identity is free.
+        """
+        if kind == "setpoint":
+            return await self.pv_repo.find_by_setpoint(address)
+        if kind == "readback":
+            return await self.pv_repo.find_by_readback_without_setpoint(address)
+        return await self.pv_repo.find_by_config_only(address)
+
     async def create(self, data: NewPVElementDTO) -> PVElementDTO:
+        """Register a single PV.
+
+        Parameters
+        ----------
+        data : NewPVElementDTO
+            Wire payload for the new PV.
+
+        Returns
+        -------
+        PVElementDTO
+            The created PV.
+
+        Raises
+        ------
+        BadRequest
+            If no address is given, or a tag ID is unknown.
+        PvAlreadyExists
+            If another PV already holds the same identifying address.
+        """
         setpoint_address = self._normalize_address(data.setpoint_address)
         readback_address = self._normalize_address(data.readback_address)
         config_address = self._normalize_address(data.config_address)
-        if not any([setpoint_address, readback_address, config_address]):
-            raise BadRequest("At least one address (setpoint, readback, or config) is required")
+        kind, identity_address = _identity(setpoint_address, readback_address, config_address)
 
-        if setpoint_address:
-            existing = await self.pv_repo.find_by_setpoint(setpoint_address)
-            if existing:
-                raise PvAlreadyExists(f"PV with setpoint address '{setpoint_address}' already exists")
+        if await self._find_by_identity(kind, identity_address):
+            raise PvAlreadyExists(f"PV with {kind} address '{identity_address}' already exists")
 
         tags = []
         if data.tags:
@@ -116,29 +192,52 @@ class PvService:
         return self._to_dto(pv)
 
     async def create_many(self, data_list: list[NewPVElementDTO]) -> list[PVElementDTO]:
+        """Register many PVs in one import.
+
+        Parameters
+        ----------
+        data_list : list[NewPVElementDTO]
+            Wire payloads for the PVs to import.
+
+        Returns
+        -------
+        list[PVElementDTO]
+            The created PVs, in input order.
+
+        Raises
+        ------
+        BadRequest
+            If a row has no address, a tag ID is unknown, or two rows in the import share an
+            identifying address.
+        PvAlreadyExists
+            If a row's identifying address is already held by a registered PV.
+        """
         normalized_records: list[tuple[str | None, str | None, str | None, NewPVElementDTO]] = []
+        identities: dict[str, set[str]] = {kind: set() for kind in IDENTITY_KINDS}
+        duplicates: dict[str, set[str]] = {kind: set() for kind in IDENTITY_KINDS}
         for data in data_list:
             setpoint_address = self._normalize_address(data.setpoint_address)
             readback_address = self._normalize_address(data.readback_address)
             config_address = self._normalize_address(data.config_address)
-            if not any([setpoint_address, readback_address, config_address]):
-                raise BadRequest("At least one address (setpoint, readback, or config) is required")
+            kind, identity_address = _identity(setpoint_address, readback_address, config_address)
+            if identity_address in identities[kind]:
+                duplicates[kind].add(identity_address)
+            identities[kind].add(identity_address)
             normalized_records.append((setpoint_address, readback_address, config_address, data))
 
-        setpoints = [r[0] for r in normalized_records if r[0]]
-        seen: set[str] = set()
-        duplicate_setpoints: set[str] = set()
-        for s in setpoints:
-            if s in seen:
-                duplicate_setpoints.add(s)
-            else:
-                seen.add(s)
-        if duplicate_setpoints:
-            raise BadRequest(f"Duplicate setpoint addresses in import: {sorted(duplicate_setpoints)[:10]}")
+        for kind in IDENTITY_KINDS:
+            if duplicates[kind]:
+                raise BadRequest(f"Duplicate {kind} addresses in import: {sorted(duplicates[kind])[:10]}")
 
-        existing_setpoints = await self.pv_repo.get_existing_setpoints(setpoints)
-        if existing_setpoints:
-            raise PvAlreadyExists(f"Setpoint addresses already exist: {sorted(existing_setpoints)[:10]}")
+        existence_lookups = (
+            ("setpoint", self.pv_repo.get_existing_setpoints),
+            ("readback", self.pv_repo.get_existing_readbacks_without_setpoint),
+            ("config", self.pv_repo.get_existing_config_only),
+        )
+        for kind, lookup in existence_lookups:
+            existing = await lookup(sorted(identities[kind]))
+            if existing:
+                raise PvAlreadyExists(f"{kind.capitalize()} addresses already exist: {sorted(existing)[:10]}")
 
         all_tag_ids: set[str] = set()
         for _, _, _, data in normalized_records:

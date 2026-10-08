@@ -1,7 +1,8 @@
 """The closed-meta gate on the five modules that need no database or job queue.
 
 With ``CANOPY_CLOSED_META=1`` nothing but ``GET /health`` answers without a
-registry key. Everything here must hold on an install without the ``data``
+registry key, and a key opens only the modules it is scoped to and only if it
+reads. Everything here must hold on an install without the ``data``
 extra, so the file imports nothing from the unselected modules; the all-eleven
 cases live in ``test_closed_meta_default.py``.
 """
@@ -20,6 +21,7 @@ from canopy.core import security
 from canopy.main import build_app
 from tests.conftest import READ_HEADERS
 from canopy.core.config import Settings
+from canopy.core.errors import KeyStoreUnavailable
 
 FIVE = ("hare", "vole", "fox", "mole", "converter")
 OPEN = ("GET", "/health")
@@ -163,14 +165,126 @@ def test_an_unknown_key_is_refused(closed_app):
 
 
 def test_a_registry_key_that_grants_no_scope_is_refused(closed_app):
-    previous = security._get_registry()
-    security.bind_key_registry(security.EnvKeyRegistry("scopeless:,test-read:read"))
+    previous = security.get_registry()
+    security.bind_key_registry(security.EnvKeyRegistry("scopeless:,test-read:read@*"))
     try:
         client = TestClient(closed_app)
         assert client.get("/", headers={"X-API-Key": "scopeless"}).status_code == 401
         assert client.get("/", headers=READ_HEADERS).status_code == 200
     finally:
         security.bind_key_registry(previous)
+
+
+@pytest.mark.parametrize("path", ["/docs", "/openapi.json", "/hare/docs", "/hare/openapi.json"])
+def test_the_docs_and_openapi_pages_are_refused_without_a_key(closed_app, path):
+    resp = TestClient(closed_app).get(path)
+    assert resp.status_code == 401
+    assert resp.json() == REFUSAL
+
+
+# --- Module scope and the read-key rule --------------------------------------------
+
+
+@pytest.fixture
+def scoped_keys():
+    """Bind a registry of module-scoped keys for one test, then restore the previous one."""
+    previous = security.get_registry()
+    security.bind_key_registry(security.EnvKeyRegistry("hare-key:read@hare,hare-writer:write@hare,core-key:read@core"))
+    try:
+        yield
+    finally:
+        security.bind_key_registry(previous)
+
+
+def test_a_key_scoped_to_one_module_opens_that_module(closed_app, scoped_keys):
+    client = TestClient(closed_app)
+    assert client.get("/hare/docs", headers={"X-API-Key": "hare-key"}).status_code == 200
+    assert client.get("/hare/openapi.json", headers={"X-API-Key": "hare-key"}).status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/fox/docs", "/fox/openapi.json", "/vole/v1/health/watchdog"])
+def test_a_key_scoped_to_another_module_is_refused_with_its_own_code(closed_app, scoped_keys, path):
+    resp = TestClient(closed_app).get(path, headers={"X-API-Key": "hare-key"})
+    assert resp.status_code == 403
+    assert resp.json() == {
+        "code": "insufficient_module_access",
+        "detail": f"API key is not scoped to '{path.split('/')[1]}'",
+    }
+
+
+@pytest.mark.parametrize("path", ["/", "/docs", "/openapi.json", "/no/such/route"])
+def test_the_parent_routes_belong_to_core(closed_app, scoped_keys, path):
+    client = TestClient(closed_app)
+    hare = client.get(path, headers={"X-API-Key": "hare-key"})
+    assert hare.status_code == 403
+    assert hare.json()["code"] == "insufficient_module_access"
+    assert client.get(path, headers={"X-API-Key": "core-key"}).status_code != 403
+
+
+def test_a_key_in_the_module_without_read_is_refused(closed_app, scoped_keys):
+    resp = TestClient(closed_app).get("/hare/docs", headers={"X-API-Key": "hare-writer"})
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "insufficient_scope"
+
+
+def test_a_handshake_to_another_module_is_refused_with_403(closed_app, scoped_keys):
+    client = TestClient(closed_app)
+    with pytest.raises(WebSocketDenialResponse) as excinfo:
+        with client.websocket_connect("/fox/v1/ws/formulas?api_key=hare-key"):
+            pass
+    assert excinfo.value.status_code == 403
+    assert excinfo.value.json()["code"] == "insufficient_module_access"
+
+
+class _DownRegistry:
+    async def get(self, token: str):
+        raise KeyStoreUnavailable("API key store unavailable")
+
+
+@pytest.fixture
+def store_down():
+    previous = security.get_registry()
+    security.bind_key_registry(_DownRegistry())
+    try:
+        yield
+    finally:
+        security.bind_key_registry(previous)
+
+
+def test_a_key_store_that_cannot_answer_is_a_503(closed_app, store_down):
+    client = TestClient(closed_app)
+    resp = client.get("/hare/docs", headers=READ_HEADERS)
+    assert resp.status_code == 503
+    assert resp.json() == {"code": "key_store_unavailable", "detail": "API key store unavailable"}
+    assert client.get("/health").status_code == 200
+
+
+async def test_a_handshake_is_closed_1011_when_the_key_store_cannot_answer(closed_app, store_down):
+    sent = await _handshake(closed_app, query_string=b"api_key=test-read")
+    assert [message["type"] for message in sent] == ["websocket.close"]
+    assert sent[0]["code"] == 1011
+    assert sent[0]["reason"].startswith("key_store_unavailable")
+
+
+def test_a_key_store_down_answers_a_handshake_with_503_when_the_server_can(closed_app, store_down):
+    with pytest.raises(WebSocketDenialResponse) as excinfo:
+        with TestClient(closed_app).websocket_connect("/hare/v1/ws/pvs", headers=READ_HEADERS):
+            pass
+    assert excinfo.value.status_code == 503
+
+
+# --- The key-management routes -----------------------------------------------------
+
+
+def test_an_env_registry_mounts_no_key_management(monkeypatch):
+    """``/v1/api-keys`` needs the database chain; the DB-chain case is in ``core/keys/test_router_mount.py``."""
+    previous = security.get_registry()
+    monkeypatch.setattr(security, "build_key_registry", lambda settings: security.EnvKeyRegistry("k:read@*"))
+    try:
+        app = build_app(FIVE, closed_meta=False)
+    finally:
+        security.bind_key_registry(previous)
+    assert not any(path.startswith("/v1/api-keys") for _, _, path in _walk(app))
 
 
 def test_the_query_parameter_does_not_open_an_http_route(closed_app):
