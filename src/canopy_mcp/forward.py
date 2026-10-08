@@ -1,4 +1,4 @@
-"""The read-only forward of the CANOPY API: two WebSocket relays and the Mole reads.
+"""The forward of the CANOPY API: two WebSocket relays, the Mole reads and the opt-in PV write.
 
 The served viewer reads live values over ``WS /hare/v1/ws/pvs`` and
 ``WS /fox/v1/ws/formulas``. Both are relayed to ``CANOPY_BASE_URL`` with the
@@ -13,15 +13,27 @@ before the browser's handshake is refused with close code 1011.
 way over HTTP: only ``Accept`` and the server key go upstream, ``api_key`` is
 dropped, and a path that would leave ``/mole/v1/`` once decoded is a 404.
 
+With ``CANOPY_PUT_RELAY`` on, ``PUT /hare/v1/pvs/{pv}`` -- and nothing else --
+is relayed exactly: the raw path (no query string) after the same containment
+check under ``/hare/v1/pvs/`` with a non-empty PV, only ``Content-Type`` and the
+write key (``CANOPY_WRITE_API_KEY_FILE``) as headers, a body of at most
+:data:`PUT_BODY_MAX_BYTES`, and upstream's status, body and content type
+returned verbatim. A request whose ``Sec-Fetch-Site`` is present and not in
+:data:`canopy_mcp.views.ALLOWED_FETCH_SITES` is refused 403, an escaping or
+empty PV path 404 and an oversized body 413, all with WC6 row 14b's envelope;
+an upstream that does not answer within ``CANOPY_PUT_RELAY_TIMEOUT_S`` is 504
+and one that cannot be reached 502, both ``pv_write_unknown`` with row 13's
+text, since the write may or may not have happened.
+
 Every other method and path under the backend's service prefixes answers 405,
-in particular ``PUT /hare/v1/pvs/*`` (a PV write) and
-``POST /squirrel/*/restore``: this process fronts the backend read-only.
-WebSocket connections to any other path fall through to Starlette's default,
-which refuses the handshake.
+in particular ``PUT /hare/v1/pvs/*`` with the relay off and
+``POST /squirrel/*/restore``. WebSocket connections to any other path fall
+through to Starlette's default, which refuses the handshake.
 """
 
 import time
 import posixpath
+from typing import Any
 from urllib.parse import quote, unquote, urlsplit, urlencode, urlunsplit, unquote_plus
 from collections.abc import Callable, Iterable, Awaitable
 
@@ -34,14 +46,19 @@ from starlette.responses import Response, JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketState
 from websockets.asyncio.client import ClientConnection, connect
 
-from canopy.core.errors import ErrorCode
-from canopy_mcp.client import auth_headers
+from canopy.contracts import load_wc6_vectors
+from canopy_mcp.views import ALLOWED_FETCH_SITES
+from canopy_mcp.client import API_KEY_HEADER, auth_headers
 from canopy_mcp.config import Settings
+from canopy.core.errors import ErrorCode
 
 RELAYED_PATHS = ("/hare/v1/ws/pvs", "/fox/v1/ws/formulas")
 SERVICE_PREFIXES = ("hare", "fox", "squirrel", "beaver", "raccoon", "mole")
 MOLE_PREFIX = "/mole/v1/"
 MOLE_TIMEOUT = 15.0
+PVS_PREFIX = "/hare/v1/pvs/"
+# Largest PV write body the relay accepts (a JSON ``{"value": ...}``).
+PUT_BODY_MAX_BYTES = 64 * 1024
 API_KEY_QUERY = "api_key"
 OPEN_TIMEOUT = 10.0
 # Pause between connect attempts inside the retry window.
@@ -156,13 +173,15 @@ def _fully_decoded(path: str) -> str:
     return path
 
 
-def mole_upstream_path(scope_path: str, raw_path: bytes | None) -> str | None:
-    """The upstream path for a ``/mole/v1/`` request, or ``None`` when it escapes the prefix.
+def mole_upstream_path(scope_path: str, raw_path: bytes | None, prefix: str = MOLE_PREFIX) -> str | None:
+    """The upstream path for a request under ``prefix``, or ``None`` when it escapes it.
 
-    The containment check runs on the fully decoded, normalized form; the path
-    sent upstream is the request's raw path verbatim (so ``%2F`` inside a
-    segment survives), falling back to the re-quoted decoded path when the raw
-    path is missing or does not describe the same path.
+    ``prefix`` ends in ``/`` (``/mole/v1/`` by default, ``/hare/v1/pvs/`` for the
+    PUT relay); a path naming nothing below it is ``None`` too. The containment
+    check runs on the fully decoded, normalized form; the path sent upstream is
+    the request's raw path verbatim (so ``%2F`` inside a segment and the ``//``
+    of a ``ca://`` PV survive), falling back to the re-quoted decoded path when
+    the raw path is missing or does not describe the same path.
     """
     raw = raw_path.decode("latin-1") if raw_path else None
     if raw is None or unquote(raw) != scope_path:
@@ -172,7 +191,7 @@ def mole_upstream_path(scope_path: str, raw_path: bytes | None) -> str | None:
         if "\\" in decoded or "\x00" in decoded:
             return None
         normalized = posixpath.normpath(decoded)
-        if not normalized.startswith(MOLE_PREFIX) or normalized == MOLE_PREFIX.rstrip("/"):
+        if not normalized.startswith(prefix) or normalized == prefix.rstrip("/"):
             return None
     return raw
 
@@ -222,6 +241,75 @@ def make_mole_forward(settings: Settings) -> Callable[[Request], Awaitable[Respo
     return forward
 
 
+def _row_reply(rows: dict[str, Any], row: str, status_code: int | None = None) -> Callable[[], JSONResponse]:
+    """A factory of WC6 row ``row``'s ``{code, detail}`` reply, at the row's status unless one is given."""
+    vector = rows[row]
+    body = {"code": vector["code"], "detail": vector["detail"]}
+    status = vector["status"] if status_code is None else status_code
+    return lambda: JSONResponse(body, status_code=status)
+
+
+async def _capped_body(request: Request, limit: int) -> bytes | None:
+    """The request body read as a stream, or ``None`` as soon as it exceeds ``limit`` bytes."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                return None
+        except ValueError:
+            return None
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def make_put_relay(settings: Settings) -> Callable[[Request], Awaitable[Response]]:
+    """The ``PUT /hare/v1/pvs/{pv}`` endpoint relaying one PV write to the backend."""
+    base = httpx.URL(settings.base_url)
+    base_path = base.raw_path.split(b"?", 1)[0].rstrip(b"/")
+    write_key = settings.write_api_key
+    timeout = httpx.Timeout(settings.put_relay_timeout_s)
+    rows = load_wc6_vectors()["rows"]
+    # FRONT's own refusals (row 14b): nothing was sent upstream.
+    cross_site, escaping, oversized = (_row_reply(rows, f"14b-{status}") for status in (403, 404, 413))
+    # The write went out and no answer came back: row 13's code and text.
+    timed_out, unreachable = _row_reply(rows, "13", 504), _row_reply(rows, "13", 502)
+
+    async def relay(request: Request) -> Response:
+        site = request.headers.get("sec-fetch-site")
+        if site is not None and site.strip().lower() not in ALLOWED_FETCH_SITES:
+            return cross_site()
+        path = mole_upstream_path(request.scope["path"], request.scope.get("raw_path"), PVS_PREFIX)
+        if path is None:
+            return escaping()
+        body = await _capped_body(request, PUT_BODY_MAX_BYTES)
+        if body is None:
+            return oversized()
+        # Built from scratch: no client header but Content-Type, never the read key.
+        upstream_headers = {API_KEY_HEADER: write_key}
+        if "content-type" in request.headers:
+            upstream_headers["Content-Type"] = request.headers["content-type"]
+        url = base.copy_with(raw_path=base_path + path.encode("ascii"))
+        client: httpx.AsyncClient = request.app.state.http
+        try:
+            upstream = await client.put(url, content=body, headers=upstream_headers, timeout=timeout)
+        except httpx.TimeoutException:
+            return timed_out()
+        except httpx.TransportError:
+            return unreachable()
+        relayed = {}
+        if "content-type" in upstream.headers:
+            relayed["content-type"] = upstream.headers["content-type"]
+        return Response(upstream.content, status_code=upstream.status_code, headers=relayed)
+
+    return relay
+
+
 async def not_allowed(request: Request) -> PlainTextResponse:
     return PlainTextResponse(
         "canopy_mcp forwards the CANOPY API read-only: only the PV and formula WebSockets"
@@ -232,9 +320,11 @@ async def not_allowed(request: Request) -> PlainTextResponse:
 
 
 def build_forward_routes(settings: Settings) -> list[BaseRoute]:
-    """The two relays and the Mole GET, then a 405 for every other method and path of each service."""
+    """The two relays, the Mole GET and (relay on) the PV PUT, then a 405 for everything else of each service."""
     routes: list[BaseRoute] = [WebSocketRoute(path, make_relay(settings, path)) for path in RELAYED_PATHS]
     routes.append(Route(MOLE_PREFIX + "{path:path}", make_mole_forward(settings), methods=["GET"]))
+    if settings.put_relay:
+        routes.append(Route(PVS_PREFIX + "{pv:path}", make_put_relay(settings), methods=["PUT"]))
     for service in SERVICE_PREFIXES:
         routes.append(Route(f"/{service}", not_allowed, methods=None))
         routes.append(Route(f"/{service}/{{path:path}}", not_allowed, methods=None))

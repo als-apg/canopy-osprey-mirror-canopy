@@ -11,16 +11,38 @@ A secret can come from a file instead of the environment
 (``CANOPY_API_KEY_FILE``, ``CANOPY_ACCESS_TOKEN_FILE``). A file variable that
 is set is the only source of its secret, so a file that cannot supply one
 raises :class:`~canopy_mcp.access.CredentialFileError` instead of falling back.
+
+``CANOPY_PUT_RELAY`` (default off) opens the one write route, the exact relay
+of ``PUT /hare/v1/pvs/{pv}`` (:mod:`canopy_mcp.forward`). It goes upstream with
+its own key, read from ``CANOPY_WRITE_API_KEY_FILE`` (there is no environment
+form of the write key), and is bounded by ``CANOPY_PUT_RELAY_TIMEOUT_S``
+(default 27 s). The relay is only ever offered behind the access credential:
+with the relay on, a missing write-key file or a missing
+``CANOPY_ACCESS_TOKEN_FILE`` raises :class:`RelayConfigError` and nothing is
+served.
 """
 
 from typing import Literal
 from pathlib import Path
 from functools import lru_cache
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    Field,
+    PrivateAttr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from canopy_mcp.access import read_secret_file
+
+#: Default bound, in seconds, of one relayed PV write (OSPREY's maximum relay timeout).
+DEFAULT_PUT_RELAY_TIMEOUT_S = 27.0
+
+
+class RelayConfigError(RuntimeError):
+    """The PUT relay is switched on without the secrets it must run behind."""
 
 
 class Settings(BaseSettings):
@@ -80,6 +102,16 @@ class Settings(BaseSettings):
     # (``chromium_sandbox=True``); off by default, since the sandbox needs
     # privileges a container usually lacks.
     browser_sandbox: bool = False
+    # Whether ``PUT /hare/v1/pvs/{pv}`` is relayed to the backend (the one
+    # write route); off leaves it a 405 like every other mutating path.
+    put_relay: bool = False
+    # File holding the write-scope key the relay sends upstream as X-API-Key.
+    # Required with the relay on; there is no environment form of this key.
+    write_api_key_file: Path | None = None
+    # Seconds one relayed write may take upstream before FRONT answers 504.
+    put_relay_timeout_s: float = Field(default=DEFAULT_PUT_RELAY_TIMEOUT_S, gt=0)
+
+    _write_api_key: str = PrivateAttr(default="")
 
     @field_validator(
         "api_key_file",
@@ -92,6 +124,9 @@ class Settings(BaseSettings):
         "library_dir",
         "push_dir",
         "browser_sandbox",
+        "put_relay",
+        "write_api_key_file",
+        "put_relay_timeout_s",
         mode="before",
     )
     @classmethod
@@ -108,6 +143,24 @@ class Settings(BaseSettings):
         if self.api_key_file is not None:
             self.api_key = read_secret_file("CANOPY_API_KEY_FILE", self.api_key_file)
         return self
+
+    @model_validator(mode="after")
+    def _refuse_a_relay_without_its_secrets(self) -> "Settings":
+        # A write key file that is named must supply the key, relay on or off.
+        if self.write_api_key_file is not None:
+            self._write_api_key = read_secret_file("CANOPY_WRITE_API_KEY_FILE", self.write_api_key_file)
+        if not self.put_relay:
+            return self
+        if self.write_api_key_file is None:
+            raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_WRITE_API_KEY_FILE is not set")
+        if self.access_token_file is None:
+            raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_ACCESS_TOKEN_FILE is not set")
+        return self
+
+    @property
+    def write_api_key(self) -> str:
+        """The key the PUT relay sends upstream; empty when no write-key file is configured."""
+        return self._write_api_key
 
 
 @lru_cache
