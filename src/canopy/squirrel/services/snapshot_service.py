@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import math
 import logging
-from typing import Any
+from typing import Any, Literal
 from datetime import UTC, datetime
+from dataclasses import asdict, dataclass
 from collections.abc import Callable
 
 from pydantic import BaseModel
@@ -47,26 +48,70 @@ logger = logging.getLogger(__name__)
 PRIMARY_PHASE = "Setpoints"
 
 
-def _sub_batch_progress(progress_callback: Callable, base: int, total: int) -> Callable:
-    """Offset one write batch's progress onto the restore-wide write count.
+@dataclass
+class RestorePhase:
+    """One stage of a restore: the setpoint writes, or one restore hook's derived writes.
+
+    Reported to the job poller as a ``JobPhaseDTO``, beside the restore-wide percent.
+
+    Attributes
+    ----------
+    name : str
+        ``"Setpoints"`` or the hook's class name, the same name the restore's failure
+        rows carry as ``phase``.
+    total : int
+        Writes the phase will attempt. A hook phase starts at every write it derived and
+        drops to the writes it actually attempts once it starts, leaving out PVs whose
+        setpoint or an earlier hook failed.
+    current : int
+        Writes done so far.
+    status : {"pending", "running", "completed", "skipped"}
+        ``pending`` until the phase starts, then ``running``, then ``completed``, or
+        ``skipped`` when it has nothing to write.
+    failures : int
+        PVs that failed in this phase, matching the failure rows with this ``phase``.
+    """
+
+    name: str
+    total: int
+    current: int = 0
+    status: Literal["pending", "running", "completed", "skipped"] = "pending"
+    failures: int = 0
+
+
+def _phase_dicts(phases: list[RestorePhase]) -> list[dict]:
+    """Every phase's current state, in the ``JobPhaseDTO`` shape the Jobs module stores."""
+    return [asdict(phase) for phase in phases]
+
+
+def _sub_batch_progress(
+    progress_callback: Callable, base: int, total: int, phases: list[RestorePhase], phase: RestorePhase
+) -> Callable:
+    """Offset one write batch's progress onto the restore-wide write count and its phase.
 
     Parameters
     ----------
     progress_callback : Callable
-        The restore's async progress sink, called as ``(current, total, message)``.
+        The restore's async progress sink, called as ``(current, total, message, phases=...)``.
     base : int
         Writes already accounted for when this batch starts.
     total : int
         Every write the restore will attempt.
+    phases : list[RestorePhase]
+        Every phase of the restore, all reported on each call.
+    phase : RestorePhase
+        The phase this batch's writes belong to; its ``current`` advances with them.
 
     Returns
     -------
     Callable
         An async callback in the batch's own scale that reports on the global one.
     """
+    phase_base = phase.current
 
     async def _report(current: int, _batch_total: int, message: str) -> None:
-        await progress_callback(base + current, total, message)
+        phase.current = phase_base + current
+        await progress_callback(base + current, total, message, phases=_phase_dicts(phases))
 
     return _report
 
@@ -463,10 +508,12 @@ class SnapshotService:
         request : RestoreRequestDTO | None
             Restores only ``request.pv_ids`` when given, otherwise the whole snapshot.
         progress_callback : Callable | None
-            Async sink called as ``(current, total, message)``, where ``total`` is every
-            EPICS write the restore will attempt: the setpoints plus all derived writes.
-            Derived writes skipped because their setpoint or an earlier hook failed count
-            as done, so the count always reaches ``total``.
+            Async sink called as ``(current, total, message, phases=...)``, where
+            ``total`` is every EPICS write the restore will attempt: the setpoints plus
+            all derived writes. Derived writes skipped because their setpoint or an
+            earlier hook failed count as done, so the count always reaches ``total``.
+            ``phases`` is sent on every call: each `RestorePhase` as a dict, Setpoints
+            first, then one per hook in configured order.
 
         Returns
         -------
@@ -529,8 +576,22 @@ class SnapshotService:
             len(extras) for derived in derived_per_hook for extras in derived.values()
         )
 
-        if progress_callback:
-            await progress_callback(0, total_writes, f"Starting restore of {total_pvs:,} PVs")
+        setpoints = RestorePhase(PRIMARY_PHASE, total=total_pvs)
+        phases = [setpoints] + [
+            RestorePhase(type(hook).__name__, total=sum(len(extras) for extras in derived.values()))
+            for hook, derived in zip(self.restore_hooks, derived_per_hook, strict=True)
+        ]
+
+        async def report(current: int, message: str) -> None:
+            if progress_callback:
+                await progress_callback(current, total_writes, message, phases=_phase_dicts(phases))
+
+        await report(0, f"Starting restore of {total_pvs:,} PVs")
+
+        # A PV a hook couldn't derive from is never written: it finishes the Setpoints
+        # phase as a failure the moment that phase starts.
+        setpoints.status = "running"
+        setpoints.current = setpoints.failures = len(hook_errors)
 
         results: dict[str, tuple[bool, str | None]] = {}
         failure_phase: dict[str, str] = {}
@@ -538,7 +599,7 @@ class SnapshotService:
             if progress_callback:
                 results.update(
                     await self.epics.put_many_with_progress(
-                        original_values, _sub_batch_progress(progress_callback, 0, total_writes)
+                        original_values, _sub_batch_progress(progress_callback, 0, total_writes, phases, setpoints)
                     )
                 )
             else:
@@ -548,43 +609,54 @@ class SnapshotService:
         for address, (success, _error) in results.items():
             if not success:
                 failure_phase[address] = PRIMARY_PHASE
+                setpoints.failures += 1
+        setpoints.current = setpoints.total
+        setpoints.status = "completed" if setpoints.total else "skipped"
 
-        for hook, derived in zip(self.restore_hooks, derived_per_hook, strict=True):
-            phase = type(hook).__name__
-
+        for derived, phase in zip(derived_per_hook, phases[1:], strict=True):
             extra_values: dict[str, Any] = {}
             primary_by_extra: dict[str, str] = {}
             derived_writes = 0
             for primary_addr, extras in derived.items():
                 derived_writes += len(extras)
-                if not results[primary_addr][0]:
+                # A later hook's derivation error kept this PV out of the write set, so
+                # it has no result; its extras are skipped like a failed setpoint's.
+                if primary_addr in hook_errors or not results[primary_addr][0]:
                     continue
                 for extra_addr, extra_val in extras:
                     extra_values[extra_addr] = extra_val
                     primary_by_extra[extra_addr] = primary_addr
 
             writes_done += derived_writes - len(extra_values)
+            phase.total = len(extra_values)
             if not extra_values:
+                phase.status = "skipped"
                 continue
 
+            phase.status = "running"
             if progress_callback:
-                await progress_callback(writes_done, total_writes, f"Writing {len(extra_values):,} {phase} values...")
+                await report(writes_done, f"Writing {len(extra_values):,} {phase.name} values...")
                 hook_results = await self.epics.put_many_with_progress(
-                    extra_values, _sub_batch_progress(progress_callback, writes_done, total_writes)
+                    extra_values, _sub_batch_progress(progress_callback, writes_done, total_writes, phases, phase)
                 )
             else:
                 hook_results = await self.epics.put_many(extra_values)
             writes_done += len(extra_values)
 
+            failed_primaries: set[str] = set()
             for extra_addr, (ok, err) in hook_results.items():
                 if ok:
                     continue
                 primary_addr = primary_by_extra[extra_addr]
                 results[primary_addr] = (
                     False,
-                    f"Primary write succeeded but {phase} write failed for {extra_addr}: {err or 'unknown error'}",
+                    f"Primary write succeeded but {phase.name} write failed for {extra_addr}: {err or 'unknown error'}",
                 )
-                failure_phase[primary_addr] = phase
+                failure_phase[primary_addr] = phase.name
+                failed_primaries.add(primary_addr)
+            phase.current = phase.total
+            phase.failures = len(failed_primaries)
+            phase.status = "completed"
 
         for addr, err in hook_errors.items():
             results[addr] = (False, err)
@@ -606,8 +678,7 @@ class SnapshotService:
                     }
                 )
 
-        if progress_callback:
-            await progress_callback(total_writes, total_writes, f"{success_count:,}/{total_pvs:,} PVs restored")
+        await report(total_writes, f"{success_count:,}/{total_pvs:,} PVs restored")
         logger.info(
             "Restore completed in %.2fs (%d success, %d failures)",
             (datetime.now(UTC) - start_time).total_seconds(),
