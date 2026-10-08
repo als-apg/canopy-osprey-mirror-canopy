@@ -14,7 +14,6 @@ class ConverterConfig(BaseSettings):
     delimiter ``__``. Examples::
 
         CANOPY_CONVERTER__COLORS_LIST_PATH=/etc/edm/colors.list
-        CANOPY_CONVERTER__USE_BEAVER_GATEWAY=false
         CANOPY_CONVERTER__MAX_UPLOAD_BYTES=10485760
     """
 
@@ -28,10 +27,6 @@ class ConverterConfig(BaseSettings):
     # Path to the EDM ``colors.list`` resolved at parse time. Defaults to the
     # canonical copy bundled under ``converter/data/`` (provisioned in Phase 3).
     colors_list_path: Path = _DEFAULT_COLORS_LIST
-
-    # Seam #1: until Beaver (the widget registry) merges, stay on the vendored
-    # snapshot shipped inside the ``pydmconverter`` package.
-    use_beaver_gateway: bool = False
 
     # Reject uploads larger than this (bytes) before parsing. 10 MiB default.
     max_upload_bytes: int = 10 * 1024 * 1024

@@ -17,7 +17,7 @@ from pydmconverter.react import convert_bytes
 from pydmconverter.ir.emit import to_wire_dict
 from pydmconverter.ir.model import ScreenIR, WidgetNode
 from pydmconverter.ir.schema import validate_screen_json
-from pydmconverter.ir.registry import RegistryClient, VendoredRegistry
+from pydmconverter.ir.registry import VendoredRegistry
 
 from canopy.converter.errors import ConversionFailed, UnsupportedInput
 
@@ -69,11 +69,10 @@ class ConversionResult:
 class ConversionService:
     """Converts ``.edl``/``.ui`` bytes to validated Screen IR + diagnostics."""
 
-    def __init__(self, registry: RegistryClient | None = None) -> None:
+    def __init__(self) -> None:
         # One registry instance, reused across requests (the adapters would
-        # otherwise rebuild a VendoredRegistry per call). Phase 2 injects a
-        # BeaverGatewayRegistry here behind the ``use_beaver_gateway`` flag.
-        self._registry: RegistryClient = registry or VendoredRegistry()
+        # otherwise rebuild a VendoredRegistry per call).
+        self._registry = VendoredRegistry()
 
     def convert(self, data: bytes, *, kind: Literal["edl", "ui"]) -> ConversionResult:
         try:

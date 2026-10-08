@@ -27,7 +27,6 @@ import anyio
 from canopy.converter.config import ConverterConfig, get_converter_config
 from canopy.converter.errors import ConverterError
 from canopy.converter.adapters.edm_env import apply_edm_colors
-from canopy.converter.adapters.beaver_registry import build_registry
 from canopy.converter.services.conversion_service import ConversionService
 
 logger = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ def _get_service() -> ConversionService:
     if _service is None:
         config = get_converter_config()
         apply_edm_colors(config)
-        _service = ConversionService(registry=build_registry(config))
+        _service = ConversionService()
     return _service
 
 

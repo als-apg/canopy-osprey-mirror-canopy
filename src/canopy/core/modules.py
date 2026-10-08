@@ -24,7 +24,6 @@ MODULES: frozenset[str] = frozenset(
         "raccoon",
         "vole",
         "fox",
-        "beaver",
         "squirrel",
         "magpie",
         "jobs",
