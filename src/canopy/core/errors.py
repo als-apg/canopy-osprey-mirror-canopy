@@ -43,6 +43,12 @@ class ErrorCode(StrEnum):
     PV_CONNECTION_FAILED = auto()
     PV_READ_TIMEOUT = auto()
     PV_WRITE_FAILED = auto()
+    PV_WRITE_REFUSED = auto()
+    PV_TARGET_CHANGED = auto()
+    PV_SWITCH_IN_PROGRESS = auto()
+    PV_WRITE_MISMATCH = auto()
+    PV_WRITE_UNCONFIRMED = auto()
+    PV_WRITE_UNKNOWN = auto()
     EPICS_BACKEND_UNAVAILABLE = auto()
     INVALID_PV_NAME = auto()
 
@@ -124,9 +130,11 @@ class CanopyError(Exception):
 
     status_code: int = 500
     error_code: ErrorCode = ErrorCode.UNHANDLED_EXCEPTION
+    # Detail used when the raiser passes none; empty falls back to the class name.
+    default_detail: str = ""
 
     def __init__(self, detail: str = "") -> None:
-        self.detail = detail or self.__class__.__name__
+        self.detail = detail or self.default_detail or self.__class__.__name__
         super().__init__(self.detail)
 
 
@@ -198,6 +206,69 @@ class KeyStoreUnavailable(CanopyError):
 
     status_code = 503
     error_code = ErrorCode.KEY_STORE_UNAVAILABLE
+
+
+# --- PV write outcomes (CONTRACTS WC6) --------------------------------------- #
+#
+# One class per write code. The envelope ``detail`` is the toast text the viewer
+# shows, so every class carries a non-empty default and every raiser passes its
+# row's text (canopy/contracts/wc6_vectors.json holds the table).
+
+#: A dynamic write detail (OSPREY's message, the observed value) is cut here.
+WRITE_DETAIL_MAX_CHARS = 256
+
+
+class PVWriteRefused(CanopyError):
+    """The write was refused before anything reached the channel (many WC6 rows)."""
+
+    status_code = 403
+    error_code = ErrorCode.PV_WRITE_REFUSED
+    default_detail = "the write was refused; nothing written"
+
+
+class PVTargetChanged(CanopyError):
+    """The PUT's binding is not this process's control target (WC6 rows 2, 3)."""
+
+    status_code = 409
+    error_code = ErrorCode.PV_TARGET_CHANGED
+    default_detail = "the control target changed; nothing written"
+
+
+class PVSwitchInProgress(CanopyError):
+    """A control-target switch is under way (WC6 row 5)."""
+
+    status_code = 409
+    error_code = ErrorCode.PV_SWITCH_IN_PROGRESS
+    default_detail = "a target switch is in progress; nothing written"
+
+
+class PVWriteMismatch(CanopyError):
+    """Written, but the confirming read saw another value (WC6 row 11)."""
+
+    status_code = 409
+    error_code = ErrorCode.PV_WRITE_MISMATCH
+    default_detail = "written; the channel holds a different value"
+
+    @classmethod
+    def observed(cls, value: object) -> "PVWriteMismatch":
+        """The row-11 detail naming ``value``, cut at `WRITE_DETAIL_MAX_CHARS`."""
+        return cls(f"written; the channel holds {value}"[:WRITE_DETAIL_MAX_CHARS])
+
+
+class PVWriteUnconfirmed(CanopyError):
+    """Sent, but the put was not acknowledged or the confirming read failed (WC6 row 12)."""
+
+    status_code = 502
+    error_code = ErrorCode.PV_WRITE_UNCONFIRMED
+    default_detail = "sent, not verified"
+
+
+class PVWriteUnknown(CanopyError):
+    """The write's outcome is unknown (WC6 rows 13, 14)."""
+
+    status_code = 502
+    error_code = ErrorCode.PV_WRITE_UNKNOWN
+    default_detail = "outcome unknown — check the readback"
 
 
 def register_canopy_error_handler(app: FastAPI) -> None:
