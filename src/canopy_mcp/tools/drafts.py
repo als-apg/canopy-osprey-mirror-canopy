@@ -15,59 +15,57 @@ Every write is gated twice:
   human in the viewer meanwhile is never overwritten.
 
 Refusals are returned, not raised: ``{draftId, refused: true, reason,
-message, ...}`` with ``reason`` one of ``check_errors``, ``stale_rev`` or
-``exists``. Bad arguments (invalid id, unknown node, missing draft) raise
-:class:`ToolError`. Successful writes return ``{draftId, rev, url, errors,
+message, ...}`` with ``reason`` one of ``check_errors``, ``stale_rev``,
+``exists`` or ``read_only_store``. Bad arguments (invalid id, unknown node,
+missing draft) raise :class:`ToolError`. Successful writes return ``{draftId, rev, url, errors,
 warnings}``.
+
+With a library configured (``CANOPY_LIBRARY_DIR``) the id ``library/<id>`` names
+a screen of the read-only library: ``get_screen`` reads it, ``list_drafts``
+lists it beside the drafts, and every writing tool refuses it with
+``read_only_store`` before anything else happens.
 """
 
 from __future__ import annotations
 
-import asyncio
-import copy
 import re
-from collections.abc import Callable, Iterable, Iterator
-from pathlib import Path
+import copy
+import asyncio
 from typing import Any
+from collections.abc import Callable, Iterable, Iterator
 
 from fastmcp.exceptions import ToolError
 
-from canopy_mcp.check.findings import Finding
+from canopy_mcp.urls import draft_url
+from canopy_mcp.store import DraftStore, RevConflict, DraftNotFound, ReadOnlyStore
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
-from canopy_mcp.store import DraftNotFound, DraftStore, RevConflict
-from canopy_mcp.tools._common import read_draft, refused, validate_id
 from canopy_mcp.tools.check import run_check
-from canopy_mcp.urls import draft_url
+from canopy_mcp.tools._common import (
+    route,
+    refused,
+    get_store,
+    read_draft,
+    reset_stores,
+    get_library_store,
+    read_only_refusal,
+    unwritable_refusal,
+)
+from canopy_mcp.check.findings import Finding
 
 PATCHABLE_KEYS = frozenset({"props", "geometry", "rules", "warnings"})
 
-# One store per drafts directory, so every tool call shares its write lock.
-_stores: dict[Path, DraftStore] = {}
-
-
-def get_store(settings: Settings | None = None) -> DraftStore:
-    """The process-wide :class:`DraftStore` for ``settings.drafts_dir``."""
-    settings = settings or get_settings()
-    key = Path(settings.drafts_dir).resolve()
-    store = _stores.get(key)
-    if store is None:
-        store = _stores[key] = DraftStore(settings.drafts_dir)
-    return store
-
-
-def reset_stores() -> None:
-    """Forget every cached store (tests switch drafts directories)."""
-    _stores.clear()
+# The store cache lives in ``tools._common`` beside ``route``; these names stay importable from here.
+__all__ = ["get_library_store", "get_store", "reset_stores"]
 
 
 # --- helpers ------------------------------------------------------------------------
 
 
-def _read(store: DraftStore, draft_id: str) -> tuple[dict[str, Any], str]:
-    doc, rev = read_draft(store, draft_id)
+def _read(store: DraftStore, draft_id: str, name: str | None = None) -> tuple[dict[str, Any], str]:
+    doc, rev = read_draft(store, draft_id, name)
     if not isinstance(doc, dict):
-        raise ToolError(f"draft {draft_id!r} is not a Screen-IR document")
+        raise ToolError(f"draft {name or draft_id!r} is not a Screen-IR document")
     return doc, rev
 
 
@@ -134,6 +132,8 @@ async def _gated_write(
         rev = await store.write(draft_id, new, expect_rev)
     except RevConflict:
         return _stale(draft_id, expect_rev, store.rev(draft_id))
+    except ReadOnlyStore:
+        return unwritable_refusal(draft_id)
     return {
         "draftId": draft_id,
         "rev": rev,
@@ -217,8 +217,9 @@ def _dicts(findings: Iterable[Finding]) -> list[dict[str, Any]]:
 async def _edit(draft_id: str, base_rev: str, edit: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
     """Read the draft, verify ``base_rev``, apply ``edit(doc)`` to a copy and write it through the gate."""
     settings = get_settings()
-    store = get_store(settings)
-    validate_id(draft_id)
+    store, _ = route(draft_id, settings)
+    if refusal := read_only_refusal(draft_id, store):
+        return refusal
     base, current = _read(store, draft_id)
     new = copy.deepcopy(base)
     edit(new)  # raises ToolError on bad arguments, before any rev refusal
@@ -245,8 +246,9 @@ async def new_screen(
     see the screen, and pass ``rev`` as ``base_rev`` to the next edit.
     """
     settings = get_settings()
-    store = get_store(settings)
-    validate_id(id)
+    store, _ = route(id, settings)
+    if refusal := read_only_refusal(id, store):
+        return refusal
     current = store.rev(id)
     base: dict[str, Any] | None = None
     if current is not None:
@@ -276,11 +278,13 @@ async def new_screen(
 
 @mcp.tool
 async def get_screen(id: str) -> dict[str, Any]:
-    """Return draft ``id`` as ``{draftId, rev, url, screen}``; ``rev`` is the ``base_rev`` for edits."""
+    """Return draft ``id`` as ``{draftId, rev, url, screen}``; ``rev`` is the ``base_rev`` for edits.
+
+    ``library/<id>`` reads a screen of the shared library, which no tool can change.
+    """
     settings = get_settings()
-    store = get_store(settings)
-    validate_id(id)
-    doc, rev = _read(store, id)
+    store, local_id = route(id, settings)
+    doc, rev = _read(store, local_id, id)
     return {"draftId": id, "rev": rev, "url": draft_url(settings, id), "screen": doc}
 
 
@@ -350,8 +354,9 @@ async def remove_node(screen_id: str, node_id: str, base_rev: str) -> dict[str, 
 @mcp.tool
 async def delete_draft(id: str, base_rev: str) -> dict[str, Any]:
     """Delete draft ``id``; ``base_rev`` must be its current rev. Returns ``{draftId, deleted: true}``."""
-    store = get_store()
-    validate_id(id)
+    store, _ = route(id, get_settings())
+    if refusal := read_only_refusal(id, store):
+        return refusal
     current = store.rev(id)
     if current is None:
         raise ToolError(f"no draft stored under {id!r}")
@@ -361,6 +366,8 @@ async def delete_draft(id: str, base_rev: str) -> dict[str, Any]:
         await store.delete(id, base_rev)
     except RevConflict:
         return _stale(id, base_rev, store.rev(id))
+    except ReadOnlyStore:
+        return unwritable_refusal(id)
     except DraftNotFound as exc:
         raise ToolError(f"no draft stored under {id!r}") from exc
     return {"draftId": id, "deleted": True}
@@ -368,17 +375,24 @@ async def delete_draft(id: str, base_rev: str) -> dict[str, Any]:
 
 @mcp.tool
 async def list_drafts() -> dict[str, Any]:
-    """List every draft as ``{draftId, title, path, rev, url}``."""
+    """List every draft as ``{draftId, title, path, rev, url}``.
+
+    Screens of the shared library follow the drafts, with ``draftId``
+    ``library/<id>``; they can be read, checked and screenshotted, not changed.
+    """
     settings = get_settings()
-    store = get_store(settings)
+    listed = [(entry["id"], entry) for entry in get_store(settings).manifest()["screens"]]
+    library = get_library_store(settings)
+    if library is not None:
+        listed += [(f"{library.category}/{entry['id']}", entry) for entry in library.manifest()["screens"]]
     drafts = [
         {
-            "draftId": entry["id"],
+            "draftId": tool_id,
             "title": entry["title"],
             "path": entry["path"],
             "rev": entry["rev"],
-            "url": draft_url(settings, entry["id"]),
+            "url": draft_url(settings, tool_id),
         }
-        for entry in store.manifest()["screens"]
+        for tool_id, entry in listed
     ]
     return {"drafts": drafts}

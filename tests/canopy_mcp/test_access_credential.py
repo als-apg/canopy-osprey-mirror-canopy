@@ -22,12 +22,17 @@ from collections.abc import Iterator
 
 import httpx
 import pytest
-from websockets.sync.server import serve
 from starlette.testclient import TestClient, WebSocketDenialResponse
+from websockets.sync.server import serve
 
 from canopy_mcp import __main__ as entry
 from canopy_mcp.app import McpProxyGuard, create_app
-from canopy_mcp.access import ACCESS_HEADER, AccessGate, CredentialFileError, read_secret_file
+from canopy_mcp.access import (
+    ACCESS_HEADER,
+    AccessGate,
+    CredentialFileError,
+    read_secret_file,
+)
 from canopy_mcp.client import API_KEY_HEADER, make_client, auth_headers
 from canopy_mcp.config import Settings, get_settings
 
@@ -48,7 +53,13 @@ INITIALIZE = {
         "clientInfo": {"name": "test", "version": "0"},
     },
 }
-ENV_VARS = ("CANOPY_ACCESS_TOKEN_FILE", "CANOPY_API_KEY_FILE", "CANOPY_API_KEY", "CANOPY_SELF_URL")
+ENV_VARS = (
+    "CANOPY_ACCESS_TOKEN_FILE",
+    "CANOPY_API_KEY_FILE",
+    "CANOPY_API_KEY",
+    "CANOPY_SELF_URL",
+    "CANOPY_BROWSER_SANDBOX",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -158,6 +169,29 @@ def test_an_empty_variable_counts_as_unset(monkeypatch, name):
     monkeypatch.setenv(name, "")
     settings = Settings()
     assert (settings.access_token_file, settings.api_key_file, settings.self_url) == (None, None, None)
+
+
+def test_the_browser_sandbox_switch_is_off_by_default_and_empty_counts_as_unset(monkeypatch):
+    assert Settings().browser_sandbox is False
+    monkeypatch.setenv("CANOPY_BROWSER_SANDBOX", "")
+    assert Settings().browser_sandbox is False
+    monkeypatch.setenv("CANOPY_BROWSER_SANDBOX", "1")
+    assert Settings().browser_sandbox is True
+
+
+def test_the_gated_app_hands_its_credential_to_the_screenshot_browser(tmp_path):
+    """The browser's own requests to the gated viewer carry the file's credential; nothing is launched for it."""
+    from canopy_mcp.app import chromium_hook
+
+    token_file = _secret_file(tmp_path, "front.access", TOKEN + "\n")
+    app = create_app(_settings(tmp_path, access_token_file=token_file), startup_hooks=[chromium_hook])
+    with TestClient(app) as client:
+        browser = app.state.browser
+        assert browser.access_token == TOKEN
+        assert browser.base_url == app.state.self_url
+        assert not browser.running
+        assert client.get("/health").status_code == 200
+        assert client.get("/embed/drafts/x").status_code == 401  # the gate itself is unchanged
 
 
 def test_the_gate_takes_the_place_of_the_proxy_guard(gated_app):

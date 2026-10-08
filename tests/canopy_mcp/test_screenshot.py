@@ -1,19 +1,22 @@
 """The screenshot tool and the shared Chromium it renders in.
 
-The browser is optional: the first tests pin that a server without
-``playwright`` or without a Chromium still starts and that ``screenshot`` then
-answers "unavailable".
+The browser is optional and lazy: the first tests pin that a server without
+``playwright`` or without a Chromium still starts, that nothing is launched at
+startup, and that ``screenshot`` then answers "unavailable".
 
 The browser tests need a Chromium from ``playwright install chromium``; without
-one they are skipped. They serve a stub viewer build through the real app on a
-real port, because Chromium has to fetch the page over HTTP. The stub stands in
-for the viewer: it exposes ``window.__canopy.pvStatus`` and a screen root, and
-takes the status it settles on from the ``STATUS`` macro so each test can pick it.
+one they fail (a skip would hide a broken gate). They serve a stub viewer build
+through the real app on a real port, because Chromium has to fetch the page
+over HTTP. The stub stands in for the viewer: it exposes
+``window.__canopy.pvStatus`` and a screen root, and takes the status it
+settles on from the ``STATUS`` macro so each test can pick it.
 """
 
 import sys
 import time
+import zlib
 import socket
+import struct
 import threading
 import subprocess
 from pathlib import Path
@@ -26,15 +29,22 @@ from fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
+from canopy_mcp.tools import screenshot as screenshot_module
 from canopy_mcp.config import Settings
 from canopy_mcp.browser import Browser, BrowserNotStarted, get_browser, browser_hook
 from canopy_mcp.tools.screenshot import (
+    STRIP_ROWS,
     PNG_SIGNATURE,
     SETTLE_TIMEOUT_S,
+    STRIP_MIN_PIXELS,
+    _shoot,
     capture,
-    pv_state,
     png_size,
+    pv_state,
     embed_url,
+    _png_chunk,
+    _png_parts,
+    stitch_png,
     viewport_for,
 )
 
@@ -59,6 +69,24 @@ STUB_INDEX = f"""<!doctype html>
       setTimeout(() => {{ window.__canopy.pvStatus = 'connecting'; }}, 20);
       if (target) setTimeout(() => {{ window.__canopy.pvStatus = target; }}, 150);
     </script>
+  </body>
+</html>
+"""
+
+# The viewer's own layout: the screen root sits behind a padding inside a scroller that fills
+# the window, so a root as large as the window starts out with its far edges out of view.
+PAD = 16
+PADDED_INDEX = f"""<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>padded stub viewer</title></head>
+  <body style="margin:0">
+    <main style="width:100vw;height:100vh;overflow:auto">
+      <div style="padding:{PAD}px;width:max-content">
+        <div data-testid="screen-root"
+             style="width:{ROOT_W}px;height:{ROOT_H}px;background:linear-gradient(135deg,#f00,#0f0,#00f)"></div>
+      </div>
+    </main>
+    <script>window.__canopy = {{ pvStatus: 'mock' }};</script>
   </body>
 </html>
 """
@@ -158,7 +186,7 @@ def test_pv_state(status: str | None, pv: str) -> None:
         ({"width": 640, "height": 400}, {"width": 1280, "height": 800}),
         ({"width": 2410, "height": 900}, {"width": 2410, "height": 900}),
         ({"width": 2410}, {"width": 2410, "height": 800}),
-        ({"width": 99999, "height": True}, {"width": 8192, "height": 800}),
+        ({"width": 99999, "height": True}, {"width": 4096, "height": 800}),
         ({"width": "wide", "height": 1000.0}, {"width": 1280, "height": 1000}),
     ],
 )
@@ -213,17 +241,18 @@ def test_the_modules_import_without_playwright() -> None:
     assert done.stdout.strip().endswith("ok")
 
 
-async def test_browser_start_without_playwright_is_an_import_error(no_playwright: None) -> None:
+async def test_browser_start_without_playwright_is_unavailable(no_playwright: None) -> None:
     browser = Browser("http://127.0.0.1:1")
-    with pytest.raises(ImportError):
+    with pytest.raises(BrowserNotStarted, match="unavailable") as info:
         await browser.start()
+    assert isinstance(info.value.__cause__, ImportError)
     assert not browser.running
 
 
 def test_server_without_playwright_starts_and_screenshot_is_unavailable(
     no_playwright: None, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The default Chromium hook cannot launch anything: the server starts anyway."""
+    """The default hook installs a browser that cannot launch: the server starts anyway."""
     from fastmcp import Client
 
     from canopy_mcp.app import chromium_hook
@@ -232,9 +261,10 @@ def test_server_without_playwright_starts_and_screenshot_is_unavailable(
     app = create_app(Settings(drafts_dir=tmp_path / "drafts"), startup_hooks=[chromium_hook])
     with caplog.at_level("WARNING", logger="canopy_mcp.browser"), TestClient(app) as client:
         assert client.get("/health").status_code == 200
-        assert app.state.browser is None
-        with pytest.raises(BrowserNotStarted):
-            get_browser()
+        browser = app.state.browser
+        assert isinstance(browser, Browser) and not browser.running
+        assert get_browser() is browser
+        assert caplog.text == ""  # nothing was tried at startup
 
         async def call() -> None:
             async with Client(mcp) as mcp_client:
@@ -242,21 +272,32 @@ def test_server_without_playwright_starts_and_screenshot_is_unavailable(
 
         with pytest.raises(ToolError, match="unavailable"):
             client.portal.call(call)
+        assert not browser.running
     assert "screenshots are unavailable" in caplog.text
+    with pytest.raises(BrowserNotStarted):
+        get_browser()
 
 
-async def test_hook_with_a_chromium_that_fails_to_launch_yields_no_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_hook_with_a_chromium_that_fails_to_launch_yields_an_unavailable_browser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from types import SimpleNamespace
 
-    async def no_chromium(self: Browser) -> None:
+    from canopy_mcp import browser as browser_mod
+
+    async def no_chromium(playwright, *, sandbox: bool) -> None:
         raise RuntimeError("Executable doesn't exist")
 
-    monkeypatch.setattr(Browser, "start", no_chromium)
+    monkeypatch.setattr(browser_mod, "_launch_chromium", no_chromium)
     app = SimpleNamespace(state=SimpleNamespace())
     async with browser_hook("http://127.0.0.1:1")(app) as browser:
-        assert browser is None and app.state.browser is None
+        assert isinstance(browser, Browser) and app.state.browser is browser
+        assert get_browser() is browser and not browser.running
         with pytest.raises(BrowserNotStarted, match="unavailable"):
-            get_browser()
+            await capture(browser, "bts/view")
+        assert not browser.running and not browser.lock.locked()
+    with pytest.raises(BrowserNotStarted, match="unavailable"):
+        get_browser()
 
 
 # --- Live Chromium --------------------------------------------------------------
@@ -275,7 +316,7 @@ def _chromium_installed() -> bool:
 @pytest.fixture(scope="module")
 def chromium() -> None:
     if not _chromium_installed():
-        pytest.skip("chromium not installed: run `playwright install chromium`")
+        pytest.fail("chromium not installed for this interpreter: run `python -m playwright install chromium`")
 
 
 def _free_port() -> int:
@@ -408,21 +449,23 @@ async def test_browser_start_stop_is_idempotent(stub_server: _Server) -> None:
     await browser.stop()
     assert not browser.running
     await browser.stop()
-    with pytest.raises(BrowserNotStarted):
-        async with browser.context():
-            pass
+    # Lazy: a capture after a stop launches a fresh Chromium rather than failing.
+    async with browser.context():
+        assert browser.running and browser._browser is not first
+    await browser.stop()
+    assert not browser.running
 
 
 async def test_screenshot_tool_over_mcp_with_lifespan_browser(
     chromium: None, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    """The hook launches Chromium at startup; the tool answers over MCP with an image."""
+    """Nothing launches at startup; the first tool call launches Chromium and answers over MCP with an image."""
     from fastmcp import Client
 
     settings = _settings(tmp_path_factory.mktemp("mcp"), STUB_INDEX)
     with _Server(settings, lambda base: [browser_hook(base)]) as server:
         browser = server.app.state.browser
-        assert browser.running  # launched at startup, before any call
+        assert not browser.running  # nothing launched at startup
         drafts = settings.drafts_dir
         before = sorted(p.relative_to(drafts) for p in drafts.rglob("*"))
         async with Client(f"{server.base_url}/mcp") as client:
@@ -432,11 +475,226 @@ async def test_screenshot_tool_over_mcp_with_lifespan_browser(
             )
             with pytest.raises(ToolError):
                 await client.call_tool("screenshot", {"id": "bts/view", "theme": "blue"})
+        assert browser.running  # launched by the first call, kept for the next
         assert themed.structured_content == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
         images = [block for block in result.content if isinstance(block, ImageContent)]
         assert len(images) == 1 and images[0].mimeType == "image/png"
         assert result.structured_content == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
-    assert not browser.running
+    assert not browser.running  # the lifespan exit stopped it
     assert sorted(p.relative_to(drafts) for p in drafts.rglob("*")) == before  # no file written
     with pytest.raises(BrowserNotStarted):
         get_browser()
+
+
+# --- Large screens: captured in strips, joined here -----------------------------
+
+
+def _paeth(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    return a if pa <= pb and pa <= pc else b if pb <= pc else c
+
+
+def _filter_row(kind: int, row: bytes, above: bytes, bpp: int) -> bytes:
+    out = bytearray([kind])
+    for i, value in enumerate(row):
+        a = row[i - bpp] if i >= bpp else 0
+        b = above[i]
+        c = above[i - bpp] if i >= bpp else 0
+        predicted = (0, a, b, (a + b) >> 1, _paeth(a, b, c))[kind]
+        out.append((value - predicted) & 0xFF)
+    return bytes(out)
+
+
+def _encode_png(rows: list[bytes], width: int, colour: int, filters: list[int]) -> bytes:
+    bpp = {2: 3, 6: 4}[colour]
+    above, lines = bytes(width * bpp), []
+    for kind, row in zip(filters, rows, strict=True):
+        lines.append(_filter_row(kind, row, above, bpp))
+        above = row
+    header = struct.pack(">IIBBBBB", width, len(rows), 8, colour, 0, 0, 0)
+    return (
+        PNG_SIGNATURE
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(b"".join(lines)))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def _decode_png(data: bytes) -> list[bytes]:
+    """The raw scanlines of an 8-bit RGB or RGBA PNG."""
+    header, lines = _png_parts(data)
+    width, height, _depth, colour = struct.unpack(">IIBB", header[:10])
+    bpp = {2: 3, 6: 4}[colour]
+    stride, above, rows = 1 + width * bpp, bytes(width * bpp), []
+    for n in range(height):
+        line = lines[n * stride : (n + 1) * stride]
+        row = bytearray(line[1:])
+        for i in range(len(row)):
+            a = row[i - bpp] if i >= bpp else 0
+            b = above[i]
+            c = above[i - bpp] if i >= bpp else 0
+            row[i] = (row[i] + (0, a, b, (a + b) >> 1, _paeth(a, b, c))[line[0]]) & 0xFF
+        above = bytes(row)
+        rows.append(above)
+    return rows
+
+
+@pytest.mark.parametrize("colour", [2, 6])
+@pytest.mark.parametrize("first_filter", [0, 1, 2, 3, 4])
+def test_stitch_png_keeps_every_pixel_whatever_filter_opens_a_strip(colour: int, first_filter: int) -> None:
+    width, bpp = 7, {2: 3, 6: 4}[colour]
+    rows = [bytes((x * 37 + y * 101 + x * y) % 256 for x in range(width * bpp)) for y in range(9)]
+    strips = [
+        _encode_png(rows[0:3], width, colour, [first_filter, 4, 3]),
+        _encode_png(rows[3:7], width, colour, [first_filter, 2, 1, 4]),
+        _encode_png(rows[7:9], width, colour, [first_filter, 3]),
+    ]
+    joined = stitch_png(strips)
+    assert png_size(joined) == (width, 9)
+    assert _decode_png(joined) == rows
+
+
+def test_stitch_png_of_one_strip_is_that_image() -> None:
+    rows = [bytes(range(12)), bytes(range(12, 24))]
+    assert _decode_png(stitch_png([_encode_png(rows, 4, 2, [4, 4])])) == rows
+
+
+def test_stitch_png_refuses_strips_that_do_not_fit_together() -> None:
+    row = bytes(12)
+    with pytest.raises(ValueError):
+        stitch_png([_encode_png([row], 4, 2, [0]), _encode_png([row], 3, 6, [0])])
+    with pytest.raises(ValueError):
+        stitch_png([_encode_png([row], 4, 2, [0]), _encode_png([row[:9]], 3, 2, [0])])
+    with pytest.raises(ValueError):
+        stitch_png([])
+    with pytest.raises(ValueError):
+        stitch_png([b"GIF89a"])
+
+
+class _FakeRoot:
+    """A root at ``box``; scrolling it into view moves it to ``scrolled`` (``box`` when not given)."""
+
+    def __init__(self, box: dict[str, float] | None, scrolled: dict[str, float] | None = None) -> None:
+        self.box, self.scrolled, self.shots, self.scrolls = box, scrolled, 0, 0
+
+    async def evaluate(self, _script: str) -> None:
+        self.scrolls += 1
+        if self.scrolled is not None:
+            self.box = self.scrolled
+
+    async def bounding_box(self) -> dict[str, float] | None:
+        return self.box
+
+    async def screenshot(self, **_kwargs: object) -> bytes:
+        self.shots += 1
+        return b"element"
+
+
+class _FakePage:
+    """A page that, like the browser, cuts a clip down to what the viewport shows."""
+
+    def __init__(self, viewport: dict[str, int] | None = None) -> None:
+        self.viewport_size = {"width": 4096, "height": 4096} if viewport is None else viewport
+        self.clips: list[dict[str, int] | None] = []
+
+    async def screenshot(self, *, type: str, clip: dict[str, int] | None = None) -> bytes:  # noqa: A002
+        self.clips.append(clip)
+        if clip is None:
+            return b"page"
+        width = min(clip["x"] + clip["width"], self.viewport_size["width"]) - clip["x"]
+        height = min(clip["y"] + clip["height"], self.viewport_size["height"]) - clip["y"]
+        rows = [bytes([clip["y"] % 256]) * (width * 3)] * height
+        return _encode_png(rows, width, 2, [1] * height)
+
+
+async def test_a_default_sized_screen_is_one_element_screenshot() -> None:
+    page, root = _FakePage(), _FakeRoot({"x": 0, "y": 0, "width": 1280, "height": 800})
+    assert await _shoot(page, root) == b"element"
+    assert page.clips == [] and root.shots == 1
+    assert await _shoot(page, None) == b"page"
+    assert await _shoot(page, _FakeRoot(None)) == b"element"
+
+
+async def test_a_large_screen_is_captured_in_strips_that_cover_it_once() -> None:
+    page, root = _FakePage(), _FakeRoot({"x": 8, "y": 16, "width": 2500, "height": 1000})
+    data = await _shoot(page, root)
+    assert root.shots == 0
+    assert png_size(data) == (2500, 1000)
+    assert all(clip is not None and clip["x"] == 8 and clip["width"] == 2500 for clip in page.clips)
+    tops = [clip["y"] for clip in page.clips if clip]
+    heights = [clip["height"] for clip in page.clips if clip]
+    assert tops[0] == 16 and sum(heights) == 1000 and max(heights) <= STRIP_ROWS
+    assert all(top + height == nxt for top, height, nxt in zip(tops, heights, tops[1:], strict=False))
+    assert 2500 * 1000 > STRIP_MIN_PIXELS >= 1280 * 800
+
+
+async def test_a_screen_as_large_as_the_viewport_is_scrolled_into_view_and_comes_back_whole() -> None:
+    """The viewer pads the root by 16 px inside a scroller: unscrolled, 16 px of each axis are out of view."""
+    page = _FakePage({"width": 4096, "height": 4096})
+    root = _FakeRoot(
+        {"x": 16, "y": 16, "width": 4096, "height": 4096}, scrolled={"x": 0, "y": 0, "width": 4096, "height": 4096}
+    )
+    data = await _shoot(page, root)
+    assert png_size(data) == (4096, 4096)
+    assert root.scrolls == 1 and root.shots == 0
+    assert len(page.clips) == 4096 // STRIP_ROWS
+    assert all(clip is not None and clip["x"] == 0 and clip["width"] == 4096 for clip in page.clips)
+    assert [clip["y"] for clip in page.clips if clip] == list(range(0, 4096, STRIP_ROWS))
+
+
+@pytest.mark.parametrize(
+    "box",
+    [
+        {"x": 16, "y": 0, "width": 4096, "height": 4096},  # past the right edge
+        {"x": 0, "y": 16, "width": 4096, "height": 4096},  # past the bottom edge
+        {"x": -16, "y": 0, "width": 4096, "height": 4096},  # past the left edge
+        {"x": 0, "y": -16, "width": 4096, "height": 4096},  # past the top edge
+        {"x": 0, "y": 0, "width": 5000, "height": 3000},  # wider than the viewport can be
+    ],
+)
+async def test_a_large_screen_the_viewport_cannot_show_whole_is_one_element_screenshot(box: dict[str, float]) -> None:
+    """Strips would lose what is out of view; the element screenshot reaches it."""
+    page, root = _FakePage({"width": 4096, "height": 4096}), _FakeRoot(box)
+    assert await _shoot(page, root) == b"element"
+    assert page.clips == [] and root.shots == 1
+
+
+async def test_a_large_screen_on_a_page_without_a_viewport_is_one_element_screenshot() -> None:
+    page, root = _FakePage(), _FakeRoot({"x": 0, "y": 0, "width": 2500, "height": 1000})
+    page.viewport_size = None  # type: ignore[assignment]
+    assert await _shoot(page, root) == b"element"
+    assert page.clips == [] and root.shots == 1
+
+
+async def test_strips_of_a_padded_root_as_large_as_the_viewport_give_the_whole_picture(
+    chromium: None, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real Chromium on the viewer's layout: a root that fills the viewport, 16 px in from the scroller's corner."""
+    settings = _settings(tmp_path_factory.mktemp("padded"), PADDED_INDEX)
+    with _Server(settings, []) as server:
+        browser = Browser(server.base_url, viewport={"width": ROOT_W, "height": ROOT_H})
+        await browser.start()
+        try:
+            whole, info = await capture(browser, "bts/view")
+            monkeypatch.setattr(screenshot_module, "STRIP_MIN_PIXELS", 0)
+            monkeypatch.setattr(screenshot_module, "STRIP_ROWS", 50)
+            striped, striped_info = await capture(browser, "bts/view")
+        finally:
+            await browser.stop()
+    assert info == {"width": ROOT_W, "height": ROOT_H, "pv": "disconnected"}
+    assert striped_info == info
+    rows = _decode_png(striped)
+    assert rows == _decode_png(whole)
+    assert len({bytes(row) for row in rows}) > 1  # a gradient, so a shifted or cut frame would differ
+
+
+async def test_strips_and_one_shot_give_the_same_picture(
+    stub_browser: Browser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    whole, info = await capture(stub_browser, "bts/view", {"STATUS": "mock"})
+    monkeypatch.setattr(screenshot_module, "STRIP_MIN_PIXELS", 0)
+    monkeypatch.setattr(screenshot_module, "STRIP_ROWS", 50)
+    striped, striped_info = await capture(stub_browser, "bts/view", {"STATUS": "mock"})
+    assert striped_info == info
+    assert _decode_png(striped) == _decode_png(whole)

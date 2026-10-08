@@ -17,7 +17,16 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from aioca import FORMAT_CTRL, FORMAT_TIME, CANothing, caget, caput, cainfo, camonitor
+from aioca import (
+    FORMAT_CTRL,
+    FORMAT_TIME,
+    CANothing,
+    caget,
+    caput,
+    cainfo,
+    _catools,
+    camonitor,
+)
 from p4p.client.asyncio import Context as P4PContext
 
 from canopy.epics.base import (
@@ -45,6 +54,19 @@ _PVA_KINDS = {
     "NTEnum": ValueKind.ENUM,
     "NTTable": ValueKind.TABLE,
 }
+
+
+def _ca_channels() -> dict | None:
+    """aioca's table of open channels for the running loop, by PV name, or None
+    when it has opened none yet.
+
+    aioca keeps every channel it ever opened and offers no way to drop a single
+    one, so this reaches into its private cache. A change there surfaces as an
+    exception in `EpicsConnector._ca_search_afresh`, which then turns itself off."""
+    cache = _catools._Context._channel_caches.get(asyncio.get_running_loop())  # noqa: SLF001
+    if cache is None:
+        return None
+    return cache._ChannelCache__channels  # noqa: SLF001
 
 
 def _sanitize(value):
@@ -122,6 +144,7 @@ class EpicsConnector:
         char_array_as_string: bool = True,
         max_array_elements: int = 100_000,
         connect_report_s: float = 1.5,
+        ca_reconnect_s: float = 15.0,
     ) -> None:
         self._ca_timeout = ca_timeout_s
         self._pva_timeout = pva_timeout_s
@@ -129,8 +152,15 @@ class EpicsConnector:
         self._char_array_as_string = char_array_as_string
         self._max_array_elements = max_array_elements
         self._connect_report = connect_report_s
+        self._ca_reconnect = ca_reconnect_s
         self._loop: asyncio.AbstractEventLoop | None = None
         self._pva_context = None
+        # Channel Access reconnection (see `_ca_search_afresh`), all by bare PV
+        # name: this connector's open monitors, when the channel was last opened
+        # or dropped here, and the pending timer of each lost monitored channel.
+        self._ca_monitors: dict[str, set[_CaSubscription]] = {}
+        self._ca_searched: dict[str, float] = {}
+        self._ca_watchers: dict[str, asyncio.TimerHandle] = {}
 
     @classmethod
     def from_config(cls, cfg) -> "EpicsConnector":
@@ -141,12 +171,16 @@ class EpicsConnector:
             char_array_as_string=cfg.char_array_as_string,
             max_array_elements=cfg.max_array_elements,
             connect_report_s=cfg.connect_report_s,
+            ca_reconnect_s=cfg.ca_reconnect_s,
         )
 
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
 
     async def close(self) -> None:
+        for timer in self._ca_watchers.values():
+            timer.cancel()
+        self._ca_watchers.clear()
         if self._pva_context is not None:
             try:
                 self._pva_context.close()
@@ -158,6 +192,85 @@ class EpicsConnector:
         if self._pva_context is None:
             self._pva_context = P4PContext("pva", nt=False)
         return self._pva_context
+
+    # --- Channel Access reconnection -------------------------------------- #
+
+    def _ca_search_afresh(self, name: str, *, min_age_s: float) -> None:
+        """Drop the channel for `name` if it is lost, so its next use searches anew.
+
+        libca keeps searching for a channel whose server went away, but ever more
+        slowly: measured against a soft IOC, the searches come 12, 16, 49 and 98 s
+        apart after the first half minute, and the gap keeps doubling up to
+        ``EPICS_CA_MAX_SEARCH_PERIOD`` (300 s). Only a server beacon resets that,
+        and a client that reaches its server through an address list (a container,
+        a gateway) sees none. Until the next search every read times out, although
+        the server is back. A new channel is searched for at once, which is why
+        restarting the process helps.
+
+        So a lost channel is closed and forgotten here, and the caller's next use
+        of the name opens a new one. This connector's monitors on it are reopened.
+        The channel is left alone when it was opened or dropped less than
+        `min_age_s` ago, and when it carries a subscription this connector did not
+        open, which closing the channel would end."""
+        if self._ca_reconnect <= 0:
+            return
+        now = time.monotonic()
+        try:
+            channels = _ca_channels()
+            channel = channels.get(name) if channels is not None else None
+            if channel is None:
+                # The caller is about to open it: its search starts now.
+                self._ca_searched[name] = now
+                return
+            if channel.connected():
+                self._ca_searched.pop(name, None)
+                return
+            if now - self._ca_searched.get(name, -math.inf) < min_age_s:
+                return
+            monitors = list(self._ca_monitors.get(name, ()))
+            if channel.count_subscriptions() != sum(1 for m in monitors if m.attached()):
+                return
+            for monitor in monitors:
+                monitor.detach()
+            try:
+                del channels[name]
+                channel._purge()  # noqa: SLF001
+                self._ca_searched[name] = now
+            finally:
+                for monitor in monitors:
+                    monitor.attach(connect_timeout=None)
+        except Exception:
+            logger.exception(
+                "dropping the lost CA channel %s failed; lost channels are left to libca's own search from here on",
+                name,
+            )
+            self._ca_reconnect = 0
+
+    def _ca_watch(self, name: str) -> None:
+        """Start the timer that keeps searching for a lost monitored channel.
+
+        A read drops a lost channel itself, but a monitored PV may never be read:
+        its last event is what callers are shown."""
+        if self._ca_reconnect <= 0 or name in self._ca_watchers or not self._ca_monitors.get(name):
+            return
+        loop = asyncio.get_running_loop()
+        self._ca_watchers[name] = loop.call_later(self._ca_reconnect, self._ca_watch_tick, name)
+
+    def _ca_watch_tick(self, name: str) -> None:
+        self._ca_watchers.pop(name, None)
+        if not self._ca_monitors.get(name):
+            return
+        # Half the period: a read may have dropped the channel a moment ago.
+        self._ca_search_afresh(name, min_age_s=self._ca_reconnect / 2)
+        try:
+            channels = _ca_channels()
+            lost = channels is not None and name in channels and not channels[name].connected()
+        except Exception:
+            logger.exception("checking the CA channel %s failed", name)
+            lost = False
+        if lost:
+            # A reconnect ends the watch; the next disconnect event restarts it.
+            self._ca_watch(name)
 
     # --- one-shot reads -------------------------------------------------- #
 
@@ -175,6 +288,7 @@ class EpicsConnector:
 
     async def _get_ca(self, pv: str, stripped: str, timeout: float | None) -> PVValue:
         t = timeout if timeout is not None else self._ca_timeout
+        self._ca_search_afresh(stripped, min_age_s=self._ca_timeout)
         try:
             aug = await caget(stripped, format=FORMAT_TIME, timeout=t, throw=False)
         except Exception as exc:
@@ -203,6 +317,7 @@ class EpicsConnector:
 
     async def _put_ca(self, pv: str, stripped: str, value: PVWriteValue, timeout: float | None, wait: bool) -> None:
         t = timeout if timeout is not None else self._ca_timeout
+        self._ca_search_afresh(stripped, min_age_s=self._ca_timeout)
         try:
             result = await caput(stripped, value, wait=wait, timeout=t, throw=False)
         except Exception as exc:
@@ -228,6 +343,7 @@ class EpicsConnector:
         return await self._describe_ca(pv, stripped)
 
     async def _describe_ca(self, pv: str, stripped: str) -> PVMeta:
+        self._ca_search_afresh(stripped, min_age_s=self._ca_timeout)
         try:
             aug = await caget(stripped, format=FORMAT_CTRL, timeout=self._ca_timeout, throw=False)
         except Exception:
@@ -314,6 +430,12 @@ class EpicsConnector:
     def _subscribe_ca(self, pv: str, stripped: str, on_event: EventCallback) -> Subscription:
         loop = self._loop or asyncio.get_event_loop()
 
+        def deliver(pvvalue: PVValue) -> None:
+            # On the loop thread. A lost channel is searched for from here on.
+            if not pvvalue.connected:
+                self._ca_watch(stripped)
+            on_event(pvvalue)
+
         def callback(value, *_args):
             # Runs on aioca's C worker thread. An exception here would propagate
             # into libca's callback dispatch with no Python frame above it to
@@ -323,20 +445,24 @@ class EpicsConnector:
                     pvvalue = self._disconnected(pv, "disconnected from IOC")
                 else:
                     pvvalue = self._ca_to_pvvalue(pv, value)
-                loop.call_soon_threadsafe(on_event, pvvalue)
+                loop.call_soon_threadsafe(deliver, pvvalue)
             except Exception:
                 logger.exception("CA monitor callback for %s failed", pv)
 
-        # `connect_timeout` makes aioca report a channel that has not connected
-        # within the bound as one disconnect; it still updates if it connects later.
-        subscription = camonitor(
-            stripped,
-            callback,
-            notify_disconnect=True,
-            format=FORMAT_TIME,
-            connect_timeout=self._connect_report,
-        )
-        return _CaSubscription(subscription)
+        def open_monitor(connect_timeout: float | None):
+            # `connect_timeout` makes aioca report a channel that has not connected
+            # within the bound as one disconnect; it still updates if it connects later.
+            return camonitor(
+                stripped,
+                callback,
+                notify_disconnect=True,
+                format=FORMAT_TIME,
+                connect_timeout=connect_timeout,
+            )
+
+        subscription = _CaSubscription(open_monitor, self._ca_monitors, stripped)
+        subscription.attach(connect_timeout=self._connect_report)
+        return subscription
 
     def _subscribe_pva(self, pv: str, stripped: str, on_event: EventCallback) -> Subscription:
         ctx = self._get_pva_context()
@@ -509,15 +635,45 @@ class EpicsConnector:
         )
 
 
-@dataclass
 class _CaSubscription:
-    sub: object
+    """One Channel Access monitor. Its aioca subscription can be replaced while
+    it stays open, which is how it moves to a new channel after the old one was
+    lost (`EpicsConnector._ca_search_afresh`)."""
+
+    def __init__(self, open_monitor, registry: dict[str, set["_CaSubscription"]], name: str) -> None:
+        self._open_monitor = open_monitor
+        self._registry = registry
+        self._name = name
+        self._closed = False
+        self.sub = None
+
+    def attached(self) -> bool:
+        """Whether the aioca subscription is registered on its channel, which it
+        is once the channel has connected for the first time."""
+        return self.sub is not None and self.sub.state == self.sub.OPEN
+
+    def attach(self, *, connect_timeout: float | None) -> None:
+        if self._closed:
+            return
+        self.sub = self._open_monitor(connect_timeout)
+        self._registry.setdefault(self._name, set()).add(self)
+
+    def detach(self) -> None:
+        sub, self.sub = self.sub, None
+        if sub is not None:
+            try:
+                sub.close()
+            except Exception:
+                pass
 
     async def close(self) -> None:
-        try:
-            self.sub.close()
-        except Exception:
-            pass
+        self._closed = True
+        monitors = self._registry.get(self._name)
+        if monitors is not None:
+            monitors.discard(self)
+            if not monitors:
+                del self._registry[self._name]
+        self.detach()
 
 
 @dataclass

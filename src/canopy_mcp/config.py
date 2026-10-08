@@ -55,10 +55,18 @@ class Settings(BaseSettings):
     # Build-time channel catalog (a JSON string[]) served on /channels for
     # Trace's PV autocomplete; unset or missing means no catalog (404).
     channels_file: Path | None = None
-    # Whether the six authoring tools (new_screen, patch_node, add_node,
-    # remove_node, delete_draft, convert_legacy) are offered; off leaves the
-    # nine read-only tools.
+    # Read-only screen library served beside the drafts: its screens are
+    # ``library/<id>`` to the tools and ``/embed/library/<id>`` to the viewer,
+    # and only its ``screens/`` subtree is served. Unset means no library.
+    library_dir: Path | None = None
+    # Whether the seven authoring tools (new_screen, patch_node, add_node,
+    # remove_node, delete_draft, convert_legacy, request_push) are offered;
+    # off leaves the nine read-only tools.
     authoring: bool = True
+    # Directory ``request_push`` writes its bundles into, one directory per
+    # request, for an administrator to review. Unset means the tool answers
+    # ``push_unavailable``.
+    push_dir: Path | None = None
     # Directory holding the saved-view ``*.json`` files; unset means
     # ``<drafts_dir>/views``.
     views_dir: Path | None = None
@@ -68,6 +76,10 @@ class Settings(BaseSettings):
     # Directory of widget detail ``*.json`` files the catalog is built from
     # instead of the backend's /beaver registry; unset means the registry.
     widgets_dir: Path | None = None
+    # Whether the screenshot Chromium launches with its own sandbox on
+    # (``chromium_sandbox=True``); off by default, since the sandbox needs
+    # privileges a container usually lacks.
+    browser_sandbox: bool = False
 
     @field_validator(
         "api_key_file",
@@ -77,6 +89,9 @@ class Settings(BaseSettings):
         "views_dir",
         "relay_connect_retry_s",
         "widgets_dir",
+        "library_dir",
+        "push_dir",
+        "browser_sandbox",
         mode="before",
     )
     @classmethod

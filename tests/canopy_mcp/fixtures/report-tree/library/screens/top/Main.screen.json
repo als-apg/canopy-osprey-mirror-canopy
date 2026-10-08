@@ -1,0 +1,155 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "main",
+  "metadata": {
+    "title": "main",
+    "source": {
+      "type": "hand-authored"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [
+    {
+      "name": "DEV",
+      "default": "SR01"
+    },
+    {
+      "name": "theme",
+      "default": "dark"
+    }
+  ],
+  "root": {
+    "id": "root",
+    "type": "absolute-canvas",
+    "props": {},
+    "children": [
+      {
+        "id": "slider",
+        "type": "pv-slider",
+        "props": {
+          "pv": "${DEV}:SET"
+        }
+      },
+      {
+        "id": "run",
+        "type": "regular-button",
+        "props": {
+          "text": "Run",
+          "actions": [
+            {
+              "type": "execute",
+              "command": "Run | thing",
+              "description": "starts *it*"
+            },
+            {
+              "type": "open_display",
+              "file": "other.screen.json"
+            },
+            {
+              "type": "open_display",
+              "file": "parts/part.v2.screen.json"
+            },
+            {
+              "type": "open_display",
+              "file": "gone.screen.json"
+            },
+            {
+              "type": "open_webpage",
+              "url": "https://example.org/a_b"
+            },
+            {
+              "type": "open_webpage",
+              "url": "/docs/x"
+            }
+          ]
+        }
+      },
+      {
+        "id": "shell",
+        "type": "shell-command-button",
+        "props": {
+          "visible": false,
+          "actions": [
+            {
+              "type": "execute",
+              "command": "reboot"
+            }
+          ]
+        }
+      },
+      {
+        "id": "part",
+        "type": "embedded-display",
+        "props": {
+          "file": "parts/part.v2.screen.json",
+          "macros": {
+            "P": "${DEV}"
+          }
+        }
+      },
+      {
+        "id": "folded",
+        "type": "embedded-display",
+        "props": {
+          "file": "embedded/_X.part.screen.json"
+        }
+      },
+      {
+        "id": "missing",
+        "type": "embedded-display",
+        "props": {
+          "file": "nope.screen.json"
+        }
+      },
+      {
+        "id": "veil",
+        "type": "group",
+        "props": {
+          "visible": false
+        },
+        "children": [
+          {
+            "id": "under",
+            "type": "embedded-display",
+            "props": {
+              "file": "other.screen.json"
+            }
+          }
+        ]
+      },
+      {
+        "id": "logo",
+        "type": "image-view",
+        "props": {
+          "src": "logo.png"
+        }
+      },
+      {
+        "id": "remote",
+        "type": "image-view",
+        "props": {
+          "src": "https://example.org/logo.png"
+        }
+      },
+      {
+        "id": "link",
+        "type": "text-label",
+        "props": {
+          "text": "see https://example.org/help",
+          "url": "HTTP://example.org/Help"
+        }
+      },
+      {
+        "id": "loose",
+        "type": "pv-label",
+        "props": {
+          "pv": "${UNSET}:V"
+        }
+      }
+    ]
+  }
+}

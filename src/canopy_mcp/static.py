@@ -18,6 +18,13 @@ Draft images (anything under the drafts route that is not a screen) also carry
 ``.svg`` opened directly must not run script and no body may be sniffed into a
 more capable type.
 
+With a library configured (``CANOPY_LIBRARY_DIR``) the manifest lists its
+screens after the drafts, as ``{id, category: "library", path:
+"library/screens/<id>.screen.json"}``, and ``/drafts/library/<path>`` is answered
+only by the read-only library store, which serves nothing outside its
+``screens/`` directory: a ``WRITE-BINDINGS`` report or any other file beside it
+is a 404. The same headers and ETags apply as for drafts.
+
 The built react-trace is served at exactly ``/trace/`` (its index, with a
 ``<base href>`` of ``{prefix}/trace/`` and :data:`TRACE_CSP`), ``/trace/assets/``
 and ``/trace/favicon.svg``. Every other ``/trace`` path, the bare ``/trace``
@@ -79,7 +86,13 @@ from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
 
-from canopy_mcp.store import SCREEN_SUFFIX, DraftStore, InvalidDraftId, contained_file
+from canopy_mcp.store import (
+    LIBRARY,
+    SCREEN_SUFFIX,
+    DraftStore,
+    InvalidDraftId,
+    contained_file,
+)
 from canopy_mcp.config import Settings
 from canopy.core.color_scheme import get_color_scheme
 
@@ -244,8 +257,8 @@ def _screen_rev(store: DraftStore, target: Path) -> str | None:
         return None
 
 
-def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
-    """The viewer, config, draft and health routes for ``settings`` and ``store``."""
+def build_routes(settings: Settings, store: DraftStore, library: DraftStore | None = None) -> list[Route]:
+    """The viewer, config, draft and health routes for ``settings``, ``store`` and the optional ``library``."""
     dist = settings.viewer_dist
 
     async def index(request: Request) -> Response:
@@ -272,17 +285,25 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         )
 
     async def manifest(request: Request) -> Response:
-        body = json.dumps(store.manifest(), ensure_ascii=False).encode("utf-8")
+        listing = store.manifest()
+        if library is not None:
+            listing = {"screens": [*listing["screens"], *library.manifest()["screens"]]}
+        body = json.dumps(listing, ensure_ascii=False).encode("utf-8")
         rev = hashlib.sha256(body).hexdigest()
         return _revved(request, rev, lambda: Response(body, media_type="application/json"))
 
     async def draft_file(request: Request) -> Response:
         relpath = request.path_params["path"]
-        target = store.resolve_static(relpath)
+        owner = store
+        if library is not None:
+            first, _, rest = relpath.partition("/")
+            if first == LIBRARY:
+                owner, relpath = library, rest
+        target = owner.resolve_static(relpath)
         if target is None:
             return PlainTextResponse("not found", status_code=404)
         is_screen = target.name.endswith(SCREEN_SUFFIX)
-        rev = _screen_rev(store, target) if is_screen else None
+        rev = _screen_rev(owner, target) if is_screen else None
         if rev is None:
             rev = hashlib.sha256(target.read_bytes()).hexdigest()
         media = "application/json" if is_screen else None

@@ -12,8 +12,10 @@ that is set and ``<drafts_dir>/views`` otherwise, a sibling of ``screens/``,
 so the drafts manifest (which walks only ``screens/``) never lists one and
 the ``/drafts`` route (which serves only screens and images) never serves one.
 
-As in :mod:`canopy_mcp.store`, this process is the only writer: one
-``asyncio.Lock`` serialises writes, and every file is replaced atomically
+As in :mod:`canopy_mcp.store`, other processes may write the same directory:
+every write is one synchronous section in a worker thread under an exclusive
+``flock`` on the views directory itself (never on the drafts root, and with no
+lock file), behind the store's ``asyncio.Lock``. Every file is replaced atomically
 (temp file in the views directory + ``os.replace``) so a reader never sees half a view.
 
 HTTP surface (:func:`build_view_routes`), every response ``Cache-Control: no-cache``:
@@ -25,6 +27,8 @@ HTTP surface (:func:`build_view_routes`), every response ``Cache-Control: no-cac
   id is stored under another kind (a PUT without ``kind`` counts as ``trace``), 415 unless
   ``Content-Type: application/json``, 413 over :data:`MAX_BODY_BYTES`
 * ``DELETE /views/{id}`` -> 204, 404, 400
+* ``PUT`` and ``DELETE`` -> 403 ``{"error": "read_only_store: ...", "code": "read_only_store"}``
+  when the views directory may not be written
 
 Errors are ``{"error": "..."}``. The routes sit behind the OSPREY proxy like
 the drafts routes and carry no auth of their own; as a CSRF guard, PUT and
@@ -32,11 +36,9 @@ DELETE answer 403 when ``Sec-Fetch-Site`` is present and is neither
 ``same-origin`` nor ``none``.
 """
 
-import os
 import re
 import json
 import asyncio
-import tempfile
 import unicodedata
 from typing import Any
 from pathlib import Path
@@ -45,6 +47,14 @@ from datetime import UTC, datetime
 from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
+
+from canopy_mcp.store import (
+    ReadOnlyStore,
+    lock_root,
+    make_dirs,
+    remove_file,
+    write_atomic,
+)
 
 VIEW_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 VIEW_KIND_PATTERN = re.compile(r"[a-z][a-z0-9-]{0,31}")
@@ -176,9 +186,7 @@ class ViewStore:
                 views.append(view)
         return sorted(views, key=lambda v: (v["name"].casefold(), v["id"]))
 
-    async def put(
-        self, view_id: str, name: Any, query: Any, kind: Any = None
-    ) -> tuple[dict[str, Any], bool]:
+    async def put(self, view_id: str, name: Any, query: Any, kind: Any = None) -> tuple[dict[str, Any], bool]:
         """Create or replace the view; returns ``(view, created)``.
 
         An absent ``kind`` is ``trace``. Raises :class:`ViewKindConflict` when the id is
@@ -195,30 +203,31 @@ class ViewStore:
         }
         data = _serialize(view)
         async with self._lock:
+            created = await asyncio.to_thread(self._put_locked, view_id, path, kind, data)
+        return view, created
+
+    def _put_locked(self, view_id: str, path: Path, kind: str, data: bytes) -> bool:
+        make_dirs(self.views)
+        with lock_root(self.views):
             created = not path.exists()
             existing = None if created else self._load(path, view_id)
             if existing is not None and existing["kind"] != kind:
                 raise ViewKindConflict(f"view {view_id!r} is stored as kind {existing['kind']!r}")
-            self.views.mkdir(parents=True, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=self.views, prefix=f".{path.name}.", suffix=".tmp")
-            try:
-                with os.fdopen(fd, "wb") as fh:
-                    fh.write(data)
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                os.replace(tmp, path)
-            except BaseException:
-                Path(tmp).unlink(missing_ok=True)
-                raise
-        return view, created
+            write_atomic(path, data)
+        return created
 
     async def delete(self, view_id: str) -> None:
         path = self.path_for(view_id)
         async with self._lock:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                raise ViewNotFound(view_id) from None
+            await asyncio.to_thread(self._delete_locked, view_id, path)
+
+    def _delete_locked(self, view_id: str, path: Path) -> None:
+        try:
+            # A views directory that was never created holds no view; deleting does not create it.
+            with lock_root(self.views):
+                remove_file(path)
+        except FileNotFoundError:
+            raise ViewNotFound(view_id) from None
 
 
 # --- HTTP ----------------------------------------------------------------------
@@ -232,6 +241,12 @@ def _json(body: Any, status_code: int = 200, headers: dict[str, str] | None = No
 
 def _error(status_code: int, message: str, headers: dict[str, str] | None = None) -> Response:
     return _json({"error": message}, status_code, headers)
+
+
+def _read_only() -> Response:
+    # A fixed text: the exception names a server path, which a browser has no use for.
+    message = f"{ReadOnlyStore.code}: saved views cannot be changed here"
+    return _json({"error": message, "code": ReadOnlyStore.code}, 403)
 
 
 def _cross_site(request: Request) -> bool:
@@ -288,6 +303,8 @@ def build_view_routes(views: ViewStore) -> list[Route]:
             return _error(400, str(exc))
         except ViewKindConflict as exc:
             return _error(409, str(exc))
+        except ReadOnlyStore:
+            return _read_only()
         return _json(view, 201 if created else 200)
 
     async def item(request: Request) -> Response:
@@ -309,6 +326,8 @@ def build_view_routes(views: ViewStore) -> list[Route]:
             return _json(views.get(view_id))
         except ViewNotFound:
             return _error(404, f"no view {view_id!r}")
+        except ReadOnlyStore:
+            return _read_only()
 
     return [
         Route("/views", collection, methods=ALL_METHODS),

@@ -30,6 +30,12 @@ class EpicsConfig(BaseSettings):
     pva_timeout_s: float = 5.0
     # When a name is unprefixed and CA fails to connect, retry over PVA.
     unprefixed_pva_fallback: bool = False
+    # How often a Channel Access channel whose server went away is dropped and
+    # searched for from scratch. libca's own search for a lost channel slows to
+    # one attempt every few minutes, so without this a PV stays disconnected long
+    # after its server is back. A read also drops a lost channel, at most once per
+    # `ca_timeout_s`. 0 leaves lost channels to libca.
+    ca_reconnect_s: float = 15.0
     # Treat a CA DBR_CHAR array as a string rather than a numeric waveform.
     char_array_as_string: bool = True
 

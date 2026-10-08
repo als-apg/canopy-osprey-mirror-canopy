@@ -30,9 +30,9 @@ from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
 from canopy_mcp.catalog import Catalog, CatalogError, ensure_catalog
 from canopy_mcp.check.lint import check_lint
-from canopy_mcp.check.refs import check_refs
+from canopy_mcp.check.refs import Tree, ServedAt, check_refs, read_screen
 from canopy_mcp.check.schema import check_schema
-from canopy_mcp.tools._common import read_draft, validate_id
+from canopy_mcp.tools._common import route, get_store, read_draft, validate_id
 from canopy_mcp.check.findings import Finding
 from canopy_mcp.check.semantic import check_semantic
 
@@ -70,11 +70,22 @@ async def run_check(
     draft_id: str | None = None,
     *,
     store: DraftStore | None = None,
+    tree: Tree | None = None,
+    served_at: ServedAt | None = None,
     catalog: Catalog | None = None,
     client: httpx.AsyncClient | None = None,
     settings: Settings | None = None,
 ) -> CheckResult:
     """Run every pass on ``screen``, or on the stored draft ``draft_id`` when no screen is given.
+
+    Without ``store``, ``draft_id`` is the id a tool was given and is routed:
+    ``library/<id>`` is checked in the library store when one is configured.
+    With ``store``, ``draft_id`` is already an id inside that store.
+
+    A ``tree`` (:class:`canopy_mcp.check.refs.Tree`) takes the store's place: the
+    stored draft, ref existence and embedded documents are read through it and
+    no store is opened, ``draft_id`` being an id inside it. ``served_at`` names
+    the root the tree stands for (``personal`` when not given).
 
     Raises :class:`ToolError` when neither argument is given, the id is invalid,
     the stored draft does not exist (or is not JSON), or the widget catalog
@@ -83,11 +94,18 @@ async def run_check(
     if screen is None and draft_id is None:
         raise ToolError("check needs a screen document or a draft_id")
     settings = settings or get_settings()
-    store = store or DraftStore(settings.drafts_dir)
-    if draft_id is not None:
-        validate_id(draft_id)
-    if screen is None:
-        screen, _ = read_draft(store, draft_id)  # type: ignore[arg-type]
+    given = draft_id
+    if tree is not None or store is not None:
+        if draft_id is not None:
+            validate_id(draft_id)
+    elif draft_id is not None:
+        store, draft_id = route(draft_id, settings)
+    else:
+        store = get_store(settings)
+    if screen is None and tree is not None:
+        screen = _read_from_tree(tree, draft_id)  # type: ignore[arg-type]
+    elif screen is None:
+        screen, _ = read_draft(store, draft_id, given)  # type: ignore[arg-type]
     if catalog is None:
         try:
             catalog = await ensure_catalog(settings, client)
@@ -96,11 +114,21 @@ async def run_check(
 
     result = CheckResult()
     result.schema = check_schema(screen)
-    result.semantic = check_semantic(screen) + check_refs(screen, store, draft_id)
+    refs = check_refs(screen, tree if tree is not None else store, draft_id, served_at=served_at)  # type: ignore[arg-type]
+    result.semantic = check_semantic(screen) + refs
     lint = await check_lint(screen, catalog, client=client, settings=settings)
     result.lint = lint.findings
     result.skipped = lint.skipped
     return result
+
+
+def _read_from_tree(tree: Tree, draft_id: str) -> Any:
+    try:
+        return read_screen(tree, draft_id)
+    except FileNotFoundError as exc:
+        raise ToolError(f"no draft stored under {draft_id!r}") from exc
+    except ValueError as exc:
+        raise ToolError(f"draft {draft_id!r} is not valid JSON: {exc}") from exc
 
 
 @mcp.tool
@@ -108,7 +136,7 @@ async def check(screen: dict[str, Any] | None = None, draft_id: str | None = Non
     """Check a Screen-IR document without saving it: schema, semantic, ref and lint findings.
 
     Pass exactly one source: ``screen`` (a document) or ``draft_id`` (a stored
-    draft). With ``screen``, ``draft_id`` is optional and only sets the
+    draft, or ``library/<id>`` for a screen of the shared library). With ``screen``, ``draft_id`` is optional and only sets the
     directory its ``embedded-display``/``open_display`` refs resolve in.
 
     Returns ``{schema, semantic, lint, skipped}``: each finding has ``nodeId``,

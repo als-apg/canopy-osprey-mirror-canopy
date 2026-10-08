@@ -5,7 +5,7 @@ the tool modules themselves are imported only by :func:`register_all`, which
 keeps ``import canopy_mcp.server`` cheap and free of side effects.
 
 ``mcp`` is one instance per process, so the set of tools it offers is too.
-:func:`set_authoring` takes the six :data:`AUTHORING_TOOLS` off it or puts
+:func:`set_authoring` takes the seven :data:`AUTHORING_TOOLS` off it or puts
 them back; the app calls it with ``CANOPY_AUTHORING``, and the last app built
 in a process decides.
 """
@@ -17,12 +17,25 @@ from concurrent.futures import ThreadPoolExecutor
 from fastmcp import FastMCP
 from fastmcp.tools import Tool
 
-mcp = FastMCP("canopy")
+mcp = FastMCP(
+    "canopy",
+    instructions="Build Canopy screens by the canopy-panel-builder skill (.claude/skills/canopy-panel-builder/SKILL.md; "
+    "`python -m canopy_mcp.skill install <project dir>` writes it).",
+)
 
 _TOOLS_PACKAGE = "canopy_mcp.tools"
 
-# The tools that create, change or delete drafts. Every other tool only reads.
-AUTHORING_TOOLS = ("new_screen", "patch_node", "add_node", "remove_node", "delete_draft", "convert_legacy")
+# The tools that create, change or delete drafts, or file one for the shared library.
+# Every other tool only reads.
+AUTHORING_TOOLS = (
+    "new_screen",
+    "patch_node",
+    "add_node",
+    "remove_node",
+    "delete_draft",
+    "convert_legacy",
+    "request_push",
+)
 
 # The authoring Tool objects as they were registered, kept from the first
 # removal on: the tool modules are imported once, so nothing else can put a
