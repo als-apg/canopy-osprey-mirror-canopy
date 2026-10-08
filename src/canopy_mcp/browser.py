@@ -272,13 +272,16 @@ class _Session:
 
     async def _route(self, route: "Route", request: "Request") -> None:
         method = request.method.upper()
-        if not same_origin(request.url, self.origin):
-            self._record(method, request.url, "aborted: off-origin")
+
+        async def abort(why: str) -> None:
+            self._record(method, request.url, f"aborted: {why}")
             await route.abort()
+
+        if not same_origin(request.url, self.origin):
+            await abort("off-origin")
             return
         if method not in ALLOWED_METHODS:
-            self._record(method, request.url, "aborted: method")
-            await route.abort()
+            await abort("method")
             return
         headers = {name: value for name, value in request.headers.items() if name.lower() != _ACCESS_HEADER_LOWER}
         if self.access_token is not None:
@@ -286,13 +289,11 @@ class _Session:
         try:
             response = await route.fetch(max_redirects=0, headers=headers)
         except Exception as exc:
-            self._record(method, request.url, "aborted: fetch failed")
             logger.debug("screenshot browser: fetch failed: %s", self._brief(exc))
-            await route.abort()
+            await abort("fetch failed")
             return
         if response.status in REDIRECT_STATUSES and any(name.lower() == "location" for name in response.headers):
-            self._record(method, request.url, f"aborted: redirect {response.status}")
-            await route.abort()
+            await abort(f"redirect {response.status}")
             return
         self._record(method, request.url, f"fulfilled {response.status}")
         await route.fulfill(response=response)
@@ -480,8 +481,7 @@ class Browser:
             browser = await _launch_chromium(playwright, sandbox=self.sandbox)
         except Exception as exc:
             await _bounded("playwright.stop", playwright.stop())
-            first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
-            reason = f"Chromium did not launch: {first_line}"
+            reason = f"Chromium did not launch: {_brief(exc)}"
             if self.sandbox:
                 reason += f" (launched with {SANDBOX_SWITCH}=1; unset it to launch without the Chromium sandbox)"
             raise self._unavailable(reason, exc) from exc

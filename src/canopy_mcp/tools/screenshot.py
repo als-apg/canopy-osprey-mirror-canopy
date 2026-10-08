@@ -339,9 +339,7 @@ async def screenshot(id: str, macros: dict[str, str] | None = None, theme: Theme
         data, info = await capture(
             browser, local_id, macros, size=_draft_size(store, local_id), theme=theme, category=store.category
         )
-    except InvalidDraftId as exc:
-        raise ToolError(str(exc)) from exc
-    except BrowserNotStarted as exc:
+    except (InvalidDraftId, BrowserNotStarted) as exc:
         raise ToolError(str(exc)) from exc
     except _playwright_errors() as exc:
         raise ToolError(f"screenshot failed: {exc}") from exc
