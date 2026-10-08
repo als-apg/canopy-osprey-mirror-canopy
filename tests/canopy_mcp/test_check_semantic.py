@@ -166,6 +166,100 @@ def test_inert_in_osprey_on_write_pv_action() -> None:
     assert f.path == "/root/children/0/props/actions/1"
 
 
+# --- writes_to_machine (relay on) -----------------------------------------
+
+
+def _codes_on(doc: dict[str, Any]) -> list[str]:
+    return [f.code for f in check_semantic(doc, relay_on=True)]
+
+
+def test_relay_flag_defaults_off() -> None:
+    doc = _doc(_node("w-1", "pv-button", props={"pv": "SR:X"}))
+    assert _codes(doc) == ["inert_in_osprey"]
+    assert [f.code for f in check_semantic(doc, relay_on=False)] == ["inert_in_osprey"]
+
+
+@pytest.mark.parametrize("ntype", sorted(INERT_IN_OSPREY_TYPES))
+def test_relay_on_control_with_a_machine_channel_writes_to_the_machine(ntype: str) -> None:
+    (f,) = check_semantic(_doc(_node("w-1", ntype, props={"pv": "SR:X"})), relay_on=True)
+    assert (f.code, f.severity, f.node_id, f.path) == ("writes_to_machine", "warning", "w-1", "/root/children/0/type")
+    assert f.message.endswith("writes to the machine")
+    assert ntype in f.message
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        {"pv": "loc://flag"},
+        {"pv": "fox://calc"},
+        {"pv": "loc://a", "readbackPV": "fox://b"},
+        {"pv": "  "},
+        {},
+    ],
+)
+def test_relay_on_control_without_a_machine_channel_stays_inert(props: dict[str, Any]) -> None:
+    formulas = [{"name": "calc", "expression": "1"}, {"name": "b", "expression": "1"}]
+    doc = _doc(_node("w-1", "pv-toggle", props=props), formulas=formulas)
+    assert _codes_on(doc) == ["inert_in_osprey"]
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        {"pv": "loc://a", "readbackPV": "SR:RB"},
+        {"pv": "ca://SR:X"},
+        {"pv": "pva://SR:X"},
+        {"pv": "${P}:X"},
+        {"pvName": " SR:X "},
+    ],
+)
+def test_relay_on_any_machine_channel_makes_the_control_write(props: dict[str, Any]) -> None:
+    doc = _doc(_node("w-1", "pv-slider", props=props))
+    assert _codes_on(doc) == ["writes_to_machine"]
+
+
+def test_relay_on_write_pv_action_with_a_machine_pv_writes_to_the_machine() -> None:
+    actions = [
+        {"type": "write_pv", "pvName": "loc://x", "value": 1},
+        {"type": "write_pv", "pvName": "SR:X", "value": 1},
+        {"type": "write_pv", "pvName": "fox://f", "value": 1},
+    ]
+    doc = _doc(_node("w-1", "action-button", props={"actions": actions}), formulas=[{"name": "f", "expression": "1"}])
+    found = [(f.code, f.path) for f in check_semantic(doc, relay_on=True)]
+    assert found == [
+        ("inert_in_osprey", "/root/children/0/props/actions/0"),
+        ("writes_to_machine", "/root/children/0/props/actions/1"),
+        ("inert_in_osprey", "/root/children/0/props/actions/2"),
+    ]
+    machine = check_semantic(doc, relay_on=True)[1]
+    assert machine.severity == "warning"
+    assert machine.message == "write_pv action writes to the machine"
+
+
+def test_relay_off_write_pv_action_with_a_machine_pv_stays_inert() -> None:
+    actions = [{"type": "write_pv", "pvName": "SR:X", "value": 1}]
+    assert _codes(_doc(_node("w-1", "action-button", props={"actions": actions}))) == ["inert_in_osprey"]
+
+
+@pytest.mark.parametrize("pv_name", [None, 3, "", "   "])
+def test_relay_on_write_pv_action_without_a_usable_pv_stays_inert(pv_name: Any) -> None:
+    action: dict[str, Any] = {"type": "write_pv", "value": 1}
+    if pv_name is not None:
+        action["pvName"] = pv_name
+    assert _codes_on(_doc(_node("w-1", "action-button", props={"actions": [action]}))) == ["inert_in_osprey"]
+
+
+def test_relay_on_read_only_widget_has_no_write_finding() -> None:
+    assert _codes_on(_doc(_node("w-1", "pv-label", props={"pv": "SR:X"}))) == []
+
+
+def test_relay_on_tolerates_malformed_props() -> None:
+    node = _node("w-1", "pv-button")
+    node["props"] = "nope"
+    assert _codes_on(_doc(node)) == ["inert_in_osprey"]
+    assert check_semantic("not a doc", relay_on=True) == []
+
+
 # --- warning ---------------------------------------------------------------
 
 

@@ -185,7 +185,17 @@ def test_config_json(client: TestClient) -> None:
     assert body["screensPath"] == "drafts"
     assert isinstance(body["themes"], dict)
     assert body["views"] == {"path": "views"}
-    assert set(body) == {"pvMode", "screensPath", "themes", "views", "colorScheme", "backend", "binding"}
+    assert body["confirmWrites"] is False
+    assert set(body) == {
+        "pvMode",
+        "screensPath",
+        "themes",
+        "views",
+        "colorScheme",
+        "confirmWrites",
+        "backend",
+        "binding",
+    }
     # conftest stubs DATA's summary to "no DATA": both identity fields are null.
     assert body["backend"] is None and body["binding"] is None
     assert "sekrit-key" not in r.text

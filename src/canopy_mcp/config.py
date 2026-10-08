@@ -20,6 +20,10 @@ form of the write key), and is bounded by ``CANOPY_PUT_RELAY_TIMEOUT_S``
 with the relay on, a missing write-key file or a missing
 ``CANOPY_ACCESS_TOKEN_FILE`` raises :class:`RelayConfigError` and nothing is
 served.
+
+``CANOPY_CONFIRM_WRITES=0|1`` (default 0) is handed to the viewer as
+``config.json``'s ``confirmWrites``: on, every write the viewer makes asks
+for one confirmation per click first.
 """
 
 from typing import Literal
@@ -110,6 +114,9 @@ class Settings(BaseSettings):
     write_api_key_file: Path | None = None
     # Seconds one relayed write may take upstream before FRONT answers 504.
     put_relay_timeout_s: float = Field(default=DEFAULT_PUT_RELAY_TIMEOUT_S, gt=0)
+    # Whether the viewer asks for a confirmation before each write (config.json
+    # ``confirmWrites``); off by default.
+    confirm_writes: bool = False
 
     _write_api_key: str = PrivateAttr(default="")
 
@@ -127,6 +134,7 @@ class Settings(BaseSettings):
         "put_relay",
         "write_api_key_file",
         "put_relay_timeout_s",
+        "confirm_writes",
         mode="before",
     )
     @classmethod

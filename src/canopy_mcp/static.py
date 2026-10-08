@@ -59,6 +59,10 @@ unavailable. It describes only what this server sees, never the converter's
 scheme. The document holds no secret, so it is served with
 ``Access-Control-Allow-Origin: *`` for cross-origin fetches by the Builder.
 
+``config.json`` always carries ``confirmWrites`` (``CANOPY_CONFIRM_WRITES``,
+false by default): whether the viewer asks for a confirmation before each
+write.
+
 In hare mode the ``config.json`` route (not :func:`viewer_config`) also asks
 DATA for ``GET /hare/v1/health/summary`` over the shared client
 (``app.state.http``, which carries the read key) within
@@ -151,6 +155,7 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
         "screensPath": SCREENS_PATH,
         "themes": dict(THEMES),
         "views": {"path": VIEWS_PATH},
+        "confirmWrites": settings.confirm_writes,
     }
     if _trace_index(settings) is not None:
         config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
