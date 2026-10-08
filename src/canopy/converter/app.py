@@ -16,13 +16,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def converter_lifespan():
-    """Startup for the converter module.
+    """Startup: point the EDM parser at colors.list, construct the service, bind
+    the gateway.
 
     Composed by the parent app's lifespan in ``canopy.main`` — mounted sub-apps
     do not run their own lifespan automatically behind ``app.mount()``.
 
-    The converter is stateless (parse -> build -> emit). Startup constructs the
-    ConversionService (with its widget registry) and binds it to the gateway.
+    The converter is stateless (parse -> build -> emit), so the only startup
+    state is the ConversionService singleton; its widget mappings come from the
+    registry bundled with ``pydmconverter``. The worker process builds its own
+    service instead (see :mod:`canopy.converter.tasks`).
     """
     config = get_converter_config()
     # Point the EDM parser at the bundled (or configured) colors.list.

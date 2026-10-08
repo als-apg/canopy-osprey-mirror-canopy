@@ -41,7 +41,7 @@ async def test_camelcase_wire(client: AsyncClient, sample_config: dict):
 async def test_app_handshake_mismatch_is_404(client: AsyncClient, sample_config: dict):
     """A config created under 'trace' must not be resolvable under another app."""
     slug = sample_config["slug"]
-    r = await client.get(f"/v1/configs/beaver/{slug}", headers=READ_HEADERS)
+    r = await client.get(f"/v1/configs/screens/{slug}", headers=READ_HEADERS)
     assert r.status_code == 404
     assert r.json()["code"] == "config_not_found"
 
@@ -51,7 +51,7 @@ async def test_app_handshake_mismatch_is_404(client: AsyncClient, sample_config:
 
 
 async def test_list_scoped_by_app(client: AsyncClient):
-    for app, name in [("trace", "t1"), ("trace", "t2"), ("beaver", "b1")]:
+    for app, name in [("trace", "t1"), ("trace", "t2"), ("screens", "s1")]:
         r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": name, "data": {}})
         assert r.status_code == 200, r.text
 
@@ -214,7 +214,7 @@ async def test_update_mutable_fields(client: AsyncClient, sample_config: dict):
 
 async def test_update_wrong_app_404(client: AsyncClient, sample_config: dict):
     slug = sample_config["slug"]
-    r = await client.put(f"/v1/configs/beaver/{slug}", headers=WRITE_HEADERS, json={"name": "x"})
+    r = await client.put(f"/v1/configs/screens/{slug}", headers=WRITE_HEADERS, json={"name": "x"})
     assert r.status_code == 404
 
 
@@ -230,7 +230,7 @@ async def test_delete(client: AsyncClient, sample_config: dict):
 
 async def test_delete_wrong_app_404(client: AsyncClient, sample_config: dict):
     slug = sample_config["slug"]
-    r = await client.delete(f"/v1/configs/beaver/{slug}", headers=WRITE_HEADERS)
+    r = await client.delete(f"/v1/configs/screens/{slug}", headers=WRITE_HEADERS)
     assert r.status_code == 404
 
 
@@ -257,14 +257,14 @@ async def test_list_apps_empty(client: AsyncClient):
 
 
 async def test_list_apps_grouped_and_counted(client: AsyncClient):
-    for app, name in [("trace", "t1"), ("trace", "t2"), ("beaver", "b1")]:
+    for app, name in [("trace", "t1"), ("trace", "t2"), ("screens", "s1")]:
         r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": name, "data": {}})
         assert r.status_code == 200, r.text
 
     r = await client.get("/v1/apps", headers=READ_HEADERS)
     assert r.status_code == 200, r.text
     # Alphabetical by app, counts per app.
-    assert r.json() == [{"app": "beaver", "count": 1}, {"app": "trace", "count": 2}]
+    assert r.json() == [{"app": "screens", "count": 1}, {"app": "trace", "count": 2}]
 
 
 async def test_list_apps_requires_read(client: AsyncClient):
@@ -276,7 +276,7 @@ async def test_list_apps_requires_read(client: AsyncClient):
 
 
 async def test_debug_configs_lists_across_apps(client: AsyncClient):
-    for app, name in [("trace", "t1"), ("beaver", "b1"), ("beaver", "b2")]:
+    for app, name in [("trace", "t1"), ("screens", "s1"), ("screens", "s2")]:
         r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": name, "data": {}})
         assert r.status_code == 200, r.text
 
@@ -284,12 +284,12 @@ async def test_debug_configs_lists_across_apps(client: AsyncClient):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["totalCount"] == 3
-    assert {c["app"] for c in body["results"]} == {"trace", "beaver"}
+    assert {c["app"] for c in body["results"]} == {"trace", "screens"}
 
 
 async def test_debug_configs_paginates(client: AsyncClient):
     for i in range(3):
-        app = "trace" if i % 2 == 0 else "beaver"
+        app = "trace" if i % 2 == 0 else "screens"
         r = await client.post(f"/v1/configs/{app}", headers=WRITE_HEADERS, json={"name": f"c{i}", "data": {}})
         assert r.status_code == 200, r.text
 
@@ -342,7 +342,7 @@ async def test_debug_resolve_slug_bypasses_handshake(client: AsyncClient, sample
     """A slug that 404s under the wrong app on the normal route still resolves here."""
     slug = sample_config["slug"]
     # Normal app-scoped read under the wrong app is a 404 (handshake).
-    r = await client.get(f"/v1/configs/beaver/{slug}", headers=READ_HEADERS)
+    r = await client.get(f"/v1/configs/screens/{slug}", headers=READ_HEADERS)
     assert r.status_code == 404
     # Debug resolve ignores the handshake and finds it.
     r = await client.get(f"/v1/_debug/slugs/{slug}", headers=READ_HEADERS)

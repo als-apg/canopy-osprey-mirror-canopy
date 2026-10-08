@@ -47,7 +47,6 @@ API_MODULES = (
     ("raccoon", "Raccoon"),
     ("vole", "Vole"),
     ("fox", "Fox"),
-    ("beaver", "Beaver"),
     ("squirrel", "Squirrel"),
     ("magpie", "Magpie"),
     ("jobs", "Jobs"),
@@ -121,7 +120,6 @@ tag_module(hare_app, "hare")
 tag_module(raccoon_app, "raccoon")
 tag_module(vole_app, "vole")
 tag_module(fox_app, "fox")
-tag_module(beaver_app, "beaver")
 tag_module(squirrel_app, "squirrel")
 tag_module(magpie_app, "magpie")
 tag_module(jobs_app, "jobs")
