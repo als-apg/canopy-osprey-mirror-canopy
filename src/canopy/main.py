@@ -157,6 +157,7 @@ const ui = SwaggerUIBundle({{
     dom_id: "#swagger-ui",
     urls: {serialized_specs},
     "urls.primaryName": "Canopy",
+    validatorUrl: null,
     presets: [
         SwaggerUIBundle.presets.apis,
         SwaggerUIStandalonePreset
