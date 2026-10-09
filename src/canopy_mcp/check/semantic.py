@@ -203,21 +203,10 @@ def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> li
 
     if ntype in INERT_IN_OSPREY_TYPES:
         if relay_on and any(is_machine_channel(c) for c in _control_channels(ntype, props)):
-            out.append(
-                Finding(
-                    nid, "writes_to_machine", pointer((*path, "type")), "warning", f"'{ntype}' writes to the machine"
-                )
-            )
+            code, message = "writes_to_machine", f"'{ntype}' writes to the machine"
         else:
-            out.append(
-                Finding(
-                    nid,
-                    "inert_in_osprey",
-                    pointer((*path, "type")),
-                    "warning",
-                    f"'{ntype}' writes to the machine; it is inert when embedded in OSPREY",
-                )
-            )
+            code, message = "inert_in_osprey", f"'{ntype}' writes to the machine; it is inert when embedded in OSPREY"
+        out.append(Finding(nid, code, pointer((*path, "type")), "warning", message))
 
     actions = props.get("actions")
     for a, action in enumerate(actions if isinstance(actions, list) else []):
@@ -227,21 +216,10 @@ def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> li
         atype = action.get("type")
         if atype == WRITE_PV_ACTION:
             if relay_on and is_machine_channel(action.get("pvName")):
-                out.append(
-                    Finding(
-                        nid, "writes_to_machine", pointer(apath), "warning", "write_pv action writes to the machine"
-                    )
-                )
+                code, message = "writes_to_machine", "write_pv action writes to the machine"
             else:
-                out.append(
-                    Finding(
-                        nid,
-                        "inert_in_osprey",
-                        pointer(apath),
-                        "warning",
-                        "write_pv action is inert when embedded in OSPREY",
-                    )
-                )
+                code, message = "inert_in_osprey", "write_pv action is inert when embedded in OSPREY"
+            out.append(Finding(nid, code, pointer(apath), "warning", message))
         elif atype == "open_webpage":
             url = action.get("url")
             if not isinstance(url, str) or not _SAFE_URL.match(url.strip()):
