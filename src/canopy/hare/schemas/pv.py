@@ -6,6 +6,13 @@ from canopy.contracts.pv import PVWriteValue
 from canopy.contracts.base import CanopyModel
 
 
+class PVWriteOrigin(CanopyModel):
+    """Where a write came from: the screen that issued it and its revision (audit only)."""
+
+    screen: str
+    rev: str | None = None
+
+
 class PVWriteDTO(CanopyModel):
     """Body of ``PUT /hare/v1/pvs/{pv}`` — the value to write, plus write options."""
 
@@ -15,6 +22,11 @@ class PVWriteDTO(CanopyModel):
     wait: bool = True
     # Per-write timeout in seconds (must be positive); None uses the connector's default.
     timeout: float | None = Field(default=None, gt=0)
+    # The control-target binding the screen showed (WC6 binding rule). Generic
+    # canopy ignores it; a backend that checks it refuses a PUT naming another.
+    binding: str | None = None
+    # The screen and revision that issued the write, for the write's audit record.
+    origin: PVWriteOrigin | None = None
 
 
 class PVWriteResultDTO(CanopyModel):

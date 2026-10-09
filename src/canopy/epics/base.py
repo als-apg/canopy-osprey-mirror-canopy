@@ -65,6 +65,69 @@ def normalize_severity(value: int | None) -> AlarmSeverity:
     return _SEVERITY_MAP.get(int(value), AlarmSeverity.INVALID)
 
 
+ALARM_STATUS_CODES: dict[str, int] = {
+    name: code
+    for code, name in enumerate(
+        (
+            "NO_ALARM",
+            "READ",
+            "WRITE",
+            "HIHI",
+            "HIGH",
+            "LOLO",
+            "LOW",
+            "STATE",
+            "COS",
+            "COMM",
+            "TIMEOUT",
+            "HWLIMIT",
+            "CALC",
+            "SCAN",
+            "LINK",
+            "SOFT",
+            "BAD_SUB",
+            "UDF",
+            "DISABLE",
+            "SIMM",
+            "READ_ACCESS",
+            "WRITE_ACCESS",
+        )
+    )
+}
+"""EPICS ``menuAlarmStat`` choice names mapped to their alarm status codes.
+
+This is the code set Channel Access reports as a value's ``status`` and the one
+``PVValue.alarm_status`` carries, whatever the protocol.
+"""
+
+
+def alarm_status_from_name(name: object) -> int | None:
+    """Map an EPICS alarm status name to its ``menuAlarmStat`` code.
+
+    PV Access reports the ``menuAlarmStat`` name (``"HIHI"``) in ``alarm.message``,
+    because its own ``alarm.status`` is a coarser category (DEVICE, DRIVER, RECORD,
+    ...) rather than the Channel Access code.
+
+    Parameters
+    ----------
+    name : object
+        The status name, matched case-insensitively. The C constant spelling with
+        an ``_ALARM`` suffix (``"HIHI_ALARM"``) is accepted too.
+
+    Returns
+    -------
+    int | None
+        The ``menuAlarmStat`` code, or ``None`` when ``name`` is not a string naming
+        a known status, such as a free-text alarm message.
+    """
+    if not isinstance(name, str):
+        return None
+    key = name.strip().upper()
+    if key in ALARM_STATUS_CODES:
+        return ALARM_STATUS_CODES[key]
+    return ALARM_STATUS_CODES.get(key.removesuffix("_ALARM"))
+
+
 # --------------------------------------------------------------------------- #
 # Connector contract
 # --------------------------------------------------------------------------- #

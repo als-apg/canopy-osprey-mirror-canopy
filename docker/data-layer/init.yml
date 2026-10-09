@@ -254,6 +254,12 @@
           - "{{ cfg.container_postgres }}"
           - --restart
           - unless-stopped
+          - --log-driver
+          - json-file
+          - --log-opt
+          - max-size=50m
+          - --log-opt
+          - max-file=3
           - -e
           - "POSTGRES_USER={{ cfg.postgres_user }}"
           - -e
@@ -285,6 +291,12 @@
           - "{{ cfg.container_redis }}"
           - --restart
           - unless-stopped
+          - --log-driver
+          - json-file
+          - --log-opt
+          - max-size=50m
+          - --log-opt
+          - max-file=3
           - -p
           - "127.0.0.1:{{ cfg.host_port_redis }}:6379"
           - "{{ redis_image }}"

@@ -23,6 +23,11 @@ Modules without a guide here yet are documented by their interactive API docs
 (below) and their design pages on the
 [GitHub wiki](https://github.com/slaclab/Canopy/wiki).
 
+The top-level Swagger UI at `/docs` provides a dropdown to switch between
+Canopy's core API and each mounted module. Each module's standalone Swagger UI
+and OpenAPI schema remain available at `/<module>/docs` and
+`/<module>/openapi.json`.
+
 ## Conventions every module follows
 
 **URLs.** APIs are versioned per module: `/<module>/v1/...`. Each module also

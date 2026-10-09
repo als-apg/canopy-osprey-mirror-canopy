@@ -159,8 +159,15 @@ def test_canopy_modules_selects_what_canopy_main_app_serves(tmp_path):
     assert report["mounts"] == [f"/{name}" for name in FIVE_IN_ORDER]
 
 
+# An install without the ``data`` extra: SQLAlchemy cannot be imported. The
+# blocking entry is dropped before the report so it is not listed as loaded.
+_REPORT_LOADED_LEAN = (
+    "import sys\nsys.modules['sqlalchemy'] = None\nimport canopy.main\ndel sys.modules['sqlalchemy']\n" + _REPORT_LOADED
+)
+
+
 def test_unselected_modules_and_their_packages_are_never_imported(tmp_path):
-    proc = _run_python(_REPORT_LOADED, tmp_path, CANOPY_MODULES=",".join(FIVE))
+    proc = _run_python(_REPORT_LOADED_LEAN, tmp_path, CANOPY_MODULES=",".join(FIVE))
     assert proc.returncode == 0, proc.stderr
     loaded = json.loads(proc.stdout.strip().splitlines()[-1])["loaded"]
 
@@ -171,6 +178,18 @@ def test_unselected_modules_and_their_packages_are_never_imported(tmp_path):
     assert "canopy.jobs.gateway" not in loaded
     stray_packages = [m for m in loaded if m.split(".")[0] in DATA_PACKAGES]
     assert stray_packages == []
+
+
+def test_with_sqlalchemy_installed_only_the_key_store_is_added(tmp_path):
+    """The env + database key chain is core, so SQLAlchemy loads; no unselected module or job queue does."""
+    proc = _run_python(_REPORT_LOADED, tmp_path, CANOPY_MODULES=",".join(FIVE))
+    assert proc.returncode == 0, proc.stderr
+    loaded = json.loads(proc.stdout.strip().splitlines()[-1])["loaded"]
+
+    stray_apps = [f"canopy.{name}.app" for name in UNSELECTED if f"canopy.{name}.app" in loaded]
+    assert stray_apps == []
+    assert "canopy.jobs.gateway" not in loaded
+    assert [m for m in loaded if m.split(".")[0] in ("arq", "alembic")] == []
 
 
 def test_an_unknown_name_in_canopy_modules_fails_startup(tmp_path):

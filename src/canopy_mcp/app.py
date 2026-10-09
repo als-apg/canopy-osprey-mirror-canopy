@@ -4,7 +4,8 @@
 mounted) so ``POST /mcp`` answers directly instead of redirecting to
 ``/mcp/``. The viewer and draft routes come from :mod:`canopy_mcp.static`, the
 saved-view routes (``/views``) from :mod:`canopy_mcp.views`; the
-read-only API forward (two WebSocket relays, 405 elsewhere) from
+API forward (two WebSocket relays, the Mole GET, with ``CANOPY_PUT_RELAY`` on
+the one PV write ``PUT /hare/v1/pvs/{pv}``, 405 elsewhere) from
 :mod:`canopy_mcp.forward`.
 
 The MCP endpoint is for a local agent only. A request carrying
@@ -18,6 +19,8 @@ A deployment that sets ``CANOPY_ACCESS_TOKEN_FILE`` gets
 ``/mcp`` included, then answers only a request carrying the credential, and
 the proxy that adds it is how ``/mcp`` is reached. ``GET /health`` stays open.
 Either way ``/mcp/`` is a redirect to ``/mcp``, never the transport itself.
+The PUT relay is only ever served behind the gate: an app asked for the relay
+without an access-token file is refused (:class:`~canopy_mcp.config.RelayConfigError`).
 
 One lifespan first flattens the color scheme (:func:`~canopy.core.color_scheme.get_color_scheme`,
 so a bad ``CANOPY_THEME_FILE`` logs its one ERROR at boot, not on the first
@@ -49,7 +52,7 @@ from canopy_mcp.store import open_stores
 from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.access import AccessGate, read_secret_file
 from canopy_mcp.client import make_client
-from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.config import Settings, RelayConfigError, get_settings
 from canopy_mcp.server import mcp, register_all, set_authoring
 from canopy_mcp.static import build_routes
 from canopy_mcp.browser import browser_hook
@@ -131,9 +134,12 @@ def create_app(
     :data:`DEFAULT_SELF_URL`.
 
     A configured access-token file is read before anything else is built, so
-    one that cannot supply a credential raises here and nothing is served.
+    one that cannot supply a credential raises here and nothing is served,
+    and so does a PUT relay without one.
     """
     settings = settings or get_settings()
+    if settings.put_relay and (settings.access_token_file is None or not settings.write_api_key):
+        raise RelayConfigError("the PUT relay needs CANOPY_ACCESS_TOKEN_FILE and CANOPY_WRITE_API_KEY_FILE")
     if settings.access_token_file is not None:
         token = read_secret_file("CANOPY_ACCESS_TOKEN_FILE", settings.access_token_file)
         guard = Middleware(AccessGate, token=token)

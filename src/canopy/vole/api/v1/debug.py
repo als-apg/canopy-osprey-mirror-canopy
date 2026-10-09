@@ -1,6 +1,6 @@
 from fastapi import Security, APIRouter
 
-from canopy.core.security import require_read_access, require_write_access
+from canopy.core.security import require_read_access, require_admin_access
 from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.dependencies import BufferServiceDep, IngestServiceDep
 from canopy.vole.schemas.buffer import VoleStatsDTO
@@ -18,7 +18,7 @@ async def list_buffers(service: BufferServiceDep) -> VoleStatsDTO:
 
 @router.post(
     "/evict/{pv:path}",
-    dependencies=[Security(require_write_access)],
+    dependencies=[Security(require_admin_access)],
 )
 async def evict_pv(pv: str, service: BufferServiceDep, ingest: IngestServiceDep) -> dict[str, str]:
     # The ring is keyed by the canonical name; every subscribed name feeding it is

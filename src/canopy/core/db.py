@@ -5,15 +5,20 @@ architecture is one Postgres with one schema per module — set per model via
 ``__table_args__ = {"schema": "<module>"}``. All modules' ORM metadata lives on
 this single ``Base.metadata`` so the one Alembic tree (``migrations/``) can
 autogenerate across modules.
+
+Routes and services take their request session through ``SessionDep``;
+``get_session`` explains its scope.
 """
 
 from __future__ import annotations
 
 from uuid import uuid4
+from typing import Annotated
 from datetime import datetime
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
+from fastapi import Depends
 from sqlalchemy import DateTime, func, select
 from sqlalchemy.orm import Mapped, DeclarativeBase, mapped_column
 from sqlalchemy.ext.asyncio import (
@@ -138,10 +143,23 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI request dependency: a session that commits once on success and rolls
     back on error. Background/worker code that needs its own transaction boundaries
     should use ``session_scope`` instead.
+
+    Routes and services take it through ``SessionDep``, not ``Depends(get_session)``.
+    ``SessionDep`` is function-scoped: FastAPI's default ``"request"`` scope runs the
+    code after ``yield`` only once the response has been sent, so the client would get
+    its 200 before the commit lands (a read-after-write race) and a failed commit would
+    never reach it. Function scope commits before the response starts.
+
+    Every dependency in a request that takes ``SessionDep`` shares one session and one
+    transaction, because FastAPI only reuses a dependency declared the same way, scope
+    included. A module that needs a different policy can still declare its own.
     """
     async with session_scope() as session:
         yield session
         await session.commit()
+
+
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
 async def dispose_engine() -> None:

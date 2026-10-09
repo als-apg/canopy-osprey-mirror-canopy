@@ -38,6 +38,15 @@ WRITE_HEADERS = {"X-API-Key": "test-write"}
 _SQUIRREL_TABLES = [t for t in Base.metadata.sorted_tables if t.schema == _SCHEMA]
 
 
+@pytest.fixture(autouse=True)
+def disable_restore_hooks(monkeypatch):
+    """Keep an ambient ``CANOPY_SQUIRREL__RESTORE_HOOKS`` out of every SnapshotService.
+
+    Tests that want a hook inject it explicitly with ``restore_hooks=[...]``.
+    """
+    monkeypatch.setattr("canopy.squirrel.services.snapshot_service.get_restore_hooks", lambda: [])
+
+
 @pytest_asyncio.fixture(scope="session")
 async def ensure_test_db():
     """Create the ``canopy_test`` database once per session if it doesn't exist.

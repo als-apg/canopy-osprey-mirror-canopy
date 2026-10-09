@@ -29,6 +29,52 @@ async def test_duplicate_setpoint_conflicts(client: AsyncClient, sample_pv: dict
     assert r.json()["code"] == "pv_already_exists"
 
 
+async def test_duplicate_readback_without_setpoint_conflicts(client: AsyncClient):
+    payload = {"readbackAddress": "DUP:RB"}
+    assert (await client.post("/v1/pvs", headers=WRITE_HEADERS, json=payload)).status_code == 200
+
+    r = await client.post("/v1/pvs", headers=WRITE_HEADERS, json=payload)
+    assert r.status_code == 409
+    assert r.json()["code"] == "pv_already_exists"
+
+
+async def test_readback_shared_with_a_setpoint_pv_is_allowed(client: AsyncClient):
+    """A PV owning a setpoint does not reserve its readback for setpoint-less PVs."""
+    r = await client.post(
+        "/v1/pvs", headers=WRITE_HEADERS, json={"setpointAddress": "SHARED:SP", "readbackAddress": "SHARED:RB"}
+    )
+    assert r.status_code == 200, r.text
+
+    r = await client.post("/v1/pvs", headers=WRITE_HEADERS, json={"readbackAddress": "SHARED:RB"})
+    assert r.status_code == 200, r.text
+
+
+async def test_duplicate_config_only_conflicts(client: AsyncClient):
+    payload = {"configAddress": "DUP:CFG"}
+    assert (await client.post("/v1/pvs", headers=WRITE_HEADERS, json=payload)).status_code == 200
+
+    r = await client.post("/v1/pvs", headers=WRITE_HEADERS, json=payload)
+    assert r.status_code == 409
+    assert r.json()["code"] == "pv_already_exists"
+
+
+async def test_multi_create_rejects_duplicate_readbacks_in_import(client: AsyncClient):
+    data = [{"readbackAddress": "BULK:RB"}, {"readbackAddress": "BULK:RB"}]
+    r = await client.post("/v1/pvs/multi", headers=WRITE_HEADERS, json=data)
+    assert r.status_code == 400
+    assert "readback" in r.json()["detail"]
+
+
+async def test_multi_create_rejects_an_existing_readback(client: AsyncClient):
+    assert (
+        await client.post("/v1/pvs", headers=WRITE_HEADERS, json={"readbackAddress": "EXISTING:RB"})
+    ).status_code == 200
+
+    r = await client.post("/v1/pvs/multi", headers=WRITE_HEADERS, json=[{"readbackAddress": "EXISTING:RB"}])
+    assert r.status_code == 409
+    assert r.json()["code"] == "pv_already_exists"
+
+
 async def test_search_and_devices(client: AsyncClient, sample_pv: dict):
     r = await client.get("/v1/pvs?pvName=TEST:PV", headers=READ_HEADERS)
     assert r.status_code == 200

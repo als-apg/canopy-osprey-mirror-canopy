@@ -127,6 +127,7 @@ diffs for the values.
       "value": 3.27,
       "valueKind": "scalar",
       "severity": "NO_ALARM",
+      "alarmStatus": 0,
       "tsNs": 1700000000123456789,
       "connected": true,
       "error": null
@@ -171,6 +172,7 @@ the PVs whose values changed since the last one, and only the dynamic
       "value": 3.31,
       "valueKind": "scalar",
       "severity": "NO_ALARM",
+      "alarmStatus": 0,
       "tsNs": 1700000000223456789,
       "connected": true,
       "error": null
@@ -183,7 +185,9 @@ the PVs whose values changed since the last one, and only the dynamic
 
 `value` is a number, a string, an enum index, a 1-D array, or a
 `{labels, columns}` table, per `valueKind` — see
-[values and metadata](index.md#values-and-metadata).
+[values and metadata](index.md#values-and-metadata). `alarmStatus` is the EPICS
+`menuAlarmStat` code behind `severity` (see the
+[value fields](rest_api.md#get-harev1pvspv)).
 
 ### heartbeat
 

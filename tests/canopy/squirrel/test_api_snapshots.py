@@ -14,8 +14,37 @@ from canopy.squirrel.data.models import Pv, Snapshot, SnapshotValue
 from tests.canopy.squirrel.conftest import READ_HEADERS, WRITE_HEADERS
 
 
-async def _seed_snapshot(session: AsyncSession, title: str, *, pv: Pv | None = None, value: float = 42.0) -> str:
+async def _seed_snapshot(
+    session: AsyncSession,
+    title: str,
+    *,
+    pv: Pv | None = None,
+    value: float = 42.0,
+    created_at: datetime | None = None,
+) -> str:
+    """Insert a snapshot, optionally with one PV value, and return its id.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Seeding session; the rows are committed so the separate request sessions see them.
+    title : str
+        Snapshot title.
+    pv : Pv | None
+        When given, one ``SnapshotValue`` for this PV is attached to the snapshot.
+    value : float
+        Setpoint value recorded for ``pv``.
+    created_at : datetime | None
+        Explicit creation timestamp; the database default is used when omitted.
+
+    Returns
+    -------
+    str
+        The id of the seeded snapshot.
+    """
     snap = Snapshot(title=title, description="seeded")
+    if created_at is not None:
+        snap.created_at = created_at
     session.add(snap)
     await session.flush()
     if pv is not None:
@@ -30,7 +59,7 @@ async def _seed_snapshot(session: AsyncSession, title: str, *, pv: Pv | None = N
                 timestamp=datetime.now(UTC),
             )
         )
-    await session.commit()  # request sessions are separate — committed rows must be visible
+    await session.commit()
     return snap.id
 
 
@@ -56,6 +85,71 @@ async def test_list_filtered_by_title(client: AsyncClient, db_session: AsyncSess
     await _seed_snapshot(db_session, "beta")
     r = await client.get("/v1/snapshots?title=alph", headers=READ_HEADERS)
     assert {row["title"] for row in r.json()} == {"alpha"}
+
+
+async def _seed_early_and_late(session: AsyncSession) -> None:
+    """Seed one snapshot created in January and one created in June of 2026."""
+    await _seed_snapshot(session, "early", created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    await _seed_snapshot(session, "late", created_at=datetime(2026, 6, 1, tzinfo=UTC))
+
+
+async def test_list_filtered_by_start(client: AsyncClient, db_session: AsyncSession):
+    await _seed_early_and_late(db_session)
+    r = await client.get("/v1/snapshots?start=2026-03-01T00:00:00Z", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert {row["title"] for row in r.json()} == {"late"}
+
+
+async def test_list_filtered_by_end(client: AsyncClient, db_session: AsyncSession):
+    await _seed_early_and_late(db_session)
+    r = await client.get("/v1/snapshots?end=2026-03-01T00:00:00Z", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert {row["title"] for row in r.json()} == {"early"}
+
+
+async def test_list_filtered_by_start_and_end(client: AsyncClient, db_session: AsyncSession):
+    await _seed_early_and_late(db_session)
+    r = await client.get("/v1/snapshots?start=2026-05-01T00:00:00Z&end=2026-07-01T00:00:00Z", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert {row["title"] for row in r.json()} == {"late"}
+
+    r = await client.get("/v1/snapshots?start=2026-07-01T00:00:00Z&end=2026-08-01T00:00:00Z", headers=READ_HEADERS)
+    assert r.json() == []
+
+
+async def test_list_datetime_filter_accepts_naive_and_offset_forms(client: AsyncClient, db_session: AsyncSession):
+    await _seed_early_and_late(db_session)
+    naive = await client.get("/v1/snapshots?start=2026-03-01T00:00:00", headers=READ_HEADERS)
+    offset = await client.get("/v1/snapshots?start=2026-02-28T19:00:00-05:00", headers=READ_HEADERS)
+    assert naive.status_code == 200, naive.text
+    assert offset.status_code == 200, offset.text
+    assert {row["title"] for row in naive.json()} == {"late"}
+    assert {row["title"] for row in offset.json()} == {"late"}
+
+
+async def test_list_rejects_malformed_datetime(client: AsyncClient):
+    assert (await client.get("/v1/snapshots?start=not-a-date", headers=READ_HEADERS)).status_code == 422
+    assert (await client.get("/v1/snapshots?end=not-a-date", headers=READ_HEADERS)).status_code == 422
+
+
+async def test_list_rejects_date_only_bounds(client: AsyncClient):
+    for query in ("start=2026-01-01", "end=2026-01-31"):
+        r = await client.get(f"/v1/snapshots?{query}", headers=READ_HEADERS)
+        assert r.status_code == 422, r.text
+        assert "not a bare date" in r.text
+
+
+async def test_list_rejects_start_after_end(client: AsyncClient):
+    r = await client.get("/v1/snapshots?start=2026-07-01T00:00:00Z&end=2026-05-01T00:00:00Z", headers=READ_HEADERS)
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == "bad_request"
+
+
+async def test_list_rejects_bounds_that_overflow_on_utc_conversion(client: AsyncClient):
+    for query in ("start=9999-12-31T23:00:00-05:00", "end=0001-01-01T00:00:00%2B05:00"):
+        r = await client.get(f"/v1/snapshots?{query}", headers=READ_HEADERS)
+        assert r.status_code == 400, r.text
+        assert r.json()["code"] == "bad_request"
 
 
 async def test_get_snapshot_with_values(client: AsyncClient, db_session: AsyncSession):

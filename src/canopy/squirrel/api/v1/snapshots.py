@@ -6,11 +6,14 @@ connector. Everything else (list / get / update / delete / compare) runs inline 
 request session.
 """
 
+from typing import Annotated
+
 from fastapi import Query, Security, APIRouter
 
 from canopy.jobs import gateway as jobs_gateway
 from canopy.core.security import require_read_access, require_write_access
 from canopy.contracts.jobs import JobCreatedDTO
+from canopy.core.time_parse import DateTimeBound
 from canopy.squirrel.errors import SnapshotNotFound
 from canopy.squirrel.dependencies import SnapshotServiceDep
 from canopy.squirrel.schemas.snapshot import (
@@ -31,9 +34,53 @@ async def list_snapshots(
     service: SnapshotServiceDep,
     title: str | None = Query(None),
     tags: list[str] = Query(default=[], description="Filter by tag IDs"),
+    start: Annotated[
+        DateTimeBound,
+        Query(
+            description=(
+                "Only snapshots created at or after this ISO-8601 date and time. Send a UTC offset "
+                "(Z or -07:00); a value without one is read as UTC. A bare date is rejected."
+            )
+        ),
+    ] = None,
+    end: Annotated[
+        DateTimeBound,
+        Query(
+            description=(
+                "Only snapshots created at or before this ISO-8601 date and time. Send a UTC offset "
+                "(Z or -07:00); a value without one is read as UTC. A bare date is rejected."
+            )
+        ),
+    ] = None,
 ) -> list[SnapshotSummaryDTO]:
-    """List snapshots, optionally filtered by title and/or tag IDs."""
-    return await service.list_snapshots(title=title, tag_ids=tags or None)
+    """List snapshots, optionally filtered by title, tag IDs and/or creation time.
+
+    Parameters
+    ----------
+    service : SnapshotServiceDep
+        Snapshot domain service resolved from the request.
+    title : str | None
+        Case-insensitive substring match against the snapshot title.
+    tags : list[str]
+        Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+    start : datetime | None
+        Lower bound on creation time, inclusive. A value without an offset is read as UTC,
+        and a bare ``YYYY-MM-DD`` is refused with a 422.
+    end : datetime | None
+        Upper bound on creation time, inclusive. A value without an offset is read as UTC,
+        and a bare ``YYYY-MM-DD`` is refused with a 422.
+
+    Returns
+    -------
+    list[SnapshotSummaryDTO]
+        Matching snapshot summaries, newest first.
+
+    Raises
+    ------
+    BadRequest
+        When both bounds are given and ``start`` is after ``end``.
+    """
+    return await service.list_snapshots(title=title, tag_ids=tags or None, start=start, end=end)
 
 
 @router.post("", dependencies=[Security(require_write_access)])

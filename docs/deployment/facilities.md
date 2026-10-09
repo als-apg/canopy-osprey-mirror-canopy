@@ -52,7 +52,7 @@ repo):
 ```json
 {
   "_shared": {
-    "CANOPY_API_KEYS": "<read-write-token>:read+write,<read-only-token>:read"
+    "CANOPY_API_KEYS": "<read-write-token>:read+write@*,<read-only-token>:read@*"
   },
   "CONTAINER_LCLS": {
     "API_PORT": 8080,
@@ -74,6 +74,12 @@ repo):
   }
 }
 ```
+
+`CANOPY_API_KEYS` sits in `_shared` so it applies to whichever facility block
+this instance uses. Because each instance has its own `APP_SECRETS_<INSTANCE>`
+secret, that still means one distinct set of tokens per instance — generate
+them fresh rather than copying DEV's. See the
+[API keys runbook](api-keys.md).
 
 Per-instance adjustments to the template:
 

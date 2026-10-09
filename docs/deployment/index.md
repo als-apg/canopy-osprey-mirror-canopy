@@ -33,6 +33,8 @@ essentials:
 | `CANOPY_DATABASE_URL` | Postgres, asyncpg driver: `postgresql+asyncpg://user:pass@host:port/db` |
 | `CANOPY_REDIS_URL` | Redis: `redis://[:password@]host:port/0` |
 | `CANOPY_DEBUG` | Verbose errors in responses; keep `false` in production |
+| `CANOPY_LOG_LEVEL` | Root log level for the API and worker (`DEBUG`, `INFO`, `WARNING`, ...). Default `INFO`; an unknown name falls back to `INFO` |
+| `CANOPY_SQUIRREL__RESTORE_HOOKS` | Comma-separated restore hooks, applied in order; empty means none run. Once a hook's write fails for a PV, later hooks skip it, so list `write_to_con` before `magnet_trim` to trim a magnet only after its BCON is updated. Must reach the **worker**, which performs restores. Verify with `GET /squirrel/v1/health/restore-hooks`: `worker` is what the worker reported loading at startup, `api` is the API's view, and `matchesApi: false` flags a mismatch |
 | `CANOPY_<MODULE>__<FIELD>` | Per-module tuning (e.g. `CANOPY_VOLE__GLOBAL_BYTES_MAX`) |
 
 The annotated template
@@ -45,21 +47,19 @@ at the repo root documents every setting with its default.
     WebSocket `heartbeat` frame reports the active backend — check it when
     values look too smooth to be real.
 
-### Provisioning API keys
+### API keys
 
 ```
-CANOPY_API_KEYS="<token>:<scope>[+<scope>][,<token>:<scope>...]"
+CANOPY_API_KEYS="<token>:<scope>[+<scope>][@<module>[+<module>]][,<token>:<scope>...]"
 ```
 
-- Issue **separate tokens per client class**, with the minimum scope:
-  read-only displays get a `read` token; anything that writes PVs or saves
-  snapshots gets `read+write`.
-- Tokens are opaque strings — generate long random values for production.
-- Rotation: add the new token alongside the old (comma-separated), roll
-  clients over, remove the old token, restart. Keys are read at process
-  startup.
-- In the facility pipeline, keys live in the per-instance `APP_SECRETS`
-  GitHub secret — see [facility deployment](facilities.md#prerequisite-app_secrets_instance-github-secrets).
+Issue **separate tokens per client class** with the minimum scope, and generate
+long random values for production. The variable is parsed once at process
+startup, so adding, rotating, or revoking a key is a config change plus a
+restart — in the facility pipeline, a secret edit plus a deploy.
+
+See [API keys](api-keys.md) for the provisioning, rotation, and revocation
+runbook.
 
 ## Database migrations
 

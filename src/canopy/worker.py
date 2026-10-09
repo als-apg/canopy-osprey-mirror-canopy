@@ -21,6 +21,7 @@ from canopy.epics.config import get_epics_config
 from canopy.epics.gateway import build_connector
 from canopy.squirrel.tasks import create_snapshot_task, restore_snapshot_task
 from canopy.converter.tasks import convert_batch
+from canopy.squirrel.restore_hooks import get_restore_hooks, publish_worker_status
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -32,10 +33,27 @@ async def ping(ctx: dict) -> str:
 
 
 async def on_startup(ctx: dict) -> None:
-    """Build process-wide resources once when the worker starts."""
+    """Build process-wide resources once when the worker starts.
+
+    Also builds the restore hooks, so configuration warnings are logged at startup
+    rather than at the first restore, and publishes which ones this process resolved,
+    since restores run here and not in the API; ``GET /squirrel/v1/health/restore-hooks``
+    reads it back.
+
+    Parameters
+    ----------
+    ctx : dict
+        Arq's worker context; ``ctx["redis"]`` is its Redis connection.
+
+    Returns
+    -------
+    None
+    """
     connector = build_connector(get_epics_config())
     await connector.start()
     ctx["epics"] = connector
+    get_restore_hooks()
+    await publish_worker_status(ctx["redis"])
     logger.info("canopy-worker startup complete: EPICS connector ready")
 
 

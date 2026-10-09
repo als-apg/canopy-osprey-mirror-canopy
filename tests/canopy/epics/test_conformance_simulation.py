@@ -6,6 +6,7 @@ from canopy.epics.base import PVWriteFailed
 from canopy.contracts.pv import PVWriteValue
 from canopy.epics.config import EpicsConfig
 from canopy.epics.gateway import build_connector
+from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.epics.testing import conformance
 from canopy.epics.backends.simulation import SimulationConnector
 
@@ -36,9 +37,11 @@ class SimulationDriver:
         return _PREFIX[form] + _NAMES[kind]
 
     async def set_value(self, pv: str, value: PVWriteValue) -> None:
-        self._values[pv] = value
+        # The connector holds an override under the name without its protocol prefix.
+        name = strip_protocol_prefix(pv)
+        self._values[name] = value
         if self._connector is not None:
-            self._connector._overrides[pv] = value
+            self._connector._overrides[name] = value
 
 
 @pytest.mark.parametrize("case_id", conformance.case_ids())

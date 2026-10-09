@@ -115,7 +115,7 @@ async def run_check(
     result = CheckResult()
     result.schema = check_schema(screen)
     refs = check_refs(screen, tree if tree is not None else store, draft_id, served_at=served_at)  # type: ignore[arg-type]
-    result.semantic = check_semantic(screen) + refs
+    result.semantic = check_semantic(screen, relay_on=settings.put_relay) + refs
     lint = await check_lint(screen, catalog, client=client, settings=settings)
     result.lint = lint.findings
     result.skipped = lint.skipped

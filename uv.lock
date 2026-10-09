@@ -275,7 +275,7 @@ requires-dist = [
     { name = "arq", marker = "extra == 'data'", specifier = ">=0.26" },
     { name = "asteval", specifier = ">=1.0" },
     { name = "asyncpg", marker = "extra == 'data'", specifier = ">=0.29" },
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.121.1" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3.4.4" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'mcp'", specifier = ">=0.27" },
