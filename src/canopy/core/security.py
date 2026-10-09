@@ -200,31 +200,36 @@ class FileKeyRegistry:
         return len(self._keys)
 
 
-def _file_entry_problem(entry: str) -> str | None:
-    """Why ``entry`` is not a keys-file line, or ``None`` when it is one.
+class _BadFileEntry(ValueError):
+    """A keys-file entry breaks the grammar; the message names the rule broken."""
+
+
+def _parse_file_entry(entry: str) -> tuple[str, frozenset[str], frozenset[str]]:
+    """``entry`` as ``(token, scopes, recognized modules)``, or `_BadFileEntry` saying why not.
 
     The reason names the rule broken, never a part of the entry: the token is
     the secret, and a scope or module typo sits right next to it.
     """
     if any(char.isspace() for char in entry):
-        return "contains whitespace"
+        raise _BadFileEntry("contains whitespace")
     token, separator, rest = entry.partition(":")
     if not separator or not token:
-        return "is not <token>:<scope>[+<scope>]@<module>[+<module>]"
+        raise _BadFileEntry("is not <token>:<scope>[+<scope>]@<module>[+<module>]")
     scopes, at, modules = rest.partition("@")
     if not at:
-        return "has no @<module>[+<module>] suffix"
+        raise _BadFileEntry("has no @<module>[+<module>] suffix")
     scope_list = scopes.split("+")
     if not all(scope_list) or not set(scope_list) <= KEYS_FILE_SCOPES:
-        return "names a scope other than read, write or admin"
+        raise _BadFileEntry("names a scope other than read, write or admin")
     if "read" not in scope_list:
-        return "grants no read scope"
+        raise _BadFileEntry("grants no read scope")
     module_list = modules.split("+")
     if not all(module_list):
-        return "has an empty module in its @<module>[+<module>] suffix"
-    if split_modules(set(module_list))[1]:
-        return "names an unknown module"
-    return None
+        raise _BadFileEntry("has an empty module in its @<module>[+<module>] suffix")
+    known, unknown = split_modules(set(module_list))
+    if unknown:
+        raise _BadFileEntry("names an unknown module")
+    return token, frozenset(scope_list), known
 
 
 def load_keys_file(path: str | Path) -> FileKeyRegistry:
@@ -252,18 +257,17 @@ def load_keys_file(path: str | Path) -> FileKeyRegistry:
         raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: holds no API key")
     keys: dict[str, APIKey] = {}
     for number, entry in enumerate(entries, start=1):
-        if problem := _file_entry_problem(entry):
-            raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: entry {number} {problem}")
-        token, _, rest = entry.partition(":")
-        scopes, _, modules = rest.partition("@")
+        try:
+            token, scopes, modules = _parse_file_entry(entry)
+        except _BadFileEntry as problem:
+            raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: entry {number} {problem}") from None
         if token in keys:
             raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: entry {number} repeats an earlier token")
-        scope_set = set(scopes.split("+"))
         keys[token] = APIKey(
             read=True,
-            write="write" in scope_set,
-            admin="admin" in scope_set,
-            modules=split_modules(set(modules.split("+")))[0],
+            write="write" in scopes,
+            admin="admin" in scopes,
+            modules=modules,
             # Position identifies a file key in logs without revealing its token.
             name=f"file:{number}",
             token=token,
