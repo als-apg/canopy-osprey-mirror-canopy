@@ -48,7 +48,6 @@ def test_docs_ui_lists_main_and_module_specs() -> None:
             ("raccoon", "Raccoon"),
             ("vole", "Vole"),
             ("fox", "Fox"),
-            ("beaver", "Beaver"),
             ("squirrel", "Squirrel"),
             ("magpie", "Magpie"),
             ("jobs", "Jobs"),

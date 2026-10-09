@@ -7,8 +7,7 @@
 the runtime no longer produces, so this test compares the raw bytes.
 
 The sibling checkouts only exist on a developer machine, so the test reads their
-roots from ``CANOPY_SCHEMA_SIBLINGS`` (an ``os.pathsep``-separated list, as
-``test_schema_vendor.py``) and is skipped when the variable is unset.
+roots from ``CANOPY_SCHEMA_SIBLINGS`` (an ``os.pathsep``-separated list) and is skipped when the variable is unset.
 """
 
 import os
@@ -18,7 +17,7 @@ import pytest
 
 SIBLINGS_ENV = "CANOPY_SCHEMA_SIBLINGS"
 SDK_COPY = "packages/screen-ir/test-vectors/expand.json"
-CANOPY_COPY = Path(__file__).resolve().parents[2] / "canopy_mcp" / "fixtures" / "expand-vectors.json"
+CANOPY_COPY = Path(__file__).resolve().parent / "fixtures" / "expand-vectors.json"
 
 
 def _sibling_roots() -> list[Path]:

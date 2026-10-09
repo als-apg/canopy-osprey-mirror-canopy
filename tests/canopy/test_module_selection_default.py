@@ -18,13 +18,12 @@ from canopy.main import app, build_app
 from tests.conftest import READ_HEADERS
 from canopy.core.config import ALL_MODULES, Settings
 
-ELEVEN = (
+TEN = (
     "mole",
     "hare",
     "raccoon",
     "vole",
     "fox",
-    "beaver",
     "squirrel",
     "magpie",
     "jobs",
@@ -37,8 +36,8 @@ def _mount_paths(application) -> list[str]:
     return [route.path for route in application.routes if type(route).__name__ == "Mount"]
 
 
-def test_the_module_list_is_the_eleven_in_composition_order():
-    assert ALL_MODULES == ELEVEN
+def test_the_module_list_is_the_ten_in_composition_order():
+    assert ALL_MODULES == TEN
 
 
 def test_the_setting_defaults_to_empty(monkeypatch):
@@ -46,17 +45,17 @@ def test_the_setting_defaults_to_empty(monkeypatch):
     assert Settings().modules == ""
 
 
-def test_canopy_main_app_mounts_all_eleven():
-    assert _mount_paths(app) == [f"/{name}" for name in ELEVEN]
-    assert app.state.modules == ELEVEN
+def test_canopy_main_app_mounts_all_ten():
+    assert _mount_paths(app) == [f"/{name}" for name in TEN]
+    assert app.state.modules == TEN
 
 
-def test_an_empty_selection_builds_all_eleven():
-    assert _mount_paths(build_app("")) == [f"/{name}" for name in ELEVEN]
-    assert _mount_paths(build_app([])) == [f"/{name}" for name in ELEVEN]
+def test_an_empty_selection_builds_all_ten():
+    assert _mount_paths(build_app("")) == [f"/{name}" for name in TEN]
+    assert _mount_paths(build_app([])) == [f"/{name}" for name in TEN]
 
 
-def test_canopy_main_app_serves_all_eleven_without_canopy_modules(tmp_path):
+def test_canopy_main_app_serves_all_ten_without_canopy_modules(tmp_path):
     env = {k: v for k, v in os.environ.items() if k != "CANOPY_MODULES"}
     code = (
         "import json, canopy.main\n"
@@ -66,7 +65,7 @@ def test_canopy_main_app_serves_all_eleven_without_canopy_modules(tmp_path):
         [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120
     )
     assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout.strip().splitlines()[-1]) == [f"/{name}" for name in ELEVEN]
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == [f"/{name}" for name in TEN]
 
 
 def test_batch_routes_reach_jobs_when_it_is_selected(monkeypatch):

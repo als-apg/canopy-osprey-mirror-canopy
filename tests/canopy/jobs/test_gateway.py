@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 from arq.jobs import JobStatus
+from pydantic import ValidationError
 
 from canopy.jobs import gateway
 from canopy.jobs.errors import JobAlreadyExists
@@ -124,3 +125,83 @@ async def test_enqueue_duplicate_raises_job_already_exists(monkeypatch):
     monkeypatch.setattr(gateway, "get_pool", fake_get_pool)
     with pytest.raises(JobAlreadyExists):
         await gateway.enqueue("create_snapshot")
+
+
+# --- phases ------------------------------------------------------------------ #
+
+_PHASES = [
+    {"name": "Setpoints", "current": 2, "total": 2, "status": "completed", "failures": 1},
+    {"name": "MagnetTrimHook", "current": 0, "total": 0, "status": "skipped", "failures": 0},
+]
+
+
+class RecordingRedis:
+    """Just enough of a Redis client for `report_progress` and `_read_progress`."""
+
+    def __init__(self):
+        self.store: dict[str, str] = {}
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+
+    async def get(self, key):
+        return self.store.get(key)
+
+
+async def test_progress_without_phases_reports_none(patch_gateway):
+    patch_gateway(JobStatus.in_progress, info=FakeInfo(), progress={"percent": 42, "message": "halfway"})
+    assert (await gateway.get_status("x")).phases == []
+
+
+async def test_running_job_carries_its_phases(patch_gateway):
+    patch_gateway(JobStatus.in_progress, info=FakeInfo(), progress={"percent": 50, "message": "m", "phases": _PHASES})
+    dto = await gateway.get_status("x")
+    assert [(p.name, p.status, p.current, p.total, p.failures) for p in dto.phases] == [
+        ("Setpoints", "completed", 2, 2, 1),
+        ("MagnetTrimHook", "skipped", 0, 0, 0),
+    ]
+
+
+async def test_completed_job_keeps_its_final_phases(patch_gateway):
+    ri = FakeInfo(success=True, result={"type": "restore"})
+    patch_gateway(JobStatus.complete, info=ri, result_info=ri, progress={"percent": 100, "phases": _PHASES})
+    dto = await gateway.get_status("x")
+    assert [p.name for p in dto.phases] == ["Setpoints", "MagnetTrimHook"]
+
+
+async def test_expired_result_keeps_its_final_phases(patch_gateway):
+    patch_gateway(JobStatus.complete, result_info=None, progress={"percent": 100, "phases": _PHASES})
+    assert len((await gateway.get_status("x")).phases) == 2
+
+
+async def test_phases_serialize_on_the_status_payload(patch_gateway):
+    patch_gateway(JobStatus.in_progress, info=FakeInfo(), progress={"percent": 50, "phases": _PHASES[:1]})
+    dumped = (await gateway.get_status("x")).model_dump(by_alias=True)
+    assert dumped["phases"] == [_PHASES[0]]
+
+
+async def test_report_progress_round_trips_phases():
+    redis = RecordingRedis()
+    await gateway.report_progress(redis, "j", 50, "msg", phases=_PHASES)
+    percent, message, phases = await gateway._read_progress(redis, "j")
+    assert (percent, message) == (50, "msg")
+    assert [p.model_dump() for p in phases] == _PHASES
+
+
+async def test_report_progress_without_phases_keeps_the_old_payload():
+    redis = RecordingRedis()
+    await gateway.report_progress(redis, "j", 10, "msg")
+    assert json.loads(redis.store["canopy:job_progress:j"]) == {"percent": 10, "message": "msg"}
+
+
+async def test_report_progress_fills_phase_defaults():
+    redis = RecordingRedis()
+    await gateway.report_progress(redis, "j", 0, phases=[{"name": "Setpoints", "total": 3}])
+    stored = json.loads(redis.store["canopy:job_progress:j"])["phases"]
+    assert stored == [{"name": "Setpoints", "current": 0, "total": 3, "status": "pending", "failures": 0}]
+
+
+@pytest.mark.parametrize("phase", [{"name": "x", "status": "bogus"}, {"total": 3}, {"name": "x", "current": "lots"}])
+async def test_report_progress_rejects_a_malformed_phase(phase):
+    with pytest.raises(ValidationError):
+        await gateway.report_progress(RecordingRedis(), "j", 0, phases=[phase])

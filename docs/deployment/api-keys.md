@@ -144,7 +144,7 @@ curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
 ### Module scoping
 
 A key can be restricted to one or more mounted sub-apps — `mole`, `hare`,
-`raccoon`, `vole`, `fox`, `beaver`, `squirrel`, `magpie`, `jobs`, `converter`
+`raccoon`, `vole`, `fox`, `squirrel`, `magpie`, `jobs`, `converter`
 — or `core`, for the parent app's own routes (`/health`, `/v1/api-keys`).
 Minting a key via the CLI or `POST /v1/api-keys` without naming any modules
 grants every module, an explicit default of `["*"]` at that layer. There is no

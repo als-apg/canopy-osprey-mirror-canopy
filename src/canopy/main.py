@@ -38,7 +38,6 @@ API_MODULES = (
     ("raccoon", "Raccoon"),
     ("vole", "Vole"),
     ("fox", "Fox"),
-    ("beaver", "Beaver"),
     ("squirrel", "Squirrel"),
     ("magpie", "Magpie"),
     ("jobs", "Jobs"),

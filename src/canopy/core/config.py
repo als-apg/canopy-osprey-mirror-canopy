@@ -13,7 +13,6 @@ ALL_MODULES: tuple[str, ...] = (
     "raccoon",
     "vole",
     "fox",
-    "beaver",
     "squirrel",
     "magpie",
     "jobs",
