@@ -153,10 +153,14 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _refuse_a_relay_without_its_secrets(self) -> "Settings":
+    def _read_the_write_key_file(self) -> "Settings":
         # A write key file that is named must supply the key, relay on or off.
         if self.write_api_key_file is not None:
             self._write_api_key = read_secret_file("CANOPY_WRITE_API_KEY_FILE", self.write_api_key_file)
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_a_relay_without_its_secrets(self) -> "Settings":
         if not self.put_relay:
             return self
         if self.write_api_key_file is None:
