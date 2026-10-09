@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 # CANOPY appliance image: the canopy FastAPI backend (uvicorn canopy.main:app)
 # and the canopy_mcp panel/MCP server (python -m canopy_mcp --http), plus the
-# built canopy-screen-runtime viewer, the built react-trace data browser and the
-# checked-in Beaver widget registry data. One image, two services: compose
+# built canopy-screen-runtime viewer and the built react-trace data browser.
+# One image, two services: compose
 # supplies the command, so there is no CMD.
 #
 # Four repos feed the build, each as a NAMED build context:
-#   canopy     — the canopy repo (pyproject.toml, src/, widget-registry-data/)
+#   canopy     — the canopy repo (pyproject.toml, src/)
 #   pydm-src   — pydm-converter-tool (the .bob adapter; not yet on PyPI)
 #   runtime    — canopy-screen-runtime (pnpm workspace holding apps/viewer)
 #   trace-src  — a react-trace source tree (a `git archive` of one commit)
@@ -94,7 +94,6 @@ WORKDIR /app
 COPY --from=pydm / /wheels
 COPY --from=viewer / /app/viewer
 COPY --from=trace / /app/trace
-COPY --from=canopy widget-registry-data /app/widget-registry-data
 
 ENV CANOPY_TRACE_DIST=/app/trace
 

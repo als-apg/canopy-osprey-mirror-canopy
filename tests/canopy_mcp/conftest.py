@@ -13,6 +13,9 @@ app's shared client points at the default backend URL, where a developer's own
 stack may be listening, so ``no_data_summary`` stubs that fetch to "no DATA"
 for every test. A test marked ``real_data_summary`` keeps the real fetch and
 supplies its own ``app.state.http``.
+
+``CANOPY_SPEC_DIR`` is removed for every test, so a developer's staged spec
+never decides a result; the spec-present tests stage their own (``synthetic_spec``).
 """
 
 import os
@@ -23,6 +26,7 @@ import pytest
 pytest.importorskip("fastmcp")
 
 from canopy_mcp import static  # noqa: E402
+from canopy_mcp.config import get_settings  # noqa: E402
 from canopy_mcp.server import mcp, registered_tools, authoring_snapshot  # noqa: E402
 
 LIVE_ENV = "CANOPY_LIVE"
@@ -65,3 +69,17 @@ def no_data_summary(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPa
         return None
 
     monkeypatch.setattr(static, "fetch_data_summary", no_data)
+
+
+@pytest.fixture(autouse=True)
+def no_ambient_spec(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """No staged spec reaches a test from the environment.
+
+    The cached process settings are dropped around each test, so a test that
+    stages a spec (or a viewer dist) through the environment is the one the
+    tools read.
+    """
+    monkeypatch.delenv("CANOPY_SPEC_DIR", raising=False)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

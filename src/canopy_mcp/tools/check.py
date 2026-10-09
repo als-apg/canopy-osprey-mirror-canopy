@@ -5,7 +5,8 @@ alone). A given document may also name a ``draft_id``: its refs then resolve in
 that draft's directory, as they will once it is saved there, and the stored
 copy is not read. The result groups findings by pass:
 
-* ``schema`` -- the vendored Screen-IR JSON Schema (:mod:`canopy_mcp.check.schema`);
+* ``schema`` -- the staged Screen-IR JSON Schema (:mod:`canopy_mcp.check.schema`);
+  without one, a single ``spec_unavailable`` warning and no prop lint;
 * ``semantic`` -- the semantic pass plus draft-ref and image-ref resolution
   (:mod:`canopy_mcp.check.semantic`, :mod:`canopy_mcp.check.refs`);
 * ``lint`` -- catalog props, in-process Fox formulas and Raccoon PV lookup
@@ -31,7 +32,7 @@ from canopy_mcp.server import mcp
 from canopy_mcp.catalog import Catalog, CatalogError, ensure_catalog
 from canopy_mcp.check.lint import check_lint
 from canopy_mcp.check.refs import Tree, ServedAt, check_refs, read_screen
-from canopy_mcp.check.schema import check_schema
+from canopy_mcp.check.schema import SPEC_UNAVAILABLE, check_schema
 from canopy_mcp.tools._common import route, get_store, read_draft, validate_id
 from canopy_mcp.check.findings import Finding
 from canopy_mcp.check.semantic import check_semantic
@@ -108,15 +109,16 @@ async def run_check(
         screen, _ = read_draft(store, draft_id, given)  # type: ignore[arg-type]
     if catalog is None:
         try:
-            catalog = await ensure_catalog(settings, client)
+            catalog = await ensure_catalog(settings)
         except CatalogError as exc:
             raise ToolError(f"widget catalog unavailable: {exc}") from exc
 
     result = CheckResult()
-    result.schema = check_schema(screen)
+    result.schema = check_schema(screen, settings.staged_spec_dir)
+    spec_staged = not any(f.code == SPEC_UNAVAILABLE for f in result.schema)
     refs = check_refs(screen, tree if tree is not None else store, draft_id, served_at=served_at)  # type: ignore[arg-type]
     result.semantic = check_semantic(screen, relay_on=settings.put_relay) + refs
-    lint = await check_lint(screen, catalog, client=client, settings=settings)
+    lint = await check_lint(screen, catalog, client=client, settings=settings, props=spec_staged)
     result.lint = lint.findings
     result.skipped = lint.skipped
     return result

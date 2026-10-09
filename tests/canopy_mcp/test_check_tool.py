@@ -18,6 +18,7 @@ from canopy_mcp.catalog import set_catalog, build_catalog
 from canopy_mcp.check.lint import RACCOON_VALIDATE_PATH
 from canopy_mcp.tools.check import CheckResult, check, run_check
 from canopy_mcp.check.semantic import iter_nodes
+from tests.canopy_mcp.synthetic_spec import write_spec
 
 BASE = "http://canopy.test"
 RACCOON = BASE + RACCOON_VALIDATE_PATH
@@ -25,6 +26,15 @@ FIXTURES = Path(__file__).parent / "fixtures"
 REFS_DRAFTS = FIXTURES / "refs" / "drafts"
 SPEED_FIXTURE = FIXTURES / "speed-100-50-20.screen.json"
 GENERATOR = FIXTURES / "gen_speed_fixture.py"
+
+
+@pytest.fixture(autouse=True)
+def staged_spec(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A synthetic staged spec: these tests compose all four passes (the spec-absent path is test_check_schema's)."""
+    spec = write_spec(tmp_path / "spec")
+    monkeypatch.setenv("CANOPY_SPEC_DIR", str(spec))
+    return spec
+
 
 LABEL_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -40,7 +50,7 @@ def _catalog():
         "group": {"consumes": [], "verbatim": False},
         "embedded-display": {"consumes": ["file"], "verbatim": False},
     }
-    return build_catalog([{"id": "pv-label", "propSchema": LABEL_SCHEMA}], ir_map)
+    return build_catalog(ir_map, {"pv-label": LABEL_SCHEMA})
 
 
 def _node(nid, ntype, props=None, children=None):

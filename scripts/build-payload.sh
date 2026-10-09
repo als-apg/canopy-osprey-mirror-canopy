@@ -6,8 +6,8 @@
 #   <out>/pydmconverter-<version>-*.whl  PyDMConverter wheel
 #   <out>/viewer/                        canopy-screen-runtime viewer dist (index.html, ir-map.json)
 #   <out>/trace/                         react-trace dist (empty under --no-trace)
-#   <out>/widgets/*.json                 the widget registry (widget-registry-data/widgets)
-#   <out>/STAGED.json                    the five commits and the two versions
+#   <out>/spec/                          the staged spec directory (only with SPEC set)
+#   <out>/STAGED.json                    the five commits, the two versions and the spec
 #
 # Nothing is built in a checkout. Every repo is exported with `git archive` at
 # its commit into one temp root, laid out as
@@ -22,7 +22,8 @@
 #
 # STAGED.json is written last: a directory without it is not a payload.
 #
-# Needs git, tar, uv/uvx and pnpm. Run with --help for inputs.
+# Needs git, tar, uv/uvx, pnpm, python3 and sha256sum or shasum. Run with
+# --help for inputs.
 set -euo pipefail
 
 PROG=build-payload
@@ -54,6 +55,10 @@ Optional inputs (environment):
                   whose +g<node> must be a prefix of CANOPY_SHA)
   PYDM_VERSION    PEP 440 version of PyDMConverter (default: setuptools_scm on PYDM,
                   whose +g<node> must be a prefix of PYDM_SHA)
+  SPEC            staged spec directory (ir/, widgets/, SPEC-SOURCE naming repo and
+                  SHA), copied to <out>/spec/ and recorded in STAGED.json as "spec"
+                  (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
+                  unset means no spec/ and both recorded as null
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -93,6 +98,15 @@ for var in "${dirs[@]}"; do
 done
 git -C "$ROOT" rev-parse --verify --quiet HEAD >/dev/null \
     || die "$ROOT is not a git checkout with a commit"
+
+# The staged spec: a directory whose SPEC-SOURCE names the commit it came from.
+SPEC_SHA=""
+if [ -n "${SPEC:-}" ]; then
+    [ -d "$SPEC" ] || die "SPEC=$SPEC is not a directory"
+    [ -f "$SPEC/SPEC-SOURCE" ] || die "SPEC=$SPEC has no SPEC-SOURCE"
+    SPEC_SHA="$(grep -oE '(^|[^0-9a-f])[0-9a-f]{40}([^0-9a-f]|$)' "$SPEC/SPEC-SOURCE" | grep -oE '[0-9a-f]{40}' | head -n 1 || true)"
+    [ -n "$SPEC_SHA" ] || die "SPEC=$SPEC: SPEC-SOURCE names no 40-hex commit"
+fi
 
 if [ -e "$OUT" ]; then
     [ -d "$OUT" ] || die "<out>=$OUT is not a directory"
@@ -136,6 +150,11 @@ echo "$PROG: canopy  $CANOPY_SHA ($ROOT)" >&2
 echo "$PROG: runtime $RT_SHA ($RT)" >&2
 echo "$PROG: sdk     $SDK_SHA ($SDK)" >&2
 echo "$PROG: pydm    $PYDM_SHA ($PYDM)" >&2
+if [ -n "$SPEC_SHA" ]; then
+    echo "$PROG: spec    $SPEC_SHA ($SPEC)" >&2
+else
+    echo "$PROG: spec    none (SPEC unset)" >&2
+fi
 if [ "$NO_TRACE" = 0 ]; then
     echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE)" >&2
 else
@@ -214,6 +233,13 @@ js() { env -u TRACE HUSKY=0 "$@"; }
 VIEWER_DIST="$RT_SRC/apps/viewer/dist"
 [ -s "$VIEWER_DIST/index.html" ] || die "viewer dist missing (apps/viewer/dist/index.html)"
 [ -s "$VIEWER_DIST/ir-map.json" ] || die "viewer dist has no ir-map.json"
+# The widget catalog is ir-map.json alone: every entry must carry its editor metadata.
+missing="$(python3 -I -c '
+import json, sys
+entries = json.load(open(sys.argv[1], encoding="utf-8"))
+print(" ".join(k for k, v in entries.items() if not (isinstance(v, dict) and isinstance(v.get("displayName"), str) and v["displayName"])))
+' "$VIEWER_DIST/ir-map.json")" || die "cannot read the viewer's ir-map.json"
+[ -z "$missing" ] || die "viewer ir-map.json entries without displayName: $missing"
 cp -R "$VIEWER_DIST" "$STAGE/viewer"
 
 # --- trace -----------------------------------------------------------------------
@@ -242,11 +268,21 @@ else
     mkdir "$STAGE/trace"
 fi
 
-# --- widget registry ---------------------------------------------------------------
-mkdir "$STAGE/widgets"
-ls "$CANOPY_SRC"/widget-registry-data/widgets/*.json >/dev/null 2>&1 \
-    || die "canopy $CANOPY_SHA has no widget-registry-data/widgets/*.json"
-cp "$CANOPY_SRC"/widget-registry-data/widgets/*.json "$STAGE/widgets/"
+# --- spec ---------------------------------------------------------------------------
+# The digest covers every file's path and bytes, so a payload whose only change is
+# the staged spec is still a new payload to the stager.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; }
+tree_digest() { # <dir>: sha256 over "<file sha256>  <relative path>" lines, sorted by path
+    (cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+        printf '%s  %s\n' "$(sha256 < "$f" | cut -d' ' -f1)" "$f"
+    done) | sha256 | cut -d' ' -f1
+}
+SPEC_DIGEST=""
+if [ -n "$SPEC_SHA" ]; then
+    mkdir "$STAGE/spec"
+    cp -R "$SPEC"/. "$STAGE/spec"/
+    SPEC_DIGEST="sha256:$(tree_digest "$STAGE/spec")"
+fi
 
 # --- hand over ---------------------------------------------------------------------
 json_str() { if [ -n "$1" ]; then printf '"%s"' "$1"; else printf 'null'; fi; }
@@ -260,7 +296,9 @@ cat > "$OUT/STAGED.json.tmp" <<EOF
   "pydm": $(json_str "$PYDM_SHA"),
   "trace": $(json_str "$TRACE_SHA"),
   "canopy_version": $(json_str "$CANOPY_VERSION"),
-  "pydm_version": $(json_str "$PYDM_VERSION")
+  "pydm_version": $(json_str "$PYDM_VERSION"),
+  "spec": $(json_str "$SPEC_SHA"),
+  "spec-digest": $(json_str "$SPEC_DIGEST")
 }
 EOF
 mv "$OUT/STAGED.json.tmp" "$OUT/STAGED.json"

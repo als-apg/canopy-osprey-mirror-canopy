@@ -24,6 +24,7 @@ from canopy_mcp.skill import __main__ as cli
 from canopy_mcp.server import AUTHORING_TOOLS, mcp, register_all
 from canopy_mcp.check.schema import check_schema
 from canopy_mcp.check.semantic import iter_nodes, check_semantic
+from tests.canopy_mcp.synthetic_spec import write_spec
 
 REPO = Path(__file__).resolve().parents[2]
 SOURCE = REPO / "src" / "canopy_mcp" / "skill" / "SKILL.md"
@@ -216,14 +217,14 @@ def test_the_skill_covers(phrase: str) -> None:
     assert phrase in TEXT
 
 
-def test_the_example_screen_passes_the_schema_and_semantic_checks() -> None:
+def test_the_example_screen_passes_the_schema_and_semantic_checks(tmp_path: Path) -> None:
     """The one document an agent copies from must be one the server would take."""
     blocks = re.findall(r"```json\n(.*?)\n```", TEXT, flags=re.DOTALL)
     assert len(blocks) == 1
     document = json.loads(blocks[0])
-    assert check_schema(document) == []
+    assert check_schema(document, write_spec(tmp_path / "spec")) == []
     assert check_semantic(document) == []
-    known = {path.stem for path in (REPO / "widget-registry-data" / "widgets").glob("*.json")}
+    known = set(json.loads((Path(__file__).parent / "fixtures" / "ir-map.json").read_text()))
     assert {node["type"] for _, node in iter_nodes(document)} <= known
 
 

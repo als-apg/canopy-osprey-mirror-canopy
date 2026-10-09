@@ -35,6 +35,7 @@ from canopy_mcp.tools.drafts import (
     delete_draft,
 )
 from canopy_mcp.tools.convert import convert_legacy
+from tests.canopy_mcp.synthetic_spec import write_spec
 
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
 PNG = b"\x89PNG\r\n\x1a\nfake"
@@ -112,13 +113,14 @@ def _patch_settings(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     drafts.reset_stores()
     ir_map = {t: {"consumes": [], "verbatim": False} for t in ("group", "label", "embedded-display")}
-    set_catalog(build_catalog([], ir_map))
+    set_catalog(build_catalog(ir_map))
 
 
 @pytest.fixture
-def settings(roots: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch):
+def settings(roots: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     personal, library = roots
-    s = Settings(base_url="http://canopy.test", drafts_dir=personal, library_dir=library)
+    spec = write_spec(tmp_path / "spec")
+    s = Settings(base_url="http://canopy.test", drafts_dir=personal, library_dir=library, spec_dir=spec)
     _patch_settings(monkeypatch, s)
     yield s
     set_catalog(None)

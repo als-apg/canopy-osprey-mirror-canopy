@@ -36,7 +36,7 @@ REQUEST_KEYS = ["format", "rid", "source_id", "source_dir", "rev", "target_dir",
 
 def _catalog():
     types = ("group", "label", "pv-label", "embedded-display", "image-view", "action-button")
-    return build_catalog([], {t: {"consumes": [], "verbatim": False} for t in types})
+    return build_catalog({t: {"consumes": [], "verbatim": False} for t in types})
 
 
 def _node(nid, ntype="label", props=None, children=None, **extra):

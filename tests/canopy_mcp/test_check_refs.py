@@ -740,7 +740,7 @@ def test_a_recording_store_tree_keeps_every_byte_string_it_read(store: DraftStor
 
 def _catalog() -> Any:
     ir_map = {name: {"consumes": ["file"], "verbatim": False} for name in ("group", "embedded-display")}
-    return build_catalog([], ir_map)
+    return build_catalog(ir_map)
 
 
 async def test_run_check_reads_the_draft_and_its_refs_through_a_tree() -> None:

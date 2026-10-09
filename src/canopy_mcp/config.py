@@ -99,9 +99,10 @@ class Settings(BaseSettings):
     # Seconds the WebSocket relays keep retrying an upstream that refuses the
     # connection before they close the browser socket; 0 means one attempt.
     relay_connect_retry_s: float = Field(default=0.0, ge=0)
-    # Directory of widget detail ``*.json`` files the catalog is built from
-    # instead of the backend's /beaver registry; unset means the registry.
-    widgets_dir: Path | None = None
+    # Staged spec directory (``ir/screen-ir-<version>.schema.json``,
+    # ``widgets/<ir id>.props.schema.json``, ``SPEC-SOURCE``) the check pass
+    # validates against; unset means ``<parent of viewer_dist>/spec``.
+    spec_dir: Path | None = None
     # Whether the screenshot Chromium launches with its own sandbox on
     # (``chromium_sandbox=True``); off by default, since the sandbox needs
     # privileges a container usually lacks.
@@ -127,7 +128,7 @@ class Settings(BaseSettings):
         "authoring",
         "views_dir",
         "relay_connect_retry_s",
-        "widgets_dir",
+        "spec_dir",
         "library_dir",
         "push_dir",
         "browser_sandbox",
@@ -168,6 +169,15 @@ class Settings(BaseSettings):
         if self.access_token_file is None:
             raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_ACCESS_TOKEN_FILE is not set")
         return self
+
+    @property
+    def staged_spec_dir(self) -> Path | None:
+        """The spec staging directory: ``spec_dir``, else ``spec/`` beside the viewer dist, else ``None``."""
+        if self.spec_dir is not None:
+            return Path(self.spec_dir)
+        if self.viewer_dist is not None:
+            return Path(self.viewer_dist).parent / "spec"
+        return None
 
     @property
     def write_api_key(self) -> str:

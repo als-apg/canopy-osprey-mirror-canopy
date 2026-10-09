@@ -1,47 +1,91 @@
 {
   "absolute-canvas": {
     "consumes": ["backgroundColor"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Canvas",
+    "description": "Top-level canvas that positions its children absolutely.",
+    "category": "container",
+    "supportsChildren": true
   },
   "arc": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Arc",
+    "description": "Arc segment of an ellipse.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "ellipse": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Ellipse",
+    "description": "Ellipse or circle shape.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "embedded-display": {
     "consumes": ["file", "macros"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Embedded Display",
+    "description": "Embeds another screen file, with optional macros.",
+    "category": "container",
+    "supportsChildren": true
   },
   "frame": {
     "consumes": [],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Frame",
+    "description": "Plain frame grouping its children.",
+    "category": "container",
+    "supportsChildren": true
   },
   "group": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Group",
+    "description": "Group of widgets positioned together.",
+    "category": "container",
+    "supportsChildren": true
   },
   "group-box": {
     "consumes": ["title"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Group Box",
+    "description": "Titled box grouping its children.",
+    "category": "container",
+    "supportsChildren": true
   },
   "image-view": {
     "consumes": ["src", "stretchMode"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Image",
+    "description": "Static image from a file.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "line": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Line",
+    "description": "Straight or polyline segment.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "polygon": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Polygon",
+    "description": "Closed polygon shape.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "pv-array-plot": {
     "consumes": ["title", "curves", "yAxes", "xLabels", "mode", "scale"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "PV Array Plot",
+    "description": "Plot of an array PV against its index.",
+    "category": "chart",
+    "supportsChildren": false
   },
   "pv-button": {
     "consumes": [
@@ -57,23 +101,43 @@
       "onImage",
       "offImage"
     ],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Button",
+    "description": "Button that writes a value to a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-byte-led": {
     "consumes": ["pv", "numBits", "shift", "bigEndian", "onColor", "offColor"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Byte Indicator",
+    "description": "Row of LEDs showing the bits of an integer PV.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-checkbox": {
     "consumes": ["pv", "label"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Checkbox",
+    "description": "Checkbox bound to a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-enum-combobox": {
     "consumes": ["pv"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Dropdown",
+    "description": "Drop-down selecting a value of an enum PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-gauge": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Gauge",
+    "description": "Dial gauge showing a PV value.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-label": {
     "consumes": [
@@ -89,23 +153,43 @@
       "fontSize",
       "fontFamily"
     ],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Text Display",
+    "description": "Read-only text display of a PV value.",
+    "category": "display",
+    "supportsChildren": false
   },
   "pv-led": {
     "consumes": ["pv", "bit", "onColor", "offColor"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "LED",
+    "description": "LED indicator showing a PV state.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-meter": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Meter",
+    "description": "Meter showing a PV value.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-progress-bar": {
     "consumes": ["pv", "min", "max", "orientation"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Progress Bar",
+    "description": "Bar showing a PV value within its range.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-radio-group": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Radio Group",
+    "description": "Radio buttons selecting a value of a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-slider": {
     "consumes": [
@@ -118,59 +202,115 @@
       "showScale",
       "limitsFromPV"
     ],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Slider",
+    "description": "Slider that writes a numeric PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-spinbox": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Spinbox",
+    "description": "Numeric spin box bound to a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-tabs": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "PV Tabs",
+    "description": "Tab selector bound to a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-tank": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Tank",
+    "description": "Tank level indicator for a PV value.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-text-input": {
     "consumes": ["pv", "confirmOnWrite", "confirmMessage"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Text Input",
+    "description": "Text field that writes a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "pv-thermometer": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Thermometer",
+    "description": "Thermometer indicator for a PV value.",
+    "category": "indicator",
+    "supportsChildren": false
   },
   "pv-toggle": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Toggle",
+    "description": "On/off toggle bound to a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "qwidget-container": {
     "consumes": [],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Widget Container",
+    "description": "Generic container holding child widgets.",
+    "category": "container",
+    "supportsChildren": true
   },
   "rectangle": {
     "consumes": [],
-    "verbatim": true
+    "verbatim": true,
+    "displayName": "Rectangle",
+    "description": "Rectangle shape.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "regular-button": {
     "consumes": ["label", "pressValue", "releaseValue", "transparent"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Push Button",
+    "description": "Push button without a PV.",
+    "category": "input",
+    "supportsChildren": false
   },
   "related-display-button": {
     "consumes": ["label", "file", "macros"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Related Display Button",
+    "description": "Button that opens a related display.",
+    "category": "input",
+    "supportsChildren": false
   },
   "scroll-area": {
     "consumes": [],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Scroll Area",
+    "description": "Scrollable area holding child widgets.",
+    "category": "container",
+    "supportsChildren": true
   },
   "shell-command-button": {
     "consumes": ["label", "command", "showIcon"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Shell Command Button",
+    "description": "Button that runs a shell command.",
+    "category": "input",
+    "supportsChildren": false
   },
   "tabs": {
     "consumes": [],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Tab Widget",
+    "description": "Tabbed container holding child widgets.",
+    "category": "container",
+    "supportsChildren": true
   },
   "text-label": {
     "consumes": [
@@ -182,14 +322,26 @@
       "fontSize",
       "fontFamily"
     ],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Label",
+    "description": "Static text label.",
+    "category": "drawing",
+    "supportsChildren": false
   },
   "waveform-plot": {
     "consumes": ["title", "curves", "yAxes", "xLabels"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "Waveform Plot",
+    "description": "Time or waveform plot of one or more PVs.",
+    "category": "chart",
+    "supportsChildren": false
   },
   "xy-plot": {
     "consumes": ["title", "curves", "xAxis", "yAxes", "showLegend"],
-    "verbatim": false
+    "verbatim": false,
+    "displayName": "XY Plot",
+    "description": "Scatter plot of one PV against another.",
+    "category": "chart",
+    "supportsChildren": false
   }
 }

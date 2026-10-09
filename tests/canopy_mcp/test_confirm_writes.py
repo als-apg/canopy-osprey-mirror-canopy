@@ -126,7 +126,7 @@ def _node(nid: str, ntype: str, props: dict[str, Any]) -> dict[str, Any]:
 
 
 def _catalog():
-    return build_catalog([], {"group": {"consumes": [], "verbatim": False}})
+    return build_catalog({"group": {"consumes": [], "verbatim": False}})
 
 
 def _screen() -> dict[str, Any]:

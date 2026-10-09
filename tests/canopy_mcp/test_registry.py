@@ -3,7 +3,6 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
@@ -12,6 +11,7 @@ from canopy_mcp import app as app_mod
 from canopy_mcp import catalog as catalog_mod
 from canopy_mcp.config import Settings
 from canopy_mcp.server import mcp, register_all
+from canopy_mcp.catalog import CatalogError
 
 EXPECTED_TOOLS = [
     "list_widgets",
@@ -67,23 +67,23 @@ def reset_catalog():
 
 def test_catalog_hook_loads_the_catalog_at_startup(tmp_path: Path, monkeypatch, reset_catalog) -> None:
     sentinel = object()
-    calls: list[tuple[Settings, httpx.AsyncClient]] = []
+    calls: list[Settings] = []
 
-    async def fake_load(settings, client):
-        calls.append((settings, client))
+    async def fake_load(settings):
+        calls.append(settings)
         return sentinel
 
     monkeypatch.setattr(app_mod, "load_catalog", fake_load)
     settings = Settings(drafts_dir=tmp_path / "drafts")
     app = app_mod.create_app(settings, startup_hooks=[app_mod.catalog_hook])
     with TestClient(app):
-        assert calls == [(settings, app.state.http)]
+        assert calls == [settings]
         assert catalog_mod._catalog is sentinel
 
 
 def test_catalog_hook_failure_does_not_block_startup(tmp_path: Path, monkeypatch, reset_catalog) -> None:
-    async def failing_load(settings, client):
-        raise httpx.ConnectError("backend down")
+    async def failing_load(settings):
+        raise CatalogError("viewer dist has no ir-map.json")
 
     monkeypatch.setattr(app_mod, "load_catalog", failing_load)
     app = app_mod.create_app(Settings(drafts_dir=tmp_path / "drafts"), startup_hooks=[app_mod.catalog_hook])

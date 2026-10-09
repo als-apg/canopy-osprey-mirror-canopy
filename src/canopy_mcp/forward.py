@@ -53,7 +53,7 @@ from canopy_mcp.config import Settings
 from canopy.core.errors import ErrorCode
 
 RELAYED_PATHS = ("/hare/v1/ws/pvs", "/fox/v1/ws/formulas")
-SERVICE_PREFIXES = ("hare", "fox", "squirrel", "beaver", "raccoon", "mole")
+SERVICE_PREFIXES = ("hare", "fox", "squirrel", "raccoon", "mole")
 MOLE_PREFIX = "/mole/v1/"
 MOLE_TIMEOUT = 15.0
 PVS_PREFIX = "/hare/v1/pvs/"

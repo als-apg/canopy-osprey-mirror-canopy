@@ -42,7 +42,6 @@ from typing import Any
 from contextlib import AsyncExitStack, AbstractAsyncContextManager, asynccontextmanager
 from collections.abc import Callable, AsyncIterator
 
-import httpx
 from starlette.types import Send, Scope, ASGIApp, Receive
 from starlette.responses import PlainTextResponse
 from starlette.middleware import Middleware
@@ -73,15 +72,15 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def catalog_hook(app: Starlette) -> AsyncIterator[None]:
-    """Load the widget catalog once at startup, over the shared client.
+    """Load the widget catalog once at startup.
 
-    A backend that is not up yet, a viewer dist without ``ir-map.json`` or an
-    unreadable ``CANOPY_WIDGETS_DIR`` must not keep the server (and its viewer) from starting: the failure is
-    logged and ``ensure_catalog`` retries on the first tool call that needs it.
+    A viewer dist without ``ir-map.json`` or an unreadable staged spec must not
+    keep the server (and its viewer) from starting: the failure is logged and
+    ``ensure_catalog`` retries on the first tool call that needs it.
     """
     try:
-        set_catalog(await load_catalog(app.state.settings, app.state.http))
-    except (CatalogError, httpx.HTTPError) as exc:
+        set_catalog(await load_catalog(app.state.settings))
+    except CatalogError as exc:
         logger.warning("widget catalog not loaded at startup (retried on first use): %s", exc)
     yield
 

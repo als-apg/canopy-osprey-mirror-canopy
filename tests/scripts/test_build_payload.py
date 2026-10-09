@@ -139,6 +139,24 @@ def pydm_version(world: dict) -> str:
     return f"4.5.6+g{head(world['pydm'])[:7]}"
 
 
+# The runtime's ir-map.json carries the editor metadata the catalog is built from.
+IR_MAP = '{"arc": {"consumes": [], "verbatim": true, "displayName": "Arc"}}\n'
+SPEC_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def make_spec(root: Path, schema: str = "{}\n") -> Path:
+    """A staged spec directory in the epic layout."""
+    write(
+        root,
+        {
+            "SPEC-SOURCE": f"repo: slaclab/canopy-spec\nsha: {SPEC_SHA}\n",
+            "ir/screen-ir-1.1.schema.json": schema,
+            "widgets/arc.props.schema.json": '{"type": "object"}\n',
+        },
+    )
+    return root
+
+
 def wheel_names(world: dict) -> list[str]:
     return [
         f"canopy-{canopy_version(world)}-py3-none-any.whl",
@@ -152,12 +170,7 @@ def world(tmp_path: Path) -> dict:
     canopy = src / "canopy"
     (canopy / "scripts").mkdir(parents=True)
     shutil.copy2(SCRIPT, canopy / "scripts" / "build-payload.sh")
-    make_canopy = {
-        "pyproject.toml": "[project]\nname='canopy'\n",
-        "widget-registry-data/widgets/arc.json": '{"id": "arc"}\n',
-        "widget-registry-data/widgets/frame.json": '{"id": "frame"}\n',
-        "widget-registry-data/icons/arc.svg": "<svg/>\n",
-    }
+    make_canopy = {"pyproject.toml": "[project]\nname='canopy'\n"}
     git(canopy, "init", "-q", "-b", "main")
     commit(canopy, {**make_canopy, "marker.txt": "canopy v1\n"}, "one")
     commit(canopy, {"marker.txt": "canopy v2\n"}, "two")
@@ -172,7 +185,7 @@ def world(tmp_path: Path) -> dict:
         {
             "package.json": "{}\n",
             "apps/viewer/package.json": "{}\n",
-            "packages/runtime/ir-map.json": '{"arc": {}}\n',
+            "packages/runtime/ir-map.json": IR_MAP,
         },
     )
     trace = make_repo(src / "react-trace", {"package.json": "{}\n", "pnpm-lock.yaml": "lock\n"})
@@ -190,7 +203,7 @@ def world(tmp_path: Path) -> dict:
     log = tmp_path / "stub.log"
     dropped = {
         "PYDM", "RT", "SDK", "TRACE", "TRACE_REF", "CANOPY_SHA", "RT_SHA", "SDK_SHA", "PYDM_SHA",
-        "CANOPY_VERSION", "PYDM_VERSION", "HUSKY",
+        "CANOPY_VERSION", "PYDM_VERSION", "HUSKY", "SPEC",
     }  # fmt: skip
     env = {k: v for k, v in os.environ.items() if k not in dropped}
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
@@ -249,14 +262,15 @@ def staged(world: dict) -> dict:
 # --- the payload ---------------------------------------------------------------
 
 
-def test_payload_holds_wheels_viewer_trace_widgets_and_staged(world):
+def test_payload_holds_wheels_viewer_trace_and_staged(world):
     ok(build(world))
     out = world["out"]
     assert sorted(p.name for p in out.glob("*.whl")) == wheel_names(world)
     assert (out / "viewer" / "index.html").read_text().startswith("canopy-screen-runtime v2\n")
-    assert json.loads((out / "viewer" / "ir-map.json").read_text()) == {"arc": {}}
+    assert json.loads((out / "viewer" / "ir-map.json").read_text()) == json.loads(IR_MAP)
     assert (out / "trace" / "index.html").read_text() == "react-trace v2\n"
-    assert sorted(p.name for p in (out / "widgets").iterdir()) == ["arc.json", "frame.json"]
+    assert not (out / "widgets").exists()
+    assert not (out / "spec").exists()
     assert (out / "STAGED.json").is_file()
 
 
@@ -270,6 +284,8 @@ def test_staged_names_five_commits_and_both_versions(world):
         "trace": head(world["trace"]),
         "canopy_version": canopy_version(world),
         "pydm_version": pydm_version(world),
+        "spec": None,
+        "spec-digest": None,
     }
 
 
@@ -364,16 +380,13 @@ def test_uncommitted_edits_are_absent_from_the_payload(world):
     for repo in world["repos"]:
         (repo / "marker.txt").write_text(f"{repo.name} EDITED\n")  # tracked, modified
         (repo / "untracked.txt").write_text("x\n")
-    (world["canopy"] / "widget-registry-data" / "widgets" / "draft.json").write_text("{}\n")
-    (world["canopy"] / "widget-registry-data" / "widgets" / "arc.json").write_text('{"id": "EDITED"}\n')
-    (world["rt"] / "packages" / "runtime" / "ir-map.json").write_text('{"EDITED": {}}\n')
+    (world["rt"] / "packages" / "runtime" / "ir-map.json").write_text('{"EDITED": {"displayName": "E"}}\n')
     git(world["sdk"], "add", "-A")  # staged, not committed
 
     ok(build(world))
     out = world["out"]
     texts = [p.read_text() for p in out.rglob("*") if p.is_file()]
     assert not any("EDITED" in t for t in texts)
-    assert sorted(p.name for p in (out / "widgets").iterdir()) == ["arc.json", "frame.json"]
     assert "untracked.txt" not in (out / "canopy.files").read_text()
     assert "untracked.txt" not in (out / "pydmconverter.files").read_text()
     assert staged(world)["canopy"] == head(world["canopy"])
@@ -542,3 +555,77 @@ def test_a_linked_worktree_exports_under_its_repository_name(world, tmp_path):
     git(world["sdk"], "worktree", "add", "-q", "--detach", str(linked), "HEAD")
     ok(build(world, SDK=str(linked)))
     assert (world["out"] / "viewer" / "index.html").read_text() == "canopy-screen-runtime v2\ncanopy-sdk-js v2\n"
+
+
+# --- ir-map metadata ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "ir_map",
+    [
+        '{"arc": {"consumes": []}}\n',
+        '{"arc": {"displayName": "Arc"}, "frame": {"displayName": ""}}\n',
+        '{"arc": "not an entry"}\n',
+    ],
+)
+def test_an_ir_map_entry_without_display_name_fails(world, ir_map):
+    commit(world["rt"], {"packages/runtime/ir-map.json": ir_map}, "no metadata")
+    proc = build(world)
+    assert proc.returncode != 0
+    assert "without displayName" in proc.stderr
+    assert not world["out"].exists() or not (world["out"] / "STAGED.json").exists()
+
+
+def test_a_viewer_without_ir_map_fails(world):
+    git(world["rt"], "rm", "-q", "packages/runtime/ir-map.json")
+    git(world["rt"], "commit", "-q", "-m", "no ir-map")
+    proc = build(world)
+    assert proc.returncode != 0
+    assert not (world["out"] / "STAGED.json").exists()
+
+
+# --- spec -----------------------------------------------------------------------------
+
+
+def test_spec_is_copied_and_recorded(world, tmp_path):
+    spec = make_spec(tmp_path / "spec-src")
+    ok(build(world, SPEC=str(spec)))
+    out = world["out"]
+    assert (out / "spec" / "SPEC-SOURCE").read_text() == (spec / "SPEC-SOURCE").read_text()
+    assert (out / "spec" / "ir" / "screen-ir-1.1.schema.json").read_text() == "{}\n"
+    assert (out / "spec" / "widgets" / "arc.props.schema.json").is_file()
+    s = staged(world)
+    assert s["spec"] == SPEC_SHA
+    assert s["spec-digest"].startswith("sha256:") and len(s["spec-digest"]) == len("sha256:") + 64
+
+
+def test_spec_digest_is_stable_and_follows_the_tree(world, tmp_path):
+    spec = make_spec(tmp_path / "spec-src")
+    ok(build(world, SPEC=str(spec)))
+    one = staged(world)["spec-digest"]
+    again = world["out"].parent / "again"
+    ok(build(world, out=again, SPEC=str(spec)))
+    assert json.loads((again / "STAGED.json").read_text())["spec-digest"] == one
+    # Same SPEC-SOURCE, other bytes: the stager must see a new payload.
+    (spec / "ir" / "screen-ir-1.1.schema.json").write_text('{"type": "object"}\n')
+    changed = world["out"].parent / "changed"
+    ok(build(world, out=changed, SPEC=str(spec)))
+    s = json.loads((changed / "STAGED.json").read_text())
+    assert s["spec"] == SPEC_SHA
+    assert s["spec-digest"] != one
+
+
+@pytest.mark.parametrize("problem", ["absent", "no-source", "no-sha"])
+def test_a_bad_spec_fails_before_any_tool_runs(world, tmp_path, problem):
+    spec = tmp_path / "spec-src"
+    if problem != "absent":
+        make_spec(spec)
+        if problem == "no-source":
+            (spec / "SPEC-SOURCE").unlink()
+        else:
+            (spec / "SPEC-SOURCE").write_text("repo: slaclab/canopy-spec\nsha: abc123\n")
+    proc = build(world, SPEC=str(spec))
+    assert proc.returncode != 0
+    assert "SPEC=" in proc.stderr
+    assert calls(world) == []
+    assert not world["out"].exists()
