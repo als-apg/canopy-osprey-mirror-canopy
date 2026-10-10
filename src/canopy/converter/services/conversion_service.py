@@ -18,7 +18,7 @@ from pydmconverter.react import convert_bytes
 from pydmconverter.ir.emit import to_wire_dict
 from pydmconverter.ir.model import ScreenIR, WidgetNode
 from pydmconverter.ir.schema import validate_screen_json
-from pydmconverter.ir.registry import RegistryClient, VendoredRegistry
+from pydmconverter.ir.registry import VendoredRegistry
 
 from canopy.core.color_scheme import ColorScheme
 from canopy.converter.errors import ConversionFailed, UnsupportedInput
@@ -94,15 +94,13 @@ class ConversionService:
 
     def __init__(
         self,
-        registry: RegistryClient | None = None,
         *,
         scheme: ColorScheme | None = None,
         color_def_path: str | Path | None = None,
     ) -> None:
         # One registry instance, reused across requests (the adapters would
-        # otherwise rebuild a VendoredRegistry per call). Phase 2 injects a
-        # BeaverGatewayRegistry here behind the ``use_beaver_gateway`` flag.
-        self._registry: RegistryClient = registry or VendoredRegistry()
+        # otherwise rebuild a VendoredRegistry per call).
+        self._registry = VendoredRegistry()
         # ``scheme`` is the already-loaded ``get_color_scheme`` result, injected by
         # the app lifespan and the batch worker; the service never loads one itself.
         # ``None`` keeps the service scheme-free, converting exactly as before.

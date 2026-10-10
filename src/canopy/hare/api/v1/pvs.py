@@ -48,7 +48,9 @@ async def put_pv(
 
     With ``wait`` true (the default) the call
     blocks until the IOC processes the write, so a 200 means it landed; a failure
-    or timeout raises `PVWriteFailed` (-> 502).
+    or timeout raises `PVWriteFailed` (-> 502). ``binding`` and ``origin`` reach
+    only a backend whose ``put`` accepts them; the others ignore them.
     """
-    await broker.put(pv, body.value, wait=body.wait, timeout=body.timeout)
+    origin = body.origin.model_dump() if body.origin is not None else None
+    await broker.put(pv, body.value, wait=body.wait, timeout=body.timeout, binding=body.binding, origin=origin)
     return PVWriteResultDTO(pv=pv)

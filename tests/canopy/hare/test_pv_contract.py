@@ -11,6 +11,23 @@ def test_pvvalue_defaults_scalar_and_camelcases():
     assert dumped["tsNs"] == 5
 
 
+def test_pvvalue_alarm_status_camelcases_and_defaults_to_none():
+    v = PVValue(pv="X", value=1.0, severity=AlarmSeverity.NO_ALARM, ts_ns=5)
+    dumped = v.model_dump(by_alias=True)
+    assert "alarmStatus" in dumped
+    assert dumped["alarmStatus"] is None
+
+
+def test_pvvalue_carries_alarm_status():
+    v = PVValue(pv="X", value=1.0, severity=AlarmSeverity.MAJOR, alarm_status=3, ts_ns=5)
+    assert v.model_dump(by_alias=True)["alarmStatus"] == 3
+
+
+def test_pvvalue_accepts_alarm_status_by_alias():
+    v = PVValue.model_validate({"pv": "X", "value": 1.0, "severity": "MINOR", "alarmStatus": 4, "tsNs": 5})
+    assert v.alarm_status == 4
+
+
 def test_pvvalue_carries_table_value():
     table = TableValue(labels=["Index", "Value"], columns=[[1, 2], [1.5, 2.5]])
     v = PVValue(pv="X", value=table, value_kind=ValueKind.TABLE, severity=AlarmSeverity.NO_ALARM, ts_ns=5)

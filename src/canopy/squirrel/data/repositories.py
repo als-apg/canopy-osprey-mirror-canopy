@@ -10,6 +10,7 @@ atomic fast path and ``SnapshotValueRepository.bulk_create`` is the ORM fallback
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from collections.abc import Callable, Awaitable
 
 from sqlalchemy import or_, any_, func, delete, insert, select, update
@@ -94,10 +95,33 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         return snapshot
 
     async def search(
-        self, title: str | None = None, tag_ids: list[str] | None = None, limit: int = 100
+        self,
+        title: str | None = None,
+        tag_ids: list[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 100,
     ) -> list[Snapshot]:
-        """Search snapshots by title (case-insensitive contains) and/or by tags
-        (snapshots containing PVs with ANY of ``tag_ids``)."""
+        """Search snapshots by title, tags and/or creation time.
+
+        Parameters
+        ----------
+        title : str | None
+            Case-insensitive substring match against the snapshot title.
+        tag_ids : list[str] | None
+            Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+        start : datetime | None
+            Lower bound on ``created_at``, inclusive.
+        end : datetime | None
+            Upper bound on ``created_at``, inclusive.
+        limit : int
+            Maximum number of rows returned.
+
+        Returns
+        -------
+        list[Snapshot]
+            Matching snapshots ordered by ``created_at`` descending.
+        """
         query = select(Snapshot)
 
         if title:
@@ -111,6 +135,12 @@ class SnapshotRepository(BaseRepository[Snapshot]):
                 .where(pv_tag.c.tag_id.in_(tag_ids))
             )
             query = query.where(Snapshot.id.in_(snapshot_ids_with_tags))
+
+        if start is not None:
+            query = query.where(Snapshot.created_at >= start)
+
+        if end is not None:
+            query = query.where(Snapshot.created_at <= end)
 
         query = query.order_by(Snapshot.created_at.desc()).limit(limit)
         result = await self.session.execute(query)
@@ -218,14 +248,126 @@ class PvRepository(BaseRepository[Pv]):
         )
         return result.scalar_one_or_none()
 
+    async def find_by_readback_without_setpoint(self, readback_address: str) -> Pv | None:
+        """Find a setpoint-less PV by its readback address.
+
+        Parameters
+        ----------
+        readback_address : str
+            Readback address to match.
+
+        Returns
+        -------
+        Pv | None
+            A PV whose ``setpoint_address`` is NULL and whose ``readback_address`` equals
+            ``readback_address``, or ``None`` when no such PV exists.
+        """
+        result = await self.session.execute(
+            select(Pv)
+            .options(selectinload(Pv.tags).selectinload(Tag.group))
+            .where(Pv.setpoint_address.is_(None), Pv.readback_address == readback_address)
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    async def find_by_config_only(self, config_address: str) -> Pv | None:
+        """Find a config-only PV by its config address.
+
+        Parameters
+        ----------
+        config_address : str
+            Config address to match.
+
+        Returns
+        -------
+        Pv | None
+            A PV whose ``setpoint_address`` and ``readback_address`` are both NULL and whose
+            ``config_address`` equals ``config_address``, or ``None`` when no such PV exists.
+        """
+        result = await self.session.execute(
+            select(Pv)
+            .options(selectinload(Pv.tags).selectinload(Tag.group))
+            .where(
+                Pv.setpoint_address.is_(None),
+                Pv.readback_address.is_(None),
+                Pv.config_address == config_address,
+            )
+            .limit(1)
+        )
+        return result.scalars().first()
+
     async def get_existing_setpoints(self, setpoint_addresses: list[str]) -> set[str]:
-        """Return the subset of ``setpoint_addresses`` that already exist."""
+        """Return the subset of ``setpoint_addresses`` that already exist.
+
+        Parameters
+        ----------
+        setpoint_addresses : list[str]
+            Setpoint addresses to look up.
+
+        Returns
+        -------
+        set[str]
+            The addresses already registered as a PV setpoint.
+        """
         if not setpoint_addresses:
             return set()
         existing: set[str] = set()
         for i in range(0, len(setpoint_addresses), PARAM_BATCH_SIZE):
             batch = setpoint_addresses[i : i + PARAM_BATCH_SIZE]
             result = await self.session.execute(select(Pv.setpoint_address).where(Pv.setpoint_address.in_(batch)))
+            existing.update({row[0] for row in result.all() if row[0]})
+        return existing
+
+    async def get_existing_readbacks_without_setpoint(self, readback_addresses: list[str]) -> set[str]:
+        """Return the subset of ``readback_addresses`` already held by a setpoint-less PV.
+
+        Parameters
+        ----------
+        readback_addresses : list[str]
+            Readback addresses to look up.
+
+        Returns
+        -------
+        set[str]
+            The addresses carried by an existing PV whose ``setpoint_address`` is NULL.
+        """
+        if not readback_addresses:
+            return set()
+        existing: set[str] = set()
+        for i in range(0, len(readback_addresses), PARAM_BATCH_SIZE):
+            batch = readback_addresses[i : i + PARAM_BATCH_SIZE]
+            result = await self.session.execute(
+                select(Pv.readback_address).where(Pv.setpoint_address.is_(None), Pv.readback_address.in_(batch))
+            )
+            existing.update({row[0] for row in result.all() if row[0]})
+        return existing
+
+    async def get_existing_config_only(self, config_addresses: list[str]) -> set[str]:
+        """Return the subset of ``config_addresses`` already held by a config-only PV.
+
+        Parameters
+        ----------
+        config_addresses : list[str]
+            Config addresses to look up.
+
+        Returns
+        -------
+        set[str]
+            The addresses carried by an existing PV whose ``setpoint_address`` and
+            ``readback_address`` are both NULL.
+        """
+        if not config_addresses:
+            return set()
+        existing: set[str] = set()
+        for i in range(0, len(config_addresses), PARAM_BATCH_SIZE):
+            batch = config_addresses[i : i + PARAM_BATCH_SIZE]
+            result = await self.session.execute(
+                select(Pv.config_address).where(
+                    Pv.setpoint_address.is_(None),
+                    Pv.readback_address.is_(None),
+                    Pv.config_address.in_(batch),
+                )
+            )
             existing.update({row[0] for row in result.all() if row[0]})
         return existing
 

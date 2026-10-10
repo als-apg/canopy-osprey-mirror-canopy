@@ -1,6 +1,7 @@
 """The ``screenshot`` tool: render a draft in the server's own viewer and return a PNG.
 
-The draft is loaded at ``/embed/drafts/<id>?<macros>`` on this process, so it
+The draft is loaded at ``/embed/drafts/<id>?<macros>`` on this process (a
+library screen, tool id ``library/<id>``, at ``/embed/library/<id>``), so it
 renders exactly as the agent's browser would see it, in the pv mode the
 server serves in ``config.json``. Before capturing, the page gets one shared,
 bounded wait (:data:`SETTLE_TIMEOUT_S`) for two things:
@@ -15,8 +16,13 @@ If the wait runs out the screenshot is still taken: a screen whose PVs never
 connect is exactly what the agent needs to see. ``pv`` then reports
 ``disconnected``, as it does for ``mock``: only a live Hare connection is
 ``connected``. Nothing is written to disk; the PNG goes back inline.
+
+The browser (see :mod:`canopy_mcp.browser`) is launched by the first call and
+locked to this server's origin; a host where no browser can run answers every
+call with a tool error saying screenshots are unavailable.
 """
 
+import zlib
 import struct
 from typing import Any, Literal
 from urllib.parse import quote, urlencode
@@ -24,14 +30,13 @@ from urllib.parse import quote, urlencode
 from fastmcp.tools import ToolResult
 from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
-from playwright.async_api import Error as PlaywrightError
 
+from canopy_mcp.urls import embed_path
+from canopy_mcp.store import DRAFTS, DraftStore, DraftNotFound, InvalidDraftId
 from canopy_mcp.config import get_settings
-from canopy_mcp.store import DraftNotFound, DraftStore, InvalidDraftId
-from canopy_mcp.tools import drafts
 from canopy_mcp.server import mcp
 from canopy_mcp.browser import Browser, BrowserNotStarted, get_browser
-from canopy_mcp.urls import embed_path
+from canopy_mcp.tools._common import route
 
 # One budget for fonts + PV status, so the whole call stays under 5 s.
 SETTLE_TIMEOUT_S = 4.0
@@ -63,8 +68,12 @@ def embed_url(
     macros: dict[str, str] | None = None,
     *,
     theme: Theme | None = None,
+    category: str = DRAFTS,
 ) -> str:
     """The embed URL of ``draft_id`` on ``base_url``, macros as query parameters.
+
+    ``draft_id`` is the id inside its store and ``category`` that store's
+    manifest category (``drafts``, or ``library`` for a library screen).
 
     Pins the viewer's zoom to 100 %: the embed route opens large panels fitted
     to the frame, and a screenshot must capture the panel at its authored size.
@@ -77,7 +86,7 @@ def embed_url(
     if theme is not None and theme not in THEMES:
         raise ValueError(f"theme must be one of {', '.join(THEMES)}, not {theme!r}")
     DraftStore.validate_id(draft_id)
-    url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"))
+    url = base_url.rstrip("/") + embed_path(quote(draft_id, safe="/"), category)
     query = {"_canopyZoom": "100", **{str(name): str(value) for name, value in (macros or {}).items()}}
     query["_canopyChrome"] = "0"
     if theme is not None:
@@ -99,7 +108,7 @@ def png_size(data: bytes) -> tuple[int, int]:
     return width, height
 
 
-MAX_VIEWPORT = 8192
+MAX_VIEWPORT = 4096
 
 
 def viewport_for(size: Any, default: dict[str, int]) -> dict[str, int]:
@@ -117,10 +126,142 @@ def viewport_for(size: Any, default: dict[str, int]) -> dict[str, int]:
         return out
     for axis in ("width", "height"):
         value = size.get(axis)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if isinstance(value, bool) or not isinstance(value, int | float):
             continue
         out[axis] = max(out[axis], min(int(value), MAX_VIEWPORT))
     return out
+
+
+# A capture is one bitmap in the browser, the GPU process and the protocol
+# message at once, so a 4096 x 4096 screen costs several hundred MiB on top of
+# the page. Above STRIP_MIN_PIXELS the screen is captured in bands of
+# STRIP_ROWS rows and the bands are joined here, which keeps the browser's
+# share to one band.
+STRIP_ROWS = 256
+STRIP_MIN_PIXELS = 2_000_000
+
+_PNG_CHANNELS = {0: 1, 2: 3, 4: 2, 6: 4}
+
+
+def _png_parts(data: bytes) -> tuple[bytes, bytes]:
+    """``(IHDR body, filtered scanlines)`` of a PNG."""
+    if not data.startswith(PNG_SIGNATURE):
+        raise ValueError("not a PNG")
+    header, idat, at = b"", [], len(PNG_SIGNATURE)
+    while at + 8 <= len(data):
+        (length,), kind = struct.unpack(">I", data[at : at + 4]), data[at + 4 : at + 8]
+        body = data[at + 8 : at + 8 + length]
+        if kind == b"IHDR":
+            header = body
+        elif kind == b"IDAT":
+            idat.append(body)
+        elif kind == b"IEND":
+            break
+        at += 12 + length
+    if len(header) != 13:
+        raise ValueError("PNG without an IHDR chunk")
+    return header, zlib.decompress(b"".join(idat))
+
+
+def _unfilter_first_row(row: bytes, bpp: int) -> bytes:
+    """A band's first scanline with filter 0, so it no longer depends on the row above.
+
+    The band was encoded with nothing above it; joined below another band the
+    same bytes would be read against that band's last row. With nothing above,
+    Up is the raw bytes and Paeth is Sub.
+    """
+    kind, out = row[0], bytearray(row[1:])
+    if kind in (1, 4):
+        for i in range(bpp, len(out)):
+            out[i] = (out[i] + out[i - bpp]) & 0xFF
+    elif kind == 3:
+        for i in range(bpp, len(out)):
+            out[i] = (out[i] + (out[i - bpp] >> 1)) & 0xFF
+    elif kind not in (0, 2):
+        raise ValueError(f"unknown PNG filter type {kind}")
+    return b"\x00" + bytes(out)
+
+
+def _png_chunk(kind: bytes, body: bytes) -> bytes:
+    return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+
+def stitch_png(strips: list[bytes]) -> bytes:
+    """One PNG of the given PNGs stacked top to bottom.
+
+    The strips must agree in width, bit depth and colour type and be
+    non-interlaced, 8 or 16 bit, not palette; anything else is a ``ValueError``.
+    Only each strip's first scanline is rewritten, the rest is copied as it was
+    filtered.
+    """
+    if not strips:
+        raise ValueError("no PNG to stitch")
+    layout, height, rows = None, 0, []
+    for strip in strips:
+        header, lines = _png_parts(strip)
+        width, strip_height, depth, colour, compression, filtering, interlace = struct.unpack(">IIBBBBB", header)
+        if colour not in _PNG_CHANNELS or depth not in (8, 16) or compression or filtering or interlace:
+            raise ValueError("PNG layout the stitcher does not handle")
+        if layout is None:
+            layout = (width, depth, colour)
+        elif layout != (width, depth, colour):
+            raise ValueError("PNG strips differ in width, bit depth or colour type")
+        bpp = _PNG_CHANNELS[colour] * depth // 8
+        stride = 1 + width * bpp
+        if len(lines) != stride * strip_height:
+            raise ValueError("PNG data does not match its header")
+        rows.append(_unfilter_first_row(lines[:stride], bpp))
+        rows.append(lines[stride:])
+        height += strip_height
+    width, depth, colour = layout  # type: ignore[misc]
+    header = struct.pack(">IIBBBBB", width, height, depth, colour, 0, 0, 0)
+    body = zlib.compress(b"".join(rows), 6)
+    return PNG_SIGNATURE + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", body) + _png_chunk(b"IEND", b"")
+
+
+# A clipped page capture is cut down to what the viewport shows, and the viewer keeps the
+# root behind a padding inside a scroller, so a root as large as the viewport starts out
+# with its far edges out of view.
+_SCROLL_INTO_VIEW_JS = "(el) => el.scrollIntoView({ block: 'start', inline: 'start', behavior: 'instant' })"
+
+
+def _in_view(box: dict[str, int], viewport: Any) -> bool:
+    """Whether ``box`` lies wholly inside ``viewport`` (``{width, height}``; anything else is no)."""
+    if not isinstance(viewport, dict):
+        return False
+    return (
+        box["x"] >= 0
+        and box["y"] >= 0
+        and box["x"] + box["width"] <= viewport.get("width", 0)
+        and box["y"] + box["height"] <= viewport.get("height", 0)
+    )
+
+
+async def _shoot(page: Any, root: Any) -> bytes:
+    """The PNG of ``root`` (the whole page without one); a large root is captured in strips.
+
+    Strips are clips of the page, so they only reach what the viewport shows: the root is
+    scrolled into view first, and one that still does not fit is captured in one element
+    screenshot, which costs the memory but returns the whole frame.
+    """
+    if root is None:
+        return await page.screenshot(type="png")
+    box = await root.bounding_box()
+    if box is None or round(box["width"]) * round(box["height"]) <= STRIP_MIN_PIXELS:
+        return await root.screenshot(type="png")
+    await root.evaluate(_SCROLL_INTO_VIEW_JS)
+    box = await root.bounding_box()
+    if box is None:
+        return await root.screenshot(type="png")
+    at = {key: round(box[key]) for key in ("x", "y", "width", "height")}
+    if not _in_view(at, page.viewport_size):
+        return await root.screenshot(type="png")
+    strips = []
+    for top in range(0, at["height"], STRIP_ROWS):
+        rows = min(STRIP_ROWS, at["height"] - top)
+        clip = {"x": at["x"], "y": at["y"] + top, "width": at["width"], "height": rows}
+        strips.append(await page.screenshot(type="png", clip=clip))
+    return stitch_png(strips)
 
 
 async def capture(
@@ -131,13 +272,14 @@ async def capture(
     size: dict[str, Any] | None = None,
     settle_timeout_s: float = SETTLE_TIMEOUT_S,
     theme: Theme | None = None,
+    category: str = DRAFTS,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Render ``draft_id`` and return ``(png, {width, height, pv})``.
+    """Render ``draft_id`` of ``category`` and return ``(png, {width, height, pv})``.
 
     ``size`` is the screen's ``metadata.size``; the page is sized to fit it.
     ``theme`` renders the page in ``light`` or ``dark``; see :func:`embed_url`.
     """
-    url = embed_url(browser.base_url, draft_id, macros, theme=theme)
+    url = embed_url(browser.base_url, draft_id, macros, theme=theme, category=category)
     async with browser.context() as context:
         page = await context.new_page()
         viewport = viewport_for(size, browser.viewport)
@@ -150,15 +292,15 @@ async def capture(
         await page.evaluate(_SETTLE_JS, {"settled": list(SETTLED_STATUSES), "timeoutMs": int(settle_timeout_s * 1000)})
         status = await page.evaluate(_STATUS_JS)
         root = await page.query_selector(SCREEN_ROOT_SELECTOR)
-        data = await root.screenshot(type="png") if root is not None else await page.screenshot(type="png")
+        data = await _shoot(page, root)
     width, height = png_size(data)
     return data, {"width": width, "height": height, "pv": pv_state(status)}
 
 
-def _draft_size(draft_id: str) -> dict[str, Any] | None:
-    """``metadata.size`` of draft ``draft_id``, or ``None`` when it has none or does not exist."""
+def _draft_size(store: DraftStore, draft_id: str) -> dict[str, Any] | None:
+    """``metadata.size`` of ``draft_id`` in ``store``, or ``None`` when it has none or does not exist."""
     try:
-        doc, _ = drafts.get_store(get_settings()).read(draft_id)
+        doc, _ = store.read(draft_id)
     except (DraftNotFound, InvalidDraftId, OSError, ValueError):
         return None
     if not isinstance(doc, dict):
@@ -168,9 +310,18 @@ def _draft_size(draft_id: str) -> dict[str, Any] | None:
     return size if isinstance(size, dict) else None
 
 
+def _playwright_errors() -> tuple[type[BaseException], ...]:
+    """Playwright's error class, or nothing to catch when it is not installed."""
+    try:
+        from playwright.async_api import Error
+    except ImportError:
+        return ()
+    return (Error,)
+
+
 @mcp.tool
 async def screenshot(id: str, macros: dict[str, str] | None = None, theme: Theme | None = None) -> ToolResult:
-    """Render draft ``id`` in the viewer and return it as a PNG image.
+    """Render draft ``id`` (or ``library/<id>``, a shared library screen) in the viewer and return it as a PNG image.
 
     ``macros`` are passed to the screen as ``$(NAME)`` values. Also returns
     ``{width, height, pv}``; ``pv`` is ``connected`` only when the viewer
@@ -182,13 +333,14 @@ async def screenshot(id: str, macros: dict[str, str] | None = None, theme: Theme
     """
     if theme is not None and theme not in THEMES:
         raise ToolError(f"theme must be one of {', '.join(THEMES)}, not {theme!r}")
+    store, local_id = route(id, get_settings())
     try:
         browser = get_browser()
-        data, info = await capture(browser, id, macros, size=_draft_size(id), theme=theme)
-    except InvalidDraftId as exc:
+        data, info = await capture(
+            browser, local_id, macros, size=_draft_size(store, local_id), theme=theme, category=store.category
+        )
+    except (InvalidDraftId, BrowserNotStarted) as exc:
         raise ToolError(str(exc)) from exc
-    except BrowserNotStarted as exc:
-        raise ToolError(str(exc)) from exc
-    except PlaywrightError as exc:
+    except _playwright_errors() as exc:
         raise ToolError(f"screenshot failed: {exc}") from exc
     return ToolResult(content=[Image(data=data, format="png"), info], structured_content=info)

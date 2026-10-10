@@ -3,15 +3,6 @@ from typing import Literal
 from canopy.contracts.base import CanopyModel
 
 
-class HeartbeatDTO(CanopyModel):
-    """Per-module heartbeat returned by ``/health/watchdog``. No auth, no I/O."""
-
-    module: str
-    version: str
-    uptime_s: float
-    now_ts_ns: int
-
-
 class HealthSummaryDTO(CanopyModel):
     """Broker health rollup returned by ``/health/summary``."""
 
@@ -23,3 +14,7 @@ class HealthSummaryDTO(CanopyModel):
     # Of active_monitors, those with no subscriber kept warm for the grace period.
     warm_monitors: int = 0
     subscriptions: int
+    # The connector's identity, as in the heartbeat frame; null when it has none.
+    label: str | None = None
+    notice: str | None = None
+    binding: str | None = None

@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 # CANOPY appliance image: the canopy FastAPI backend (uvicorn canopy.main:app)
 # and the canopy_mcp panel/MCP server (python -m canopy_mcp --http), plus the
-# built canopy-screen-runtime viewer, the built react-trace data browser and the
-# checked-in Beaver widget registry data. One image, two services: compose
+# built canopy-screen-runtime viewer and the built react-trace data browser.
+# One image, two services: compose
 # supplies the command, so there is no CMD.
 #
 # Four repos feed the build, each as a NAMED build context:
-#   canopy     — the canopy repo (pyproject.toml, src/, widget-registry-data/)
+#   canopy     — the canopy repo (pyproject.toml, src/)
 #   pydm-src   — pydm-converter-tool (the .bob adapter; not yet on PyPI)
 #   runtime    — canopy-screen-runtime (pnpm workspace holding apps/viewer)
 #   trace-src  — a react-trace source tree (a `git archive` of one commit)
@@ -26,8 +26,10 @@
 #
 # Plain pip on python:3.12 (ALS convention). pip ignores canopy's
 # [tool.uv.sources] path link, which is why the PyDMConverter wheel is passed
-# explicitly in the same `pip install` as canopy. pymongo is a core canopy
-# dependency, so the [mcp] extra is the only one needed.
+# explicitly in the same `pip install` as canopy. The image serves every canopy
+# module, the MCP server and the converter, so it installs all three extras:
+# data (Postgres, Redis job queue), mcp and convert (PyDMConverter, satisfied
+# by that wheel).
 
 # --- pydm-build: wheel of pydm-converter-tool --------------------------------
 FROM python:3.12 AS pydm-build
@@ -92,7 +94,6 @@ WORKDIR /app
 COPY --from=pydm / /wheels
 COPY --from=viewer / /app/viewer
 COPY --from=trace / /app/trace
-COPY --from=canopy widget-registry-data /app/widget-registry-data
 
 ENV CANOPY_TRACE_DIST=/app/trace
 
@@ -103,7 +104,7 @@ ENV CANOPY_TRACE_DIST=/app/trace
 # (the PyDMConverter wheel is already built, so nothing else can pick it up).
 RUN --mount=type=bind,from=canopy,target=/ctx/canopy,rw \
     SETUPTOOLS_SCM_PRETEND_VERSION="${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CANOPY}" \
-    pip install --no-cache-dir /wheels/*.whl '/ctx/canopy[mcp]'
+    pip install --no-cache-dir /wheels/*.whl '/ctx/canopy[data,mcp,convert]'
 
 # Smoke: the PyDMConverter wheel carries the colour-scheme loader, and the
 # canopy wheel ships its default colour scheme.

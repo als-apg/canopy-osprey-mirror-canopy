@@ -17,16 +17,18 @@ back disconnected is remembered for ``negative_cache_ttl_s``.
 
 import time
 import asyncio
+import inspect
 import logging
 from typing import Protocol, runtime_checkable
-from dataclasses import dataclass
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Awaitable
+from dataclasses import dataclass
+from collections.abc import Mapping, Callable, Iterable, Awaitable
 
 from canopy.epics.base import PVConnector, Subscription
 from canopy.core.errors import ErrorCode
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
+from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import InvalidPVName, validate_pv_name
 from canopy.hare.services.subscriptions import SubscriptionRegistry
@@ -34,6 +36,9 @@ from canopy.hare.services.subscriptions import SubscriptionRegistry
 LifecycleHook = Callable[[list[str]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
+
+# Write keywords handed to a connector only when its ``put`` accepts them.
+_WRITE_CONTEXT_KEYWORDS = ("binding", "origin")
 
 # Negative-cache size at which expired entries are swept on insert.
 _NEGATIVE_SWEEP_AT = 1024
@@ -51,6 +56,20 @@ class _DeadName:
     meta: PVMeta | None
 
 
+def _accepted_write_keywords(connector: PVConnector) -> frozenset[str]:
+    """Which of `_WRITE_CONTEXT_KEYWORDS` the connector's ``put`` accepts (``**kwargs`` takes all)."""
+    try:
+        params = inspect.signature(connector.put).parameters.values()
+    except (TypeError, ValueError):
+        return frozenset()
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params):
+        return frozenset(_WRITE_CONTEXT_KEYWORDS)
+    names = {
+        p.name for p in params if p.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    }
+    return frozenset(name for name in _WRITE_CONTEXT_KEYWORDS if name in names)
+
+
 @runtime_checkable
 class ClientChannel(Protocol):
     """What the broker needs from a connected client (FastAPI WebSocket fits)."""
@@ -63,6 +82,8 @@ class PVBroker:
     def __init__(self, connector: PVConnector, config: HareConfig) -> None:
         self._connector = connector
         self._config = config
+        # Inspected once: a connector's put signature does not change at runtime.
+        self._put_keywords = _accepted_write_keywords(connector)
         self._registry = SubscriptionRegistry()
         self._channels: dict[str, ClientChannel] = {}
         self._monitors: dict[str, Subscription] = {}
@@ -627,15 +648,30 @@ class PVBroker:
             if getattr(channel, "wants_flush_marker", False):
                 await self._send(client_id, marker)
 
+    def heartbeat_frame(self) -> dict:
+        """The heartbeat frame: backend plus the connector's identity.
+
+        ``label``, ``notice`` and ``binding`` come from the connector's ``label``,
+        ``notice`` and ``binding_id`` attributes, read on every call (``None`` when
+        the connector has none), so a change of target shows on the next frame.
+        One builder for the heartbeat loop, the first frame of every ``ws_pvs``
+        socket and ``GET /health/summary``.
+        """
+        connector = self._connector
+        return {
+            "type": "heartbeat",
+            "timestamp": time.time(),
+            "backend": getattr(connector, "backend_name", None),
+            "label": getattr(connector, "label", None),
+            "notice": getattr(connector, "notice", None),
+            "binding": getattr(connector, "binding_id", None),
+        }
+
     async def _heartbeat_loop(self) -> None:
         while self._running:
             await asyncio.sleep(self._config.heartbeat_interval_s)
             try:
-                message = {
-                    "type": "heartbeat",
-                    "timestamp": time.time(),
-                    "backend": getattr(self._connector, "backend_name", None),
-                }
+                message = self.heartbeat_frame()
                 for client_id in list(self._channels):
                     await self._send(client_id, message)
             except asyncio.CancelledError:
@@ -679,16 +715,36 @@ class PVBroker:
 
     # --- writes ---------------------------------------------------------- #
 
-    async def put(self, pv: str, value: PVWriteValue, *, wait: bool = True, timeout: float | None = None) -> None:
+    async def put(
+        self,
+        pv: str,
+        value: PVWriteValue,
+        *,
+        wait: bool = True,
+        timeout: float | None = None,
+        binding: str | None = None,
+        origin: Mapping | CanopyModel | None = None,
+    ) -> None:
         """Write a value to a PV (one-shot, independent of any subscription).
 
         Delegates to the connector, which routes by protocol prefix and raises
         `PVWriteFailed` on failure or timeout. On success the cached latest value
         is dropped so an immediate `get_value` reflects the write instead of the
         pre-write cache. The monitor path repopulates the cache on its next tick.
+
+        ``binding`` and ``origin`` (passed on as a plain dict) reach the connector
+        only when its ``put`` accepts them; a backend that does not check the
+        control target never sees them.
         """
         validate_pv_name(pv)
-        await self._connector.put(pv, value, wait=wait, timeout=timeout)
+        extra: dict = {}
+        if "binding" in self._put_keywords:
+            extra["binding"] = binding
+        if "origin" in self._put_keywords:
+            if isinstance(origin, CanopyModel):
+                origin = origin.model_dump()
+            extra["origin"] = dict(origin) if origin is not None else None
+        await self._connector.put(pv, value, wait=wait, timeout=timeout, **extra)
         self._latest.pop(pv, None)
 
     # --- introspection --------------------------------------------------- #

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "other",
+  "metadata": {
+    "title": "other",
+    "source": {
+      "type": "hand-authored"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "root",
+    "type": "absolute-canvas",
+    "props": {},
+    "children": [
+      {
+        "id": "t",
+        "type": "text-label",
+        "props": {
+          "text": "x"
+        }
+      }
+    ]
+  }
+}

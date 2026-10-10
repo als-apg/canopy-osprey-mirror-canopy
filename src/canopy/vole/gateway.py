@@ -10,8 +10,8 @@ from collections.abc import Callable, Awaitable
 
 from canopy.vole.errors import IngestUnavailable
 from canopy.contracts.sample import Sample
-from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.buffer.ring import Outage, StoredSample
+from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.schemas.buffer import VoleStatsDTO
 from canopy.vole.services.notifier import ChangeNotifier
 from canopy.vole.services.hare_ingest import HareIngestService
@@ -173,18 +173,20 @@ async def subscribe_live(pvs: list[str], *, wait_seed: bool = True) -> None:
     await get_ingest().subscribe(pvs, wait_seed=wait_seed)
 
 
-async def subscribe_latest(pvs: list[str]) -> None:
+async def subscribe_latest(pvs: list[str], *, wait_seed: bool = True) -> None:
     """Subscribe to live updates with a size-1 ring per PV (latest value only).
 
     Used by scalar formula subscriptions that only need read_latest —
     avoids accumulating a full ring buffer per PV. Never lowers an existing
-    ring's capacity.
+    ring's capacity. The ring is keyed by the canonical name, the key ingest
+    appends under, so a ``ca://X`` binding seeds ring ``X`` and no orphan.
+    ``wait_seed=False`` returns before the broker's seed reads land.
     """
     ingest = get_ingest()
     service = get_service()
     for pv in pvs:
-        await service.seed(pv, [], max_points=1)
-    await ingest.subscribe(pvs)
+        await service.seed(strip_protocol_prefix(pv), [], max_points=1)
+    await ingest.subscribe(pvs, wait_seed=wait_seed)
 
 
 async def unsubscribe_live(pvs: list[str]) -> None:

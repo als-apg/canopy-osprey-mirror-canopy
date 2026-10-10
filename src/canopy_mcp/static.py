@@ -18,6 +18,13 @@ Draft images (anything under the drafts route that is not a screen) also carry
 ``.svg`` opened directly must not run script and no body may be sniffed into a
 more capable type.
 
+With a library configured (``CANOPY_LIBRARY_DIR``) the manifest lists its
+screens after the drafts, as ``{id, category: "library", path:
+"library/screens/<id>.screen.json"}``, and ``/drafts/library/<path>`` is answered
+only by the read-only library store, which serves nothing outside its
+``screens/`` directory: a ``WRITE-BINDINGS`` report or any other file beside it
+is a 404. The same headers and ETags apply as for drafts.
+
 The built react-trace is served at exactly ``/trace/`` (its index, with a
 ``<base href>`` of ``{prefix}/trace/`` and :data:`TRACE_CSP`), ``/trace/assets/``
 and ``/trace/favicon.svg``. Every other ``/trace`` path, the bare ``/trace``
@@ -52,6 +59,20 @@ unavailable. It describes only what this server sees, never the converter's
 scheme. The document holds no secret, so it is served with
 ``Access-Control-Allow-Origin: *`` for cross-origin fetches by the Builder.
 
+``config.json`` always carries ``confirmWrites`` (``CANOPY_CONFIRM_WRITES``,
+false by default): whether the viewer asks for a confirmation before each
+write.
+
+In hare mode the ``config.json`` route (not :func:`viewer_config`) also asks
+DATA for ``GET /hare/v1/health/summary`` over the shared client
+(``app.state.http``, which carries the read key) within
+:data:`SUMMARY_TIMEOUT_S`, and adds ``backend {name, label, notice}`` and a
+top-level ``binding`` from it: the connector's identity, as in the heartbeat
+frame. No shared client, a timeout, any transport error, a non-200 or a body
+that is not the summary gives both as null; the fields are copied by name, so
+neither the key nor any other summary field reaches the document. Mock mode
+carries neither key.
+
 ``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
 only when that scheme had load errors (it is then served as ``canopy-default``).
 """
@@ -59,7 +80,9 @@ only when that scheme had load errors (it is then served as ``canopy-default``).
 import re
 import html
 import json
+import asyncio
 import hashlib
+import logging
 from typing import Any
 from pathlib import Path
 
@@ -67,9 +90,15 @@ from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
 
-from canopy.core.color_scheme import get_color_scheme
-from canopy_mcp.store import SCREEN_SUFFIX, DraftStore, InvalidDraftId, contained_file
+from canopy_mcp.store import (
+    LIBRARY,
+    SCREEN_SUFFIX,
+    DraftStore,
+    InvalidDraftId,
+    contained_file,
+)
 from canopy_mcp.config import Settings
+from canopy.core.color_scheme import get_color_scheme
 
 PREFIX_HEADER = "x-forwarded-prefix"
 PREFIX_PATTERN = re.compile(r"(/[A-Za-z0-9._~-]+)*")
@@ -88,6 +117,12 @@ TRACE_CSP = (
     "script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; "
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
+
+# DATA's summary, asked for by config.json in hare mode, and the bound on that ask.
+SUMMARY_PATH = "/hare/v1/health/summary"
+SUMMARY_TIMEOUT_S = 1.0
+
+logger = logging.getLogger(__name__)
 
 # OSPREY theme id -> the viewer's light/dark mode.
 THEMES: dict[str, str] = {"dark": "dark", "light": "light"}
@@ -120,6 +155,7 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
         "screensPath": SCREENS_PATH,
         "themes": dict(THEMES),
         "views": {"path": VIEWS_PATH},
+        "confirmWrites": settings.confirm_writes,
     }
     if _trace_index(settings) is not None:
         config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
@@ -129,6 +165,45 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     if flat is not None:
         config["colorScheme"] = flat
     return config
+
+
+def _optional_str(value: Any) -> bool:
+    return value is None or isinstance(value, str)
+
+
+async def fetch_data_summary(request: Request) -> dict[str, Any] | None:
+    """DATA's health summary over the shared client, or ``None`` on any failure.
+
+    The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. A body counts
+    only when it is an object whose ``backend`` is a string and whose
+    ``label``, ``notice`` and ``binding`` are strings or absent/null.
+    """
+    client = getattr(request.app.state, "http", None)
+    if client is None:
+        return None
+    try:
+        response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
+        if response.status_code != 200:
+            return None
+        body = response.json()
+    except Exception as exc:  # timeout, transport, decode: config.json must still answer
+        logger.debug("DATA summary unavailable for config.json: %r", exc)
+        return None
+    if not isinstance(body, dict) or not isinstance(body.get("backend"), str):
+        return None
+    if not all(_optional_str(body.get(field)) for field in ("label", "notice", "binding")):
+        return None
+    return body
+
+
+def backend_identity(summary: dict[str, Any] | None) -> dict[str, Any]:
+    """``config.json``'s ``backend`` and ``binding`` keys for ``summary`` (both null without one)."""
+    if summary is None:
+        return {"backend": None, "binding": None}
+    return {
+        "backend": {"name": summary["backend"], "label": summary.get("label"), "notice": summary.get("notice")},
+        "binding": summary.get("binding"),
+    }
 
 
 def _trace_page(settings: Settings, name: str) -> Path | None:
@@ -187,8 +262,8 @@ def _screen_rev(store: DraftStore, target: Path) -> str | None:
         return None
 
 
-def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
-    """The viewer, config, draft and health routes for ``settings`` and ``store``."""
+def build_routes(settings: Settings, store: DraftStore, library: DraftStore | None = None) -> list[Route]:
+    """The viewer, config, draft and health routes for ``settings``, ``store`` and the optional ``library``."""
     dist = settings.viewer_dist
 
     async def index(request: Request) -> Response:
@@ -206,23 +281,34 @@ def build_routes(settings: Settings, store: DraftStore) -> list[Route]:
         return FileResponse(target, headers={"Cache-Control": ASSET_CACHE_CONTROL})
 
     async def config(request: Request) -> Response:
+        body = viewer_config(settings)
+        if settings.pv_mode == "hare":
+            body.update(backend_identity(await fetch_data_summary(request)))
         return JSONResponse(
-            viewer_config(settings),
+            body,
             headers={"Cache-Control": DRAFT_CACHE_CONTROL, "Access-Control-Allow-Origin": "*"},
         )
 
     async def manifest(request: Request) -> Response:
-        body = json.dumps(store.manifest(), ensure_ascii=False).encode("utf-8")
+        listing = store.manifest()
+        if library is not None:
+            listing = {"screens": [*listing["screens"], *library.manifest()["screens"]]}
+        body = json.dumps(listing, ensure_ascii=False).encode("utf-8")
         rev = hashlib.sha256(body).hexdigest()
         return _revved(request, rev, lambda: Response(body, media_type="application/json"))
 
     async def draft_file(request: Request) -> Response:
         relpath = request.path_params["path"]
-        target = store.resolve_static(relpath)
+        owner = store
+        if library is not None:
+            first, _, rest = relpath.partition("/")
+            if first == LIBRARY:
+                owner, relpath = library, rest
+        target = owner.resolve_static(relpath)
         if target is None:
             return PlainTextResponse("not found", status_code=404)
         is_screen = target.name.endswith(SCREEN_SUFFIX)
-        rev = _screen_rev(store, target) if is_screen else None
+        rev = _screen_rev(owner, target) if is_screen else None
         if rev is None:
             rev = hashlib.sha256(target.read_bytes()).hexdigest()
         media = "application/json" if is_screen else None

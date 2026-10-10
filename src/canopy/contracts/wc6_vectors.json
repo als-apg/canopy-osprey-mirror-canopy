@@ -1,0 +1,399 @@
+{
+  "contract": "WC6",
+  "about": "CANOPY write outcomes, one entry per WC6 row id. `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (rows 6-9: OSPREY's message, row 11: the observed value, the whole detail cut at 256 characters). `default` is the detail used when a dynamic row has no message. `status`/`code` null: no response or no envelope. 16-coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
+  "detail_max_chars": 256,
+  "rows": {
+    "1-off-disabled": {
+      "source": "adapter",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "writes_disabled"
+      },
+      "detail": "writes are off here",
+      "toast": "writes are off here",
+      "dynamic": false,
+      "default": "writes are off here"
+    },
+    "1-off-origin": {
+      "source": "adapter",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "own_origin_missing"
+      },
+      "detail": "writes are off here until agent pages have their own origin",
+      "toast": "writes are off here until agent pages have their own origin",
+      "dynamic": false,
+      "default": "writes are off here until agent pages have their own origin"
+    },
+    "2": {
+      "source": "adapter",
+      "outcome": "target_changed",
+      "status": 409,
+      "code": "pv_target_changed",
+      "audit": {
+        "decision": "refused",
+        "reason": "control_target_changed"
+      },
+      "detail": "the control target changed; nothing written",
+      "toast": "the control target changed; nothing written",
+      "dynamic": false,
+      "default": "the control target changed; nothing written"
+    },
+    "3": {
+      "source": "session",
+      "outcome": "target_changed",
+      "status": 409,
+      "code": "pv_target_changed",
+      "audit": {
+        "decision": "refused",
+        "reason": "control_target_changed"
+      },
+      "detail": "the control target changed; nothing written",
+      "toast": "the control target changed; nothing written",
+      "dynamic": false,
+      "default": "the control target changed; nothing written"
+    },
+    "3a": {
+      "source": "session",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "posture_changed"
+      },
+      "detail": "the write state of this target changed; the panel is reconnecting - retry",
+      "toast": "the write state of this target changed; the panel is reconnecting - retry",
+      "dynamic": false,
+      "default": "the write state of this target changed; the panel is reconnecting - retry"
+    },
+    "4": {
+      "source": "session",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "control_context_unavailable"
+      },
+      "detail": "no control target record; nothing written",
+      "toast": "no control target record; nothing written",
+      "dynamic": false,
+      "default": "no control target record; nothing written"
+    },
+    "4b": {
+      "source": "session",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "control_context_unavailable"
+      },
+      "detail": "this control target cannot be served here; nothing written",
+      "toast": "this control target cannot be served here; nothing written",
+      "dynamic": false,
+      "default": "this control target cannot be served here; nothing written"
+    },
+    "5": {
+      "source": "session",
+      "outcome": "switch_in_progress",
+      "status": 409,
+      "code": "pv_switch_in_progress",
+      "audit": {
+        "decision": "refused",
+        "reason": "switch_in_progress"
+      },
+      "detail": "a target switch is in progress; nothing written",
+      "toast": "a target switch is in progress; nothing written",
+      "dynamic": false,
+      "default": "a target switch is in progress; nothing written"
+    },
+    "5a": {
+      "source": "session",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "audit_unavailable"
+      },
+      "detail": "the audit ledger is unavailable; nothing written",
+      "toast": "the audit ledger is unavailable; nothing written",
+      "dynamic": false,
+      "default": "the audit ledger is unavailable; nothing written"
+    },
+    "5b": {
+      "source": "session",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "write_in_progress"
+      },
+      "detail": "a write to this channel is still in progress; nothing written",
+      "toast": "a write to this channel is still in progress; nothing written",
+      "dynamic": false,
+      "default": "a write to this channel is still in progress; nothing written"
+    },
+    "5c": {
+      "source": "session",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "switch_state_unavailable"
+      },
+      "detail": "the switch state could not be checked; nothing written",
+      "toast": "the switch state could not be checked; nothing written",
+      "dynamic": false,
+      "default": "the switch state could not be checked; nothing written"
+    },
+    "6": {
+      "source": "connector",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "channel_write_blocked"
+      },
+      "detail": "<error_message>",
+      "toast": "<error_message>",
+      "dynamic": true,
+      "default": "the write was refused; nothing written"
+    },
+    "7": {
+      "source": "connector",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "channel_limits_violation"
+      },
+      "detail": "<violation_reason>",
+      "toast": "<violation_reason>",
+      "dynamic": true,
+      "default": "the write was refused; nothing written"
+    },
+    "8": {
+      "source": "connector",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "channel_write_blocked"
+      },
+      "detail": "<error_message>",
+      "toast": "<error_message>",
+      "dynamic": true,
+      "default": "the write was refused; nothing written"
+    },
+    "9": {
+      "source": "connector",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "channel_write_blocked"
+      },
+      "detail": "<error_message>",
+      "toast": "<error_message>",
+      "dynamic": true,
+      "default": "the write was refused; nothing written"
+    },
+    "10": {
+      "source": "connector",
+      "outcome": "confirmed",
+      "status": 200,
+      "code": null,
+      "audit": {
+        "decision": "allowed",
+        "reason": "write_landed"
+      },
+      "detail": "written",
+      "toast": "written",
+      "dynamic": false,
+      "default": "written"
+    },
+    "11": {
+      "source": "connector",
+      "outcome": "mismatch",
+      "status": 409,
+      "code": "pv_write_mismatch",
+      "audit": {
+        "decision": "allowed",
+        "reason": "write_unconfirmed"
+      },
+      "detail": "written; the channel holds <observed>",
+      "toast": "written; the channel holds <observed>",
+      "dynamic": true,
+      "default": "written; the channel holds a different value"
+    },
+    "12": {
+      "source": "connector",
+      "outcome": "unconfirmed",
+      "status": 502,
+      "code": "pv_write_unconfirmed",
+      "audit": {
+        "decision": "allowed",
+        "reason": "write_unconfirmed"
+      },
+      "detail": "sent, not verified",
+      "toast": "sent, not verified",
+      "dynamic": false,
+      "default": "sent, not verified"
+    },
+    "13": {
+      "source": "connector",
+      "outcome": "unknown",
+      "status": 502,
+      "code": "pv_write_unknown",
+      "audit": {
+        "decision": "allowed",
+        "reason": "write_unconfirmed"
+      },
+      "detail": "outcome unknown — check the readback",
+      "toast": "outcome unknown — check the readback",
+      "dynamic": false,
+      "default": "outcome unknown — check the readback"
+    },
+    "14": {
+      "source": "connector",
+      "outcome": "unknown",
+      "status": 502,
+      "code": "pv_write_unknown",
+      "audit": {
+        "decision": "allowed",
+        "reason": "write_unconfirmed"
+      },
+      "detail": "outcome unknown — check the readback",
+      "toast": "outcome unknown — check the readback",
+      "dynamic": false,
+      "default": "outcome unknown — check the readback"
+    },
+    "14a": {
+      "source": "client",
+      "outcome": "refused",
+      "status": 405,
+      "code": null,
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "writes are not enabled on this server",
+      "toast": "writes are not enabled on this server",
+      "dynamic": false,
+      "default": "writes are not enabled on this server"
+    },
+    "14b-401": {
+      "source": "front",
+      "outcome": "refused",
+      "status": 401,
+      "code": "invalid_access_credential",
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "the panel server refused this write; nothing written",
+      "toast": "the panel server refused this write; nothing written",
+      "dynamic": false,
+      "default": "the panel server refused this write; nothing written"
+    },
+    "14b-403": {
+      "source": "front",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "the panel server refused this write; nothing written",
+      "toast": "the panel server refused this write; nothing written",
+      "dynamic": false,
+      "default": "the panel server refused this write; nothing written"
+    },
+    "14b-404": {
+      "source": "front",
+      "outcome": "refused",
+      "status": 404,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "the panel server refused this write; nothing written",
+      "toast": "the panel server refused this write; nothing written",
+      "dynamic": false,
+      "default": "the panel server refused this write; nothing written"
+    },
+    "14b-413": {
+      "source": "front",
+      "outcome": "refused",
+      "status": 413,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "the panel server refused this write; nothing written",
+      "toast": "the panel server refused this write; nothing written",
+      "dynamic": false,
+      "default": "the panel server refused this write; nothing written"
+    },
+    "15": {
+      "source": "client",
+      "outcome": "unknown",
+      "status": null,
+      "code": null,
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "outcome unknown — check the readback",
+      "toast": "outcome unknown — check the readback",
+      "dynamic": false,
+      "default": "outcome unknown — check the readback"
+    },
+    "16": {
+      "source": "client",
+      "outcome": "target_changed",
+      "status": null,
+      "code": null,
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "the control target changed; nothing written",
+      "toast": "the control target changed; nothing written",
+      "dynamic": false,
+      "default": "the control target changed; nothing written"
+    },
+    "16-coalesced": {
+      "source": "client",
+      "outcome": null,
+      "status": null,
+      "code": null,
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": null,
+      "toast": "a newer value replaced this one; nothing more sent",
+      "dynamic": false,
+      "default": null
+    }
+  }
+}

@@ -6,19 +6,28 @@ input — anything of the wrong type is skipped, since the schema pass already
 reports it.
 
 Codes: ``macro_default``, ``unresolved_formula``, ``duplicate_node_id`` and
-``open_webpage`` are errors; ``inert_in_osprey``, ``warning`` and
-``unknown_widget`` are warnings. Draft-ref codes live in ``check.refs``.
+``open_webpage`` are errors; ``inert_in_osprey``, ``writes_to_machine``,
+``warning`` and ``unknown_widget`` are warnings. Draft-ref codes live in
+``check.refs``.
+
+A write-capable control or a ``write_pv`` action is ``inert_in_osprey`` while
+the server relays no writes (``relay_on=False``). With the PUT relay on it is
+``writes_to_machine`` when it names at least one machine channel, that is a
+non-blank channel that is neither ``loc://`` nor ``fox://`` (those stay in the
+browser, so a control that names only them keeps ``inert_in_osprey``).
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
 from typing import Any
+from collections.abc import Iterator
 
 from canopy_mcp.check.findings import Finding, node_id, pointer
 
 FOX_PREFIX = "fox://"
+LOC_PREFIX = "loc://"
+WRITE_PV_ACTION = "write_pv"
 UNKNOWN_WIDGET_TYPE = "unknown-widget"
 
 #: Control types that write to the machine; OSPREY embeds are read-only, so
@@ -42,8 +51,13 @@ _SAFE_URL = re.compile(r"^(?:https?://|/)", re.IGNORECASE)
 Path = tuple[str | int, ...]
 
 
-def check_semantic(doc: Any) -> list[Finding]:
-    """All semantic findings for ``doc``, in document order per check."""
+def check_semantic(doc: Any, *, relay_on: bool = False) -> list[Finding]:
+    """All semantic findings for ``doc``, in document order per check.
+
+    ``relay_on`` says the server relays PV writes (``CANOPY_PUT_RELAY``): a
+    control or ``write_pv`` action with a machine channel is then reported as
+    ``writes_to_machine`` instead of ``inert_in_osprey``.
+    """
     if not isinstance(doc, dict):
         return []
     findings: list[Finding] = []
@@ -52,7 +66,7 @@ def check_semantic(doc: Any) -> list[Finding]:
     findings += _duplicate_ids(nodes)
     findings += _fox_refs(doc, nodes)
     for path, node in nodes:
-        findings += _node_checks(path, node)
+        findings += _node_checks(path, node, relay_on)
     return findings
 
 
@@ -164,22 +178,35 @@ def _fox_refs(doc: dict[str, Any], nodes: list[tuple[Path, dict[str, Any]]]) -> 
     return out
 
 
-def _node_checks(path: Path, node: dict[str, Any]) -> list[Finding]:
+def is_machine_channel(name: Any) -> bool:
+    """Whether ``name`` is a channel a write would reach the machine on (not blank, ``loc://`` or ``fox://``)."""
+    if not isinstance(name, str):
+        return False
+    name = name.strip()
+    return bool(name) and not name.startswith((LOC_PREFIX, FOX_PREFIX))
+
+
+def _control_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
+    # The same channel reading as the write bindings (canopy_mcp.screens), so
+    # the check and the sidecar's write rows agree on what a control writes.
+    # Imported here: canopy_mcp.screens imports this module.
+    from canopy_mcp.screens import _raw_channels
+
+    return _raw_channels(ntype, props)
+
+
+def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> list[Finding]:
     nid = node_id(node)
     ntype = node.get("type")
     props = node.get("props") if isinstance(node.get("props"), dict) else {}
     out: list[Finding] = []
 
     if ntype in INERT_IN_OSPREY_TYPES:
-        out.append(
-            Finding(
-                nid,
-                "inert_in_osprey",
-                pointer((*path, "type")),
-                "warning",
-                f"'{ntype}' writes to the machine; it is inert when embedded in OSPREY",
-            )
-        )
+        if relay_on and any(is_machine_channel(c) for c in _control_channels(ntype, props)):
+            code, message = "writes_to_machine", f"'{ntype}' writes to the machine"
+        else:
+            code, message = "inert_in_osprey", f"'{ntype}' writes to the machine; it is inert when embedded in OSPREY"
+        out.append(Finding(nid, code, pointer((*path, "type")), "warning", message))
 
     actions = props.get("actions")
     for a, action in enumerate(actions if isinstance(actions, list) else []):
@@ -187,16 +214,12 @@ def _node_checks(path: Path, node: dict[str, Any]) -> list[Finding]:
             continue
         apath = (*path, "props", "actions", a)
         atype = action.get("type")
-        if atype == "write_pv":
-            out.append(
-                Finding(
-                    nid,
-                    "inert_in_osprey",
-                    pointer(apath),
-                    "warning",
-                    "write_pv action is inert when embedded in OSPREY",
-                )
-            )
+        if atype == WRITE_PV_ACTION:
+            if relay_on and is_machine_channel(action.get("pvName")):
+                code, message = "writes_to_machine", "write_pv action writes to the machine"
+            else:
+                code, message = "inert_in_osprey", "write_pv action is inert when embedded in OSPREY"
+            out.append(Finding(nid, code, pointer(apath), "warning", message))
         elif atype == "open_webpage":
             url = action.get("url")
             if not isinstance(url, str) or not _SAFE_URL.match(url.strip()):

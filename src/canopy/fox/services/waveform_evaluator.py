@@ -17,6 +17,7 @@ from canopy.contracts.sample import AlarmSeverity
 from canopy.contracts.formula import FormulaSpec, WaveformResult
 from canopy.fox.services.parser import ParsedFormula
 from canopy.fox.services.evaluator import evaluate_array, worst_severity
+from canopy.fox.services.scalar_evaluator import raise_on_open_outage
 
 
 async def evaluate_waveform_formula(
@@ -31,6 +32,8 @@ async def evaluate_waveform_formula(
     timestamps: list[int] = []
     missing: list[str] = []
     lengths: set[int] = set()
+
+    raise_on_open_outage(spec, parsed, data_source)
 
     for i, token in enumerate(parsed.tokens):
         pv = spec.bindings[token]

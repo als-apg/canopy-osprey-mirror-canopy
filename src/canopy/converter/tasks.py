@@ -28,7 +28,6 @@ from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.config import ConverterConfig, get_converter_config
 from canopy.converter.errors import ConverterError
 from canopy.converter.adapters.edm_env import apply_edm_colors
-from canopy.converter.adapters.beaver_registry import build_registry
 from canopy.converter.services.conversion_service import SUFFIX_KIND, ConversionService
 
 logger = logging.getLogger(__name__)
@@ -50,7 +49,6 @@ def _get_service() -> ConversionService:
         # Same cached scheme load as the API lifespan; the service passes it to
         # convert_bytes for every archive entry.
         _service = ConversionService(
-            registry=build_registry(config),
             scheme=get_color_scheme(config.scheme_path),
             color_def_path=config.color_def_path,
         )

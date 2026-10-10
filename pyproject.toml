@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "Canopy — backend for the SLAC EED control-system display platform"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.121.1",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "pydantic-settings>=2.4",
@@ -15,12 +15,6 @@ dependencies = [
     "numexpr>=2.8",
     "asteval>=1.0",
     "jsonschema>=4.21,<5",
-    "sqlalchemy[asyncio]>=2.0",
-    "asyncpg>=0.29",
-    "alembic>=1.13",
-    "arq>=0.26",
-    "redis>=5.0",
-    "PyDMConverter>=1.0.5",
     "python-multipart>=0.0.32",
     "pymongo>=4.17",
     "orjson>=3.12.0",
@@ -30,12 +24,31 @@ dependencies = [
 # canopy_mcp: the panel-builder MCP server shipped in the same wheel. Kept out of
 # the core dependencies so canopy-api and canopy-worker images stay lean.
 mcp = [
-    "fastmcp>=2.10",
+    "fastmcp>=3.4.4",
     "starlette>=0.40",
     "httpx>=0.27",
-    "websockets>=13",
+    # >=14: the first release whose asyncio client has ``process_redirect``,
+    # which the screenshot browser's relay needs to refuse redirects.
+    "websockets>=14",
     "jsonschema>=4.21,<5",
-    "playwright>=1.45",
+    # >=1.61 is OSPREY's own floor; the browser tests run on the locked 1.63.
+    "playwright>=1.61",
+    # Kills a Playwright driver that will not stop, with its process tree.
+    "psutil>=6",
+]
+# Postgres and the Redis job queue: needed by squirrel, magpie, jobs and the
+# canopy-worker. A deployment that selects none of them (CANOPY_MODULES) runs
+# without this extra.
+data = [
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "arq>=0.26",
+    "redis>=5.0",
+]
+# Legacy-screen conversion: needed by the converter module and its worker task.
+convert = [
+    "PyDMConverter>=1.0.5",
 ]
 
 [dependency-groups]
@@ -47,6 +60,7 @@ dev = [
     "hypothesis>=6.100",
     "import-linter>=2.0",
     "fakeredis>=2.21",
+    "caproto>=1.1",
     "coverage>=7.15.1",
     "pyyaml>=6",
 ]
@@ -55,13 +69,6 @@ docs = [
     "mkdocstrings",
     "mkdocstrings-python",
 ]
-
-[tool.uv.sources]
-# Interim: the unreleased pydm-converter-tool branch carrying the .bob adapter,
-# checked out beside this repo. Replace with the merged commit once it lands, e.g.
-#   pydmconverter = { git = "https://github.com/slaclab/pydm-converter-tool.git", rev = "<merged-sha>" }
-# and drop this block entirely once a PyPI release includes it.
-pydmconverter = { path = "../../../../pydm-converter-tool/.claude/worktrees/panel-builder", editable = true }
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -117,6 +124,16 @@ exclude_lines = [
 
 [tool.importlinter]
 root_packages = ["canopy", "canopy_mcp"]
+# Needed for the contract below that names packages outside this repository.
+include_external_packages = true
+
+# OSPREY builds on canopy, never the other way round: canopy stays installable
+# and importable without any OSPREY package present.
+[[tool.importlinter.contracts]]
+name = "canopy and canopy_mcp never import osprey"
+type = "forbidden"
+source_modules = ["canopy", "canopy_mcp"]
+forbidden_modules = ["osprey", "osprey_connectors"]
 
 # canopy_mcp is a client of the canopy backend, never a dependency of it.
 [[tool.importlinter.contracts]]
@@ -138,7 +155,6 @@ forbidden_modules = [
     "canopy.hare",
     "canopy.vole",
     "canopy.raccoon",
-    "canopy.beaver",
     "canopy.jobs",
     "canopy.converter",
     "canopy.squirrel",
@@ -163,13 +179,10 @@ forbidden_modules = [
     "canopy.hare",
     "canopy.vole",
     "canopy.raccoon",
-    "canopy.beaver",
     "canopy.jobs",
 ]
 ignore_imports = [
     "canopy.converter.dependencies -> canopy.fox.gateway",
-    "canopy.converter.adapters.beaver_registry -> canopy.beaver.gateway",
-    "canopy.converter.adapters.beaver_registry -> canopy.beaver.errors",
     "canopy.converter.api.v1.conversions -> canopy.jobs.gateway",
     "canopy.converter.tasks -> canopy.jobs.gateway",
 ]

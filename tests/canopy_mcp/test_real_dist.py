@@ -1,22 +1,27 @@
-"""The widget catalog join against the REAL viewer build, not the test fixture.
+"""The widget catalog built from the REAL viewer build, not the test fixture.
 
 Runs only when ``CANOPY_VIEWER_DIST`` names a built ``apps/viewer/dist``; the
-fixture-based twin of this test lives in ``test_catalog.py``.
+fixture-based twin of these tests lives in ``test_catalog.py``. The real
+``ir-map.json`` is the whole catalog: every entry carries the editor metadata
+(``displayName``, ``description``, ``category``, ``supportsChildren``) the
+runtime emits beside ``consumes`` and ``verbatim``.
 """
 
 import os
-import json
 from pathlib import Path
 
 import pytest
 
-from canopy_mcp.catalog import IR_MAP_FILENAME, PLACEHOLDER_TYPE, load_ir_map, build_catalog, join_coverage
+from canopy_mcp.catalog import (
+    IR_MAP_FILENAME,
+    PLACEHOLDER_TYPE,
+    load_ir_map,
+    build_catalog,
+)
 
 _DIST_ENV = os.environ.get("CANOPY_VIEWER_DIST")
 
 pytestmark = pytest.mark.skipif(not _DIST_ENV, reason="CANOPY_VIEWER_DIST not set; real viewer dist unavailable")
-
-REGISTRY_DIR = Path(__file__).resolve().parents[2] / "widget-registry-data" / "widgets"
 
 
 @pytest.fixture(scope="module")
@@ -27,30 +32,35 @@ def dist() -> Path:
     return path
 
 
-def _registry_details() -> list[dict]:
-    """The checked-in Beaver widget files, as GET /beaver/v1/widgets/{id} returns them."""
-    return [json.loads(p.read_text()) for p in sorted(REGISTRY_DIR.glob("*.json"))]
-
-
-def test_real_ir_map_joins_every_beaver_id_and_every_ir_type_has_an_entry(dist: Path) -> None:
-    details = _registry_details()
-    beaver_ids = [d["id"] for d in details]
-    assert beaver_ids, "no registry data under widget-registry-data/widgets"
-
+def test_real_ir_map_entries_all_carry_editor_metadata(dist: Path) -> None:
     ir_map = load_ir_map(dist)
-    assert join_coverage(beaver_ids, list(ir_map)) == []
+    for widget_type, entry in ir_map.items():
+        assert isinstance(entry.get("displayName"), str) and entry["displayName"], widget_type
+        assert isinstance(entry.get("description"), str) and entry["description"], widget_type
+        assert isinstance(entry.get("category"), str) and entry["category"], widget_type
+        assert isinstance(entry.get("supportsChildren"), bool), widget_type
+    labels = [entry["displayName"] for entry in ir_map.values()]
+    assert len(labels) == len(set(labels)), "displayName labels are not unique"
 
-    catalog = build_catalog(details, ir_map)
-    assert catalog.unmapped_beaver_ids == ()
+
+def test_real_catalog_is_the_ir_map_plus_the_placeholder(dist: Path) -> None:
+    ir_map = load_ir_map(dist)
+    catalog = build_catalog(ir_map)
+    # unknown-widget is the ONE type outside the viewer's map.
+    assert set(catalog.entries) - set(ir_map) == {PLACEHOLDER_TYPE}
     assert set(ir_map) <= set(catalog.entries)
-    # unknown-widget is the ONE type outside both sources.
-    assert set(catalog.entries) - set(ir_map) - set(beaver_ids) == {PLACEHOLDER_TYPE}
+    for widget_type, entry in ir_map.items():
+        got = catalog.get(widget_type)
+        assert got.display_name == entry["displayName"]
+        assert got.category == entry["category"]
+        assert got.description == entry["description"]
+        assert got.supports_children is entry["supportsChildren"]
+        assert got.consumes == tuple(entry.get("consumes") or [])
 
 
-def test_real_ir_map_types_beaver_does_not_document_are_all_verbatim(dist: Path) -> None:
+def test_real_ir_map_verbatim_types_are_undocumented_without_a_spec(dist: Path) -> None:
     ir_map = load_ir_map(dist)
-    beaver_ids = {d["id"] for d in _registry_details()}
-    catalog = build_catalog(_registry_details(), ir_map)
-    for type_ in set(ir_map) - beaver_ids:
-        assert ir_map[type_].get("verbatim") is True, type_
-        assert catalog.get(type_).undocumented
+    catalog = build_catalog(ir_map)
+    assert any(entry.get("verbatim") for entry in ir_map.values()), "the real map has no verbatim type"
+    for widget_type, entry in ir_map.items():
+        assert catalog.get(widget_type).undocumented is bool(entry.get("verbatim")), widget_type

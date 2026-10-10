@@ -14,7 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-dev --no-install-project
+# This image runs the API with every module, the arq worker and the alembic
+# migrations, so it needs the database/queue packages (data) and the screen
+# converter (convert).
+RUN uv sync --frozen --no-dev --extra data --extra convert --no-install-project
 
 COPY src/ ./src/
 COPY .git/ ./.git/
@@ -22,7 +25,7 @@ COPY .git/ ./.git/
 # --no-editable bakes the canopy package into the venv's site-packages instead
 # of linking to /app/src. The prod stage copies only /app/.venv (not src/), so
 # an editable install would leave `import canopy` dangling at runtime.
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --extra data --extra convert --no-editable
 
 RUN rm -rf .git
 
@@ -39,6 +42,10 @@ ENV PATH="/app/.venv/bin:$PATH"
 # so the image must carry the alembic tree.
 COPY alembic.ini ./
 COPY migrations/ ./migrations/
+
+# Facility ops mint keys via `compose run --rm api python scripts/create_key.py ...`,
+# so the bootstrap CLI has to ship in the image too.
+COPY scripts/ ./scripts/
 
 RUN useradd --create-home --shell /bin/bash --no-log-init appuser \
     && chown -R appuser:appuser /app

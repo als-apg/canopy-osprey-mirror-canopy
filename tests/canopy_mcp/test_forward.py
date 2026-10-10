@@ -18,7 +18,7 @@ from websockets.sync.server import ServerConnection, serve
 
 from canopy_mcp.app import create_app
 from canopy_mcp.config import Settings
-from canopy_mcp.forward import RELAYED_PATHS, upstream_ws_url
+from canopy_mcp.forward import RELAYED_PATHS, SERVICE_PREFIXES, upstream_ws_url
 
 KEY = "server-side-key"
 CLIENT_KEY = "client-supplied-key"
@@ -212,7 +212,7 @@ def test_viewer_url_shape_through_prefix_stripping_proxy(tmp_path: Path, upstrea
         ("GET", "/fox/v1/formulas"),
         ("POST", "/fox/v1/formulas"),
         ("GET", "/squirrel/v1/snapshots"),
-        ("POST", "/beaver/v1/screens"),
+        ("POST", "/raccoon/v1/screens"),
         ("DELETE", "/raccoon/v1/items/1"),
         ("PATCH", "/raccoon"),
     ],
@@ -222,6 +222,14 @@ def test_other_api_methods_and_paths_are_405(
 ) -> None:
     r = client.request(method, path, headers={"X-API-Key": CLIENT_KEY})
     assert r.status_code == 405
+    assert upstream.requests == []
+
+
+def test_beaver_is_not_a_service_prefix(client: TestClient, upstream: FakeUpstream) -> None:
+    """Beaver is retired upstream: nothing under /beaver is a canopy service path any more."""
+    assert SERVICE_PREFIXES == ("hare", "fox", "squirrel", "raccoon", "mole")
+    r = client.get("/beaver/v1/widgets", headers={"X-API-Key": CLIENT_KEY})
+    assert r.status_code != 405
     assert upstream.requests == []
 
 

@@ -104,6 +104,14 @@ class DataSource(Protocol):
 
     async def read_latest(self, pv: str) -> Sample | None: ...
 
+    def in_open_outage(self, name: str) -> bool:
+        """True while ``name``'s live connection is down (an outage opened and not yet closed).
+
+        Evaluators ask before ``read_latest`` and raise ``FormulaInputOutage``
+        rather than use a stale or archive-refilled sample.
+        """
+        ...
+
 
 class NullDataSource:
     """Placeholder used until Vole ships. Always signals inputs unavailable."""
@@ -138,3 +146,6 @@ class NullDataSource:
         from canopy.fox.errors import FormulaInputMissing
 
         raise FormulaInputMissing(f"Data source not available; PV requested: {pv}")
+
+    def in_open_outage(self, name: str) -> bool:
+        return False

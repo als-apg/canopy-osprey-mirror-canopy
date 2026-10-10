@@ -21,6 +21,7 @@ from canopy_mcp.tools.drafts import (
     remove_node,
     delete_draft,
 )
+from tests.canopy_mcp.synthetic_spec import write_spec
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TWO_UNKNOWN = FIXTURES / "two-unknown.screen.json"
@@ -31,7 +32,7 @@ def _catalog():
         t: {"consumes": [], "verbatim": False}
         for t in ("group", "label", "action-button", "pv-button", "embedded-display", "image-view")
     }
-    return build_catalog([], ir_map)
+    return build_catalog(ir_map)
 
 
 def _node(nid, ntype="label", props=None, children=None, **extra):
@@ -57,7 +58,7 @@ def _doc(*children, title="t", **top):
 
 @pytest.fixture
 def settings(tmp_path, monkeypatch):
-    s = Settings(base_url="http://canopy.test", drafts_dir=tmp_path / "drafts")
+    s = Settings(base_url="http://canopy.test", drafts_dir=tmp_path / "drafts", spec_dir=write_spec(tmp_path / "spec"))
     monkeypatch.setattr(drafts, "get_settings", lambda: s)
     drafts.reset_stores()
     set_catalog(_catalog())

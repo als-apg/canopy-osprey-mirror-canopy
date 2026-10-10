@@ -4,7 +4,8 @@ Other modules enqueue long-running work via ``enqueue(...)``; the worker runs it
 and clients poll ``GET /jobs/v1/{id}``. Job *results* are opaque references (e.g.
 ``{"type": "snapshot", "id": ...}``) so this module never imports squirrel/mole/etc.
 Granular progress rides a per-job Redis key, since Arq's native status is only
-queued / in_progress / complete.
+queued / in_progress / complete: a percent, a message, and optionally the job's
+named phases, each with its own progress.
 
 The Redis pool connects lazily on first use, so mounting Jobs does not make Redis
 a hard startup dependency of canopy-api.
@@ -22,7 +23,7 @@ from arq.connections import ArqRedis, RedisSettings
 
 from canopy.core.config import get_settings
 from canopy.jobs.errors import JobAlreadyExists
-from canopy.jobs.schemas.job import JobStatusDTO
+from canopy.jobs.schemas.job import JobPhaseDTO, JobStatusDTO
 
 _pool: ArqRedis | None = None
 _redis_url: str | None = None
@@ -68,17 +69,51 @@ _PROGRESS_PREFIX = "canopy:job_progress:"
 _PROGRESS_TTL = 3600
 
 
-async def report_progress(redis: ArqRedis, job_id: str, percent: int, message: str | None = None) -> None:
-    """Publish coarse progress from inside a running task (Arq passes the pool as ctx['redis'])."""
-    await redis.set(_PROGRESS_PREFIX + job_id, json.dumps({"percent": percent, "message": message}), ex=_PROGRESS_TTL)
+async def report_progress(
+    redis: ArqRedis,
+    job_id: str,
+    percent: int,
+    message: str | None = None,
+    phases: list[dict] | None = None,
+) -> None:
+    """Publish progress from inside a running task.
+
+    Each call replaces the job's whole progress value, so a task that reports phases
+    sends them on every call.
+
+    Parameters
+    ----------
+    redis : ArqRedis
+        The pool Arq passes the task as ``ctx['redis']``.
+    job_id : str
+        The running job's id, ``ctx['job_id']``.
+    percent : int
+        Overall progress, 0-100.
+    message : str | None, optional
+        A human-readable status line.
+    phases : list[dict] | None, optional
+        The job's named stages, each shaped like `JobPhaseDTO` (``name``, ``current``,
+        ``total``, ``status``, ``failures``). `None` stores none.
+
+    Raises
+    ------
+    pydantic.ValidationError
+        When a phase doesn't fit `JobPhaseDTO`, so a malformed phase fails in the
+        task rather than on every later poll.
+    """
+    payload: dict[str, Any] = {"percent": percent, "message": message}
+    if phases is not None:
+        payload["phases"] = [JobPhaseDTO.model_validate(phase).model_dump(by_alias=True) for phase in phases]
+    await redis.set(_PROGRESS_PREFIX + job_id, json.dumps(payload), ex=_PROGRESS_TTL)
 
 
-async def _read_progress(redis: ArqRedis, job_id: str) -> tuple[int, str | None]:
+async def _read_progress(redis: ArqRedis, job_id: str) -> tuple[int, str | None, list[JobPhaseDTO]]:
     raw = await redis.get(_PROGRESS_PREFIX + job_id)
     if not raw:
-        return 0, None
+        return 0, None, []
     data = json.loads(raw)
-    return int(data.get("percent", 0)), data.get("message")
+    phases = [JobPhaseDTO.model_validate(phase) for phase in data.get("phases") or []]
+    return int(data.get("percent", 0)), data.get("message"), phases
 
 
 # --- status ---------------------------------------------------------------- #
@@ -92,7 +127,7 @@ async def get_status(job_id: str) -> JobStatusDTO | None:
     if status == JobStatus.not_found:
         return None
 
-    percent, message = await _read_progress(pool, job_id)
+    percent, message, phases = await _read_progress(pool, job_id)
 
     if status == JobStatus.complete:
         # A completed job's metadata (function, timings) rides on its JobResult,
@@ -102,7 +137,7 @@ async def get_status(job_id: str) -> JobStatusDTO | None:
             # status() saw the result key, but its keep_result TTL expired before
             # this read. The job finished; report it completed rather than
             # inventing a failure from the now-missing result.
-            return JobStatusDTO(id=job_id, status="completed", progress=100, message=message)
+            return JobStatusDTO(id=job_id, status="completed", progress=100, message=message, phases=phases)
         success = bool(result_info.success)
         raw_result = result_info.result
         return JobStatusDTO(
@@ -111,6 +146,7 @@ async def get_status(job_id: str) -> JobStatusDTO | None:
             status="completed" if success else "failed",
             progress=100 if success else percent,
             message=message,
+            phases=phases,
             result=raw_result if success else None,
             error=None if success else (str(raw_result) if raw_result is not None else "Job failed"),
             enqueued_at=result_info.enqueue_time,
@@ -126,5 +162,6 @@ async def get_status(job_id: str) -> JobStatusDTO | None:
         status="running" if status == JobStatus.in_progress else "pending",
         progress=percent,
         message=message,
+        phases=phases,
         enqueued_at=getattr(info, "enqueue_time", None),
     )

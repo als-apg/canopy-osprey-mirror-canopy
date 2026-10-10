@@ -1,42 +1,35 @@
 """The widget catalog: every Screen-IR widget type an agent may place.
 
-Two sources describe a widget type, and neither is complete on its own:
+The viewer build's ``ir-map.json`` (``CANOPY_VIEWER_DIST``) is the catalog: it
+names every IR type the renderer maps, the props each mapping ``consumes``,
+whether the type is copied through ``verbatim``, and the editor metadata
+(``displayName``, ``description``, ``category``, ``supportsChildren``) the
+runtime carries from ``@slaclab/canopy-screen-widgets``.
 
-* **Beaver's registry** (``GET /beaver/v1/widgets`` and one
-  ``GET /beaver/v1/widgets/{id}`` per id) carries a draft-07 ``propSchema``
-  per widget. The list endpoint returns summaries only, so the details are
-  fetched concurrently, once, when the catalog loads.
-* **``ir-map.json``**, emitted into the viewer build (``CANOPY_VIEWER_DIST``),
-  names every IR type the renderer maps and the props each mapping
-  ``consumes``. Types the renderer copies through ``verbatim`` consume nothing
-  by name.
-
-The catalog has one entry per ``ir-map.json`` type. Its props are the union of
-the Beaver ``propSchema`` properties and the renderer's ``consumes`` list, and
-each prop records which source(s) named it. A ``verbatim`` type Beaver does
-not document is marked ``undocumented``: the renderer draws it, but nothing
-says which props it reads. ``unknown-widget`` is the one extra type, the
-placeholder a converter emits for a legacy widget it could not map.
+Prop schemas come from the spec staging directory
+(``Settings.staged_spec_dir``), one draft-07 ``widgets/<ir id>.props.schema.json``
+per documented type. A type's props are the union of its prop-schema
+properties and its ``consumes`` list, each prop recording which source(s)
+named it. A ``verbatim`` type without a prop schema is marked
+``undocumented``: the renderer draws it, but nothing says which props it reads.
+``unknown-widget`` is the one extra type, the placeholder a converter emits for
+a legacy widget it could not map.
 """
 
-import copy
 import json
 import asyncio
 from typing import Any
 from pathlib import Path
-from dataclasses import field, dataclass
+from dataclasses import dataclass
 
-import httpx
-
-from canopy_mcp.check import schema as ir_schema
-from canopy_mcp.client import borrowed_client
 from canopy_mcp.config import Settings, get_settings
 
-WIDGETS_PATH = "/beaver/v1/widgets"
 IR_MAP_FILENAME = "ir-map.json"
 PLACEHOLDER_TYPE = "unknown-widget"
+PROPS_SCHEMA_DIR = "widgets"
+PROPS_SCHEMA_SUFFIX = ".props.schema.json"
 
-SOURCE_BEAVER = "beaver"
+SOURCE_CATALOG = "catalog"
 SOURCE_CONSUMES = "consumes"
 
 
@@ -67,7 +60,7 @@ class CatalogEntry:
 
     type: str
     props: dict[str, PropInfo]
-    # Beaver's full draft-07 propSchema; None when Beaver has no entry.
+    # The staged draft-07 prop schema; None when the spec has none for the type.
     prop_schema: dict[str, Any] | None = None
     consumes: tuple[str, ...] = ()
     verbatim: bool = False
@@ -101,11 +94,9 @@ class CatalogEntry:
 
 @dataclass(frozen=True)
 class Catalog:
-    """The joined catalog, keyed by IR type."""
+    """The catalog, keyed by IR type."""
 
     entries: dict[str, CatalogEntry]
-    # Beaver ids with no ir-map.json type: the renderer cannot draw them.
-    unmapped_beaver_ids: tuple[str, ...] = field(default=())
 
     def get(self, widget_type: str) -> CatalogEntry | None:
         return self.entries.get(widget_type)
@@ -140,46 +131,32 @@ def load_ir_map(viewer_dist: Path | None) -> dict[str, dict[str, Any]]:
     return data
 
 
-async def fetch_registry(client: httpx.AsyncClient) -> list[dict[str, Any]]:
-    """Fetch every Beaver widget with its ``propSchema``.
+def load_prop_schemas(spec_dir: Path | None) -> dict[str, dict[str, Any]]:
+    """The staged per-widget prop schemas, keyed by IR id; empty without a staging directory.
 
-    The list endpoint returns summaries without ``propSchema``, so each id's
-    details are fetched concurrently. Refuses an empty registry.
+    A staged file that is not a JSON object is a :class:`CatalogError`: a
+    broken spec must not pass as an undocumented one.
     """
-    try:
-        response = await client.get(WIDGETS_PATH)
-        response.raise_for_status()
-        listing = response.json()
-    except httpx.HTTPError as exc:
-        raise CatalogError(f"GET {WIDGETS_PATH} failed: {exc}") from exc
-
-    if not listing.get("total") or not listing.get("widgets"):
-        raise CatalogError(f"GET {WIDGETS_PATH} returned no widgets (total == 0)")
-
-    ids = [summary["id"] for summary in listing["widgets"]]
-
-    async def detail(widget_id: str) -> dict[str, Any]:
+    directory = Path(spec_dir) / PROPS_SCHEMA_DIR if spec_dir is not None else None
+    if directory is None or not directory.is_dir():
+        return {}
+    schemas: dict[str, dict[str, Any]] = {}
+    for path in sorted(directory.glob(f"*{PROPS_SCHEMA_SUFFIX}")):
         try:
-            resp = await client.get(f"{WIDGETS_PATH}/{widget_id}")
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPError as exc:
-            raise CatalogError(f"GET {WIDGETS_PATH}/{widget_id} failed: {exc}") from exc
-
-    return list(await asyncio.gather(*(detail(widget_id) for widget_id in ids)))
-
-
-# --- Join -------------------------------------------------------------------
+            schema = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CatalogError(f"cannot read {path}: {exc}") from exc
+        if not isinstance(schema, dict):
+            raise CatalogError(f"{path} is not a JSON object")
+        schemas[path.name.removesuffix(PROPS_SCHEMA_SUFFIX)] = schema
+    return schemas
 
 
-def join_coverage(beaver_ids: list[str], ir_map_types: list[str]) -> list[str]:
-    """Return the Beaver ids that ``ir-map.json`` does not know (sorted)."""
-    known = set(ir_map_types)
-    return sorted(set(beaver_ids) - known)
+# --- Build ------------------------------------------------------------------
 
 
-def _props_for(beaver: dict[str, Any] | None, consumes: list[str]) -> dict[str, PropInfo]:
-    schema = (beaver or {}).get("propSchema") or {}
+def _props_for(schema: dict[str, Any] | None, consumes: list[str]) -> dict[str, PropInfo]:
+    schema = schema or {}
     properties: dict[str, Any] = schema.get("properties") or {}
     required = set(schema.get("required") or [])
     consumed = set(consumes)
@@ -188,7 +165,7 @@ def _props_for(beaver: dict[str, Any] | None, consumes: list[str]) -> dict[str, 
     for name in [*properties, *(c for c in consumes if c not in properties)]:
         sources = tuple(
             source
-            for source, present in ((SOURCE_BEAVER, name in properties), (SOURCE_CONSUMES, name in consumed))
+            for source, present in ((SOURCE_CATALOG, name in properties), (SOURCE_CONSUMES, name in consumed))
             if present
         )
         props[name] = PropInfo(
@@ -215,40 +192,34 @@ def _placeholder_entry() -> CatalogEntry:
     )
 
 
-def build_catalog(details: list[dict[str, Any]], ir_map: dict[str, dict[str, Any]]) -> Catalog:
-    """Join Beaver widget details with ``ir-map.json`` into one catalog."""
-    by_id = {detail["id"]: detail for detail in details}
+def build_catalog(ir_map: dict[str, dict[str, Any]], prop_schemas: dict[str, dict[str, Any]] | None = None) -> Catalog:
+    """Build the catalog from ``ir-map.json`` and the staged prop schemas (by IR id)."""
+    prop_schemas = prop_schemas or {}
     entries: dict[str, CatalogEntry] = {}
     for widget_type, mapping in ir_map.items():
-        beaver = by_id.get(widget_type)
+        schema = prop_schemas.get(widget_type)
         consumes = list(mapping.get("consumes") or [])
         verbatim = bool(mapping.get("verbatim", False))
         entries[widget_type] = CatalogEntry(
             type=widget_type,
-            props=_props_for(beaver, consumes),
-            prop_schema=beaver.get("propSchema") if beaver else None,
+            props=_props_for(schema, consumes),
+            prop_schema=schema,
             consumes=tuple(consumes),
             verbatim=verbatim,
-            undocumented=verbatim and beaver is None,
-            display_name=beaver.get("displayName") if beaver else None,
-            description=beaver.get("description") if beaver else None,
-            category=beaver.get("category") if beaver else None,
-            supports_children=beaver.get("supportsChildren") if beaver else None,
+            undocumented=verbatim and schema is None,
+            display_name=mapping.get("displayName"),
+            description=mapping.get("description"),
+            category=mapping.get("category"),
+            supports_children=mapping.get("supportsChildren"),
         )
     entries[PLACEHOLDER_TYPE] = _placeholder_entry()
-    return Catalog(
-        entries=entries,
-        unmapped_beaver_ids=tuple(join_coverage(list(by_id), list(ir_map))),
-    )
+    return Catalog(entries=entries)
 
 
-async def load_catalog(settings: Settings | None = None, client: httpx.AsyncClient | None = None) -> Catalog:
-    """Build the catalog from the live registry and the viewer's ``ir-map.json``."""
+async def load_catalog(settings: Settings | None = None) -> Catalog:
+    """Build the catalog from the viewer's ``ir-map.json`` and the staged prop schemas."""
     settings = settings or get_settings()
-    ir_map = load_ir_map(settings.viewer_dist)
-    async with borrowed_client(client, settings) as http:
-        details = await fetch_registry(http)
-    return build_catalog(details, ir_map)
+    return build_catalog(load_ir_map(settings.viewer_dist), load_prop_schemas(settings.staged_spec_dir))
 
 
 # --- Process-wide catalog ---------------------------------------------------
@@ -263,23 +234,12 @@ def set_catalog(catalog: Catalog | None) -> None:
     _catalog = catalog
 
 
-async def ensure_catalog(settings: Settings | None = None, client: httpx.AsyncClient | None = None) -> Catalog:
+async def ensure_catalog(settings: Settings | None = None) -> Catalog:
     """Return the process-wide catalog, loading it on first use."""
     global _catalog
     if _catalog is not None:
         return _catalog
     async with _lock:
         if _catalog is None:
-            _catalog = await load_catalog(settings, client)
+            _catalog = await load_catalog(settings)
     return _catalog
-
-
-# --- Screen-IR schema -------------------------------------------------------
-
-
-def load_schema() -> dict[str, Any]:
-    """Return the vendored Screen-IR JSON Schema (a fresh copy per call).
-
-    The check pass owns the (cached) load; the copy keeps a caller's edits out of it.
-    """
-    return copy.deepcopy(ir_schema.load_schema())

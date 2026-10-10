@@ -48,7 +48,7 @@ Every data endpoint requires an API key with the right scope. Keys are
 registered through a single variable:
 
 ```bash
-CANOPY_API_KEYS="<token>:<scope>[+<scope>][,<token>:<scope>...]"
+CANOPY_API_KEYS="<token>:<scope>[+<scope>][@<module>[+<module>]][,<token>:<scope>...]"
 ```
 
 - Scopes are `read` and `write` — e.g. `dev:read+write` or
@@ -57,11 +57,13 @@ CANOPY_API_KEYS="<token>:<scope>[+<scope>][,<token>:<scope>...]"
   accept `?api_key=<token>` for clients that cannot set headers.
 - If `CANOPY_API_KEYS` is unset, no keys exist and every gated endpoint
   returns `401`.
+- `dev:read+write` is fine on a laptop. For deployed instances, see the
+  [API keys runbook](deployment/api-keys.md).
 
 ## Run the API
 
 ```bash
-CANOPY_API_KEYS="dev:read+write" uv run uvicorn canopy.main:app
+CANOPY_API_KEYS="dev:read+write@*" uv run uvicorn canopy.main:app
 ```
 
 The default EPICS backend is `simulation`: **any** PV name resolves to a
@@ -74,7 +76,8 @@ Once running, you have:
 |-----|------------|
 | <http://localhost:8000/> | Service info (name, version) |
 | <http://localhost:8000/health> | Liveness check |
-| <http://localhost:8000/hare/docs> | Interactive Swagger UI for Hare (every module serves its own at `/<module>/docs`) |
+| <http://localhost:8000/docs> | Swagger UI with a dropdown for Canopy and each module's API |
+| <http://localhost:8000/hare/docs> | Standalone Swagger UI for Hare |
 | `ws://localhost:8000/hare/v1/ws/pvs` | Live PV stream |
 
 ## First requests
@@ -144,7 +147,7 @@ EPICS_CA_ADDR_LIST=127.0.0.1 EPICS_CA_AUTO_ADDR_LIST=NO \
 
 ```bash
 # Terminal 2 — Canopy on the real EPICS backend
-CANOPY_API_KEYS="dev:read+write" CANOPY_EPICS__BACKEND=epics \
+CANOPY_API_KEYS="dev:read+write@*" CANOPY_EPICS__BACKEND=epics \
   EPICS_CA_ADDR_LIST=127.0.0.1 EPICS_CA_AUTO_ADDR_LIST=NO \
   uv run uvicorn canopy.main:app
 ```

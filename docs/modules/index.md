@@ -14,7 +14,6 @@ through in-process gateways, so the whole platform runs as one API process
 | `/raccoon` | Raccoon | PV name-lookup proxy over the lab directory service |
 | `/vole` | [Vole](../vole/index.md) | In-memory per-PV buffers merging Hare live data with Mole history |
 | `/fox` | [Fox](../fox/index.md) | Formula engine — expressions over live and historical PV data |
-| `/beaver` | Beaver | Widget registry: metadata + JSON Schemas for Canopy screen widgets |
 | `/squirrel` | Squirrel | Machine-state snapshots: save, restore, and compare (Postgres-backed) |
 | `/jobs` | Jobs | Background-job status over the Arq/Redis queue |
 | `/converter` | Converter | Legacy screen converter — EDM `.edl` / Qt `.ui` to Canopy Screen IR |
@@ -22,6 +21,11 @@ through in-process gateways, so the whole platform runs as one API process
 Modules without a guide here yet are documented by their interactive API docs
 (below) and their design pages on the
 [GitHub wiki](https://github.com/slaclab/Canopy/wiki).
+
+The top-level Swagger UI at `/docs` provides a dropdown to switch between
+Canopy's core API and each mounted module. Each module's standalone Swagger UI
+and OpenAPI schema remain available at `/<module>/docs` and
+`/<module>/openapi.json`.
 
 ## Conventions every module follows
 

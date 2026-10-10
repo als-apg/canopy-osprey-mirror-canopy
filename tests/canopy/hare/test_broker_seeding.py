@@ -18,13 +18,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from canopy.hare.api.v1 import ws as ws_module
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, ValueKind
-from canopy.hare.api.v1 import ws as ws_module
 from canopy.core.security import ws_require_read_access
 from canopy.contracts.sample import AlarmSeverity
-from tests.canopy.hare.conftest import FakeWebSocket, FakeConnector
 from canopy.hare.dependencies import get_pv_broker
+from tests.canopy.hare.conftest import FakeConnector, FakeWebSocket
 from canopy.hare.services.broker import PVBroker
 
 DEAD_DELAY_S = 0.5
@@ -422,6 +422,11 @@ def test_ws_read_loop_is_not_blocked_by_a_dead_pv(slow_app):
             t0 = time.monotonic()
             ws.send_json({"type": "subscribe", "pvNames": ["DEAD:1"]})
             ws.send_json({"type": "subscribe", "pvNames": ["LIVE:1"]})
+            # The heartbeat opens every socket; it was queued at accept, before t0.
+            beat = ws.receive_json()
+            assert beat["type"] == "heartbeat"
+            assert beat["backend"] == "fake"
+            assert (beat["label"], beat["notice"], beat["binding"]) == (None, None, None)
             first = ws.receive_json()
             elapsed = time.monotonic() - t0
             assert first["type"] == "initial"

@@ -125,6 +125,13 @@ class PVStore:
         else:
             self._pending_outages.setdefault(pv, now_ns)
 
+    def in_open_outage(self, pv: str) -> bool:
+        """True while ``pv`` has an open outage, on its ring or still pending (no ring yet)."""
+        ring = self._rings.get(pv)
+        if ring is not None:
+            return ring.outage_open
+        return pv in self._pending_outages
+
     def close_outage(self, pv: str, now_ns: int) -> None:
         """Close ``pv``'s open outage.
 

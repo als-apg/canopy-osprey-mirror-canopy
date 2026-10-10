@@ -3,11 +3,13 @@
 Four passes, each tolerant of malformed input (the schema pass reports it):
 
 * **props** — every node's ``props`` validated (draft-07) against its catalog
-  entry's Beaver ``propSchema``. A type the catalog does not know is error
-  ``unknown_type``; a verbatim type Beaver does not document is warning
-  ``undocumented_type``; each violation is error ``invalid_prop`` whose path
-  ends at the offending prop name. ``unknown-widget`` placeholders are skipped:
-  the semantic pass reports them as ``unknown_widget``.
+  entry's staged prop schema. A type the catalog does not know is error
+  ``unknown_type``; a verbatim type the staged spec does not document is
+  warning ``undocumented_type``; each violation is error ``invalid_prop`` whose
+  path ends at the offending prop name. ``unknown-widget`` placeholders are
+  skipped: the semantic pass reports them as ``unknown_widget``. Without a
+  staged spec only ``unknown_type`` is reported (the check tool reports the
+  missing spec once, as ``spec_unavailable``).
 * **formulas** — every ``formulas[]`` entry parsed in-process by Fox
   (:mod:`canopy_mcp.fox`); a parse failure is error ``invalid_formula``.
 * **pvs** — PV names asked of Raccoon (``POST /raccoon/v1/pvs/validate``). Names
@@ -28,20 +30,20 @@ Four passes, each tolerant of malformed input (the schema pass reports it):
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterator
-from dataclasses import dataclass, field
 from typing import Any
+from dataclasses import field, dataclass
+from collections.abc import Iterator, Collection
 
 import httpx
 from jsonschema import Draft7Validator
 
-from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp import fox
-from canopy_mcp.catalog import Catalog
-from canopy_mcp.check.findings import Finding, node_id, pointer
-from canopy_mcp.check.semantic import UNKNOWN_WIDGET_TYPE, iter_nodes
 from canopy_mcp.client import error_reason, borrowed_client
 from canopy_mcp.config import Settings
+from canopy_mcp.catalog import Catalog
+from canopy.core.color_scheme import get_color_scheme
+from canopy_mcp.check.findings import Finding, node_id, pointer
+from canopy_mcp.check.semantic import UNKNOWN_WIDGET_TYPE, iter_nodes
 
 RACCOON_VALIDATE_PATH = "/raccoon/v1/pvs/validate"
 RACCOON_TIMEOUT_S = 1.5
@@ -56,6 +58,8 @@ _NOT_CHECKABLE_CHARS = frozenset("%*?(|[")
 _PV_PROPS = ("pv", "readbackPV")
 #: Keys inside ``props.curves[]`` items that name a PV.
 _CURVE_PV_KEYS = ("y_channel", "x_channel")
+#: Key inside ``props.curves[]`` items that names a list of PVs (``pv-array-plot``).
+_CURVE_PV_LIST_KEY = "y_channels"
 
 Path = tuple[str | int, ...]
 
@@ -82,18 +86,20 @@ async def check_lint(
     client: httpx.AsyncClient | None = None,
     settings: Settings | None = None,
     roles: Collection[str] | None = None,
+    props: bool = True,
 ) -> LintResult:
     """All lint findings for ``doc``, plus any check that could not run.
 
     ``roles`` are the colour roles the viewer defines; by default the served
-    scheme's (``canopy.core.color_scheme.get_color_scheme``).
+    scheme's (``canopy.core.color_scheme.get_color_scheme``). ``props=False``
+    (no staged spec) keeps only the ``unknown_type`` findings of the props pass.
     """
     if not isinstance(doc, dict):
         return LintResult()
     if roles is None:
         roles = served_roles()
     result = LintResult()
-    result.findings += prop_findings(doc, catalog)
+    result.findings += prop_findings(doc, catalog, props=props)
     result.findings += role_findings(doc, roles)
     result.findings += await formula_findings(doc)
     pv_found, skipped = await pv_findings(collect_pvs(doc), client=client, settings=settings)
@@ -116,12 +122,13 @@ def _validator(schema: dict[str, Any]) -> Draft7Validator:
     return validator
 
 
-def prop_findings(doc: Any, catalog: Catalog) -> list[Finding]:
+def prop_findings(doc: Any, catalog: Catalog, *, props: bool = True) -> list[Finding]:
     """Catalog-driven type and prop findings, in document order.
 
-    Colour props carry the registry's inline colour def (a string or a
+    Colour props carry the spec's inline colour def (a string or a
     ``{"$role", "fallback"}`` role), so a role-bearing draft validates here; a
-    malformed role is an ``invalid_prop`` on the colour prop.
+    malformed role is an ``invalid_prop`` on the colour prop. With
+    ``props=False`` only unknown types are reported.
     """
     out: list[Finding] = []
     for path, node in iter_nodes(doc):
@@ -132,10 +139,16 @@ def prop_findings(doc: Any, catalog: Catalog) -> list[Finding]:
         entry = catalog.get(ntype)
         if entry is None:
             out.append(
-                Finding(nid, "unknown_type", pointer((*path, "type")), "error", f"widget type '{ntype}' is not in the catalog")
+                Finding(
+                    nid,
+                    "unknown_type",
+                    pointer((*path, "type")),
+                    "error",
+                    f"widget type '{ntype}' is not in the catalog",
+                )
             )
             continue
-        if entry.placeholder:
+        if entry.placeholder or not props:
             continue
         if entry.undocumented:
             out.append(
@@ -144,15 +157,17 @@ def prop_findings(doc: Any, catalog: Catalog) -> list[Finding]:
                     "undocumented_type",
                     pointer((*path, "type")),
                     "warning",
-                    f"widget type '{ntype}' renders verbatim but Beaver documents no props for it",
+                    f"widget type '{ntype}' renders verbatim but the staged spec has no prop schema for it",
                 )
             )
         if entry.prop_schema is None:
             continue
-        props = node.get("props", {})
-        if not isinstance(props, dict):
+        values = node.get("props", {})
+        if not isinstance(values, dict):
             continue
-        errors = sorted(_validator(entry.prop_schema).iter_errors(props), key=lambda e: list(map(str, e.absolute_path)))
+        errors = sorted(
+            _validator(entry.prop_schema).iter_errors(values), key=lambda e: list(map(str, e.absolute_path))
+        )
         for error in errors:
             out.append(
                 Finding(
@@ -296,9 +311,17 @@ def _iter_pvs(doc: dict[str, Any]) -> Iterator[PvRef]:
                     for key in _CURVE_PV_KEYS:
                         if isinstance(curve.get(key), str):
                             yield PvRef(curve[key], nid, (*path, "props", "curves", c, key))
+                    channels = curve.get(_CURVE_PV_LIST_KEY)
+                    for k, channel in enumerate(channels if isinstance(channels, list) else []):
+                        if isinstance(channel, str):
+                            yield PvRef(channel, nid, (*path, "props", "curves", c, _CURVE_PV_LIST_KEY, k))
             actions = props.get("actions")
             for a, action in enumerate(actions if isinstance(actions, list) else []):
-                if isinstance(action, dict) and action.get("type") == "write_pv" and isinstance(action.get("pvName"), str):
+                if (
+                    isinstance(action, dict)
+                    and action.get("type") == "write_pv"
+                    and isinstance(action.get("pvName"), str)
+                ):
                     yield PvRef(action["pvName"], nid, (*path, "props", "actions", a, "pvName"))
         rules = node.get("rules")
         for r, rule in enumerate(rules if isinstance(rules, list) else []):
@@ -398,4 +421,3 @@ async def _ask_raccoon(
                 return [], "bad_response"
             unknown += [n for n in batch_unknown if isinstance(n, str)]
     return unknown, None
-

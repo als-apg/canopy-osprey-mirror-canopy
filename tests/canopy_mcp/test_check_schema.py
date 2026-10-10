@@ -1,17 +1,42 @@
-"""Schema pass: vendored Screen-IR schema, errors mapped to the nearest node id."""
+"""Schema pass: the staged Screen-IR schema, errors mapped to the nearest node id.
+
+The spec-present cases run on the synthetic schemas of ``synthetic_spec``,
+staged into ``tmp_path``; without a staged schema the pass is one
+``spec_unavailable`` warning.
+"""
 
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 
 import pytest
 
-from canopy_mcp.catalog import build_catalog
-from canopy_mcp.check import Finding, check_schema, load_schema, node_id_at, pointer
+from canopy_mcp.check import Finding, pointer, node_id_at
+from canopy_mcp.check import check_schema as check_staged
 from canopy_mcp.store import DraftStore
+from canopy_mcp.config import Settings
+from canopy_mcp.catalog import build_catalog
 from canopy_mcp.tools.check import run_check
+from canopy_mcp.check.schema import (
+    SUPPORTED_VERSIONS,
+    SpecUnavailable,
+    spec_note,
+    load_schema,
+)
+from tests.canopy_mcp.synthetic_spec import write_spec
+
+
+@pytest.fixture
+def spec(tmp_path: Path) -> Path:
+    return write_spec(tmp_path / "spec")
+
+
+@pytest.fixture
+def check_schema(spec: Path):
+    """``check_schema`` against the staged synthetic spec."""
+    return lambda doc: check_staged(doc, spec)
 
 
 def _node(nid: str, children: list[dict[str, Any]] | None = None, **extra: Any) -> dict[str, Any]:
@@ -64,32 +89,130 @@ def _role_doc() -> dict[str, Any]:
     return doc
 
 
-def test_schema_loads_vendored_2020_12_schema() -> None:
-    schema = load_schema()
+def test_schema_loads_staged_2020_12_schema(spec: Path) -> None:
+    schema = load_schema(spec_dir=spec)
     assert schema["$schema"].endswith("2020-12/schema")
     assert "WidgetNode" in schema["$defs"]
 
 
-def test_load_schema_defaults_to_newest_supported_version() -> None:
-    schema = load_schema()
+def test_load_schema_defaults_to_newest_supported_version(spec: Path) -> None:
+    schema = load_schema(spec_dir=spec)
     assert schema["$id"].endswith("/screen-ir/1.1/schema.json")
-    assert schema["properties"]["schemaVersion"]["enum"] == ["1.0", "1.1"]
     assert "ColorRole" in schema["$defs"]
-    assert load_schema("1.1") is schema
-    assert load_schema("1.0")["properties"]["schemaVersion"] == {"const": "1.0"}
+    assert load_schema("1.1", spec) is schema
+    assert load_schema("1.0", spec)["properties"]["schemaVersion"] == {"const": "1.0"}
 
 
-def test_role_bearing_1_1_document_passes_schema() -> None:
+def test_supported_versions_are_a_constant_without_any_spec() -> None:
+    assert SUPPORTED_VERSIONS == ("1.0", "1.1")
+
+
+def test_a_changed_schema_file_is_read_again(spec: Path) -> None:
+    path = spec / "ir" / "screen-ir-1.1.schema.json"
+    before = load_schema("1.1", spec)
+    path.write_text('{"$id": "changed", "type": "object"}')
+    import os
+
+    os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 10_000_000))
+    assert load_schema("1.1", spec) == {"$id": "changed", "type": "object"}
+    assert load_schema("1.1", spec) is not before
+
+
+# --- spec unavailable -----------------------------------------------------------
+
+
+def test_without_a_spec_dir_the_pass_is_one_spec_unavailable_warning() -> None:
+    (f,) = check_staged(_doc(), None)
+    assert (f.code, f.severity, f.path, f.node_id) == ("spec_unavailable", "warning", "", None)
+    assert "CANOPY_SPEC_DIR" in f.message
+
+
+def test_a_missing_spec_dir_is_named(tmp_path: Path) -> None:
+    (f,) = check_staged(_doc(), tmp_path / "absent")
+    assert f.code == "spec_unavailable"
+    assert str(tmp_path / "absent") in f.message
+
+
+def test_a_missing_version_schema_is_named(tmp_path: Path) -> None:
+    spec = write_spec(tmp_path / "spec", versions=("1.1",))
+    (f,) = check_staged(_doc(), spec)  # declares 1.0
+    assert f.code == "spec_unavailable" and f.severity == "warning"
+    assert "schemaVersion 1.0" in f.message and "screen-ir-1.0.schema.json" in f.message
+    doc = _doc()
+    doc["schemaVersion"] = "1.1"
+    assert check_staged(doc, spec) == []
+
+
+def test_an_unreadable_schema_is_spec_unavailable(spec: Path) -> None:
+    (spec / "ir" / "screen-ir-1.0.schema.json").write_text("not json")
+    (f,) = check_staged(_doc(), spec)
+    assert f.code == "spec_unavailable"
+    assert "cannot read" in f.message
+    with pytest.raises(SpecUnavailable):
+        load_schema("1.0", spec)
+
+
+def test_spec_note_is_structured(tmp_path: Path, spec: Path) -> None:
+    assert spec_note(spec) is None
+    assert spec_note(spec, "1.1") is None
+    note = spec_note(None)
+    assert note is not None and note["code"] == "spec_unavailable" and note["message"]
+    assert spec_note(tmp_path / "absent")["code"] == "spec_unavailable"
+    (spec / "ir" / "screen-ir-1.1.schema.json").unlink()
+    assert spec_note(spec) is None  # the directory is there
+    assert spec_note(spec, "1.1")["code"] == "spec_unavailable"
+
+
+def test_the_spec_dir_defaults_to_spec_beside_the_viewer_dist(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("CANOPY_VIEWER_DIST", raising=False)
+    assert Settings(viewer_dist=None).staged_spec_dir is None
+    assert Settings(viewer_dist=tmp_path / "dist").staged_spec_dir == tmp_path / "spec"
+    assert Settings(viewer_dist=tmp_path / "dist", spec_dir=tmp_path / "s").staged_spec_dir == tmp_path / "s"
+    monkeypatch.setenv("CANOPY_SPEC_DIR", str(tmp_path / "env"))
+    assert Settings().staged_spec_dir == tmp_path / "env"
+    monkeypatch.setenv("CANOPY_SPEC_DIR", "")
+    assert Settings(viewer_dist=tmp_path / "dist").staged_spec_dir == tmp_path / "spec"
+
+
+async def test_check_without_a_spec_reports_it_once_and_runs_the_other_passes(tmp_path: Path) -> None:
+    """No spec: one spec_unavailable, no prop lint; semantic findings (writes_to_machine) unchanged."""
+    catalog = build_catalog(
+        {"label": {"consumes": ["text"], "verbatim": True}, "pv-text-input": {"consumes": ["pv"], "verbatim": False}},
+        {"label": {"type": "object", "properties": {"text": {"type": "number"}}}},
+    )
+    doc = _doc()
+    doc["root"]["children"].append(_node("w-x", type="nope"))
+    doc["root"]["children"].append(_node("w-in", type="pv-text-input", props={"pv": "SR:X"}))
+    settings = Settings(viewer_dist=None, drafts_dir=tmp_path)
+    result = await run_check(doc, store=DraftStore(tmp_path), catalog=catalog, settings=settings)
+    assert [(f.code, f.severity) for f in result.schema] == [("spec_unavailable", "warning")]
+    # Prop lint does not run (text is not a number, label is verbatim); unknown types still do.
+    assert [f.code for f in result.lint] == ["unknown_type"]
+    assert result.errors == [f for f in result.lint if f.code == "unknown_type"]
+    assert "inert_in_osprey" in [f.code for f in result.semantic]
+    with_spec = await run_check(
+        doc,
+        store=DraftStore(tmp_path),
+        catalog=catalog,
+        settings=Settings(viewer_dist=None, drafts_dir=tmp_path, spec_dir=write_spec(tmp_path / "spec")),
+    )
+    assert with_spec.schema == []
+    # Every label's text fails its prop schema once the spec is staged; semantic is the same either way.
+    assert sorted(f.code for f in with_spec.lint) == ["invalid_prop"] * 4 + ["unknown_type"]
+    assert with_spec.semantic == result.semantic
+
+
+def test_role_bearing_1_1_document_passes_schema(check_schema) -> None:
     assert check_schema(_role_doc()) == []
 
 
-def test_1_1_document_without_roles_passes_schema() -> None:
+def test_1_1_document_without_roles_passes_schema(check_schema) -> None:
     doc = _doc()
     doc["schemaVersion"] = "1.1"
     assert check_schema(doc) == []
 
 
-def test_role_in_1_0_document_is_rejected() -> None:
+def test_role_in_1_0_document_is_rejected(check_schema) -> None:
     """A 1.0 document is checked against the frozen 1.0 schema, which has no colour roles."""
     doc = _role_doc()
     doc["schemaVersion"] = "1.0"
@@ -99,34 +222,35 @@ def test_role_in_1_0_document_is_rejected() -> None:
     assert all(f.path.startswith("/root/children/1/rules/0") for f in findings)
 
 
-def test_malformed_role_is_rejected_in_1_1() -> None:
+def test_malformed_role_is_rejected_in_1_1(check_schema) -> None:
     doc = _role_doc()
     doc["root"]["children"][1]["rules"][0]["default"] = {"$role": "text.primary", "fallback": "red"}
     findings = check_schema(doc)
     assert findings
     assert {f.node_id for f in findings} == {"w-c"}
-    assert {f.path for f in findings} == {"/root/children/1/rules/0"}
+    assert all(f.path.startswith("/root/children/1/rules/0") for f in findings)
 
 
 @pytest.mark.parametrize("version", ["2.0", "1.2", 1.1, None])
-def test_unsupported_version_is_rejected(version: Any) -> None:
+def test_unsupported_version_is_rejected(check_schema, version: Any) -> None:
     doc = _doc()
     doc["schemaVersion"] = version
     (f,) = check_schema(doc)
     assert f.path == "/schemaVersion" and f.node_id is None and f.severity == "error"
 
 
-def test_missing_version_is_rejected() -> None:
+def test_missing_version_is_rejected(check_schema) -> None:
     doc = _doc()
     del doc["schemaVersion"]
     (f,) = check_schema(doc)
     assert f.path == "" and "schemaVersion" in f.message
 
 
-async def test_role_bearing_1_1_draft_passes_check(tmp_path: Path) -> None:
+async def test_role_bearing_1_1_draft_passes_check(tmp_path: Path, spec: Path) -> None:
     """FR7: schema, semantic and lint passes all accept a role-bearing 1.1 draft."""
-    catalog = build_catalog([], {"label": {"consumes": ["text"], "verbatim": False}})
-    result = await run_check(_role_doc(), store=DraftStore(tmp_path), catalog=catalog)
+    catalog = build_catalog({"label": {"consumes": ["text"], "verbatim": False}})
+    settings = Settings(viewer_dist=None, drafts_dir=tmp_path, spec_dir=spec)
+    result = await run_check(_role_doc(), store=DraftStore(tmp_path), catalog=catalog, settings=settings)
     assert result.errors == []
     assert result.to_dict() == {"schema": [], "semantic": [], "lint": [], "skipped": []}
 
@@ -138,11 +262,11 @@ def test_role_bearing_1_1_draft_passes_pydm_validation() -> None:
     assert validate_screen_json(_role_doc()) == []
 
 
-def test_valid_document_has_no_findings() -> None:
+def test_valid_document_has_no_findings(check_schema) -> None:
     assert check_schema(_doc()) == []
 
 
-def test_error_in_nested_node_maps_to_that_node() -> None:
+def test_error_in_nested_node_maps_to_that_node(check_schema) -> None:
     doc = _doc()
     del doc["root"]["children"][0]["children"][0]["geometry"]
     findings = check_schema(doc)
@@ -154,7 +278,7 @@ def test_error_in_nested_node_maps_to_that_node() -> None:
     assert "geometry" in f.message
 
 
-def test_error_inside_node_field_maps_to_enclosing_node() -> None:
+def test_error_inside_node_field_maps_to_enclosing_node(check_schema) -> None:
     doc = _doc()
     doc["root"]["children"][1]["geometry"]["width"] = "wide"
     (f,) = check_schema(doc)
@@ -162,7 +286,7 @@ def test_error_inside_node_field_maps_to_enclosing_node() -> None:
     assert f.path == "/root/children/1/geometry/width"
 
 
-def test_unknown_node_key_is_reported_on_the_node() -> None:
+def test_unknown_node_key_is_reported_on_the_node(check_schema) -> None:
     doc = _doc()
     doc["root"]["children"][0]["bogus"] = 1
     (f,) = check_schema(doc)
@@ -170,7 +294,7 @@ def test_unknown_node_key_is_reported_on_the_node() -> None:
     assert f.path == "/root/children/0"
 
 
-def test_error_outside_tree_has_no_node() -> None:
+def test_error_outside_tree_has_no_node(check_schema) -> None:
     doc = _doc()
     doc["metadata"]["size"]["width"] = "x"
     doc["schemaVersion"] = "2.0"
@@ -179,14 +303,14 @@ def test_error_outside_tree_has_no_node() -> None:
     assert all(f.node_id is None for f in findings)
 
 
-def test_missing_top_level_key_path_is_document_root() -> None:
+def test_missing_top_level_key_path_is_document_root(check_schema) -> None:
     doc = _doc()
     del doc["root"]
     (f,) = check_schema(doc)
     assert f.path == "" and f.node_id is None
 
 
-def test_findings_are_deterministic() -> None:
+def test_findings_are_deterministic(check_schema) -> None:
     doc = _doc()
     doc["root"]["children"][1]["geometry"]["width"] = "wide"
     doc["metadata"]["size"]["height"] = "tall"

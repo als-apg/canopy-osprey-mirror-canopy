@@ -17,8 +17,8 @@ from canopy_mcp.config import Settings
 from canopy_mcp.catalog import set_catalog, build_catalog
 from canopy_mcp.tools.check import run_check
 from canopy_mcp.tools.drafts import get_screen, patch_node, list_drafts
-from canopy_mcp.tools.convert import QUEUE_CODES, convert_legacy
 from canopy.core.color_scheme import THEME_FILE_ENV, ColorScheme
+from canopy_mcp.tools.convert import QUEUE_CODES, convert_legacy
 from tests.canopy_mcp.fixtures.convert import mocks
 
 BASE = "http://canopy.test"
@@ -37,7 +37,7 @@ def settings(tmp_path, monkeypatch):
         t: {"consumes": [], "verbatim": False}
         for t in ("absolute-canvas", "group", "label", "regular-button", "action-button", "embedded-display")
     }
-    set_catalog(build_catalog([], ir_map))
+    set_catalog(build_catalog(ir_map))
     yield s
     set_catalog(None)
     drafts.reset_stores()

@@ -5,19 +5,22 @@ from __future__ import annotations
 import json
 import math
 import logging
-from typing import Any
+from typing import Any, Literal
 from datetime import UTC, datetime
+from dataclasses import asdict, dataclass
 from collections.abc import Callable
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from canopy.core.errors import BadRequest
+from canopy.core.time_parse import to_utc
 from canopy.squirrel.errors import SnapshotNotFound
 from canopy.squirrel.data.models import Snapshot
 from canopy.squirrel.restore_hooks import (
     RestoreHook,
     RestoreHookError,
-    get_restore_hook,
+    get_restore_hooks,
 )
 from canopy.squirrel.schemas.snapshot import (
     PVValueDTO,
@@ -41,6 +44,76 @@ from canopy.squirrel.data.repositories import (
 from canopy.squirrel.services.bulk_insert import bulk_insert_snapshot_values
 
 logger = logging.getLogger(__name__)
+
+PRIMARY_PHASE = "Setpoints"
+
+
+@dataclass
+class RestorePhase:
+    """One stage of a restore: the setpoint writes, or one restore hook's derived writes.
+
+    Reported to the job poller as a ``JobPhaseDTO``, beside the restore-wide percent.
+
+    Attributes
+    ----------
+    name : str
+        ``"Setpoints"`` or the hook's class name, the same name the restore's failure
+        rows carry as ``phase``.
+    total : int
+        Writes the phase will attempt. A hook phase starts at every write it derived and
+        drops to the writes it actually attempts once it starts, leaving out PVs whose
+        setpoint or an earlier hook failed.
+    current : int
+        Writes done so far.
+    status : {"pending", "running", "completed", "skipped"}
+        ``pending`` until the phase starts, then ``running``, then ``completed``, or
+        ``skipped`` when it has nothing to write.
+    failures : int
+        PVs that failed in this phase, matching the failure rows with this ``phase``.
+    """
+
+    name: str
+    total: int
+    current: int = 0
+    status: Literal["pending", "running", "completed", "skipped"] = "pending"
+    failures: int = 0
+
+
+def _phase_dicts(phases: list[RestorePhase]) -> list[dict]:
+    """Every phase's current state, in the ``JobPhaseDTO`` shape the Jobs module stores."""
+    return [asdict(phase) for phase in phases]
+
+
+def _sub_batch_progress(
+    progress_callback: Callable, base: int, total: int, phases: list[RestorePhase], phase: RestorePhase
+) -> Callable:
+    """Offset one write batch's progress onto the restore-wide write count and its phase.
+
+    Parameters
+    ----------
+    progress_callback : Callable
+        The restore's async progress sink, called as ``(current, total, message, phases=...)``.
+    base : int
+        Writes already accounted for when this batch starts.
+    total : int
+        Every write the restore will attempt.
+    phases : list[RestorePhase]
+        Every phase of the restore, all reported on each call.
+    phase : RestorePhase
+        The phase this batch's writes belong to; its ``current`` advances with them.
+
+    Returns
+    -------
+    Callable
+        An async callback in the batch's own scale that reports on the global one.
+    """
+    phase_base = phase.current
+
+    async def _report(current: int, _batch_total: int, message: str) -> None:
+        phase.current = phase_base + current
+        await progress_callback(base + current, total, message, phases=_phase_dicts(phases))
+
+    return _report
 
 
 def _parse_jsonb(value: Any) -> dict | None:
@@ -80,6 +153,35 @@ def _sanitize_for_json(value: Any) -> Any:
     return value
 
 
+def _utc_bound(name: str, value: datetime | None) -> datetime | None:
+    """Convert a listing bound with ``to_utc``, refusing one that leaves ``datetime``'s range.
+
+    Parameters
+    ----------
+    name : str
+        The query parameter the bound came from, for the error message.
+    value : datetime | None
+        The bound as the client sent it.
+
+    Returns
+    -------
+    datetime | None
+        The bound as an aware UTC datetime, or ``None`` when it was omitted.
+
+    Raises
+    ------
+    BadRequest
+        When the UTC instant falls outside years 1 to 9999, e.g.
+        ``9999-12-31T23:00:00-05:00``.
+    """
+    if value is None:
+        return None
+    try:
+        return to_utc(value)
+    except OverflowError as exc:
+        raise BadRequest(f"{name} ({value.isoformat()}) is out of range once converted to UTC") from exc
+
+
 class SnapshotService:
     """Snapshot operations with EPICS integration. Owns no transaction — the caller
     (request dep or worker ``session_scope``) commits."""
@@ -88,19 +190,29 @@ class SnapshotService:
         self,
         session: AsyncSession,
         epics_io: EpicsIO | None = None,
-        restore_hook: RestoreHook | None = None,
+        restore_hooks: list[RestoreHook] | None = None,
     ):
-        # ``epics_io`` is required only for create/restore (run in the worker, which
-        # builds the connector). The read endpoints construct the service without it.
+        """Wire the repositories, EPICS adapter and restore hooks.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The caller's session; the service owns no transaction.
+        epics_io : EpicsIO | None
+            Required only for create/restore (run in the worker, which builds the
+            connector). The read endpoints construct the service without it.
+        restore_hooks : list[RestoreHook] | None
+            Hooks to run during a restore. ``None`` falls back to the configured
+            singletons; an empty list disables hooks outright, which is how tests
+            isolate themselves from the environment.
+        """
         self.session = session
         self.snapshot_repo = SnapshotRepository(session)
         self.value_repo = SnapshotValueRepository(session)
         self.pv_repo = PvRepository(session)
         self.meta_pv_repo = MetaPvRepository(session)
         self.epics = epics_io
-        # Fall back to the configured singleton when not explicitly injected.
-        # Tests can pass ``restore_hook=...`` to control behavior in isolation.
-        self.restore_hook = restore_hook or get_restore_hook()
+        self.restore_hooks = restore_hooks if restore_hooks is not None else get_restore_hooks()
 
     async def _get_meta_pv_values_for_snapshot(self, snapshot_id: str, pv_ids: list[str]) -> list[MetaPVValueDTO]:
         meta_pv_values: list[MetaPVValueDTO] = []
@@ -117,10 +229,42 @@ class SnapshotService:
         return meta_pv_values
 
     async def list_snapshots(
-        self, title: str | None = None, tag_ids: list[str] | None = None
+        self,
+        title: str | None = None,
+        tag_ids: list[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> list[SnapshotSummaryDTO]:
-        """List snapshots, optionally filtered by title and/or tags."""
-        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids)
+        """List snapshots, optionally filtered by title, tags and/or creation time.
+
+        Parameters
+        ----------
+        title : str | None
+            Case-insensitive substring match against the snapshot title.
+        tag_ids : list[str] | None
+            Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+        start : datetime | None
+            Lower bound on creation time, inclusive. Converted with ``to_utc``, because
+            ``created_at`` is a ``timestamptz`` and asyncpg refuses a naive bind parameter.
+        end : datetime | None
+            Upper bound on creation time, inclusive. Converted the same way as ``start``.
+
+        Returns
+        -------
+        list[SnapshotSummaryDTO]
+            Matching snapshot summaries, newest first.
+
+        Raises
+        ------
+        BadRequest
+            When a bound falls outside ``datetime``'s range once converted to UTC, or
+            both bounds are given and ``start`` is after ``end``.
+        """
+        start = _utc_bound("start", start)
+        end = _utc_bound("end", end)
+        if start is not None and end is not None and start > end:
+            raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
+        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids, start=start, end=end)
 
         # One grouped query for all value counts (avoids N+1).
         snapshot_ids = [snap.id for snap in snapshots]
@@ -301,15 +445,20 @@ class SnapshotService:
         snapshot_values_data = []
         for pv_id, data_dict in pv_data.items():
             setpoint = data_dict.get("setpoint")
+            readback = data_dict.get("readback")
+            # The row's alarm is the setpoint's, or the readback's when there is no
+            # setpoint reading (a readback-only PV), the same fallback the meta-PV
+            # read path uses.
+            alarm_source = setpoint or readback
             snapshot_values_data.append(
                 {
                     "snapshot_id": snapshot.id,
                     "pv_id": pv_id,
                     "pv_name": data_dict.get("address", ""),
                     "setpoint_value": setpoint,
-                    "readback_value": data_dict.get("readback"),
-                    "status": setpoint.get("status") if setpoint else None,
-                    "severity": setpoint.get("severity") if setpoint else None,
+                    "readback_value": readback,
+                    "status": alarm_source.get("status") if alarm_source else None,
+                    "severity": alarm_source.get("severity") if alarm_source else None,
                     "timestamp": now,
                 }
             )
@@ -344,11 +493,34 @@ class SnapshotService:
     ) -> RestoreResultDTO:
         """Restore a snapshot's setpoints to EPICS (the hot write path).
 
-        Writes setpoints only; restore-hook extras are derived before the write.
-        A hook error skips that PV's primary  write and surfaces as a failure
-        Magnets are trimmed only if their primary write succeeded.
-        A trim failure is attributed to the primary address; progress
-        is measured in EPICS writes (primary + trim).
+        Setpoints only, never readbacks. Every hook derives its extra writes up front,
+        before anything is written; a hook error drops that PV from the write set so the
+        system is never left half-restored. The setpoints go out as one batch, then each
+        hook's extras as a batch of its own, in configured order, restricted to the PVs
+        whose setpoint and earlier hook writes all succeeded. A failed extra write marks
+        its primary address failed, with ``phase`` naming that hook, and later hooks skip
+        the PV.
+
+        Parameters
+        ----------
+        snapshot_id : str
+            The snapshot to restore.
+        request : RestoreRequestDTO | None
+            Restores only ``request.pv_ids`` when given, otherwise the whole snapshot.
+        progress_callback : Callable | None
+            Async sink called as ``(current, total, message, phases=...)``, where
+            ``total`` is every EPICS write the restore will attempt: the setpoints plus
+            all derived writes. Derived writes skipped because their setpoint or an
+            earlier hook failed count as done, so the count always reaches ``total``.
+            ``phases`` is sent on every call: each `RestorePhase` as a dict, Setpoints
+            first, then one per hook in configured order.
+
+        Returns
+        -------
+        RestoreResultDTO
+            Totals plus a ``{pvId, pvName, error, phase}`` row per failed PV, where
+            ``phase`` is ``"Setpoints"`` or the class name of the hook that failed
+            (``MagnetTrimHook`` for the ``magnet_trim`` provider, and so on).
         """
         logger.info("Restoring snapshot: %s", snapshot_id)
         start_time = datetime.now(UTC)
@@ -382,79 +554,113 @@ class SnapshotService:
         total_pvs = len(values_to_write)
         logger.info("Writing %d PV values", total_pvs)
 
-        if progress_callback:
-            await progress_callback(0, total_pvs, f"Starting restore of {total_pvs:,} PVs")
-
-        # Derive any extra writes (e.g. magnet trims) up front, before any write.
-        magnet_trim_pv_names: dict[str, list[tuple[str, Any]]] = {}
+        derived_per_hook: list[dict[str, list[tuple[str, Any]]]] = []
         hook_errors: dict[str, str] = {}
-        if self.restore_hook is not None:
-            for addr in values_to_write:
+        for hook in self.restore_hooks:
+            derived: dict[str, list[tuple[str, Any]]] = {}
+            for addr, value in values_to_write.items():
+                if addr in hook_errors:
+                    continue
                 try:
-                    extras = self.restore_hook.derive_extra_writes(addr)
+                    extras = hook.derive_extra_writes(addr, value)
                 except RestoreHookError as e:
                     hook_errors[addr] = str(e)
                     continue
                 if extras:
-                    magnet_trim_pv_names[addr] = extras
+                    derived[addr] = extras
+            derived_per_hook.append(derived)
 
-        # A hook error drops its PV from the write set so the system isn't left
-        # inconsistent; the error is surfaced as a failure below.
         original_values = {addr: value for addr, value in values_to_write.items() if addr not in hook_errors}
 
-        # Progress denominator = every primary setpoint plus every derived write.
-        trim_writes_total = sum(len(extras) for extras in magnet_trim_pv_names.values())
-        total_writes = len(original_values) + trim_writes_total
+        total_writes = len(original_values) + sum(
+            len(extras) for derived in derived_per_hook for extras in derived.values()
+        )
+
+        setpoints = RestorePhase(PRIMARY_PHASE, total=total_pvs)
+        phases = [setpoints] + [
+            RestorePhase(type(hook).__name__, total=sum(len(extras) for extras in derived.values()))
+            for hook, derived in zip(self.restore_hooks, derived_per_hook, strict=True)
+        ]
+
+        async def report(current: int, message: str) -> None:
+            if progress_callback:
+                await progress_callback(current, total_writes, message, phases=_phase_dicts(phases))
+
+        await report(0, f"Starting restore of {total_pvs:,} PVs")
+
+        # A PV a hook couldn't derive from is never written: it finishes the Setpoints
+        # phase as a failure the moment that phase starts.
+        setpoints.status = "running"
+        setpoints.current = setpoints.failures = len(hook_errors)
 
         results: dict[str, tuple[bool, str | None]] = {}
+        failure_phase: dict[str, str] = {}
         if original_values:
             if progress_callback:
-
-                async def _primary_progress(current: int, _subtotal: int, message: str) -> None:
-                    await progress_callback(current, total_writes, message)
-
-                results.update(await self.epics.put_many_with_progress(original_values, _primary_progress))
+                results.update(
+                    await self.epics.put_many_with_progress(
+                        original_values, _sub_batch_progress(progress_callback, 0, total_writes, phases, setpoints)
+                    )
+                )
             else:
                 results.update(await self.epics.put_many(original_values))
+        writes_done = len(original_values)
 
-        # Only trim magnets whose setpoint write succeeded.
-        magnet_trim_values: dict[str, Any] = {}
-        base_magnet_pv_name: dict[str, str] = {}
-        for primary_addr, extras in magnet_trim_pv_names.items():
-            primary_ok, _ = results.get(primary_addr, (False, None))
-            if not primary_ok:
+        for address, (success, _error) in results.items():
+            if not success:
+                failure_phase[address] = PRIMARY_PHASE
+                setpoints.failures += 1
+        setpoints.current = setpoints.total
+        setpoints.status = "completed" if setpoints.total else "skipped"
+
+        for derived, phase in zip(derived_per_hook, phases[1:], strict=True):
+            extra_values: dict[str, Any] = {}
+            primary_by_extra: dict[str, str] = {}
+            derived_writes = 0
+            for primary_addr, extras in derived.items():
+                derived_writes += len(extras)
+                # A later hook's derivation error kept this PV out of the write set, so
+                # it has no result; its extras are skipped like a failed setpoint's.
+                if primary_addr in hook_errors or not results[primary_addr][0]:
+                    continue
+                for extra_addr, extra_val in extras:
+                    extra_values[extra_addr] = extra_val
+                    primary_by_extra[extra_addr] = primary_addr
+
+            writes_done += derived_writes - len(extra_values)
+            phase.total = len(extra_values)
+            if not extra_values:
+                phase.status = "skipped"
                 continue
-            for extra_addr, extra_val in extras:
-                magnet_trim_values[extra_addr] = extra_val
-                base_magnet_pv_name[extra_addr] = primary_addr
 
-        # Writes accounted for: all setpoints + the trims we skip (their setpoint failed).
-        writes_done = len(original_values) + (trim_writes_total - len(magnet_trim_values))
-
-        if magnet_trim_values:
-            trim_base = writes_done
-
-            async def _trim_progress(current: int, _subtotal: int, message: str) -> None:
-                await progress_callback(trim_base + current, total_writes, message)
-
+            phase.status = "running"
             if progress_callback:
-                await progress_callback(
-                    trim_base, total_writes, f"Writing {len(magnet_trim_values):,} magnet trim values..."
+                await report(writes_done, f"Writing {len(extra_values):,} {phase.name} values...")
+                hook_results = await self.epics.put_many_with_progress(
+                    extra_values, _sub_batch_progress(progress_callback, writes_done, total_writes, phases, phase)
                 )
-            trim_results = await self.epics.put_many_with_progress(
-                magnet_trim_values, _trim_progress if progress_callback else None
-            )
-            for extra_addr, (ok, err) in trim_results.items():
-                if not ok:
-                    primary_addr = base_magnet_pv_name[extra_addr]
-                    results[primary_addr] = (
-                        False,
-                        f"Primary write succeeded but trim write failed for {extra_addr}: {err or 'unknown error'}",
-                    )
+            else:
+                hook_results = await self.epics.put_many(extra_values)
+            writes_done += len(extra_values)
 
-        # Hook validation errors (malformed magnet addresses) become per-PV failures.
+            failed_primaries: set[str] = set()
+            for extra_addr, (ok, err) in hook_results.items():
+                if ok:
+                    continue
+                primary_addr = primary_by_extra[extra_addr]
+                results[primary_addr] = (
+                    False,
+                    f"Primary write succeeded but {phase.name} write failed for {extra_addr}: {err or 'unknown error'}",
+                )
+                failure_phase[primary_addr] = phase.name
+                failed_primaries.add(primary_addr)
+            phase.current = phase.total
+            phase.failures = len(failed_primaries)
+            phase.status = "completed"
+
         for addr, err in hook_errors.items():
             results[addr] = (False, err)
+            failure_phase[addr] = PRIMARY_PHASE
 
         failures = []
         success_count = 0
@@ -463,10 +669,16 @@ class SnapshotService:
                 success_count += 1
             else:
                 pv_id = pv_id_by_address.get(address, "")
-                failures.append({"pvId": pv_id, "pvName": address, "error": error or "Unknown error"})
+                failures.append(
+                    {
+                        "pvId": pv_id,
+                        "pvName": address,
+                        "error": error or "Unknown error",
+                        "phase": failure_phase.get(address, PRIMARY_PHASE),
+                    }
+                )
 
-        if progress_callback:
-            await progress_callback(total_writes, total_writes, f"{success_count:,}/{total_pvs:,} PVs restored")
+        await report(total_writes, f"{success_count:,}/{total_pvs:,} PVs restored")
         logger.info(
             "Restore completed in %.2fs (%d success, %d failures)",
             (datetime.now(UTC) - start_time).total_seconds(),

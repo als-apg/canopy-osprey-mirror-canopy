@@ -10,10 +10,10 @@ fanning out per-PV ``get``/``put`` with bounded concurrency, reporting chunked
 progress, and re-normalizing per-PV exceptions into the dict contracts the
 create/restore code consumes (a read failure never breaks the batch).
 
-A single ``PVValue`` read carries value/severity/timestamp/connected only (units,
-precision, status and control limits live in ``PVMeta`` via ``describe()``). v1
-snapshots capture the former and leave the latter ``None``; since they live *inside*
-the JSONB value blob, enriching later needs no migration.
+A single ``PVValue`` read carries value, alarm severity, alarm status, timestamp and
+connection state. Units, precision and the control limits live in ``PVMeta`` via
+``describe()``, so v1 snapshots leave them ``None``; since they live *inside* the
+JSONB value blob, enriching later needs no migration.
 """
 
 from __future__ import annotations
@@ -45,11 +45,13 @@ _SEVERITY_TO_INT: dict[AlarmSeverity, int] = {
 class EpicsValue:
     """A single PV read, in the shape the snapshot domain consumes.
 
-    Ported from ``react-squirrel-backend``'s ``epics_types.EpicsValue``. ``status``,
-    ``units``, ``precision`` and the control limits are part of the contract but stay
-    ``None`` in v1 (a single ``get()`` doesn't carry them — a ``describe()`` pass
-    would). ``timestamp`` is a timezone-aware ``datetime`` (never a float), avoiding
-    the source's latent ``.isoformat()``-on-float bug on the CA path.
+    Ported from ``react-squirrel-backend``'s ``epics_types.EpicsValue``. ``status``
+    carries the EPICS alarm status code that accompanies ``severity``, and is ``None``
+    when the backend supplies none. ``units``, ``precision`` and the control limits are
+    part of the contract but stay ``None`` in v1, since a single ``get()`` doesn't carry
+    them — they live in ``PVMeta`` behind a ``describe()`` pass. ``timestamp`` is a
+    timezone-aware ``datetime`` (never a float), avoiding the source's latent
+    ``.isoformat()``-on-float bug on the CA path.
     """
 
     value: Any
@@ -71,9 +73,22 @@ def _ts_ns_to_datetime(ts_ns: int | None) -> datetime | None:
 
 
 def _to_epics_value(pv: PVValue) -> EpicsValue:
-    """Map a connector ``PVValue`` onto the domain's ``EpicsValue`` shape."""
+    """Map a connector ``PVValue`` onto the domain's ``EpicsValue`` shape.
+
+    Parameters
+    ----------
+    pv : PVValue
+        A single value as read from the ``canopy.epics`` connector.
+
+    Returns
+    -------
+    EpicsValue
+        The same reading with the severity as its integer code, the alarm status
+        carried through unchanged, and the timestamp as an aware ``datetime``.
+    """
     return EpicsValue(
         value=pv.value,
+        status=pv.alarm_status,
         severity=_SEVERITY_TO_INT.get(pv.severity),
         timestamp=_ts_ns_to_datetime(pv.ts_ns),
         connected=pv.connected,

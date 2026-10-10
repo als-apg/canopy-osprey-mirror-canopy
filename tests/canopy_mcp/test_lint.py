@@ -6,8 +6,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from canopy.core.color_scheme import THEME_FILE_ENV, clear_color_scheme_cache
 from canopy_mcp import fox
+from canopy_mcp.client import make_client
+from canopy_mcp.config import Settings
 from canopy_mcp.catalog import build_catalog
 from canopy_mcp.check.lint import (
     RACCOON_BATCH,
@@ -15,13 +16,12 @@ from canopy_mcp.check.lint import (
     RACCOON_VALIDATE_PATH,
     check_lint,
     collect_pvs,
-    normalize_pv,
     pv_findings,
+    normalize_pv,
     role_findings,
 )
+from canopy.core.color_scheme import THEME_FILE_ENV, clear_color_scheme_cache
 from canopy_mcp.check.semantic import INERT_IN_OSPREY_TYPES
-from canopy_mcp.client import make_client
-from canopy_mcp.config import Settings
 
 BASE = "http://canopy.test"
 URL = BASE + RACCOON_VALIDATE_PATH
@@ -42,8 +42,7 @@ def _catalog():
         "frame": {"consumes": [], "verbatim": False},
         "waveform-plot": {"consumes": ["curves"], "verbatim": False},
     }
-    details = [{"id": "pv-label", "propSchema": LABEL_SCHEMA}]
-    return build_catalog(details, ir_map)
+    return build_catalog(ir_map, {"pv-label": LABEL_SCHEMA})
 
 
 def _node(nid, ntype, children=None, **extra):
@@ -74,7 +73,9 @@ def _codes(findings):
 
 async def test_valid_props_no_findings(httpx_mock, client):
     httpx_mock.add_response(url=URL, method="POST", json={"known": ["A:B"], "unknown": []})
-    result = await check_lint(_doc(_node("l", "pv-label", props={"pv": "A:B", "precision": 2})), _catalog(), client=client)
+    result = await check_lint(
+        _doc(_node("l", "pv-label", props={"pv": "A:B", "precision": 2})), _catalog(), client=client
+    )
     assert result.findings == []
     assert result.skipped == []
 
@@ -161,11 +162,47 @@ def test_collect_pvs_sources():
             "l",
             "pv-label",
             props={"pv": "P", "readbackPV": "R", "actions": [{"type": "write_pv", "pvName": "W", "value": 1}]},
-            rules=[{"id": "r", "name": "r", "targetProperty": "x", "default": 0, "pvs": [{"name": "Q", "trigger": True}], "conditions": []}],
+            rules=[
+                {
+                    "id": "r",
+                    "name": "r",
+                    "targetProperty": "x",
+                    "default": 0,
+                    "pvs": [{"name": "Q", "trigger": True}],
+                    "conditions": [],
+                }
+            ],
         ),
         formulas=[{"name": "f", "expression": "{a}", "bindings": {"a": "B"}}],
     )
     assert sorted(r.name for r in collect_pvs(doc)) == ["B", "P", "Q", "R", "W", "X", "Y"]
+
+
+def test_collect_pvs_reads_y_channels_item_by_item():
+    curves = [
+        {"name": "x", "y_channels": ["BPM:1:X", "BPM:2:X"]},
+        {"name": "y", "y_channels": ["BPM:1:Y", 7, None, "loc://k"], "y_channel": "SINGLE"},
+        {"name": "bad", "y_channels": "NOT:A:LIST"},
+    ]
+    doc = _doc(_node("a", "pv-array-plot", props={"curves": curves}))
+    refs = collect_pvs(doc)
+    assert [(r.name, r.node_id, r.path) for r in refs] == [
+        ("BPM:1:X", "a", ("root", "children", 0, "props", "curves", 0, "y_channels", 0)),
+        ("BPM:2:X", "a", ("root", "children", 0, "props", "curves", 0, "y_channels", 1)),
+        ("SINGLE", "a", ("root", "children", 0, "props", "curves", 1, "y_channel")),
+        ("BPM:1:Y", "a", ("root", "children", 0, "props", "curves", 1, "y_channels", 0)),
+        ("loc://k", "a", ("root", "children", 0, "props", "curves", 1, "y_channels", 3)),
+    ]
+
+
+async def test_y_channels_reach_raccoon(httpx_mock, client):
+    httpx_mock.add_response(url=URL, method="POST", json={"known": ["A:1"], "unknown": ["A:2"]})
+    doc = _doc(_node("a", "pv-array-plot", props={"curves": [{"name": "c", "y_channels": ["A:1", "A:2"]}]}))
+    findings, skipped = await pv_findings(collect_pvs(doc), client=client)
+    sent = json.loads(httpx_mock.get_requests()[0].content)
+    assert sorted(sent["pvs"]) == ["A:1", "A:2"]
+    assert [(f.node_id, f.path) for f in findings] == [("a", "/root/children/0/props/curves/0/y_channels/1")]
+    assert skipped == []
 
 
 # --- pvs: raccoon transport -------------------------------------------------

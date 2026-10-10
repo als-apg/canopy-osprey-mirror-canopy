@@ -18,8 +18,8 @@ import logging
 from typing import Protocol
 from collections.abc import Callable
 
-from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.config import VoleConfig
+from canopy.epics.pv_protocol import strip_protocol_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,12 @@ class GraceManager:
                 logger.debug("Grace period expired for pinned %s; teardown deferred to its last unpin", pv)
                 return
             await self._ingest.unsubscribe([pv])
-            await self._buffer.drop(pv)
+            # Rings are keyed by the canonical name (a ``ca://X`` deactivation owns ring
+            # ``X``). Keep the ring while another name still feeds it, so a dropped ring
+            # always means an unsubscribed name.
+            canonical = strip_protocol_prefix(pv)
+            if not any(strip_protocol_prefix(name) == canonical for name in self._ingest.subscribed_pvs):
+                await self._buffer.drop(canonical)
             logger.debug("Grace period expired; unsubscribed and dropped buffer for %s", pv)
         except asyncio.CancelledError:
             raise

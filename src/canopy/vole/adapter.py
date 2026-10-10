@@ -18,8 +18,8 @@ import numpy as np
 
 from canopy.fox.ports import RingSlice, SampleRecord, AlignedWindow
 from canopy.core.clock import Clock
-from canopy.vole.buffer.ring import StoredSample
 from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
+from canopy.vole.buffer.ring import StoredSample
 from canopy.contracts.formula import IndexMode, AlignmentMode
 from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.vole.services.buffer_service import BufferService
@@ -45,6 +45,10 @@ SubscribeLiveFn = Callable[..., Awaitable[None]]
 _SEVERITY_ORDINAL: dict[AlarmSeverity, int] = {sev: i for i, sev in enumerate(AlarmSeverity)}
 
 
+def _never(name: str) -> bool:
+    return False
+
+
 class VoleDataSource:
     """Implements Fox's DataSource protocol by delegating to BufferService.
 
@@ -54,6 +58,11 @@ class VoleDataSource:
     then seeded from Mole and subscribed to Hare. The provisioned mark lives on
     the ring, so it dies with it and a failed attempt is retried only after
     ``provision_retry_s``. Tables themselves never provision.
+
+    A latest-value read (``read_latest``) of a live-fed name -- one Vole's
+    ingest is subscribed to, per the injected ``is_live_fed`` predicate -- reads
+    the ring as it is and never provisions: the broker's seed is on its way, and
+    an archived value must not be served as live.
 
     Also exposes the sample-record port (``last_at_or_before``, ``samples_since``,
     ``ring_slice``) Fox's table evaluator consumes.
@@ -66,12 +75,14 @@ class VoleDataSource:
         fetch_binned: FetchBinnedFn | None = None,
         subscribe_live: SubscribeLiveFn | None = None,
         clock: Clock | None = None,
+        is_live_fed: Callable[[str], bool] | None = None,
     ) -> None:
         self._buffer = buffer_service
         self._fetch_window = fetch_window
         self._fetch_binned = fetch_binned
         self._subscribe_live = subscribe_live
         self._clock = clock
+        self._is_live_fed = is_live_fed or _never
         self._provisioning_locks: dict[str, asyncio.Lock] = {}
 
     # --- sample-record port ------------------------------------------------ #
@@ -204,13 +215,24 @@ class VoleDataSource:
 
         return AlignedWindow(ts_ns=ts_ns, arrays=arrays, severities=severities)
 
+    def in_open_outage(self, name: str) -> bool:
+        """True while ``name``'s Hare connection is down, whether or not it has a ring yet."""
+        return self._buffer.in_open_outage(strip_protocol_prefix(name))
+
     async def read_latest(self, pv: str) -> Sample | None:
         # Latest-value reads (scalar/waveform inputs on subscribe_latest's size-1
         # rings) provision only a missing or empty ring, and never grow it: a
-        # history read is read_aligned's job, not a latest-value one.
+        # history read is read_aligned's job, not a latest-value one. A live-fed
+        # name is never provisioned here: its value comes from the broker, and an
+        # empty ring means "not yet" (FormulaInputMissing), not "ask the archive".
         canonical = strip_protocol_prefix(pv)
         sample = await self._buffer.read_latest(canonical)
-        if sample is None and not self._buffer.is_provisioned(canonical) and self._can_provision():
+        if (
+            sample is None
+            and not self._is_live_fed(canonical)
+            and not self._buffer.is_provisioned(canonical)
+            and self._can_provision()
+        ):
             await self._provision([pv], 0, self._now_ns(), grow=False)
             sample = await self._buffer.read_latest(canonical)
         return sample

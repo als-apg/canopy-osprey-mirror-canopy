@@ -1,83 +1,49 @@
-"""The widget catalog: Beaver registry joined with the viewer's ir-map.json."""
+"""The widget catalog: the viewer's ir-map.json, with prop schemas from the staged spec."""
 
 import json
 import shutil
 from pathlib import Path
 
-import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 
 from canopy_mcp import catalog as catalog_mod
 from canopy_mcp.tools import widgets as widget_tools
-from canopy_mcp.client import API_KEY_HEADER, make_client
 from canopy_mcp.config import Settings
 from canopy_mcp.catalog import (
-    WIDGETS_PATH,
+    SOURCE_CATALOG,
     PLACEHOLDER_TYPE,
     CatalogError,
     load_ir_map,
-    load_schema,
     load_catalog,
     build_catalog,
-    join_coverage,
     ensure_catalog,
-    fetch_registry,
+    load_prop_schemas,
 )
+from tests.canopy_mcp.synthetic_spec import COLOR_DEF, write_spec
 
 FIXTURES = Path(__file__).parent / "fixtures"
 IR_MAP_FIXTURE = FIXTURES / "ir-map.json"
-REGISTRY_DIR = Path(__file__).resolve().parents[2] / "widget-registry-data" / "widgets"
 
-UNDOCUMENTED = {"pv-toggle", "pv-tabs", "pv-gauge", "pv-tank", "pv-thermometer"}
+#: The verbatim types of the fixture ir-map: undocumented until a spec gives them a prop schema.
+VERBATIM = {
+    "arc", "ellipse", "group", "line", "polygon", "rectangle", "pv-gauge", "pv-meter", "pv-radio-group",
+    "pv-spinbox", "pv-tabs", "pv-tank", "pv-thermometer", "pv-toggle",
+}  # fmt: skip
 
-
-def _registry_details() -> list[dict]:
-    """The 32 checked-in Beaver widget files, as GET /beaver/v1/widgets/{id} returns them."""
-    return [json.loads(p.read_text()) for p in sorted(REGISTRY_DIR.glob("*.json"))]
-
-
-def _summary(detail: dict) -> dict:
-    return {
-        "id": detail["id"],
-        "displayName": detail.get("displayName", detail["id"]),
-        "category": detail.get("category", "misc"),
-        "paletteIcon": detail.get("paletteIcon", ""),
-        "version": detail.get("version", "1.0.0"),
-        "supportsPv": detail.get("supportsPv", False),
-    }
-
-
-class Registry:
-    """A mocked Beaver: the summary list plus per-id details, recording every request."""
-
-    def __init__(self, details: list[dict], *, total: int | None = None, fail: dict[str, int] | None = None):
-        self.details = {d["id"]: d for d in details}
-        self.total = len(details) if total is None else total
-        self.fail = fail or {}
-        self.requests: list[httpx.Request] = []
-
-    def handler(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        path = request.url.path
-        if path in self.fail:
-            return httpx.Response(self.fail[path], json={"detail": "boom"})
-        if path == WIDGETS_PATH:
-            widgets = [_summary(d) for d in self.details.values()] if self.total else []
-            return httpx.Response(200, json={"widgets": widgets, "total": self.total})
-        widget_id = path.removeprefix(WIDGETS_PATH + "/")
-        if widget_id in self.details:
-            return httpx.Response(200, json=self.details[widget_id])
-        return httpx.Response(404, json={"detail": "not found"})
-
-    def client(self, settings: Settings) -> httpx.AsyncClient:
-        return make_client(settings, transport=httpx.MockTransport(self.handler))
+PV_LED_SCHEMA = {
+    "type": "object",
+    "required": ["pv"],
+    "properties": {"pv": {"type": "string"}, "onValue": {"type": "number"}},
+}
 
 
 @pytest.fixture
 def viewer_dist(tmp_path: Path) -> Path:
-    shutil.copy(IR_MAP_FIXTURE, tmp_path / "ir-map.json")
-    return tmp_path
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    shutil.copy(IR_MAP_FIXTURE, dist / "ir-map.json")
+    return dist
 
 
 @pytest.fixture
@@ -96,62 +62,21 @@ def _ir_map() -> dict:
     return json.loads(IR_MAP_FIXTURE.read_text())
 
 
-# --- Registry fetch ---------------------------------------------------------
-
-
-async def test_fetch_lists_then_fetches_every_id_with_read_key(settings):
-    details = _registry_details()
-    registry = Registry(details)
-    async with registry.client(settings) as client:
-        fetched = await fetch_registry(client)
-
-    assert {d["id"] for d in fetched} == {d["id"] for d in details}
-    assert all("propSchema" in d for d in fetched)
-    paths = [r.url.path for r in registry.requests]
-    assert paths[0] == WIDGETS_PATH
-    assert sorted(paths[1:]) == sorted(f"{WIDGETS_PATH}/{d['id']}" for d in details)
-    assert len(paths) == 1 + len(details)
-    assert all(r.headers[API_KEY_HEADER] == "read-key" for r in registry.requests)
-
-
-async def test_fetch_refuses_empty_registry(settings):
-    registry = Registry([], total=0)
-    async with registry.client(settings) as client:
-        with pytest.raises(CatalogError, match="total == 0"):
-            await fetch_registry(client)
-    assert [r.url.path for r in registry.requests] == [WIDGETS_PATH]
-
-
-async def test_fetch_fails_on_list_error(settings):
-    registry = Registry(_registry_details(), fail={WIDGETS_PATH: 401})
-    async with registry.client(settings) as client:
-        with pytest.raises(CatalogError, match=WIDGETS_PATH):
-            await fetch_registry(client)
-
-
-async def test_fetch_fails_on_detail_error(settings):
-    registry = Registry(_registry_details(), fail={f"{WIDGETS_PATH}/pv-led": 500})
-    async with registry.client(settings) as client:
-        with pytest.raises(CatalogError, match="pv-led"):
-            await fetch_registry(client)
-
-
-async def test_fetch_fails_on_connection_error(settings):
-    def refuse(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("refused", request=request)
-
-    async with make_client(settings, transport=httpx.MockTransport(refuse)) as client:
-        with pytest.raises(CatalogError):
-            await fetch_registry(client)
-
-
 # --- ir-map.json ------------------------------------------------------------
 
 
 def test_load_ir_map_reads_viewer_dist(viewer_dist):
     ir_map = load_ir_map(viewer_dist)
-    assert ir_map["rectangle"] == {"consumes": [], "verbatim": True}
-    assert ir_map["embedded-display"] == {"consumes": ["file", "macros"], "verbatim": False}
+    assert ir_map["rectangle"]["consumes"] == [] and ir_map["rectangle"]["verbatim"] is True
+    assert ir_map["embedded-display"]["consumes"] == ["file", "macros"]
+
+
+def test_every_fixture_entry_carries_the_editor_metadata():
+    for widget_type, entry in _ir_map().items():
+        assert isinstance(entry["displayName"], str) and entry["displayName"], widget_type
+        assert isinstance(entry["description"], str), widget_type
+        assert isinstance(entry["category"], str), widget_type
+        assert isinstance(entry["supportsChildren"], bool), widget_type
 
 
 def test_load_ir_map_requires_viewer_dist():
@@ -171,77 +96,84 @@ def test_load_ir_map_rejects_malformed(tmp_path, content):
         load_ir_map(tmp_path)
 
 
-# --- Join -------------------------------------------------------------------
+# --- staged prop schemas ------------------------------------------------------
 
 
-def test_join_coverage_every_beaver_id_is_an_ir_type_and_every_ir_type_has_an_entry():
-    details = _registry_details()
+def test_prop_schemas_are_read_by_ir_id(tmp_path):
+    spec = write_spec(tmp_path / "spec", props={"pv-led": PV_LED_SCHEMA, "arc": {"type": "object"}})
+    (spec / "widgets" / "README.md").write_text("not a schema")
+    assert load_prop_schemas(spec) == {"arc": {"type": "object"}, "pv-led": PV_LED_SCHEMA}
+
+
+def test_no_spec_means_no_prop_schemas(tmp_path):
+    assert load_prop_schemas(None) == {}
+    assert load_prop_schemas(tmp_path / "absent") == {}
+    (tmp_path / "bare").mkdir()
+    assert load_prop_schemas(tmp_path / "bare") == {}
+
+
+@pytest.mark.parametrize("content", ["not json", "[1, 2]"])
+def test_a_broken_prop_schema_is_a_catalog_error(tmp_path, content):
+    spec = write_spec(tmp_path / "spec")
+    (spec / "widgets" / "arc.props.schema.json").write_text(content)
+    with pytest.raises(CatalogError, match="arc.props.schema.json"):
+        load_prop_schemas(spec)
+
+
+# --- Build ------------------------------------------------------------------
+
+
+def test_every_ir_type_has_an_entry_with_its_metadata():
     ir_map = _ir_map()
-    beaver_ids = [d["id"] for d in details]
-    assert len(beaver_ids) == 32
-
-    assert join_coverage(beaver_ids, list(ir_map)) == []
-    assert set(beaver_ids) <= set(ir_map)
-
-    catalog = build_catalog(details, ir_map)
-    assert catalog.unmapped_beaver_ids == ()
-    assert set(ir_map) <= set(catalog.entries)
-    # unknown-widget is the ONE type outside both sources.
-    assert set(catalog.entries) - set(ir_map) - set(beaver_ids) == {PLACEHOLDER_TYPE}
-
-
-def test_join_coverage_reports_beaver_ids_missing_from_ir_map():
-    assert join_coverage(["a", "b", "c"], ["b"]) == ["a", "c"]
-    catalog = build_catalog([{"id": "only-in-beaver", "propSchema": {}}], {"x": {"consumes": []}})
-    assert catalog.unmapped_beaver_ids == ("only-in-beaver",)
-    assert "only-in-beaver" not in catalog
+    catalog = build_catalog(ir_map)
+    # unknown-widget is the ONE type outside ir-map.json.
+    assert set(catalog.entries) - set(ir_map) == {PLACEHOLDER_TYPE}
+    for widget_type, mapping in ir_map.items():
+        entry = catalog.get(widget_type)
+        assert entry.display_name == mapping["displayName"]
+        assert entry.description == mapping["description"]
+        assert entry.category == mapping["category"]
+        assert entry.supports_children == mapping["supportsChildren"]
+    # Ids that share a runtime type no longer share a label.
+    assert catalog.get("pv-button").display_name != catalog.get("regular-button").display_name
 
 
-def test_verbatim_types_without_beaver_entry_are_undocumented():
-    catalog = build_catalog(_registry_details(), _ir_map())
+def test_verbatim_types_without_a_prop_schema_are_undocumented():
+    catalog = build_catalog(_ir_map())
     undocumented = {t for t, e in catalog.entries.items() if e.undocumented}
-    assert undocumented == UNDOCUMENTED
-    # A verbatim type Beaver documents is not undocumented.
-    assert catalog.get("rectangle").verbatim and not catalog.get("rectangle").undocumented
+    assert undocumented == VERBATIM
     assert catalog.get("pv-toggle").props == {}
     assert catalog.get("pv-toggle").prop_schema is None
 
 
-def test_props_are_the_union_tagged_by_source():
-    details = [
-        {
-            "id": "pv-led",
-            "displayName": "PV LED",
-            "propSchema": {
-                "type": "object",
-                "required": ["pv"],
-                "properties": {"pv": {"type": "string"}, "onValue": {"type": "number"}},
-            },
-        }
-    ]
-    ir_map = {"pv-led": {"consumes": ["pv", "bit"], "verbatim": False}}
-    entry = build_catalog(details, ir_map).get("pv-led")
+def test_a_staged_prop_schema_documents_a_verbatim_type():
+    catalog = build_catalog(_ir_map(), {"rectangle": {"type": "object", "properties": {"lineWidth": {}}}})
+    assert catalog.get("rectangle").verbatim and not catalog.get("rectangle").undocumented
+    assert catalog.get("rectangle").props["lineWidth"].sources == (SOURCE_CATALOG,)
 
-    assert entry.props["pv"].sources == ("beaver", "consumes")
+
+def test_props_are_the_union_tagged_by_source():
+    ir_map = {"pv-led": {"consumes": ["pv", "bit"], "verbatim": False, "displayName": "PV LED"}}
+    entry = build_catalog(ir_map, {"pv-led": PV_LED_SCHEMA}).get("pv-led")
+
+    assert entry.props["pv"].sources == ("catalog", "consumes")
     assert entry.props["pv"].required is True
     assert entry.props["pv"].schema == {"type": "string"}
-    assert entry.props["onValue"].sources == ("beaver",)
+    assert entry.props["onValue"].sources == ("catalog",)
     assert entry.props["bit"].sources == ("consumes",)
     assert entry.props["bit"].schema is None
-    assert entry.prop_schema == details[0]["propSchema"]
+    assert entry.prop_schema == PV_LED_SCHEMA
     assert not entry.undocumented
+    assert entry.display_name == "PV LED"
 
 
-def test_real_registry_prop_tags():
-    entry = build_catalog(_registry_details(), _ir_map()).get("pv-led")
-    # Beaver documents onValue; the renderer consumes bit; both name pv.
-    assert entry.props["pv"].sources == ("beaver", "consumes")
-    assert entry.props["onValue"].sources == ("beaver",)
-    assert entry.props["bit"].sources == ("consumes",)
+def test_a_prop_schema_for_an_id_outside_ir_map_adds_no_entry():
+    catalog = build_catalog({"x": {"consumes": []}}, {"only-in-spec": {}})
+    assert "only-in-spec" not in catalog
 
 
 def test_placeholder_entry():
-    entry = build_catalog(_registry_details(), _ir_map()).get(PLACEHOLDER_TYPE)
+    entry = build_catalog(_ir_map()).get(PLACEHOLDER_TYPE)
     assert entry.placeholder
     assert not entry.undocumented
     assert entry.prop_schema is None
@@ -251,36 +183,42 @@ def test_placeholder_entry():
 
 
 async def test_load_catalog_end_to_end(settings):
-    registry = Registry(_registry_details())
-    async with registry.client(settings) as client:
-        catalog = await load_catalog(settings, client)
-    assert len(catalog.entries) == 37 + 1
+    catalog = await load_catalog(settings)
+    assert len(catalog.entries) == 38 + 1
+    assert all(e.prop_schema is None for e in catalog.entries.values())
 
 
-async def test_load_catalog_refuses_empty_registry(settings):
-    registry = Registry([], total=0)
-    async with registry.client(settings) as client:
-        with pytest.raises(CatalogError):
-            await load_catalog(settings, client)
+async def test_load_catalog_reads_the_spec_beside_the_viewer_dist(settings, viewer_dist):
+    write_spec(viewer_dist.parent / "spec", props={"pv-led": PV_LED_SCHEMA})
+    catalog = await load_catalog(settings)
+    assert catalog.get("pv-led").prop_schema == PV_LED_SCHEMA
 
 
-async def test_load_catalog_without_viewer_dist_makes_no_request():
-    registry = Registry(_registry_details())
-    settings = Settings(base_url="http://canopy.test", viewer_dist=None)
-    async with registry.client(settings) as client:
-        with pytest.raises(CatalogError, match="CANOPY_VIEWER_DIST"):
-            await load_catalog(settings, client)
-    assert registry.requests == []
+async def test_load_catalog_prefers_canopy_spec_dir(settings, viewer_dist, tmp_path):
+    write_spec(viewer_dist.parent / "spec", props={"pv-led": {"type": "object"}})
+    other = write_spec(tmp_path / "other", props={"pv-led": PV_LED_SCHEMA})
+    catalog = await load_catalog(settings.model_copy(update={"spec_dir": other}))
+    assert catalog.get("pv-led").prop_schema == PV_LED_SCHEMA
 
 
-async def test_ensure_catalog_loads_once(settings):
-    registry = Registry(_registry_details())
-    async with registry.client(settings) as client:
-        first = await ensure_catalog(settings, client)
-        count = len(registry.requests)
-        second = await ensure_catalog(settings, client)
+async def test_load_catalog_without_viewer_dist():
+    with pytest.raises(CatalogError, match="CANOPY_VIEWER_DIST"):
+        await load_catalog(Settings(base_url="http://canopy.test", viewer_dist=None))
+
+
+async def test_ensure_catalog_loads_once(settings, monkeypatch):
+    loads = []
+    real = catalog_mod.load_ir_map
+
+    def counting(viewer_dist):
+        loads.append(viewer_dist)
+        return real(viewer_dist)
+
+    monkeypatch.setattr(catalog_mod, "load_ir_map", counting)
+    first = await ensure_catalog(settings)
+    second = await ensure_catalog(settings)
     assert first is second
-    assert len(registry.requests) == count == 33
+    assert len(loads) == 1
 
 
 # --- Tools ------------------------------------------------------------------
@@ -288,37 +226,67 @@ async def test_ensure_catalog_loads_once(settings):
 
 @pytest.fixture
 def loaded():
-    catalog = build_catalog(_registry_details(), _ir_map())
+    catalog = build_catalog(_ir_map(), {"pv-led": PV_LED_SCHEMA})
     catalog_mod.set_catalog(catalog)
     return catalog
 
 
-async def test_list_widgets_tool(loaded):
+@pytest.fixture
+def staged(monkeypatch, tmp_path) -> Path:
+    """A synthetic spec named by CANOPY_SPEC_DIR, as the tools read it."""
+    spec = write_spec(tmp_path / "staged")
+    monkeypatch.setenv("CANOPY_SPEC_DIR", str(spec))
+    return spec
+
+
+@pytest.fixture
+def unstaged(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CANOPY_VIEWER_DIST", str(tmp_path / "dist"))  # no spec/ beside it
+
+
+async def test_list_widgets_tool(loaded, staged):
     result = await widget_tools.list_widgets()
-    assert result["total"] == 38
+    assert result["total"] == 39
     by_type = {w["type"]: w for w in result["widgets"]}
     assert set(by_type) == set(loaded.entries)
     assert by_type["pv-tank"]["undocumented"] is True
     assert by_type[PLACEHOLDER_TYPE]["placeholder"] is True
-    assert by_type["pv-led"]["displayName"] == "PV LED"
+    assert by_type["pv-led"]["displayName"] == loaded.get("pv-led").display_name
+    assert "note" not in result
     json.dumps(result)
 
 
-async def test_get_widget_tool(loaded):
+async def test_list_widgets_without_a_spec_carries_a_note(loaded, unstaged):
+    result = await widget_tools.list_widgets()
+    assert result["total"] == 39
+    assert all(w["displayName"] for w in result["widgets"])
+    assert result["note"]["code"] == "spec_unavailable"
+    assert result["note"]["message"]
+    json.dumps(result)
+
+
+async def test_get_widget_tool(loaded, staged):
     result = await widget_tools.get_widget("pv-led")
     assert result["type"] == "pv-led"
-    assert result["props"]["pv"]["sources"] == ["beaver", "consumes"]
+    assert result["props"]["pv"]["sources"] == ["catalog", "consumes"]
     assert result["props"]["bit"]["sources"] == ["consumes"]
     assert result["propSchema"]["properties"]["pv"]["type"] == "string"
+    assert "note" not in result
     json.dumps(result)
 
 
-async def test_get_widget_tool_unknown_type(loaded):
+async def test_get_widget_without_a_spec_carries_a_note(loaded, unstaged):
+    result = await widget_tools.get_widget("pv-tank")
+    assert result["undocumented"] is True and result["propSchema"] is None
+    assert result["note"]["code"] == "spec_unavailable"
+
+
+async def test_get_widget_tool_unknown_type(loaded, unstaged):
     with pytest.raises(ToolError, match="no-such-widget"):
         await widget_tools.get_widget("no-such-widget")
 
 
-async def test_get_schema_tool():
+async def test_get_schema_tool(staged):
     schema = await widget_tools.get_schema()
     assert schema["$schema"].startswith("https://json-schema.org/draft/2020-12")
     assert schema["$id"].endswith("/screen-ir/1.1/schema.json")
@@ -326,7 +294,23 @@ async def test_get_schema_tool():
     assert "ColorRole" in schema["$defs"]
     # Each call returns a fresh copy; mutating one does not leak.
     schema["properties"] = {}
-    assert load_schema()["properties"]
+    assert (await widget_tools.get_schema())["properties"]
+
+
+async def test_get_schema_without_a_spec_is_a_note_not_an_error(unstaged):
+    result = await widget_tools.get_schema()
+    assert result["schema"] is None
+    assert result["note"]["code"] == "spec_unavailable"
+    assert "spec" in result["note"]["message"]
+    json.dumps(result)
+
+
+async def test_get_schema_with_a_spec_missing_the_newest_version(monkeypatch, tmp_path):
+    spec = write_spec(tmp_path / "staged", versions=("1.0",))
+    monkeypatch.setenv("CANOPY_SPEC_DIR", str(spec))
+    result = await widget_tools.get_schema()
+    assert result["schema"] is None
+    assert "1.1" in result["note"]["message"]
 
 
 async def test_tools_registered_on_mcp():
@@ -336,13 +320,31 @@ async def test_tools_registered_on_mcp():
     assert {"list_widgets", "get_widget", "get_schema"} <= names
 
 
-# --- Colour roles (the registry's inline colour def) ----------------------------
+# --- Colour roles (the spec's inline colour def) --------------------------------
 
 _ROLE = {"$role": "text.primary", "fallback": "#112233", "fallbackDark": "#eeeeee"}
 
 
+#: Synthetic prop schemas carrying the colour def on their colour props.
+ROLE_PROPS = {
+    "pv-label": {
+        "type": "object",
+        "properties": {"pv": {"type": "string"}, "foregroundColor": COLOR_DEF, "backgroundColor": COLOR_DEF},
+    },
+    "xy-plot": {
+        "type": "object",
+        "properties": {
+            "curves": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"yPv": {"type": "string"}, "color": COLOR_DEF}},
+            }
+        },
+    },
+}
+
+
 def _role_catalog():
-    return build_catalog(_registry_details(), _ir_map())
+    return build_catalog(_ir_map(), ROLE_PROPS)
 
 
 def _role_doc(**props):
