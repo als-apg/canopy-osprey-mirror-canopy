@@ -54,8 +54,8 @@ unset.
 | `CANOPY_PUSH_DIR` | unset | Where `request_push` writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |
 | `CANOPY_PV_MODE` | `hare` | `mock` makes the served viewer draw PVs from the mock service instead of the backend. |
-| `CANOPY_VIEWER_DIST` | unset | The built viewer. |
-| `CANOPY_WIDGETS_DIR` | unset | A directory of widget detail `*.json` files to build the widget catalog from, instead of asking the backend. |
+| `CANOPY_VIEWER_DIST` | unset | The built viewer. Its `ir-map.json` is the widget catalog. |
+| `CANOPY_SPEC_DIR` | `spec/` beside `CANOPY_VIEWER_DIST` | The staged specification: the Screen-IR schemas and the per-widget prop schemas `check` validates against. Without it `check` returns one `spec_unavailable` warning in place of the schema and prop findings, and `list_widgets`, `get_widget` and `get_schema` carry a `spec_unavailable` note. |
 | `CANOPY_BROWSER_SANDBOX` | `0` | `1` launches the screenshot Chromium with its own sandbox. Off by default, because the sandbox needs privileges a container usually lacks. If Chromium cannot start with it, `screenshot` answers unavailable and names this switch. |
 
 A secret file that is named but cannot supply its secret ends the launch with
