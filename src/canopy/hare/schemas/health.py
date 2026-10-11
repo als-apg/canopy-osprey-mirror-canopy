@@ -11,6 +11,8 @@ class HealthSummaryDTO(CanopyModel):
     connector_ok: bool
     clients: int
     active_monitors: int
+    # Of active_monitors, those whose latest value is connected.
+    connected: int
     # Of active_monitors, those with no subscriber kept warm for the grace period.
     warm_monitors: int = 0
     subscriptions: int
