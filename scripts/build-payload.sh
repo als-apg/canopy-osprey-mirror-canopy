@@ -11,7 +11,7 @@
 #
 # Nothing is built in a checkout. Every repo is exported with `git archive` at
 # its commit into one temp root, laid out as
-#   <root>/<repo dir name>/.claude/worktrees/canopy-osprey-connectors
+#   <root>/<repo dir name>/.claude/worktrees/panel-builder
 # which is the depth at which the runtime's relative `link:` to the SDK
 # resolves to the SDK export. An uncommitted edit in a checkout therefore
 # neither blocks the build nor enters it, and the checkouts are left untouched.
@@ -29,7 +29,7 @@ set -euo pipefail
 PROG=build-payload
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-LEAF=".claude/worktrees/canopy-osprey-connectors"
+LEAF=".claude/worktrees/panel-builder"
 
 usage() {
     cat <<EOF

@@ -19,10 +19,10 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "build-payload.sh"
-LEAF = Path(".claude/worktrees/canopy-osprey-connectors")
+LEAF = Path(".claude/worktrees/panel-builder")
 # The runtime's link to the SDK, as committed in canopy-screen-runtime: six
 # levels up from packages/runtime is the root that holds every repo directory.
-SDK_LINK = "../../../../../../canopy-sdk-js/.claude/worktrees/canopy-osprey-connectors"
+SDK_LINK = "../../../../../../canopy-sdk-js/.claude/worktrees/panel-builder"
 
 UV_STUB = r"""#!/bin/sh
 printf 'uv\t%s\t%s\n' "$PWD" "$*" >> "$STUB_LOG"
