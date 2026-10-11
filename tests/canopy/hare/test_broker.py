@@ -11,6 +11,7 @@ import pytest
 
 from canopy.epics.base import PVWriteFailed
 from canopy.hare.config import HareConfig
+from canopy.contracts.pv import PVValue
 from canopy.contracts.sample import AlarmSeverity
 from canopy.epics.pv_protocol import InvalidPVName
 from tests.canopy.hare.conftest import FakeWebSocket
@@ -294,3 +295,22 @@ class TestLoopSupervision:
         broker._supervise_loop(dead)
 
         assert broker._tasks == [dead]  # no restart during shutdown
+
+
+async def test_status_counts_connected_monitors(broker, fake_connector):
+    broker.add_client("c1", FakeWebSocket())
+    assert broker.status()["connected"] == 0
+    await broker.subscribe("c1", ["PV:A", "PV:B"])
+    assert (broker.status()["active_monitors"], broker.status()["connected"]) == (2, 2)
+
+    fake_connector.callbacks["PV:B"](
+        PVValue(pv="PV:B", value=None, severity=AlarmSeverity.INVALID, ts_ns=3, connected=False, error="down")
+    )
+    await broker._drain_nowait()
+    assert (broker.status()["active_monitors"], broker.status()["connected"]) == (2, 1)
+
+    fake_connector.callbacks["PV:A"](
+        PVValue(pv="PV:A", value=None, severity=AlarmSeverity.INVALID, ts_ns=4, connected=False, error="down")
+    )
+    await broker._drain_nowait()
+    assert (broker.status()["active_monitors"], broker.status()["connected"]) == (2, 0)
