@@ -5,10 +5,15 @@ and extended with the panel-builder codes. Every check tolerates malformed
 input — anything of the wrong type is skipped, since the schema pass already
 reports it.
 
-Codes: ``macro_default``, ``unresolved_formula``, ``duplicate_node_id`` and
-``open_webpage`` are errors; ``inert_in_osprey``, ``writes_to_machine``,
-``warning`` and ``unknown_widget`` are warnings. Draft-ref codes live in
-``check.refs``.
+Codes: ``macro_default``, ``unresolved_formula``, ``duplicate_node_id``,
+``open_webpage`` and ``curve_channel`` are errors; ``inert_in_osprey``,
+``writes_to_machine``, ``warning`` and ``unknown_widget`` are warnings.
+Draft-ref codes live in ``check.refs``.
+
+A plot's ``props.curves[]`` entries bind their PVs under the key the renderer
+reads (``y_channel`` on ``waveform-plot`` and ``xy-plot``, ``y_channels`` on
+``pv-array-plot``); a curve without it is ``curve_channel``. This is checked
+here rather than left to the staged prop schemas, which may not be staged at all.
 
 A write-capable control or a ``write_pv`` action is ``inert_in_osprey`` while
 the server relays no writes (``relay_on=False``). With the PUT relay on it is
@@ -29,6 +34,29 @@ FOX_PREFIX = "fox://"
 LOC_PREFIX = "loc://"
 WRITE_PV_ACTION = "write_pv"
 UNKNOWN_WIDGET_TYPE = "unknown-widget"
+CURVE_CHANNEL_CODE = "curve_channel"
+
+#: The key the renderer reads a plot curve's PV(s) from: ``y_channel`` on a
+#: waveform or XY plot (one PV per curve), ``y_channels`` on a PV array plot
+#: (one scalar PV per sample).
+PLOT_CURVE_KEY: dict[str, str] = {
+    "waveform-plot": "y_channel",
+    "xy-plot": "y_channel",
+    "pv-array-plot": "y_channels",
+}
+#: Keys a curve is written with by mistake; a finding names the ones it finds.
+_CURVE_KEY_MISTAKES = ("channel", "pv", "pvName", "y_channel", "y_channels")
+_CURVE_HINTS = {
+    "waveform-plot": (
+        "a waveform-plot curve draws one array (waveform) PV named by y_channel; "
+        "a time series of a scalar PV is not a widget, it is the Trace tab's job"
+    ),
+    "xy-plot": (
+        "an xy-plot curve draws y_channel against x_channel; "
+        "one scalar PV against another over time is not a widget, it is the Trace correlation page's job"
+    ),
+    "pv-array-plot": "a pv-array-plot curve draws the scalar PVs listed in y_channels, one sample each",
+}
 
 #: Control types that write to the machine; OSPREY embeds are read-only, so
 #: these render but do nothing there.
@@ -67,6 +95,7 @@ def check_semantic(doc: Any, *, relay_on: bool = False) -> list[Finding]:
     findings += _fox_refs(doc, nodes)
     for path, node in nodes:
         findings += _node_checks(path, node, relay_on)
+        findings += _curve_channels(path, node)
     return findings
 
 
@@ -251,3 +280,46 @@ def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> li
             )
         )
     return out
+
+
+def _curve_channels(path: Path, node: dict[str, Any]) -> list[Finding]:
+    """``curve_channel`` errors: each curve of a plot names its PV(s) under the key the renderer reads."""
+    ntype = node.get("type")
+    key = PLOT_CURVE_KEY.get(ntype) if isinstance(ntype, str) else None
+    props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    curves = props.get("curves") if key is not None else None
+    if key is None or not isinstance(curves, list):
+        return []
+    nid = node_id(node)
+    hint = _CURVE_HINTS[ntype]
+    out: list[Finding] = []
+    for c, curve in enumerate(curves):
+        where = (*path, "props", "curves", c)
+        if not isinstance(curve, dict):
+            out.append(Finding(nid, CURVE_CHANNEL_CODE, pointer(where), "error", f"curve {c} is not an object; {hint}"))
+            continue
+        if _curve_binds(curve.get(key), key):
+            x_channel = curve.get("x_channel")
+            if key == "y_channel" and x_channel is not None and not isinstance(x_channel, str):
+                out.append(
+                    Finding(
+                        nid,
+                        CURVE_CHANNEL_CODE,
+                        pointer((*where, "x_channel")),
+                        "error",
+                        f"curve {c}: x_channel must be a PV name or null",
+                    )
+                )
+            continue
+        mistakes = [k for k in _CURVE_KEY_MISTAKES if k != key and k in curve]
+        found = f" (found {', '.join(repr(k) for k in mistakes)} instead)" if mistakes else ""
+        message = f"curve {c} names no {key}{found}; {hint}"
+        out.append(Finding(nid, CURVE_CHANNEL_CODE, pointer((*where, key)), "error", message))
+    return out
+
+
+def _curve_binds(value: Any, key: str) -> bool:
+    """Whether ``value`` binds ``key``: a non-blank name, or for ``y_channels`` a non-empty list of them."""
+    if key == "y_channels":
+        return isinstance(value, list) and bool(value) and all(isinstance(v, str) and v.strip() for v in value)
+    return isinstance(value, str) and bool(value.strip())
