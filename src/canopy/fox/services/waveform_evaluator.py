@@ -60,7 +60,7 @@ async def evaluate_waveform_formula(
         timestamps.append(sample.ts_ns)
 
     if missing:
-        raise FormulaInputMissing(f"PVs not available: {missing}")
+        raise FormulaInputMissing.for_pvs(missing)
 
     if len(lengths) > 1:
         raise FormulaDimensionMismatch(f"Waveform inputs have mismatched lengths: {sorted(lengths)}")
