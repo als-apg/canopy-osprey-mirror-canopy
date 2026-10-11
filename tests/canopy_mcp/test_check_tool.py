@@ -150,6 +150,22 @@ async def test_clean_document_has_no_findings(httpx_mock: HTTPXMock, client, sto
     assert result.findings == [] and result.errors == []
 
 
+async def test_a_plot_curve_without_its_channel_key_is_an_error_a_write_refuses_on(client, store):
+    """The semantic pass refuses the curve no matter what the staged spec says of props."""
+    catalog = build_catalog(
+        {"group": {"consumes": [], "verbatim": False}, "waveform-plot": {"consumes": ["curves"], "verbatim": False}}
+    )
+    doc = _doc(_node("plt", "waveform-plot", {"curves": [{"channel": "A:B"}]}))
+
+    result = await run_check(doc, store=store, catalog=catalog, client=client)
+
+    assert _keys(result.to_dict()["semantic"]) == {
+        ("plt", "curve_channel", "/root/children/0/props/curves/0/y_channel")
+    }
+    assert [f.code for f in result.errors] == ["curve_channel"]
+    assert result.to_dict()["schema"] == [] and result.to_dict()["skipped"] == []
+
+
 async def test_raccoon_outage_is_reported_in_skipped(httpx_mock: HTTPXMock, client, store):
     httpx_mock.add_response(method="POST", url=RACCOON, status_code=500, json={"code": "adapter_misconfigured"})
     result = await run_check(
