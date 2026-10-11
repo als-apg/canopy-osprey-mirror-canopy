@@ -263,6 +263,10 @@ if [ "$NO_TRACE" = 0 ]; then
     (cd "$TRACE_SRC" && js pnpm exec tsc -b && js pnpm exec vite build --base=./) \
         || die "building the Trace export of $TRACE_SHA failed"
     [ -s "$TRACE_SRC/dist/index.html" ] || die "trace dist missing (dist/index.html)"
+    # Trace's own `build` script ends with this check; the steps above replace
+    # that script, so the check is run here, on the dist that is shipped.
+    (cd "$TRACE_SRC" && js pnpm run check-dist) \
+        || die "the Trace build of $TRACE_SHA failed check-dist (external font references in dist)"
     cp -R "$TRACE_SRC/dist" "$STAGE/trace"
 else
     mkdir "$STAGE/trace"

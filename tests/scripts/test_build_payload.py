@@ -84,6 +84,9 @@ case "$*" in
         elif [ -e "$client" ]; then cat "$client/../../marker.txt" > dist/sdk.txt
         fi
         ;;
+    "run check-dist")
+        [ -z "${STUB_FAIL_CHECK_DIST:-}" ] || exit 1
+        ;;
     *) exit 97 ;;
 esac
 """
@@ -355,7 +358,7 @@ def test_runtime_link_reaches_the_built_sdk_export(world):
 def test_trace_is_built_with_the_image_steps(world):
     ok(build(world))
     trace = [argv for tool, cwd, argv, _ in calls(world) if tool == "pnpm" and cwd.parents[2].name == "react-trace"]
-    assert trace == ["install --frozen-lockfile", "exec tsc -b", "exec vite build --base=./"]
+    assert trace == ["install --frozen-lockfile", "exec tsc -b", "exec vite build --base=./", "run check-dist"]
 
 
 def test_trace_resolves_an_undeclared_sdk_package_from_the_sdk_export(world):
@@ -513,6 +516,14 @@ def test_existing_empty_out_is_filled(world):
 def test_failed_build_leaves_no_payload(world, failure):
     proc = build(world, **{failure: "1"})
     assert proc.returncode != 0
+    assert not (world["out"] / "STAGED.json").exists()
+    assert not world["out"].exists() or list(world["out"].iterdir()) == []
+
+
+def test_a_trace_dist_failing_check_dist_leaves_no_payload(world):
+    proc = build(world, STUB_FAIL_CHECK_DIST="1")
+    assert proc.returncode != 0
+    assert "failed check-dist" in proc.stderr
     assert not (world["out"] / "STAGED.json").exists()
     assert not world["out"].exists() or list(world["out"].iterdir()) == []
 
