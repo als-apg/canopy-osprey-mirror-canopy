@@ -252,10 +252,33 @@ def test_a_websocket_on_a_path_with_no_route_is_refused_the_same_way(client):
     assert excinfo.value.status_code == 401
 
 
-def test_get_health_answers_without_the_credential_and_says_only_status(client):
+def test_get_health_answers_without_the_credential_and_says_only_status_when_data_is_away(client):
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert list(resp.json()) == ["status"]
+    assert resp.json() == {"status": "degraded", "data": "unavailable"}
+
+
+@pytest.mark.real_data_summary
+def test_get_health_without_the_credential_carries_the_channel_counts_and_nothing_else_of_the_summary(gated_app):
+    summary = {
+        "status": "ok",
+        "backend": "osprey",
+        "connectorOk": True,
+        "clients": 1,
+        "activeMonitors": 3,
+        "connected": 2,
+        "warmMonitors": 0,
+        "subscriptions": 3,
+        "label": "Simulator",
+        "notice": "not the machine",
+        "binding": "va@3",
+    }
+    with TestClient(gated_app) as c:
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, json=summary))
+        c.app.state.http = make_client(c.app.state.settings, transport=transport)
+        resp = c.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "connected": 2, "total": 3}
 
 
 @pytest.mark.parametrize(
@@ -702,7 +725,11 @@ def test_the_server_answers_on_an_inherited_socket(tmp_path):
         "sys.exit(main(['--http', '--fd', sys.argv[1]]))\n"
     )
     env = {k: v for k, v in os.environ.items() if k not in ENV_VARS}
-    env.update(CANOPY_DRAFTS_DIR=str(tmp_path / "drafts"), CANOPY_ACCESS_TOKEN_FILE=str(token_file))
+    env.update(
+        CANOPY_DRAFTS_DIR=str(tmp_path / "drafts"),
+        CANOPY_ACCESS_TOKEN_FILE=str(token_file),
+        CANOPY_PV_MODE="mock",
+    )
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
         held.listen()

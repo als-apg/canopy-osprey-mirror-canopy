@@ -70,7 +70,10 @@ that keeps the socket across restarts loses no connection attempt while the
 server is down.
 
 `GET /health` answers `{"status": "ok"}` and is the one route that never asks
-for a credential.
+for a credential. With live channels it also carries `connected` and `total`,
+the counts of monitored channels, and answers `"status": "degraded"` when
+channels are monitored and none is connected, or with `"data": "unavailable"`
+when the backend's summary cannot be fetched. The status code is 200 either way.
 
 ## Switches
 
