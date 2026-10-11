@@ -75,6 +75,10 @@ carries neither key.
 
 ``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
 only when that scheme had load errors (it is then served as ``canopy-default``).
+In hare mode it also carries DATA's ``connected`` and ``total`` channel counts
+and is ``degraded`` when monitors exist and none is connected, or when DATA's
+summary cannot be fetched (``data: "unavailable"``). The status code is 200 on
+every branch.
 """
 
 import re
@@ -204,6 +208,25 @@ def backend_identity(summary: dict[str, Any] | None) -> dict[str, Any]:
         "backend": {"name": summary["backend"], "label": summary.get("label"), "notice": summary.get("notice")},
         "binding": summary.get("binding"),
     }
+
+
+def channel_health(summary: dict[str, Any] | None) -> dict[str, Any]:
+    """``/health``'s channel keys for ``summary``: ``connected`` and ``total``, and the status they imply.
+
+    ``total`` is DATA's ``activeMonitors``. With monitors and none of them connected the panel
+    is serving a machine that is not there, and ``status`` is ``degraded``; with no summary at all
+    FRONT can serve no channel and is ``degraded`` with ``data: "unavailable"``. The status code is
+    the caller's and stays 200 on every branch: the panel is answering, whatever the machine does.
+    """
+    if summary is None:
+        return {"status": "degraded", "data": "unavailable"}
+    connected, total = summary.get("connected"), summary.get("activeMonitors")
+    if type(connected) is not int or type(total) is not int:
+        return {}
+    keys: dict[str, Any] = {"connected": connected, "total": total}
+    if total > 0 and connected == 0:
+        keys["status"] = "degraded"
+    return keys
 
 
 def _trace_page(settings: Settings, name: str) -> Path | None:
@@ -363,6 +386,8 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         degraded = get_color_scheme().degraded
         if degraded:
             body["degraded"] = list(degraded)
+        if settings.pv_mode == "hare":
+            body.update(channel_health(await fetch_data_summary(request)))
         return JSONResponse(body)
 
     return [
