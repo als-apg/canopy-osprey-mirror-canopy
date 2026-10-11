@@ -211,6 +211,12 @@ async def test_the_skill_marks_exactly_the_authoring_tools_as_writing() -> None:
         "`stale_rev`",
         "`library/<id>`",
         "`schemaVersion`",
+        "`waveform-plot`",
+        "`xy-plot`",
+        "`pv-array-plot`",
+        "`y_channel`",
+        "`y_channels`",
+        "Trace tab",
     ],
 )
 def test_the_skill_covers(phrase: str) -> None:
@@ -232,6 +238,23 @@ def test_the_skill_tells_the_agent_to_relay_evicted_requests_to_the_user() -> No
     paragraph = next(block for block in TEXT.split("\n\n") if "`evicted`" in block)
     assert "user" in paragraph
     assert "rid" in paragraph
+
+
+def test_the_skill_sends_a_scalar_time_series_to_trace_not_to_a_widget() -> None:
+    """The plots section names the three charts and says a time series of a scalar is the Trace tab's job."""
+    section = TEXT.split("\n## Plots\n", 1)[1].split("\n## ", 1)[0]
+    for widget in ("`waveform-plot`", "`xy-plot`", "`pv-array-plot`"):
+        assert widget in section
+    assert "`y_channel`" in section and "`y_channels`" in section
+    assert "not a widget" in section and "Trace tab" in section and "correlation page" in section
+    assert "no Trace tab" in section
+
+
+def test_the_skill_keeps_edits_of_an_existing_draft_on_patch_node() -> None:
+    paragraph = next(block for block in TEXT.split("\n\n") if "`overwrite=true` it replaces" in block)
+    assert "`patch_node`" in paragraph and "`add_node`" in paragraph and "`remove_node`" in paragraph
+    assert "`new_screen` is for a new draft" in paragraph
+    assert "Read the draft once" in paragraph
 
 
 def test_the_skill_is_generic() -> None:

@@ -56,6 +56,7 @@ agent that connects without it is told where to get it.
 | The Screen-IR file format | The document, its nodes, macros and references to other files. |
 | The tools | The table below, with when to call each. |
 | Build a screen | Find widgets and PV names, write, read the findings, look at a screenshot, fix. |
+| Plots | The three plot widgets, the key each curve binds, and when a time series is the Trace tab's job, not a widget's. |
 | Edit with `rev` and `base_rev` | Every change names the revision it was made against. |
 | Port a legacy panel | `convert_legacy` for `.bob`, `.opi`, `.edl` and `.ui` files. |
 | Screenshots and mock mode | What a screenshot shows with live and with mock PVs. |
