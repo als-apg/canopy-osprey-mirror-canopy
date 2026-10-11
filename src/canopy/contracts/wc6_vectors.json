@@ -1,7 +1,7 @@
 {
   "contract": "WC6",
-  "about": "CANOPY write outcomes, one entry per WC6 row id. `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (rows 6-9: OSPREY's message, row 11: the observed value, the whole detail cut at 256 characters). `default` is the detail used when a dynamic row has no message. `status`/`code` null: no response or no envelope. 16-coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
-  "detail_max_chars": 256,
+  "about": "CANOPY write outcomes, one entry per WC6 row id. `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (rows 6-9: OSPREY's message, row 11: the observed value; a detail longer than `detail_max_chars` is cut at the last whitespace before that limit with … appended, so it never ends inside a word). `default` is the detail used when a dynamic row has no message. `status`/`code` null: no response or no envelope. 16-coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
+  "detail_max_chars": 512,
   "rows": {
     "1-off-disabled": {
       "source": "adapter",
