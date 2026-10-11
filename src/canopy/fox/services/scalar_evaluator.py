@@ -23,7 +23,7 @@ def raise_on_open_outage(spec: FormulaSpec, parsed: ParsedFormula, data_source: 
     pvs = dict.fromkeys(spec.bindings[t] for t in parsed.tokens)
     in_outage = [pv for pv in pvs if data_source.in_open_outage(pv)]
     if in_outage:
-        raise FormulaInputOutage(f"PVs disconnected: {in_outage}")
+        raise FormulaInputOutage.for_pvs(in_outage)
 
 
 async def evaluate_scalar_formula(
@@ -63,7 +63,7 @@ async def evaluate_scalar_formula(
         inputs_used[pv] = sample.ts_ns
 
     if missing:
-        raise FormulaInputMissing(f"PVs not available: {missing}")
+        raise FormulaInputMissing.for_pvs(missing)
 
     timeout_s = config.eval_timeout_ms / 1000.0
     value = await evaluate_scalar(parsed, variables, timeout_s)
