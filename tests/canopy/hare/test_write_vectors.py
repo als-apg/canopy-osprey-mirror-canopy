@@ -278,8 +278,14 @@ def test_access_credential_code_matches_front(rows):
     assert rows["14b-401"]["code"] == REFUSAL_CODE
 
 
-def test_detail_cut_is_256(rows):
-    assert load_wc6_vectors()["detail_max_chars"] == 256 == errors.WRITE_DETAIL_MAX_CHARS
+def test_detail_cut_is_512(rows):
+    assert load_wc6_vectors()["detail_max_chars"] == 512 == errors.WRITE_DETAIL_MAX_CHARS
+
+
+def test_vector_about_states_the_word_boundary_cut():
+    about = load_wc6_vectors()["about"]
+    assert "cut at the last whitespace before that limit" in about
+    assert "256" not in about
 
 
 # --- the write codes --------------------------------------------------------- #
@@ -338,10 +344,55 @@ def test_mismatch_detail_names_the_observed_value():
     assert exc.detail == "written; the channel holds 3.5"
 
 
-def test_mismatch_detail_is_cut_at_256():
+def test_mismatch_detail_is_cut_at_a_word_boundary():
+    exc = errors.PVWriteMismatch.observed(" ".join(["abcdefg"] * 100))
+    assert len(exc.detail) <= 512
+    assert exc.detail.startswith("written; the channel holds abcdefg abcdefg")
+    assert exc.detail.endswith("abcdefg…")
+    assert "abcd…" not in exc.detail
+
+
+def test_mismatch_detail_of_one_long_token_keeps_the_sentence():
+    # A value with no whitespace has no boundary to keep after the sentence.
     exc = errors.PVWriteMismatch.observed("x" * 1000)
-    assert len(exc.detail) == 256
-    assert exc.detail.startswith("written; the channel holds xxx")
+    assert exc.detail == "written; the channel holds…"
+
+
+@pytest.mark.parametrize(
+    ("text", "limit", "expected"),
+    [
+        ("aaa bbb ccc", 11, "aaa bbb ccc"),  # fits exactly: untouched, no ellipsis
+        ("aaa bbb ccc", 8, "aaa bbb…"),  # the cut lands on a space: the word before it stays
+        ("aaa bbb ccc", 7, "aaa…"),  # the cut lands inside "bbb": back to the whitespace before it
+        ("aaa\tbbb ccc", 7, "aaa…"),  # any whitespace is a boundary
+        ("aaa  bbb", 6, "aaa…"),  # a whitespace run leaves no trailing space before the ellipsis
+        ("aaa bbb ccc", 3, "aa…"),  # one token longer than the limit: cut inside it, under the limit
+    ],
+)
+def test_cut_write_detail(text, limit, expected):
+    cut = errors.cut_write_detail(text, limit)
+    assert cut == expected
+    assert len(cut) <= limit
+
+
+def test_cut_write_detail_default_limit_is_the_cap_and_ends_at_a_boundary():
+    sentence = " ".join(f"word{i}" for i in range(120))
+    cut = errors.cut_write_detail(sentence)
+    assert len(cut) <= errors.WRITE_DETAIL_MAX_CHARS
+    assert cut.endswith("…")
+    body = cut[:-1]
+    assert sentence.startswith(body) and sentence[len(body)] == " "
+
+
+def test_cut_write_detail_keeps_a_refusal_sentence_under_the_cap_whole():
+    sentence = (
+        "writes are off for this control target: turned off from the control-target chip in the header; "
+        "applies to every session of this login. Turn writes back on from the chip if the write is intended; "
+        "contact the operator on shift if it is not. Nothing was written and the channel still holds its "
+        "previous value, which the readback beside the entry shows."
+    )
+    assert 256 < len(sentence) <= 512
+    assert errors.cut_write_detail(sentence) == sentence
 
 
 @pytest.mark.parametrize("code", sorted(WRITE_CLASSES))

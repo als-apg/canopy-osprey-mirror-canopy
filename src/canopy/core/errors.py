@@ -206,8 +206,32 @@ class KeyStoreUnavailable(CanopyError):
 # shows, so every class carries a non-empty default and every raiser passes its
 # row's text (canopy/contracts/wc6_vectors.json holds the table).
 
-#: A dynamic write detail (OSPREY's message, the observed value) is cut here.
-WRITE_DETAIL_MAX_CHARS = 256
+#: Longest envelope detail a dynamic row (OSPREY's message, the observed value)
+#: may carry, the ellipsis included. `cut_write_detail` enforces it.
+WRITE_DETAIL_MAX_CHARS = 512
+
+#: Appended to a cut detail, one character.
+WRITE_DETAIL_ELLIPSIS = "\u2026"
+
+
+def cut_write_detail(text: str, limit: int = WRITE_DETAIL_MAX_CHARS) -> str:
+    """Return ``text`` if it fits in ``limit`` characters, else cut it at a word boundary.
+
+    The cut keeps whole words: it ends at the last whitespace of ``text`` that
+    leaves room for `WRITE_DETAIL_ELLIPSIS`, which is appended, so the result is
+    at most ``limit`` characters and never ends inside a word. A leading token
+    longer than that room has no boundary to keep and is cut inside it, still
+    under ``limit``. Trailing whitespace before the ellipsis is dropped.
+    """
+    if len(text) <= limit:
+        return text
+    head = text[: limit - len(WRITE_DETAIL_ELLIPSIS)]
+    if not text[len(head)].isspace():
+        # The cut landed inside a word: step back to the whitespace before it.
+        words = head.rsplit(None, 1)
+        if len(words) == 2:
+            head = words[0]
+    return head.rstrip() + WRITE_DETAIL_ELLIPSIS
 
 
 class PVWriteRefused(CanopyError):
@@ -243,8 +267,8 @@ class PVWriteMismatch(CanopyError):
 
     @classmethod
     def observed(cls, value: object) -> "PVWriteMismatch":
-        """The row-11 detail naming ``value``, cut at `WRITE_DETAIL_MAX_CHARS`."""
-        return cls(f"written; the channel holds {value}"[:WRITE_DETAIL_MAX_CHARS])
+        """The row-11 detail naming ``value``, cut by `cut_write_detail`."""
+        return cls(cut_write_detail(f"written; the channel holds {value}"))
 
 
 class PVWriteUnconfirmed(CanopyError):
