@@ -547,3 +547,66 @@ def test_worktree_is_exempt_from_the_clean_tree_refusals(world):
     assert FP.fullmatch(args["SDK_SHA"].removeprefix(head(world["sdk"])))
     assert args["PYDM_SHA"] == head(world["pydm"])  # the wheel is still built from HEAD
     assert_no_tool_called(world)
+
+
+# --- build-image.sh --worktree: link: dependencies of Trace ------------------------
+
+
+def link_trace(world: dict, **targets: Path) -> None:
+    """Give Trace's working tree one ``link:`` dependency per ``name=<dir>``."""
+    git(world["trace"], "checkout", "-q", "feature")
+    deps = ", ".join(
+        f'"@slaclab/{name}": "link:{os.path.relpath(target, world["trace"])}"' for name, target in targets.items()
+    )
+    (world["trace"] / "package.json").write_text(f'{{"dependencies": {{{deps}}}}}\n')
+
+
+def add_shell_package(sdk: Path) -> Path:
+    shell = sdk / "packages" / "shell"
+    shell.mkdir(parents=True)
+    (shell / "package.json").write_text('{"name": "@slaclab/canopy-shell"}\n')
+    git(sdk, "add", "-A")
+    git(sdk, "commit", "-q", "-m", "shell")
+    return shell
+
+
+def test_two_links_into_one_sdk_root_accepted(world):
+    sdk = world["sdk"]
+    shell = add_shell_package(sdk)
+    link_trace(world, **{"canopy-client": sdk / "packages" / "client", "canopy-shell": shell})
+
+    proc = dry(world, "--worktree")
+    argv = ok_argv(proc)
+    # Host-built Trace: its dist is the `trace` context, labelled with the SDK root's commit.
+    assert pairs(argv, "--build-context")["trace"] == str(world["trace"] / "dist")
+    assert pairs(argv, "--label") == {"org.canopy.trace.sdk.sha": head(sdk)}
+    # The linked SDK is the root both packages live in, not either package.
+    assert f"({sdk.resolve()}, linked from TRACE)" in proc.stderr
+
+    # Uncommitted work anywhere in that root (not only in a linked package) moves the label.
+    (sdk / "packages" / "screen-ir" / "new.ts").write_text("export {}\n")
+    label = pairs(ok_argv(dry(world, "--worktree")), "--label")["org.canopy.trace.sdk.sha"]
+    assert FP.fullmatch(label.removeprefix(head(sdk)))
+    assert_no_tool_called(world)
+
+    # The real build builds the whole root, so every linked package's dist is fresh.
+    text = BUILD.read_text()
+    assert '(cd "$TRACE_SDK_DIR" && unset TRACE && pnpm run build)' in text
+
+
+def test_links_into_two_sdk_roots_refused(world, tmp_path):
+    other = make_repo(
+        tmp_path / "sdk2",
+        {"package.json": "{}\n", "packages/shell/package.json": '{"name": "@slaclab/canopy-shell"}\n'},
+    )
+    link_trace(
+        world,
+        **{"canopy-client": world["sdk"] / "packages" / "client", "canopy-shell": other / "packages" / "shell"},
+    )
+
+    proc = dry(world, "--worktree")
+    assert proc.returncode != 0
+    assert "different SDK roots" in proc.stderr
+    assert str(world["sdk"].resolve()) in proc.stderr
+    assert str(other.resolve()) in proc.stderr
+    assert_no_tool_called(world)

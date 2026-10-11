@@ -42,11 +42,14 @@
 # canopy-sdk-js checkout, before the SDK is released) cannot be built inside
 # Docker: the link points outside the copied tree. Such a Trace is refused
 # without --worktree. With --worktree it is built on the host, in place in
-# $TRACE: the linked package's dist/ is rebuilt first (`pnpm run build` there),
-# then the Dockerfile's trace-build steps run (HUSKY=0 pnpm install
-# --frozen-lockfile, tsc -b, vite build --base=./) and $TRACE/dist is passed as
-# the `trace` context. The linked package's commit (tree_state, so
-# `<sha>+dirty.<fp>` for uncommitted SDK work) becomes org.canopy.trace.sdk.sha.
+# $TRACE. Any number of links is fine as long as all of them reach into one SDK
+# checkout (the git toplevel of each target); links into two checkouts are
+# refused. That SDK root is rebuilt first (`pnpm run build` there, so every
+# linked package's dist/ is fresh), then the Dockerfile's trace-build steps run
+# (HUSKY=0 pnpm install --frozen-lockfile, tsc -b, vite build --base=./) and
+# $TRACE/dist is passed as the `trace` context. The SDK root's commit
+# (tree_state, so `<sha>+dirty.<fp>` for uncommitted SDK work) becomes
+# org.canopy.trace.sdk.sha.
 #
 # Needs git, tar, uv/uvx, pnpm and docker (BuildKit). Run with --help for inputs.
 set -euo pipefail
@@ -88,10 +91,10 @@ Options:
               HEAD; label canopy, runtime, sdk and trace with working-tree
               fingerprints (<sha>+dirty.<fp>) that verify-image.sh recomputes;
               RT, SDK and PYDM untracked files are then not refused.
-              Required when TRACE's package.json has a `link:` dependency:
-              Trace is then built on the host in TRACE (after rebuilding the
-              linked package) and the link's commit is labelled
-              org.canopy.trace.sdk.sha
+              Required when TRACE's package.json has `link:` dependencies:
+              they must all reach into one SDK checkout; Trace is then built
+              on the host in TRACE (after rebuilding that SDK) and the SDK's
+              commit is labelled org.canopy.trace.sdk.sha
   --dry-run   validate inputs, resolve SHAs and print the docker build argv; build nothing
   -h, --help  show this help
 EOF
@@ -244,7 +247,7 @@ if [ "$NO_TRACE" = 0 ]; then
     fi
 fi
 
-# --- a `link:` dependency in react-trace (the unreleased local SDK) ---------
+# --- `link:` dependencies in react-trace (the unreleased local SDK) ---------
 # `link:` targets of a package.json read on stdin, one per line.
 link_targets() { grep -oE '"link:[^"]*"' | sed -e 's/^"link://' -e 's/"$//' || true; }
 TRACE_SDK_DIR=""
@@ -257,15 +260,25 @@ if [ "$NO_TRACE" = 0 ]; then
         links="$(git -C "$TRACE" show "$TRACE_SHA:package.json" 2>/dev/null | link_targets)"
         [ -z "$links" ] || die "TRACE_REF=$TRACE_REF has a link: dependency ($links) that Docker cannot follow; build with --worktree"
     fi
-    if [ -n "$links" ]; then
-        [ "$(printf '%s\n' "$links" | wc -l | tr -d ' ')" = 1 ] \
-            || die "--worktree: TRACE=$TRACE has more than one link: dependency ($(echo $links)); only one is supported"
-        case "$links" in /*) TRACE_SDK_DIR="$links" ;; *) TRACE_SDK_DIR="$TRACE/$links" ;; esac
-        [ -d "$TRACE_SDK_DIR" ] || die "--worktree: link: target $links of TRACE=$TRACE is not a directory"
-        TRACE_SDK_DIR="$(cd "$TRACE_SDK_DIR" && pwd)"
-        [ -f "$TRACE_SDK_DIR/package.json" ] || die "--worktree: link: target $TRACE_SDK_DIR has no package.json"
-        git -C "$TRACE_SDK_DIR" rev-parse --verify --quiet HEAD >/dev/null \
-            || die "--worktree: link: target $TRACE_SDK_DIR is not in a git checkout with a commit"
+    # Every link must reach into one SDK checkout: that root is built once and
+    # labelled once, so two roots would leave one of them unrecorded.
+    while IFS= read -r link; do
+        [ -n "$link" ] || continue
+        case "$link" in /*) link_dir="$link" ;; *) link_dir="$TRACE/$link" ;; esac
+        [ -d "$link_dir" ] || die "--worktree: link: target $link of TRACE=$TRACE is not a directory"
+        link_dir="$(real_dir "$link_dir")"
+        [ -f "$link_dir/package.json" ] || die "--worktree: link: target $link_dir has no package.json"
+        git -C "$link_dir" rev-parse --verify --quiet HEAD >/dev/null \
+            || die "--worktree: link: target $link_dir is not in a git checkout with a commit"
+        link_root="$(real_dir "$(git -C "$link_dir" rev-parse --show-toplevel)")"
+        [ -z "$TRACE_SDK_DIR" ] || [ "$link_root" = "$TRACE_SDK_DIR" ] \
+            || die "--worktree: the link: dependencies of TRACE=$TRACE reach into different SDK roots ($TRACE_SDK_DIR and $link_root, the latter through $link); link every package from one checkout"
+        TRACE_SDK_DIR="$link_root"
+    done <<EOF
+$links
+EOF
+    if [ -n "$TRACE_SDK_DIR" ]; then
+        [ -f "$TRACE_SDK_DIR/package.json" ] || die "--worktree: SDK root $TRACE_SDK_DIR (linked from TRACE) has no package.json"
         TRACE_SDK_SHA="$(tree_state "$TRACE_SDK_DIR")"
     fi
 fi
@@ -355,7 +368,7 @@ ls "$WHEEL_DIR"/*.whl >/dev/null 2>&1 || die "no PyDMConverter wheel was built"
 # --worktree (built by the `trace-build` stage); under --no-trace both
 # trace contexts stay empty.
 if [ -n "$TRACE_SDK_DIR" ]; then
-    # Linked SDK first, so Trace bundles a fresh dist/ of exactly TRACE_SDK_SHA; then
+    # Linked SDK root first, so Trace bundles fresh dist/s of exactly TRACE_SDK_SHA; then
     # the trace-build stage's steps, in place. Build output is git-ignored, so
     # neither tree_state may move; a build that dirties a tree is refused,
     # because verify-image.sh would no longer match the labels.
