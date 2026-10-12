@@ -96,6 +96,7 @@ class ConversionService:
         self,
         *,
         scheme: ColorScheme | None = None,
+        color_list_path: str | Path | None = None,
         color_def_path: str | Path | None = None,
     ) -> None:
         # One registry instance, reused across requests (the adapters would
@@ -105,6 +106,9 @@ class ConversionService:
         # the app lifespan and the batch worker; the service never loads one itself.
         # ``None`` keeps the service scheme-free, converting exactly as before.
         self._scheme = scheme
+        # The EDM ``colors.list`` indexed colours resolve from (``.edl`` only); without
+        # one the converter searches its own locations.
+        self._color_list_path = color_list_path
         self._color_def_path = color_def_path
         self._scheme_warning = _scheme_warning(scheme)
 
@@ -120,6 +124,8 @@ class ConversionService:
         # parameter, so the kwarg is omitted rather than sent as None.
         if self._scheme is not None and self._scheme.flat_json is not None:
             kwargs["scheme"] = self._scheme.result
+        if self._color_list_path is not None:
+            kwargs["color_list_path"] = self._color_list_path
         if self._color_def_path is not None:
             kwargs["color_def_path"] = self._color_def_path
         return kwargs

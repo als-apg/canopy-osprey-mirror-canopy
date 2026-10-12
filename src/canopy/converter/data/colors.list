@@ -2,8 +2,8 @@
 #
 # Purpose: screens declaring indexed colours ("fgColor index N", "bgColor
 # index N", ...) convert deterministically without depending on the host's
-# EDM install. The converter module points the EDM parser at this file via
-# EDMCOLORFILE at startup (see canopy/converter/adapters/edm_env.py); point
+# EDM install. The converter module hands this file to the converter with every
+# .edl conversion (ConverterConfig.colors_list_path); point
 # CANOPY_CONVERTER__COLORS_LIST_PATH at your site's colors.list for full
 # fidelity.
 #
