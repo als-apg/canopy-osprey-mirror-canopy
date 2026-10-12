@@ -14,19 +14,18 @@ import asyncio
 
 import pytest
 
-from canopy.vole.errors import PVNotBuffered
-
 from canopy.core.clock import FakeClock
 from canopy.vole.config import VoleConfig
+from canopy.vole.errors import PVNotBuffered
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.vole.buffer.ring import BYTES_PER_SAMPLE
 from canopy.vole.buffer.store import PVStore
-from canopy.vole.services.buffer_service import BufferService
+from tests.canopy.vole.conftest import FakeIngestService
 from canopy.vole.services.grace_manager import GraceManager
+from canopy.vole.services.buffer_service import BufferService
 from canopy.vole.services.eviction_service import EvictionService
 from canopy.vole.services.alignment_service import AlignmentService
-from tests.canopy.vole.conftest import FakeIngestService
 
 S = 1_000_000_000
 NOW = 1_000_000_000_000

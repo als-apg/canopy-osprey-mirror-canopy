@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
+import subprocess
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 

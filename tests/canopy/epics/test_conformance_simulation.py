@@ -6,8 +6,8 @@ from canopy.epics.base import PVWriteFailed
 from canopy.contracts.pv import PVWriteValue
 from canopy.epics.config import EpicsConfig
 from canopy.epics.gateway import build_connector
-from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.epics.testing import conformance
+from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.epics.backends.simulation import SimulationConnector
 
 _PREFIX = {"bare": "", "ca": "ca://", "pva": "pva://"}

@@ -19,9 +19,9 @@ The leading underscore keeps the module out of pytest collection.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime, timedelta
 from typing import Any
+from datetime import UTC, datetime, timedelta
+from collections.abc import Mapping, Iterable
 
 #: Field holding each document's sample instant (OSPREY ``DATE_FIELD``).
 DATE_FIELD = "date"

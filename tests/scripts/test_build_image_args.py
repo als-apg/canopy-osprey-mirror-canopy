@@ -11,11 +11,11 @@ a real one does (``apps/viewer/node_modules/@slaclab/<pkg>`` symlinks into
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import shlex
 import shutil
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -114,8 +114,7 @@ def world(tmp_path: Path) -> dict:
     env = {
         k: v
         for k, v in os.environ.items()
-        if k
-        not in {"PYDM", "RT", "SDK", "TRACE", "TRACE_REF", "TAG", "PLATFORM", "CANOPY_VERSION", "PYDM_VERSION"}
+        if k not in {"PYDM", "RT", "SDK", "TRACE", "TRACE_REF", "TAG", "PLATFORM", "CANOPY_VERSION", "PYDM_VERSION"}
     }
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["TMPDIR"] = str(tmp_path)

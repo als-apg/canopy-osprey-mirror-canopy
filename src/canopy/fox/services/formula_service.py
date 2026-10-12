@@ -10,7 +10,13 @@ import logging
 
 from canopy.fox.ports import DataSource
 from canopy.fox.config import FoxConfig
-from canopy.fox.errors import FoxError, InvalidSpec, TableLiveOnly, FormulaParseError, FormulaCircularReference
+from canopy.fox.errors import (
+    FoxError,
+    InvalidSpec,
+    TableLiveOnly,
+    FormulaParseError,
+    FormulaCircularReference,
+)
 from canopy.contracts.formula import (
     TABLE_MAX_LOOKBACK_NS,
     FormulaSpec,

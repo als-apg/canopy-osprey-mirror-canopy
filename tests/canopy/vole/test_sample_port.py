@@ -14,8 +14,8 @@ import numpy as np
 import pytest
 
 from canopy.fox.ports import RingSlice, SampleRecord
-from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.vole.adapter import VoleDataSource
+from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.vole.buffer.ring import BYTES_PER_SAMPLE, StoredSample, measure_sample_bytes
 
 PV = "SR:BPM:01:X"

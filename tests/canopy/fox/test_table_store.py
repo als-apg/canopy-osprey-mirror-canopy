@@ -18,9 +18,13 @@ from canopy.core.clock import FakeClock
 from canopy.vole.config import VoleConfig
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
-from canopy.vole.buffer.store import PVStore
-from canopy.mole.adapters.base import ArchiveBlock, ArchiverUnavailable, PVNotFoundInArchiver
 from canopy.contracts.formula import FormulaSpec
+from canopy.vole.buffer.store import PVStore
+from canopy.mole.adapters.base import (
+    ArchiveBlock,
+    ArchiverUnavailable,
+    PVNotFoundInArchiver,
+)
 from canopy.fox.services.parser import Parser
 from canopy.fox.services.table_store import (
     TablePort,

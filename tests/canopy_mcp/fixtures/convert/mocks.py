@@ -39,10 +39,7 @@ def embedded(name: str, file: str, y: int = 0) -> str:
 
 
 def label(name: str, text: str, y: int = 0) -> str:
-    return (
-        f'  <widget type="label" version="2.0.0"><name>{name}</name>'
-        f"<x>0</x><y>{y}</y><text>{text}</text></widget>\n"
-    )
+    return f'  <widget type="label" version="2.0.0"><name>{name}</name><x>0</x><y>{y}</y><text>{text}</text></widget>\n'
 
 
 def open_display_button(name: str, file: str, y: int = 0) -> str:
@@ -72,15 +69,13 @@ PARENT = display(
 SIBLING_WARN = display(
     '  <widget type="action_button" version="3.0.0"><name>Run</name><x>0</x><y>0</y>'
     '<actions><action type="execute"><script file="EmbeddedPy"><text>print(1)</text></script></action>'
-    "</actions></widget>\n"
-    + label("Note", "warn sibling", 40),
+    "</actions></widget>\n" + label("Note", "warn sibling", 40),
     name="Warn",
 )
 
 # A sibling whose button carries a <tooltip>, which the .bob mapping drops.
 SIBLING_DROP = display(
-    '  <widget type="action_button" version="3.0.0"><name>Go</name><x>0</x><y>0</y>'
-    "<tooltip>Press</tooltip></widget>\n",
+    '  <widget type="action_button" version="3.0.0"><name>Go</name><x>0</x><y>0</y><tooltip>Press</tooltip></widget>\n',
     name="Drop",
 )
 
@@ -152,9 +147,7 @@ def install_converter(httpx_mock: HTTPXMock, base_url: str) -> None:
         kind = kind or Path(filename or "").suffix.lstrip(".")
         return httpx.Response(200, json=conversion_response(data, kind))
 
-    httpx_mock.add_callback(
-        respond, method="POST", url=base_url + CONVERSIONS_PATH, is_optional=True, is_reusable=True
-    )
+    httpx_mock.add_callback(respond, method="POST", url=base_url + CONVERSIONS_PATH, is_optional=True, is_reusable=True)
 
 
 def conversion_requests(httpx_mock: HTTPXMock) -> list[httpx.Request]:
