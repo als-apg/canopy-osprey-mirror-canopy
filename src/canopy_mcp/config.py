@@ -24,8 +24,16 @@ served.
 ``CANOPY_CONFIRM_WRITES=0|1`` (default 0) is handed to the viewer as
 ``config.json``'s ``confirmWrites``: on, every write the viewer makes asks
 for one confirmation per click first.
+
+``CANOPY_HOST_STYLESHEETS`` (default empty) names the embedding host's
+stylesheets as whitespace-separated relative ``.css`` paths; the served pages
+link each one under the proxy prefix. Every entry must match
+:data:`HOST_STYLESHEET_RE` (plain path segments, no leading slash, no dot
+segment, no quote), and an entry that does not stops the server at startup
+with the entry named.
 """
 
+import re
 from typing import Literal
 from pathlib import Path
 from functools import lru_cache
@@ -43,6 +51,10 @@ from canopy_mcp.access import read_secret_file
 
 #: Default bound, in seconds, of one relayed PV write (OSPREY's maximum relay timeout).
 DEFAULT_PUT_RELAY_TIMEOUT_S = 27.0
+
+#: One ``CANOPY_HOST_STYLESHEETS`` entry: a relative ``.css`` path whose
+#: segments are plain names that do not start with a dot.
+HOST_STYLESHEET_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*\.css$")
 
 
 class RelayConfigError(RuntimeError):
@@ -118,8 +130,25 @@ class Settings(BaseSettings):
     # Whether the viewer asks for a confirmation before each write (config.json
     # ``confirmWrites``); off by default.
     confirm_writes: bool = False
+    # The embedding host's stylesheets, as whitespace-separated relative
+    # ``.css`` paths the served pages link under the proxy prefix; empty means
+    # none. Read the split form from ``host_stylesheet_paths``.
+    host_stylesheets: str = ""
 
     _write_api_key: str = PrivateAttr(default="")
+
+    @field_validator("host_stylesheets")
+    @classmethod
+    def _refuse_a_host_stylesheet_outside_the_grammar(cls, value: str) -> str:
+        # Each entry becomes an href under the proxy prefix, so one that could
+        # leave the prefix or the attribute stops the server here.
+        for entry in value.split():
+            if HOST_STYLESHEET_RE.fullmatch(entry) is None:
+                raise ValueError(
+                    f"CANOPY_HOST_STYLESHEETS entry {entry!r} is not a relative .css path "
+                    f"(each entry must match {HOST_STYLESHEET_RE.pattern})"
+                )
+        return value
 
     @field_validator(
         "api_key_file",
@@ -178,6 +207,11 @@ class Settings(BaseSettings):
         if self.viewer_dist is not None:
             return Path(self.viewer_dist).parent / "spec"
         return None
+
+    @property
+    def host_stylesheet_paths(self) -> list[str]:
+        """The validated ``host_stylesheets`` entries in order; empty when the setting is."""
+        return self.host_stylesheets.split()
 
     @property
     def write_api_key(self) -> str:
