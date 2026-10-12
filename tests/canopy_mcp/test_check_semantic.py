@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 import pytest
 
 from canopy_mcp.check import INERT_IN_OSPREY_TYPES, check_semantic
+from canopy_mcp.catalog import load_prop_schemas
+from canopy_mcp.check.semantic import PLOT_CURVE_KEY
+from tests.canopy_mcp.synthetic_spec import write_spec
 
 
 def _node(nid: str, ntype: str = "label", children: list[dict[str, Any]] | None = None, **extra: Any) -> dict[str, Any]:
@@ -368,3 +372,14 @@ def test_curve_channel_reports_each_bad_curve_and_tolerates_malformed_input() ->
     assert check_semantic(_doc(_node("w-p", "waveform-plot", props={}))) == []
     assert check_semantic(_doc(_node("w-p", "waveform-plot", props=[]))) == []
     assert check_semantic(_doc(_node("w-l", "pv-label", props={"curves": [{"channel": "SR:X"}]}))) == []
+
+
+def test_curve_key_per_plot_type_is_the_one_key_the_staged_schema_requires(tmp_path: Path) -> None:
+    """``PLOT_CURVE_KEY`` stands in for the staged prop schemas: same plot types, same single required key."""
+    schemas = load_prop_schemas(write_spec(tmp_path / "spec"))
+    required = {
+        widget_type: schema["properties"]["curves"]["items"]["required"]
+        for widget_type, schema in schemas.items()
+        if "curves" in schema.get("properties", {})
+    }
+    assert required == {widget_type: [key] for widget_type, key in PLOT_CURVE_KEY.items()}
