@@ -49,3 +49,28 @@ class HealthDTO(CanopyModel):
     @classmethod
     def of(cls) -> "HealthDTO":
         return cls(status="healthy")
+
+
+# Why a panel server's rollup is degraded, beside canopy.core.color_scheme.DEGRADED_KEY.
+DATA_UNAVAILABLE = "data-unavailable"
+DATA_DEGRADED = "data-degraded"
+
+
+class ChannelCountsDTO(CanopyModel):
+    """Of the channels DATA monitors for open panels, how many are connected."""
+
+    connected: int
+    total: int
+
+
+class FrontHealthSummaryDTO(CanopyModel):
+    """``GET /health/summary`` on canopy_mcp, behind its access credential.
+
+    ``degraded`` names every cause, and ``status`` is ``degraded`` exactly
+    when it is non-empty. ``channels`` is null when there are no live
+    channels (mock mode) or DATA's summary could not be read.
+    """
+
+    status: Literal["ok", "degraded"]
+    degraded: list[str] = []
+    channels: ChannelCountsDTO | None = None

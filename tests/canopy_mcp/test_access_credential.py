@@ -272,7 +272,14 @@ def test_get_health_without_the_credential_carries_the_channel_counts_and_nothin
 
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("HEAD", "/health"), ("POST", "/health"), ("GET", "/health/"), ("GET", "/healthz"), ("GET", "/x/health")],
+    [
+        ("HEAD", "/health"),
+        ("POST", "/health"),
+        ("GET", "/health/"),
+        ("GET", "/health/summary"),
+        ("GET", "/healthz"),
+        ("GET", "/x/health"),
+    ],
 )
 def test_only_get_on_the_exact_health_path_is_open(client, method, path):
     assert client.request(method, path, follow_redirects=False).status_code == 401
