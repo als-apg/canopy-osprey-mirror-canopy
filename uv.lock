@@ -283,7 +283,7 @@ requires-dist = [
     { name = "jsonschema", marker = "extra == 'mcp'", specifier = ">=4.21,<5" },
     { name = "numexpr", specifier = ">=2.8" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "orjson", specifier = ">=3.12.0" },
+    { name = "orjson", specifier = ">=3.9.3" },
     { name = "p4p", specifier = ">=4.1" },
     { name = "playwright", marker = "extra == 'mcp'", specifier = ">=1.61" },
     { name = "psutil", marker = "extra == 'mcp'", specifier = ">=6" },
