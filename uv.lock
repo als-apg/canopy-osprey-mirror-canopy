@@ -307,15 +307,15 @@ dev = [
     { name = "fakeredis", specifier = ">=2.21" },
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "import-linter", specifier = ">=2.0" },
-    { name = "pre-commit" },
-    { name = "pytest" },
+    { name = "pre-commit", specifier = ">=3.6" },
+    { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-httpx", specifier = ">=0.30" },
     { name = "pyyaml", specifier = ">=6" },
 ]
 docs = [
-    { name = "mkdocstrings" },
-    { name = "mkdocstrings-python" },
+    { name = "mkdocstrings", specifier = ">=0.24" },
+    { name = "mkdocstrings-python", specifier = ">=1.8" },
     { name = "zensical", specifier = ">=0.0.51" },
 ]
 
