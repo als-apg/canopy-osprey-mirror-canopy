@@ -7,7 +7,12 @@ Four passes, each tolerant of malformed input (the schema pass reports it):
   ``unknown_type``; a verbatim type the staged spec does not document is
   warning ``undocumented_type``; each violation is error ``invalid_prop`` whose
   path ends at the offending prop name. ``unknown-widget`` placeholders are
-  skipped: the semantic pass reports them as ``unknown_widget``. Without a
+  skipped: the semantic pass reports them as ``unknown_widget``. A violation
+  at or under a plot curve the semantic pass refuses as ``curve_channel`` is
+  not reported again. The ``pvs`` pass is unchanged: a channel the renderer
+  subscribes to under that curve (a mistaken ``channel``, ``pv`` or ``pvName``
+  key full-matches ``CHANNEL_KEY``) is still asked of the PV directory, so an
+  unknown name there is ``unknown_pv`` beside the ``curve_channel``. Without a
   staged spec only ``unknown_type`` is reported (the check tool reports the
   missing spec once, as ``spec_unavailable``).
 * **formulas** — every ``formulas[]`` entry parsed in-process by Fox
@@ -49,7 +54,7 @@ from canopy_mcp.catalog import Catalog
 from canopy_mcp.channels import iter_channels, mounts_children
 from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp.check.findings import Finding, node_id, pointer
-from canopy_mcp.check.semantic import UNKNOWN_WIDGET_TYPE, iter_nodes
+from canopy_mcp.check.semantic import UNKNOWN_WIDGET_TYPE, iter_nodes, refused_curves
 
 RACCOON_VALIDATE_PATH = "/raccoon/v1/pvs/validate"
 RACCOON_TIMEOUT_S = 1.5
@@ -128,6 +133,13 @@ def prop_findings(doc: Any, catalog: Catalog, *, props: bool = True) -> list[Fin
     ``{"$role", "fallback"}`` role), so a role-bearing draft validates here; a
     malformed role is an ``invalid_prop`` on the colour prop. With
     ``props=False`` only unknown types are reported.
+
+    A violation at or under a plot curve the semantic pass refuses as
+    ``curve_channel`` is not reported again. The ``pvs`` pass is unchanged: a
+    channel the renderer subscribes to under that curve (a mistaken ``channel``,
+    ``pv`` or ``pvName`` key full-matches ``CHANNEL_KEY``) is still asked of the PV
+    directory, so an unknown name there is ``unknown_pv`` beside the
+    ``curve_channel``.
     """
     out: list[Finding] = []
     for path, node in iter_nodes(doc):
@@ -167,7 +179,10 @@ def prop_findings(doc: Any, catalog: Catalog, *, props: bool = True) -> list[Fin
         errors = sorted(
             _validator(entry.prop_schema).iter_errors(values), key=lambda e: list(map(str, e.absolute_path))
         )
+        refused = refused_curves(node)
         for error in errors:
+            if _in_curve(error, refused):
+                continue
             out.append(
                 Finding(
                     nid,
@@ -190,6 +205,12 @@ def _prop_parts(error: Any) -> tuple[str | int, ...]:
         if missing:
             return (missing[0],)
     return ()
+
+
+def _in_curve(error: Any, curves: Collection[int]) -> bool:
+    """Whether a violation lies at or under ``props.curves[c]`` for a ``c`` in ``curves``."""
+    parts = tuple(error.absolute_path)
+    return len(parts) >= 2 and parts[0] == "curves" and parts[1] in curves
 
 
 # --- roles -----------------------------------------------------------------

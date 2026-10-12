@@ -14,6 +14,7 @@ A plot's ``props.curves[]`` entries bind their PVs under the key the renderer
 reads (``y_channel`` on ``waveform-plot`` and ``xy-plot``, ``y_channels`` on
 ``pv-array-plot``); a curve without it is ``curve_channel``. This is checked
 here rather than left to the staged prop schemas, which may not be staged at all.
+A curve refused here draws no ``invalid_prop`` from the prop lint.
 
 A write-capable control or a ``write_pv`` action is ``inert_in_osprey`` while
 the server relays no writes (``relay_on=False``). With the PUT relay on it is
@@ -276,6 +277,16 @@ def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> li
 
 def _curve_channels(path: Path, node: dict[str, Any]) -> list[Finding]:
     """``curve_channel`` errors: each curve of a plot names its PV(s) under the key the renderer reads."""
+    return [finding for _, finding in _curve_findings(path, node)]
+
+
+def refused_curves(node: dict[str, Any]) -> frozenset[int]:
+    """Indices into ``props.curves`` of the curves of ``node`` that draw a ``curve_channel`` error."""
+    return frozenset(c for c, _ in _curve_findings((), node))
+
+
+def _curve_findings(path: Path, node: dict[str, Any]) -> list[tuple[int, Finding]]:
+    """The ``curve_channel`` errors of ``node``, each with the index of its curve, in curve order."""
     ntype = node.get("type")
     key = PLOT_CURVE_KEY.get(ntype) if isinstance(ntype, str) else None
     props = node.get("props") if isinstance(node.get("props"), dict) else {}
@@ -284,29 +295,33 @@ def _curve_channels(path: Path, node: dict[str, Any]) -> list[Finding]:
         return []
     nid = node_id(node)
     hint = _CURVE_HINTS[ntype]
-    out: list[Finding] = []
+    out: list[tuple[int, Finding]] = []
     for c, curve in enumerate(curves):
         where = (*path, "props", "curves", c)
         if not isinstance(curve, dict):
-            out.append(Finding(nid, CURVE_CHANNEL_CODE, pointer(where), "error", f"curve {c} is not an object; {hint}"))
+            message = f"curve {c} is not an object; {hint}"
+            out.append((c, Finding(nid, CURVE_CHANNEL_CODE, pointer(where), "error", message)))
             continue
         if _curve_binds(curve.get(key), key):
             x_channel = curve.get("x_channel")
             if key == "y_channel" and x_channel is not None and not isinstance(x_channel, str):
                 out.append(
-                    Finding(
-                        nid,
-                        CURVE_CHANNEL_CODE,
-                        pointer((*where, "x_channel")),
-                        "error",
-                        f"curve {c}: x_channel must be a PV name or null",
+                    (
+                        c,
+                        Finding(
+                            nid,
+                            CURVE_CHANNEL_CODE,
+                            pointer((*where, "x_channel")),
+                            "error",
+                            f"curve {c}: x_channel must be a PV name or null",
+                        ),
                     )
                 )
             continue
         mistakes = [k for k in _CURVE_KEY_MISTAKES if k != key and k in curve]
         found = f" (found {', '.join(repr(k) for k in mistakes)} instead)" if mistakes else ""
         message = f"curve {c} names no {key}{found}; {hint}"
-        out.append(Finding(nid, CURVE_CHANNEL_CODE, pointer((*where, key)), "error", message))
+        out.append((c, Finding(nid, CURVE_CHANNEL_CODE, pointer((*where, key)), "error", message)))
     return out
 
 
