@@ -57,9 +57,32 @@ unset.
 | `CANOPY_VIEWER_DIST` | unset | The built viewer. Its `ir-map.json` is the widget catalog. |
 | `CANOPY_SPEC_DIR` | `spec/` beside `CANOPY_VIEWER_DIST` | The staged specification: the Screen-IR schemas and the per-widget prop schemas `check` validates against. Without it `check` returns one `spec_unavailable` warning in place of the schema and prop findings, and `list_widgets`, `get_widget` and `get_schema` carry a `spec_unavailable` note. |
 | `CANOPY_BROWSER_SANDBOX` | `0` | `1` launches the screenshot Chromium with its own sandbox. Off by default, because the sandbox needs privileges a container usually lacks. If Chromium cannot start with it, `screenshot` answers unavailable and names this switch. |
+| `CANOPY_HOST_STYLESHEETS` | unset | The embedding host's stylesheets: whitespace-separated relative `.css` paths, resolved under the proxy prefix. See *Host stylesheets* below. An entry that is not a plain relative `.css` path stops the server at startup. |
 
 A secret file that is named but cannot supply its secret ends the launch with
 a non-zero status before any socket is bound.
+
+## Host stylesheets
+
+A host that embeds the panel behind a proxy can restyle it with its own
+stylesheets. With `CANOPY_HOST_STYLESHEETS` set, every entry page (`/`,
+`/s/*`, `/embed/*`, `/trace/`, `/trace/correlation.html`) requested with a
+valid `X-Forwarded-Prefix` carries one
+
+```html
+<link rel="stylesheet" data-canopy-host-sheet href="<prefix>/<path>">
+```
+
+per entry, in the order given, as the last children of `<head>`, and
+`<html>` gains `data-canopy-host`. The hrefs are absolute under the prefix, so
+the host serves the files, not this server.
+
+The prefix decides both whether anything is emitted and what the hrefs are. A
+request without the header, or with a malformed one, gets the page unchanged.
+That includes this server's own screenshot browser and loopback health
+probes, which reach it directly: they render the standalone look by design
+and never request a host file. No script is added to any page and no URL
+parameter reaches the list.
 
 ## Tools
 

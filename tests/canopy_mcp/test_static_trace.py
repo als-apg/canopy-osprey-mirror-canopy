@@ -15,6 +15,9 @@ TRACE_CSP = (
 )
 PREFIX = "/panel/canopy/u-1.a~b"
 QUERY = "pv=BTS:DIAG:BPM:01:POSITION:X&range=-1h"
+HOST_LINKS = Path(__file__).parent / "fixtures" / "host_links.html"
+HOST_PATHS = ["design-system/css/tokens.css", "static/fonts/fonts.css", "design-system/css/canopy-host.css"]
+TRACE_PAGES = ["/trace/", "/trace/correlation.html"]
 
 
 def _bases(body: str) -> list[str]:
@@ -40,7 +43,7 @@ def secret(tmp_path: Path) -> Path:
     return path
 
 
-def _client(tmp_path: Path, trace_dist: Path | None, query: str = "") -> TestClient:
+def _client(tmp_path: Path, trace_dist: Path | None, query: str = "", stylesheets: str = "") -> TestClient:
     drafts = tmp_path / "drafts"
     drafts.mkdir(exist_ok=True)
     viewer = tmp_path / "viewer"
@@ -52,6 +55,7 @@ def _client(tmp_path: Path, trace_dist: Path | None, query: str = "") -> TestCli
         viewer_dist=viewer,
         trace_dist=trace_dist,
         trace_default_query=query,
+        host_stylesheets=stylesheets,
         pv_mode="hare",
         api_key="k",
     )
@@ -210,3 +214,65 @@ def test_viewer_routes_unaffected(client: TestClient) -> None:
     assert r.status_code == 200
     assert _bases(r.text) == ["/"]
     assert "content-security-policy" not in r.headers
+
+
+def _host_client(tmp_path: Path, stylesheets: str) -> TestClient:
+    dist = _make_dist(tmp_path / "trace")
+    (dist / "correlation.html").write_text((dist / "index.html").read_text())
+    return _client(tmp_path, dist, QUERY, stylesheets)
+
+
+@pytest.fixture
+def host_client(tmp_path: Path):
+    with _host_client(tmp_path, " ".join(HOST_PATHS)) as c:
+        yield c
+
+
+def _head(body: str) -> str:
+    match = re.search(r"<head\b[^>]*>(.*)</head>", body, re.DOTALL)
+    assert match is not None
+    return match.group(1)
+
+
+@pytest.mark.parametrize("path", TRACE_PAGES)
+def test_trace_pages_link_the_host_sheets_last_in_head(host_client: TestClient, path: str) -> None:
+    r = host_client.get(path, headers={"x-forwarded-prefix": PREFIX})
+    assert r.status_code == 200
+    head = _head(r.text)
+    assert head.endswith(HOST_LINKS.read_text(encoding="utf-8").replace("{prefix}", PREFIX))
+    # Prefix-absolute, not under the page's deeper <base href>.
+    hrefs = re.findall(r'<link rel="stylesheet" data-canopy-host-sheet href="([^"]*)">', r.text)
+    assert hrefs == [f"{PREFIX}/{entry}" for entry in HOST_PATHS]
+    assert _bases(r.text) == [f"{PREFIX}/trace/"]
+    assert head.index("./assets/app.js") < head.index("data-canopy-host-sheet")
+    assert re.search(r"<html data-canopy-host[ >]", r.text)
+
+
+@pytest.mark.parametrize("path", TRACE_PAGES)
+def test_trace_host_links_keep_the_csp_and_add_no_script(host_client: TestClient, path: str) -> None:
+    plain = host_client.get(path)
+    hosted = host_client.get(path, headers={"x-forwarded-prefix": PREFIX})
+    assert hosted.headers["content-security-policy"] == plain.headers["content-security-policy"] == TRACE_CSP
+    assert "onerror=" not in hosted.text
+    assert hosted.text.count("<script") == plain.text.count("<script") == 1
+    assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", hosted.text)
+
+
+@pytest.mark.parametrize("path", TRACE_PAGES)
+def test_trace_empty_setting_emits_nothing(tmp_path: Path, path: str) -> None:
+    with _host_client(tmp_path, "") as c:
+        r = c.get(path, headers={"x-forwarded-prefix": PREFIX})
+    assert r.status_code == 200
+    assert "data-canopy-host" not in r.text
+    assert _bases(r.text) == [f"{PREFIX}/trace/"]
+
+
+@pytest.mark.parametrize("prefix", [None, "//evil", '/x"><script>', "http://evil"])
+@pytest.mark.parametrize("path", TRACE_PAGES)
+def test_trace_absent_or_malformed_prefix_emits_nothing(host_client: TestClient, path: str, prefix: str | None) -> None:
+    headers = {} if prefix is None else {"x-forwarded-prefix": prefix}
+    r = host_client.get(path, headers=headers)
+    assert r.status_code == 200
+    assert "data-canopy-host" not in r.text
+    assert "evil" not in r.text
+    assert _bases(r.text) == ["/trace/"]

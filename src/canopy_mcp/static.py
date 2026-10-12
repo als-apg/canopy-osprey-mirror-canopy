@@ -73,6 +73,18 @@ that is not the summary gives both as null; the fields are copied by name, so
 neither the key nor any other summary field reaches the document. Mock mode
 carries neither key.
 
+With ``CANOPY_HOST_STYLESHEETS`` set, every entry page (``/``, ``/s/*``,
+``/embed/*``, ``/trace/`` and ``/trace/correlation.html``) served under a
+forwarded prefix links the host's stylesheets: one ``<link rel="stylesheet"
+data-canopy-host-sheet href="{prefix}/{path}">`` per entry, in order, as the
+last children of ``<head>`` (after the bundle's own stylesheet, so the host
+wins the cascade), and ``<html>`` gains ``data-canopy-host``. The hrefs are
+prefix-absolute on the Trace pages too, whose ``<base href>`` is deeper. One
+value decides both whether to emit and what the hrefs are: a request with no
+prefix, or a malformed one, gets the page unchanged, as does every request
+while the setting is empty. No script is ever added, so :data:`TRACE_CSP` is
+untouched, and no URL parameter reaches the list.
+
 ``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
 only when that scheme had load errors (it is then served as ``canopy-default``).
 """
@@ -124,11 +136,14 @@ SUMMARY_TIMEOUT_S = 1.0
 
 logger = logging.getLogger(__name__)
 
-# OSPREY theme id -> the viewer's light/dark mode.
+# OSPREY theme id -> the viewer's light/dark mode. The host's own theme ids are
+# not listed here: host styling arrives through the stylesheet links below.
 THEMES: dict[str, str] = {"dark": "dark", "light": "light"}
 
 _BASE_TAG = re.compile(r"<base\b[^>]*>", re.IGNORECASE)
 _HEAD_OPEN = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+_HEAD_CLOSE = re.compile(r"</head\s*>", re.IGNORECASE)
+_HTML_OPEN = re.compile(r"<html\b", re.IGNORECASE)
 
 
 def safe_prefix(raw: str | None) -> str:
@@ -146,6 +161,27 @@ def inject_base(index_html: str, prefix: str) -> str:
     if head is None:
         return tag + stripped
     return stripped[: head.end()] + tag + stripped[head.end() :]
+
+
+def inject_host_links(page_html: str, links: str) -> str:
+    """``page_html`` with ``links`` last in ``<head>`` and ``data-canopy-host`` on ``<html>``.
+
+    Unchanged when ``links`` is empty or the page has no ``<html>`` tag or no
+    ``</head>``: the attribute without its stylesheets would style nothing.
+    """
+    if not links:
+        return page_html
+    root = _HTML_OPEN.search(page_html)
+    close = _HEAD_CLOSE.search(page_html, root.end()) if root else None
+    if root is None or close is None:
+        return page_html
+    return (
+        page_html[: root.end()]
+        + " data-canopy-host"
+        + page_html[root.end() : close.start()]
+        + links
+        + page_html[close.start() :]
+    )
 
 
 def viewer_config(settings: Settings) -> dict[str, Any]:
@@ -265,6 +301,16 @@ def _screen_rev(store: DraftStore, target: Path) -> str | None:
 def build_routes(settings: Settings, store: DraftStore, library: DraftStore | None = None) -> list[Route]:
     """The viewer, config, draft and health routes for ``settings``, ``store`` and the optional ``library``."""
     dist = settings.viewer_dist
+    host_paths = settings.host_stylesheet_paths
+
+    def _host_links(prefix: str) -> str:
+        """The host's stylesheet links under ``prefix``, one per line; ``''`` without a prefix."""
+        if not prefix:
+            return ""
+        return "".join(
+            f'<link rel="stylesheet" data-canopy-host-sheet href="{prefix}/{html.escape(path, quote=True)}">\n'
+            for path in host_paths
+        )
 
     async def index(request: Request) -> Response:
         page = dist / "index.html" if dist else None
@@ -272,6 +318,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             return PlainTextResponse("viewer not installed (set CANOPY_VIEWER_DIST)", status_code=503)
         prefix = safe_prefix(request.headers.get(PREFIX_HEADER))
         body = inject_base(page.read_text(encoding="utf-8"), prefix)
+        body = inject_host_links(body, _host_links(prefix))
         return Response(body, media_type="text/html", headers={"Cache-Control": DRAFT_CACHE_CONTROL})
 
     async def asset(request: Request) -> Response:
@@ -321,6 +368,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             return _missing()
         prefix = safe_prefix(request.headers.get(PREFIX_HEADER))
         body = inject_base(page.read_text(encoding="utf-8"), prefix + "/trace")
+        body = inject_host_links(body, _host_links(prefix))
         headers = {"Cache-Control": DRAFT_CACHE_CONTROL, "Content-Security-Policy": TRACE_CSP}
         return Response(body, media_type="text/html", headers=headers)
 
