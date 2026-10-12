@@ -27,6 +27,8 @@ unchanged. A host binds it to loopback, so that only FRONT reaches it.
 FRONT ships in the same wheel as a second package, `canopy_mcp`, installed
 with the `mcp` extra. Its settings are flat `CANOPY_*` names, listed below. It
 reads no `.env` file: it is always launched with an explicit environment.
+FRONT is a Linux appliance: it runs on POSIX systems only, because its draft
+store takes `fcntl` file locks.
 
 A browser never talks to DATA. The viewer that FRONT serves reads live values
 through FRONT's relays (`WS /hare/v1/ws/pvs`, `WS /fox/v1/ws/formulas`,
