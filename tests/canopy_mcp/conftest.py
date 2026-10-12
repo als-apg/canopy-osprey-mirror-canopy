@@ -1,8 +1,9 @@
 """Fixtures for the canopy_mcp tests.
 
-The whole directory needs the ``mcp`` extra; without it every test here is
-skipped rather than failing on import. Tests marked ``live`` need a running
-canopy stack and only run when ``CANOPY_LIVE=1``.
+The whole directory needs the ``mcp`` extra and a POSIX system (the draft
+store takes ``fcntl`` file locks); without either every test here is skipped
+rather than failing on import. Tests marked ``live`` need a running canopy
+stack and only run when ``CANOPY_LIVE=1``.
 
 The FastMCP instance is one per process, so an app built with authoring off
 takes the seven authoring tools away from every later test. ``restore_authoring``
@@ -26,6 +27,7 @@ from collections.abc import Iterator
 import pytest
 
 pytest.importorskip("fastmcp")
+pytest.importorskip("fcntl", reason="the panel server is POSIX-only: its draft store takes fcntl file locks")
 
 from canopy_mcp import static  # noqa: E402
 from canopy_mcp.config import get_settings  # noqa: E402

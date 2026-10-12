@@ -704,6 +704,7 @@ def fox_server():
 
 
 def test_table_frames_arrive_as_text_through_the_canopy_mcp_forward(tmp_path, fox_server):
+    pytest.importorskip("fcntl", reason="the panel server is POSIX-only: its draft store takes fcntl file locks")
     from canopy_mcp.app import create_app
     from canopy_mcp.config import Settings
 
