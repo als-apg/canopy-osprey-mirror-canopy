@@ -53,6 +53,11 @@ convert = [
     "PyDMConverter>=1.0.5",
 ]
 
+[tool.uv.sources]
+# The convert extra needs .bob conversion and pydmconverter.scheme, which no
+# PyDMConverter release carries; this pins the commit that does.
+PyDMConverter = { git = "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool", rev = "8bd16bbc31c8a4074719900f1cd85d90a0549edc" }
+
 [dependency-groups]
 dev = [
     "pre-commit",
