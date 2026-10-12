@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 import pytest
 
 from canopy_mcp.check import INERT_IN_OSPREY_TYPES, check_semantic
+from canopy_mcp.catalog import load_prop_schemas
+from canopy_mcp.check.semantic import PLOT_CURVE_KEY
+from tests.canopy_mcp.synthetic_spec import write_spec
 
 
 def _node(nid: str, ntype: str = "label", children: list[dict[str, Any]] | None = None, **extra: Any) -> dict[str, Any]:
@@ -288,3 +292,94 @@ def test_unknown_widget_on_root_node() -> None:
     doc["root"] = _node("w-root", "unknown-widget", props={})
     (f,) = check_semantic(doc)
     assert f.path == "/root/type" and f.original_class is None
+
+
+# --- curve_channel ---------------------------------------------------------
+
+
+def _plot(ntype: str, *curves: Any) -> dict[str, Any]:
+    return _doc(_node("w-p", ntype, props={"curves": list(curves)}))
+
+
+@pytest.mark.parametrize(
+    "curve",
+    [
+        {"channel": "SR:X"},
+        {"pv": "SR:X"},
+        {"pvName": "SR:X"},
+        {"y_channels": ["SR:X"]},
+        {"name": "x"},
+        {"y_channel": ""},
+        {"y_channel": 3},
+    ],
+)
+def test_curve_channel_waveform_curve_without_y_channel_is_an_error(curve: dict[str, Any]) -> None:
+    (f,) = check_semantic(_plot("waveform-plot", curve))
+    assert (f.code, f.severity, f.node_id) == ("curve_channel", "error", "w-p")
+    assert f.path == "/root/children/0/props/curves/0/y_channel"
+    assert "names no y_channel" in f.message and "Trace tab" in f.message
+
+
+def test_curve_channel_names_the_key_that_was_written_instead() -> None:
+    (f,) = check_semantic(_plot("waveform-plot", {"channel": "SR:X"}))
+    assert "(found 'channel' instead)" in f.message
+    (g,) = check_semantic(_plot("xy-plot", {"y_channels": ["SR:X"]}))
+    assert "(found 'y_channels' instead)" in g.message and "correlation page" in g.message
+    (h,) = check_semantic(_plot("pv-array-plot", {"y_channel": "SR:X"}))
+    assert "names no y_channels (found 'y_channel' instead)" in h.message
+
+
+@pytest.mark.parametrize(
+    "curve",
+    [
+        {"y_channel": "SR:X"},
+        {"y_channel": "SR:X", "x_channel": None},
+        {"y_channel": "${P}:WF", "x_channel": "SR:T", "name": "a", "color": "#000000", "lineStyle": 1},
+    ],
+)
+def test_curve_channel_waveform_and_xy_curves_with_y_channel_pass(curve: dict[str, Any]) -> None:
+    assert check_semantic(_plot("waveform-plot", curve)) == []
+    assert check_semantic(_plot("xy-plot", curve)) == []
+
+
+def test_curve_channel_x_channel_must_be_a_name_or_null() -> None:
+    (f,) = check_semantic(_plot("xy-plot", {"y_channel": "SR:Y", "x_channel": ["SR:X"]}))
+    assert (f.code, f.severity, f.path) == ("curve_channel", "error", "/root/children/0/props/curves/0/x_channel")
+
+
+@pytest.mark.parametrize(
+    "curve",
+    [{"y_channel": "SR:X"}, {"y_channels": []}, {"y_channels": ["SR:X", ""]}, {"y_channels": "SR:X"}, {}],
+)
+def test_curve_channel_array_plot_curve_without_y_channels_is_an_error(curve: dict[str, Any]) -> None:
+    (f,) = check_semantic(_plot("pv-array-plot", curve))
+    assert (f.code, f.path) == ("curve_channel", "/root/children/0/props/curves/0/y_channels")
+    assert "names no y_channels" in f.message
+
+
+def test_curve_channel_array_plot_curve_with_channels_passes() -> None:
+    curve = {"name": "X", "color": "#1f77b4", "y_channels": ["SR:1", "SR:2"]}
+    assert check_semantic(_plot("pv-array-plot", curve)) == []
+
+
+def test_curve_channel_reports_each_bad_curve_and_tolerates_malformed_input() -> None:
+    findings = check_semantic(_plot("waveform-plot", "nope", {"y_channel": "SR:A"}, {"pv": "SR:B"}))
+    assert [(f.code, f.path) for f in findings] == [
+        ("curve_channel", "/root/children/0/props/curves/0"),
+        ("curve_channel", "/root/children/0/props/curves/2/y_channel"),
+    ]
+    assert check_semantic(_doc(_node("w-p", "waveform-plot", props={"curves": "nope"}))) == []
+    assert check_semantic(_doc(_node("w-p", "waveform-plot", props={}))) == []
+    assert check_semantic(_doc(_node("w-p", "waveform-plot", props=[]))) == []
+    assert check_semantic(_doc(_node("w-l", "pv-label", props={"curves": [{"channel": "SR:X"}]}))) == []
+
+
+def test_curve_key_per_plot_type_is_the_one_key_the_staged_schema_requires(tmp_path: Path) -> None:
+    """``PLOT_CURVE_KEY`` stands in for the staged prop schemas: same plot types, same single required key."""
+    schemas = load_prop_schemas(write_spec(tmp_path / "spec"))
+    required = {
+        widget_type: schema["properties"]["curves"]["items"]["required"]
+        for widget_type, schema in schemas.items()
+        if "curves" in schema.get("properties", {})
+    }
+    assert required == {widget_type: [key] for widget_type, key in PLOT_CURVE_KEY.items()}

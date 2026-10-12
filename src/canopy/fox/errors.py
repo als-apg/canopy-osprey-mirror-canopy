@@ -4,6 +4,9 @@ Services raise these. The per-module exception handler (registered via
 ``register_canopy_error_handler``) maps them to ``{"code": ..., "detail": ...}``.
 """
 
+from typing import Self
+from collections.abc import Iterable
+
 from canopy.core.errors import ErrorCode, CanopyError
 
 
@@ -21,9 +24,23 @@ class FormulaUnsafeError(FoxError):
     error_code = ErrorCode.FORMULA_UNSAFE
 
 
+INPUT_MISSING_PREFIX = "PVs not available: "
+
+
 class FormulaInputMissing(FoxError):
     status_code = 422
     error_code = ErrorCode.FORMULA_INPUT_MISSING
+
+    @classmethod
+    def for_pvs(cls, pvs: Iterable[str]) -> Self:
+        """The error naming every input the formula cannot read, in the one wording.
+
+        Every evaluator raises through here, so a client sees one sentence for
+        the one code it retries on, whether an input has no sample yet or its
+        connection is down right now; ``FormulaInputOutage`` keeps the class
+        distinction for the subscription manager, never a second wording.
+        """
+        return cls(f"{INPUT_MISSING_PREFIX}{list(pvs)}")
 
 
 class FormulaInputOutage(FormulaInputMissing):

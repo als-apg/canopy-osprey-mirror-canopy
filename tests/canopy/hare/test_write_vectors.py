@@ -2,8 +2,9 @@
 
 `canopy/contracts/wc6_vectors.json` is the one table every side (canopy, the
 OSPREY adapter, the SDK) maps write outcomes from, so these tests pin it: the
-exact row ids, the shape of each row, and that each write-code exception
-class answers with the status, code and default detail the table names.
+exact row ids, the shape of each row, the cases that define the write-detail
+cut, and that each write-code exception class answers with the status, code and
+default detail the table names.
 
 The sync tests drive async code with `asyncio.run` so this file runs the same
 under the appliance pins (`ci/run-under-pins.sh`) as under the uv lock.
@@ -55,6 +56,8 @@ ROW_IDS = {
 }
 
 ROW_FIELDS = {"source", "outcome", "status", "code", "audit", "detail", "toast", "dynamic", "default"}
+TOP_LEVEL_KEYS = {"contract", "about", "detail_max_chars", "detail_cut_cases", "rows"}
+CUT_CASE_FIELDS = {"case", "text", "limit", "expected"}
 OUTCOMES = {"refused", "target_changed", "switch_in_progress", "confirmed", "mismatch", "unconfirmed", "unknown"}
 
 # code -> (exception class, status)
@@ -70,6 +73,8 @@ WRITE_CLASSES = {
 GENERIC_REFUSAL = "the write was refused; nothing written"
 UNKNOWN_TEXT = "outcome unknown — check the readback"
 FRONT_TEXT = "the panel server refused this write; nothing written"
+
+CUT_CASES = load_wc6_vectors()["detail_cut_cases"]
 
 
 @pytest.fixture(scope="module")
@@ -97,6 +102,35 @@ def test_every_row_has_the_same_fields(rows):
         assert set(row) == ROW_FIELDS, row_id
         assert set(row["audit"]) == {"decision", "reason"}, row_id
         assert isinstance(row["dynamic"], bool), row_id
+
+
+def test_vector_top_level_keys_are_exactly_these():
+    assert set(load_wc6_vectors()) == TOP_LEVEL_KEYS
+
+
+def test_every_cut_case_has_the_same_fields():
+    for case in CUT_CASES:
+        assert set(case) == CUT_CASE_FIELDS, case
+        assert isinstance(case["case"], str) and case["case"], case
+        assert isinstance(case["text"], str), case["case"]
+        assert isinstance(case["expected"], str), case["case"]
+        assert isinstance(case["limit"], int) and not isinstance(case["limit"], bool), case["case"]
+        assert case["limit"] > 0, case["case"]
+    names = [case["case"] for case in CUT_CASES]
+    assert len(names) == len(set(names))
+
+
+def test_cut_cases_stay_within_their_limit():
+    for case in CUT_CASES:
+        assert len(case["expected"]) <= case["limit"], case["case"]
+        if len(case["text"]) <= case["limit"]:
+            assert case["expected"] == case["text"], case["case"]
+
+
+def test_cut_cases_cover_the_cap_and_a_whole_text():
+    cap = load_wc6_vectors()["detail_max_chars"]
+    assert any(case["limit"] == cap and len(case["text"]) > cap for case in CUT_CASES)
+    assert any(case["expected"] == case["text"] for case in CUT_CASES)
 
 
 def test_outcomes_are_the_closed_set(rows):
@@ -278,8 +312,14 @@ def test_access_credential_code_matches_front(rows):
     assert rows["14b-401"]["code"] == REFUSAL_CODE
 
 
-def test_detail_cut_is_256(rows):
-    assert load_wc6_vectors()["detail_max_chars"] == 256 == errors.WRITE_DETAIL_MAX_CHARS
+def test_detail_cut_is_512(rows):
+    assert load_wc6_vectors()["detail_max_chars"] == 512 == errors.WRITE_DETAIL_MAX_CHARS
+
+
+def test_vector_about_states_the_word_boundary_cut():
+    about = load_wc6_vectors()["about"]
+    assert "cut at the last whitespace before that limit" in about
+    assert "256" not in about
 
 
 # --- the write codes --------------------------------------------------------- #
@@ -338,10 +378,48 @@ def test_mismatch_detail_names_the_observed_value():
     assert exc.detail == "written; the channel holds 3.5"
 
 
-def test_mismatch_detail_is_cut_at_256():
+def test_mismatch_detail_is_cut_at_a_word_boundary():
+    exc = errors.PVWriteMismatch.observed(" ".join(["abcdefg"] * 100))
+    assert len(exc.detail) <= 512
+    assert exc.detail.startswith("written; the channel holds abcdefg abcdefg")
+    assert exc.detail.endswith("abcdefg…")
+    assert "abcd…" not in exc.detail
+
+
+def test_mismatch_detail_of_one_long_token_keeps_the_sentence():
+    # A value with no whitespace has no boundary to keep after the sentence.
     exc = errors.PVWriteMismatch.observed("x" * 1000)
-    assert len(exc.detail) == 256
-    assert exc.detail.startswith("written; the channel holds xxx")
+    assert exc.detail == "written; the channel holds…"
+
+
+@pytest.mark.parametrize("case", CUT_CASES, ids=[c["case"] for c in CUT_CASES])
+def test_cut_write_detail(case):
+    assert errors.cut_write_detail(case["text"], case["limit"]) == case["expected"]
+
+
+@pytest.mark.parametrize("case", CUT_CASES, ids=[c["case"] for c in CUT_CASES])
+def test_cut_write_detail_is_idempotent_on_every_case(case):
+    assert errors.cut_write_detail(case["expected"], case["limit"]) == case["expected"]
+
+
+def test_cut_write_detail_default_limit_is_the_cap_and_ends_at_a_boundary():
+    sentence = " ".join(f"word{i}" for i in range(120))
+    cut = errors.cut_write_detail(sentence)
+    assert len(cut) <= errors.WRITE_DETAIL_MAX_CHARS
+    assert cut.endswith("…")
+    body = cut[:-1]
+    assert sentence.startswith(body) and sentence[len(body)] == " "
+
+
+def test_cut_write_detail_keeps_a_refusal_sentence_under_the_cap_whole():
+    sentence = (
+        "writes are off for this control target: turned off from the control-target chip in the header; "
+        "applies to every session of this login. Turn writes back on from the chip if the write is intended; "
+        "contact the operator on shift if it is not. Nothing was written and the channel still holds its "
+        "previous value, which the readback beside the entry shows."
+    )
+    assert 256 < len(sentence) <= 512
+    assert errors.cut_write_detail(sentence) == sentence
 
 
 @pytest.mark.parametrize("code", sorted(WRITE_CLASSES))
@@ -359,6 +437,39 @@ def test_envelope_detail_is_the_toast(rows, code):
         resp = client.get("/raise")
     assert resp.status_code == status
     assert resp.json() == {"code": code, "detail": cls.default_detail}
+
+
+@pytest.mark.parametrize("code", sorted(WRITE_CLASSES))
+def test_write_class_cuts_a_long_detail_at_a_word(code):
+    cls, _ = WRITE_CLASSES[code]
+    exc = cls(" ".join(["abcdefg"] * 200))
+    assert len(exc.detail) <= errors.WRITE_DETAIL_MAX_CHARS
+    assert exc.detail.endswith("abcdefg…")
+    assert str(exc) == exc.detail
+
+
+def test_write_class_trims_the_detail():
+    assert errors.PVWriteRefused("  no.\n").detail == "no."
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\n"])
+@pytest.mark.parametrize("code", sorted(WRITE_CLASSES))
+def test_write_class_blank_detail_takes_the_default(code, text):
+    cls, _ = WRITE_CLASSES[code]
+    assert cls(text).detail == cls.default_detail
+
+
+def test_static_texts_are_under_the_cap(rows):
+    cap = load_wc6_vectors()["detail_max_chars"]
+    for cls, _ in WRITE_CLASSES.values():
+        assert len(cls.default_detail) <= cap, cls.__name__
+    for row_id, row in rows.items():
+        if not row["dynamic"] and row["detail"] is not None:
+            assert len(row["detail"]) <= cap, row_id
+
+
+def test_other_errors_are_not_cut():
+    assert errors.BadRequest("x" * 1000).detail == "x" * 1000
 
 
 # --- PVWriteDTO -------------------------------------------------------------- #

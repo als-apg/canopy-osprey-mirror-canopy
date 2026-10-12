@@ -8,17 +8,19 @@ The FastMCP instance is one per process, so an app built with authoring off
 takes the seven authoring tools away from every later test. ``restore_authoring``
 puts them back after each test.
 
-In hare mode ``GET /config.json`` asks DATA for its health summary. A test
-app's shared client points at the default backend URL, where a developer's own
-stack may be listening, so ``no_data_summary`` stubs that fetch to "no DATA"
-for every test. A test marked ``real_data_summary`` keeps the real fetch and
-supplies its own ``app.state.http``.
+In hare mode DATA's summary (read by ``config.json`` and ``/health/summary``)
+comes through ``static.SummaryReader.read``. A test app's shared client points at
+the default backend URL, where a developer's own stack may be listening, so
+``no_data_summary`` stubs ``SummaryReader.read`` to "no DATA" for every test. A
+test marked ``real_data_summary`` keeps the real reader and supplies its own
+``app.state.http``; a summary body is built with ``summary()``.
 
 ``CANOPY_SPEC_DIR`` is removed for every test, so a developer's staged spec
 never decides a result; the spec-present tests stage their own (``synthetic_spec``).
 """
 
 import os
+from typing import Any
 from collections.abc import Iterator
 
 import pytest
@@ -28,13 +30,17 @@ pytest.importorskip("fastmcp")
 from canopy_mcp import static  # noqa: E402
 from canopy_mcp.config import get_settings  # noqa: E402
 from canopy_mcp.server import mcp, registered_tools, authoring_snapshot  # noqa: E402
+from canopy.contracts.health import HareHealthSummaryDTO  # noqa: E402
 
 LIVE_ENV = "CANOPY_LIVE"
 REAL_DATA_SUMMARY = "real_data_summary"
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line("markers", f"{REAL_DATA_SUMMARY}: keep config.json's real fetch of DATA's summary")
+    config.addinivalue_line(
+        "markers",
+        f"{REAL_DATA_SUMMARY}: keep the real SummaryReader.read for DATA's summary (read by config.json and /health/summary)",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -44,6 +50,23 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "live" in item.keywords:
             item.add_marker(skip_live)
+
+
+def summary(**overrides: Any) -> dict[str, Any]:
+    """DATA's summary body in wire form, built from the contract model; ``overrides`` are model field names."""
+    defaults: dict[str, Any] = {
+        "status": "ok",
+        "backend": "osprey",
+        "connector_ok": True,
+        "clients": 1,
+        "active_monitors": 2,
+        "connected": 2,
+        "subscriptions": 2,
+        "label": "Simulator",
+        "notice": None,
+        "binding": "va@3",
+    }
+    return HareHealthSummaryDTO(**{**defaults, **overrides}).model_dump(by_alias=True, mode="json")
 
 
 @pytest.fixture(autouse=True)
@@ -61,14 +84,14 @@ def restore_authoring() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def no_data_summary(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``config.json`` sees no DATA (both identity fields null) unless the test is marked ``real_data_summary``."""
+    """``SummaryReader.read`` stubbed to no DATA's summary (read by ``config.json`` and ``/health/summary``) unless the test is marked ``real_data_summary``."""
     if request.node.get_closest_marker(REAL_DATA_SUMMARY) is not None:
         return
 
-    async def no_data(request: object) -> None:
+    async def no_data(self: object, app: object) -> None:
         return None
 
-    monkeypatch.setattr(static, "fetch_data_summary", no_data)
+    monkeypatch.setattr(static.SummaryReader, "read", no_data)
 
 
 @pytest.fixture(autouse=True)

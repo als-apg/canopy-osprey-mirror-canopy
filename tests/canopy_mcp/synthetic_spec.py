@@ -7,7 +7,7 @@ with a closed, recursive ``WidgetNode`` (``meta`` and ``warnings`` allowed),
 a two-armed ``Rule`` (conditional or formula), a 1.0 ``schemaVersion`` const and a
 1.1 enum, theme colour roles (``{"$role", "fallback"}``) in 1.1 only, and
 draft-07 per-widget prop schemas in the ``<dir>/widgets/<ir id>.props.schema.json``
-layout of the epic staging directory.
+layout of the epic staging directory; the plot types carry strict ``curves.items``.
 """
 
 from __future__ import annotations
@@ -28,6 +28,55 @@ COLOR_ROLE: dict[str, Any] = {
 }
 #: The inline colour def a 1.1 colour prop carries: a plain colour or a theme role.
 COLOR_DEF: dict[str, Any] = {"anyOf": [_STRING, COLOR_ROLE]}
+
+_TRACE_CURVE: dict[str, Any] = {
+    "y_channel": {"type": "string", "minLength": 1},
+    "x_channel": {"type": ["string", "null"]},
+    "name": _STRING,
+    "color": COLOR_DEF,
+    "lineStyle": {"type": "integer"},
+    "lineWidth": {"type": "number"},
+    "yAxisName": _STRING,
+}
+#: The closed ``curves[]`` item of each plot type: one required channel key, no other key allowed.
+PLOT_CURVE_ITEMS: dict[str, dict[str, Any]] = {
+    "waveform-plot": {
+        "type": "object",
+        "required": ["y_channel"],
+        "additionalProperties": False,
+        "properties": {**_TRACE_CURVE},
+    },
+    "xy-plot": {
+        "type": "object",
+        "required": ["y_channel"],
+        "additionalProperties": False,
+        "properties": {
+            **_TRACE_CURVE,
+            "symbol": _STRING,
+            "symbolSize": {"type": "number"},
+            "traceType": _STRING,
+        },
+    },
+    "pv-array-plot": {
+        "type": "object",
+        "required": ["y_channels"],
+        "additionalProperties": False,
+        "properties": {
+            "y_channels": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "name": _STRING,
+            "color": COLOR_DEF,
+        },
+    },
+}
+#: The draft-07 prop schema ``write_spec`` stages for each plot type.
+PLOT_PROPS: dict[str, dict[str, Any]] = {
+    widget_id: {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {"curves": {"type": "array", "items": items}},
+    }
+    for widget_id, items in PLOT_CURVE_ITEMS.items()
+}
 
 
 def ir_schema(version: str) -> dict[str, Any]:
@@ -130,12 +179,15 @@ def write_spec(
     versions: tuple[str, ...] = ("1.0", "1.1"),
     props: dict[str, dict[str, Any]] | None = None,
 ) -> Path:
-    """Write a staging directory at ``root``: the IR schema of each version, the prop schemas, SPEC-SOURCE."""
+    """Write a staging directory at ``root``: the IR schema of each version, the prop schemas, SPEC-SOURCE.
+
+    The plot types carry strict ``curves.items`` (``PLOT_PROPS``); a schema in ``props`` for the same id wins.
+    """
     (root / "ir").mkdir(parents=True, exist_ok=True)
     (root / "widgets").mkdir(exist_ok=True)
     for version in versions:
         (root / "ir" / f"screen-ir-{version}.schema.json").write_text(json.dumps(ir_schema(version)))
-    for widget_id, schema in (props or {}).items():
+    for widget_id, schema in {**PLOT_PROPS, **(props or {})}.items():
         (root / "widgets" / f"{widget_id}.props.schema.json").write_text(json.dumps(schema))
     (root / "SPEC-SOURCE").write_text(f"repo: slaclab/canopy-spec\nsha: {SPEC_SHA}\n")
     return root

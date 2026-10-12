@@ -17,7 +17,9 @@ dependencies = [
     "jsonschema>=4.21,<5",
     "python-multipart>=0.0.32",
     "pymongo>=4.17",
-    "orjson>=3.12.0",
+    # The oldest release the live-frame encoding is tested with: numpy
+    # arrays serialised natively, non-finite numbers as null.
+    "orjson>=3.9.3",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +52,11 @@ data = [
 convert = [
     "PyDMConverter>=1.0.5",
 ]
+
+[tool.uv.sources]
+# The convert extra needs .bob conversion and pydmconverter.scheme, which no
+# PyDMConverter release carries; this pins the commit that does.
+PyDMConverter = { git = "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool", rev = "8bd16bbc31c8a4074719900f1cd85d90a0549edc" }
 
 [dependency-groups]
 dev = [

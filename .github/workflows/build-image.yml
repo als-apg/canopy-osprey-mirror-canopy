@@ -75,6 +75,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          secrets: |
+            converter_mirror_token=${{ secrets.CONVERTER_MIRROR_TOKEN }}
 
   # Keep the existing Software Factory DEV deployment. The Kubernetes DEV
   # deployment is an additional target, not a replacement.

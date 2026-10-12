@@ -20,7 +20,8 @@
 #   CANOPY_PINS_VENV    where the environment is built (default .cache/pins-venv)
 #   CANOPY_PINS_PYTHON  interpreter request passed to uv (default 3.12)
 #   CANOPY_PINS_CONVERTER  directory or URL of a PyDMConverter source to install in
-#                       place of the released one (the appliance ships its own build)
+#                       place of the one pyproject.toml names (the appliance ships
+#                       its own build)
 set -euo pipefail
 
 if [ "$#" -eq 0 ]; then

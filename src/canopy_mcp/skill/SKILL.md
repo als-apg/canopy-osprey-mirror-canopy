@@ -176,6 +176,25 @@ A finding has `nodeId`, `code`, `path` (a JSON pointer into the document),
 run. An empty finding list beside a non-empty `skipped` list proves nothing
 about those checks.
 
+## Plots
+
+Three widget types draw PV data. Each entry of their `props.curves` list
+names its PVs with one key, and nothing else draws a line:
+
+- `waveform-plot` draws one array (waveform) PV, named by `y_channel`,
+  against its index or against an `x_channel` array.
+- `xy-plot` draws `y_channel` against `x_channel`. Two array PVs give a
+  curve; two scalar PVs give one marker at the current position.
+- `pv-array-plot` draws the scalar PVs listed in `y_channels` as one series,
+  one sample per PV, such as the positions of a row of BPMs.
+
+A scalar PV in `y_channel` draws a single point, not a line. A time series of
+a scalar PV, or one scalar PV against another over time, is not a widget: it
+is the Trace tab's job. Answer such a request with the Trace instruction: tell
+the user to open the viewer's Trace tab and enter the PV name and time range
+there, or the two PV names on its correlation page. Do not build a plot widget
+for it. If the viewer has no Trace tab, say that a screen cannot show it.
+
 ## Edit with `rev` and `base_rev`
 
 Every screen has a `rev`, the hash of its file. Every write returns the new
@@ -187,6 +206,11 @@ written. The user can edit the same screen in the viewer while you work, so
 this happens. When it does, read
 the screen again with `get_screen`, look at what changed, and apply your edit
 to the new document with the new `rev`. Never retry with a guessed `rev`.
+
+Change a draft that exists with `patch_node`, `add_node` and `remove_node`.
+`new_screen` is for a new draft; with `overwrite=true` it replaces a whole
+draft and is not the tool for a change to a few props. Read the draft once
+with `get_screen` before a round of edits, not before every call.
 
 - `patch_node` merges `set` into one node as a JSON Merge Patch. Objects merge
   key by key, `null` deletes a key, and a list replaces the old list. It

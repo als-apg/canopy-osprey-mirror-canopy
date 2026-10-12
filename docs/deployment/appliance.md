@@ -69,8 +69,18 @@ down as descriptor `N`, instead of binding `--host` and `--port`. A supervisor
 that keeps the socket across restarts loses no connection attempt while the
 server is down.
 
-`GET /health` answers `{"status": "ok"}` and is the one route that never asks
-for a credential.
+`GET /health` answers `{"status": "healthy"}` and is the one route that never
+asks for a credential. It says the server is up and reads nothing from the
+backend or from the scheme file. The body is the same in every deployment.
+
+`GET /health/summary` reports the live channels and asks for the credential
+like every other route:
+`{"status": "ok", "degraded": [], "channels": {"connected": 53, "total": 53}}`.
+`degraded` names each cause: `color-scheme` (the scheme file was rejected),
+`data-unavailable` (the backend's summary could not be read; `channels` is
+null) or `data-degraded` (the backend reports its data plane degraded).
+`channels` counts the channels open panels monitor and is null without live
+channels. The status code is 200 either way.
 
 ## Switches
 

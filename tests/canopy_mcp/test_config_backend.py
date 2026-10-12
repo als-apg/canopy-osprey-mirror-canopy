@@ -19,21 +19,11 @@ from canopy_mcp import static
 from canopy_mcp.app import create_app
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings
+from tests.canopy_mcp.conftest import summary
 
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
 KEY = "sekrit-key"
-SUMMARY = {
-    "status": "ok",
-    "backend": "osprey",
-    "connector_ok": True,
-    "clients": 1,
-    "active_monitors": 2,
-    "warm_monitors": 0,
-    "subscriptions": 2,
-    "label": "Simulator",
-    "notice": None,
-    "binding": "va@3",
-}
+SUMMARY = summary()
 
 pytestmark = pytest.mark.real_data_summary
 
@@ -199,6 +189,11 @@ def test_non_json_body_gives_nulls(settings: Settings) -> None:
         {**SUMMARY, "label": 7},
         {**SUMMARY, "notice": {"x": 1}},
         {**SUMMARY, "binding": ["va@3"]},
+        {**SUMMARY, "connected": False},
+        {**SUMMARY, "activeMonitors": True},
+        {**SUMMARY, "connected": "0"},
+        {**SUMMARY, "connected": None},
+        {k: v for k, v in SUMMARY.items() if k != "connected"},
     ],
     ids=[
         "list",
@@ -210,6 +205,11 @@ def test_non_json_body_gives_nulls(settings: Settings) -> None:
         "int-label",
         "dict-notice",
         "list-binding",
+        "bool-connected",
+        "bool-active-monitors",
+        "string-connected",
+        "null-connected",
+        "no-connected",
     ],
 )
 def test_bad_body_gives_nulls(settings: Settings, body) -> None:

@@ -96,9 +96,9 @@ If the file cannot be read, is not valid JSON, fails the format, has a dangling 
 cyclic alias, imports onto a role that does not exist, or leaves a role without a
 light or dark value, the **whole file is rejected** and `canopy-default` is served
 instead. Every problem found is listed in `meta.errors`, each process logs one
-`ERROR` line, `/health` reports `degraded`, and every conversion carries one
-warning naming the first error. Run [`canopy-scheme check`](#tools) before
-deploying a file.
+`ERROR` line, canopy's `GET /health/summary` lists `color-scheme` in `degraded`,
+and every conversion carries one warning naming the first error. Run
+[`canopy-scheme check`](#tools) before deploying a file.
 
 ## Configuration
 
@@ -160,12 +160,14 @@ server serves:
 `{ "path", "message" }`. `colorScheme` is omitted when the scheme flattener is not
 installed. It describes this server's scheme only, not the converter's.
 
-**`GET /health`** reports `degraded` when the scheme could not be loaded:
+**`GET /health`** is the same body whether or not the scheme loaded:
 
-| Server | Healthy | Scheme rejected |
-|--------|---------|-----------------|
-| canopy | `{"status": "ok"}` | `{"status": "ok", "degraded": ["color-scheme"]}` |
-| canopy-api | `{"status": "healthy", "degraded": []}` | `{"status": "healthy", "degraded": ["color-scheme"]}` |
+| canopy and canopy-api | Healthy | Scheme rejected |
+|-----------------------|---------|-----------------|
+| `GET /health` | `{"status": "healthy"}` | `{"status": "healthy"}` |
+
+On canopy, `GET /health/summary` lists `color-scheme` in `degraded` and reports
+`"status": "degraded"`. It asks for the access credential.
 
 Conversion responses carry `scheme`: `{ "id", "served", "sha256", "errors" }`,
 describing the scheme that conversion used.

@@ -15,13 +15,24 @@ COPY pyproject.toml uv.lock ./
 
 # This image runs both the API with every module and the arq worker, so it
 # needs the database/queue packages (data) and the screen converter (convert).
-RUN uv sync --frozen --extra data --extra convert --no-install-project
+# The convert extra is a git source in a private repository. The read token is
+# a BuildKit secret, handed to git through the environment of the one command
+# that fetches, so no layer and no file in the image holds it.
+RUN --mount=type=secret,id=converter_mirror_token,required=true \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/converter_mirror_token)@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool.insteadOf" \
+    GIT_CONFIG_VALUE_0="https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool" \
+    uv sync --frozen --extra data --extra convert --no-install-project
 
 COPY src/ ./src/
 COPY .git/ ./.git/
 COPY scripts/ ./scripts/
 
-RUN uv sync --frozen --extra data --extra convert
+RUN --mount=type=secret,id=converter_mirror_token,required=true \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/converter_mirror_token)@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool.insteadOf" \
+    GIT_CONFIG_VALUE_0="https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool" \
+    uv sync --frozen --extra data --extra convert
 
 ENV PATH="/app/.venv/bin:$PATH"
 

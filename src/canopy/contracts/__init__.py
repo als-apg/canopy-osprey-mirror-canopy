@@ -3,7 +3,8 @@
 Besides the pydantic models in the submodules, the package carries
 ``wc6_vectors.json`` (package data): the WC6 table of write outcomes, keyed by
 row id, from which canopy, the OSPREY adapter and the SDK map statuses, codes
-and toast texts.
+and toast texts. It also carries the cases that define the write-detail cut,
+which each side's cut is tested against.
 """
 
 import json
