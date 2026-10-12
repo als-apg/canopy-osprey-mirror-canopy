@@ -9,8 +9,8 @@ from collections.abc import Iterable
 
 from fastapi import FastAPI, Request, WebSocket, status
 from starlette.types import Send, Scope, ASGIApp, Receive
-from starlette.routing import Match, Mount
 from fastapi.responses import HTMLResponse
+from starlette.routing import Match, Mount
 from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,12 +21,20 @@ from canopy.core.config import (
     parse_modules,
     resolve_modules,
 )
-from canopy.core.errors import ErrorCode, KeyStoreUnavailable, register_canopy_error_handler
+from canopy.core.errors import (
+    ErrorCode,
+    KeyStoreUnavailable,
+    register_canopy_error_handler,
+)
 from canopy.core.logging import configure_logging
 from canopy.core.modules import tag_module, module_for_app
-from canopy.core.security import get_registry, token_from_scope, is_database_chain, load_key_registry
-from canopy.contracts.base import CanopyModel
-from canopy.core.color_scheme import get_color_scheme
+from canopy.core.security import (
+    get_registry,
+    token_from_scope,
+    is_database_chain,
+    load_key_registry,
+)
+from canopy.contracts.health import HealthDTO
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -142,13 +150,6 @@ class _ClosedMeta:
             await websocket.close(code=close_code, reason=f"{code}: {detail}")
 
 
-class HealthDTO(CanopyModel):
-    """``/health``: ``degraded`` names the parts serving a fallback (``color-scheme`` on a bad scheme file)."""
-
-    status: str
-    degraded: list[str] = []
-
-
 def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) -> FastAPI:
     """Compose the Canopy API from the named modules.
 
@@ -221,15 +222,7 @@ def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) 
 
     @app.get("/health", tags=["meta"])
     async def health() -> HealthDTO:
-        if "converter" in selected:
-            # Import here: the converter module is loaded only when selected.
-            from canopy.converter.config import get_converter_config
-
-            # The converter's scheme, from the same cached load its lifespan made: no new log line here.
-            scheme = get_color_scheme(get_converter_config().scheme_path)
-        else:
-            scheme = get_color_scheme(None)
-        return HealthDTO(status="healthy", degraded=list(scheme.degraded))
+        return HealthDTO.of()
 
     docs_specs = [(name, title) for name, title in API_MODULES if name in selected]
 

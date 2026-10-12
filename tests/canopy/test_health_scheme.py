@@ -1,4 +1,4 @@
-"""canopy-api reports the converter's color scheme on ``/health``; a bad scheme degrades, never 500s."""
+"""canopy-api's ``/health`` is one constant body; a bad scheme is reported on conversions, never as a 500."""
 
 import logging
 from pathlib import Path
@@ -7,10 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 import canopy.converter.tasks as tasks_module
+from canopy.core import color_scheme
 from canopy.main import app
 from tests.conftest import READ_HEADERS
-from canopy.core import color_scheme
-from canopy.core.color_scheme import DEFAULT_ID, DEGRADED_KEY, clear_color_scheme_cache
+from canopy.contracts.health import HealthDTO
+from canopy.core.color_scheme import DEFAULT_ID, clear_color_scheme_cache
 
 SCHEMES = Path(__file__).resolve().parent.parent / "_fixtures" / "schemes"
 BAD_SCHEMES = [SCHEMES / "unparseable.json", SCHEMES / "dangling-alias.json"]
@@ -33,16 +34,20 @@ def _errors(caplog) -> list[logging.LogRecord]:
     return [r for r in caplog.records if r.name == color_scheme.__name__ and r.levelno >= logging.ERROR]
 
 
-def test_healthy_scheme_reports_empty_degraded():
+def test_health_answers_the_liveness_body():
     with TestClient(app) as client:
         r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "healthy", "degraded": []}
+    assert r.json() == {"status": "healthy"}
+
+
+def test_the_open_body_is_built_by_the_shared_contract():
+    assert HealthDTO.of().model_dump(by_alias=True, mode="json") == {"status": "healthy"}
 
 
 @pytest.mark.parametrize("env", ["CANOPY_CONVERTER__SCHEME_PATH", "CANOPY_THEME_FILE"])
 @pytest.mark.parametrize("path", BAD_SCHEMES, ids=lambda p: p.stem)
-def test_bad_scheme_degrades_health_and_conversions(monkeypatch, caplog, path, env):
+def test_bad_scheme_degrades_conversions_and_leaves_health_alone(monkeypatch, caplog, path, env):
     monkeypatch.setenv(env, str(path))
     caplog.set_level(logging.ERROR, logger=color_scheme.__name__)
     with TestClient(app) as client:
@@ -56,7 +61,7 @@ def test_bad_scheme_degrades_health_and_conversions(monkeypatch, caplog, path, e
         )
         client.get("/health")
     assert health.status_code == 200
-    assert health.json() == {"status": "healthy", "degraded": [DEGRADED_KEY]}
+    assert health.json() == {"status": "healthy"}
     assert conversion.status_code == 200
     body = conversion.json()
     assert body["scheme"]["served"] == DEFAULT_ID
@@ -67,4 +72,4 @@ def test_bad_scheme_degrades_health_and_conversions(monkeypatch, caplog, path, e
 
 def test_health_schema_is_typed():
     schema = app.openapi()["components"]["schemas"]["HealthDTO"]
-    assert set(schema["properties"]) == {"status", "degraded"}
+    assert set(schema["properties"]) == {"status"}

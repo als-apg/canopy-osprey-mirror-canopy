@@ -35,3 +35,17 @@ class HareHealthSummaryDTO(CanopyModel):
     label: str | None = None
     notice: str | None = None
     binding: str | None = None
+
+
+class HealthDTO(CanopyModel):
+    """``GET /health`` on canopy and canopy_mcp: the process answers.
+
+    The body is the same constant on both servers; nothing in it is read from
+    a file or from another process.
+    """
+
+    status: str
+
+    @classmethod
+    def of(cls) -> "HealthDTO":
+        return cls(status="healthy")
