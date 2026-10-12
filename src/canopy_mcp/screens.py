@@ -41,7 +41,8 @@ not a JSON document or declares an unsupported ``schemaVersion`` is skipped and
 keeps its index, as the renderer shows an error box there.
 
 Not an MCP tool: the tool count is unchanged. Stdlib only, besides
-``canopy_mcp.store`` and ``canopy_mcp.check``.
+``canopy_mcp.store``, ``canopy_mcp.check`` and ``canopy_mcp.channels`` (the
+node set and the channel-key rule).
 """
 
 from __future__ import annotations
@@ -53,6 +54,9 @@ from dataclasses import dataclass
 from collections.abc import Collection
 
 from canopy_mcp.store import ID_PATTERN, DraftStore
+from canopy_mcp.channels import EMBED_TYPE, CHANNEL_KEY, MAPPED_TYPES
+from canopy_mcp.channels import UNKNOWN_TYPE as UNKNOWN_TYPE
+from canopy_mcp.channels import iter_channels, mounts_children
 from canopy_mcp.check.refs import (
     IMAGE_PROPS,
     Tree,
@@ -87,52 +91,6 @@ __all__ = [
     "push_closure",
 ]
 
-#: The IR types the renderer maps onto a widget (its ``TYPE_MAP``), sorted;
-#: ``absolute-canvas`` and ``embedded-display`` are drawn by the renderer itself
-#: and not listed. A test asserts this equals the vectors' ``mappedTypes``.
-MAPPED_TYPES: tuple[str, ...] = (
-    "arc",
-    "ellipse",
-    "frame",
-    "group",
-    "group-box",
-    "image-view",
-    "line",
-    "polygon",
-    "pv-array-plot",
-    "pv-button",
-    "pv-byte-led",
-    "pv-checkbox",
-    "pv-enum-combobox",
-    "pv-gauge",
-    "pv-label",
-    "pv-led",
-    "pv-meter",
-    "pv-progress-bar",
-    "pv-radio-group",
-    "pv-slider",
-    "pv-spinbox",
-    "pv-tabs",
-    "pv-tank",
-    "pv-text-input",
-    "pv-thermometer",
-    "pv-toggle",
-    "qwidget-container",
-    "rectangle",
-    "regular-button",
-    "related-display-button",
-    "scroll-area",
-    "shell-command-button",
-    "tabs",
-    "text-label",
-    "waveform-plot",
-    "xy-plot",
-)
-_MAPPED = frozenset(MAPPED_TYPES)
-
-EMBED_TYPE = "embedded-display"
-UNKNOWN_TYPE = "unknown-widget"
-_RENDERER_NATIVE_TYPES = frozenset({"absolute-canvas", EMBED_TYPE})
 MAX_DEPTH = 8
 LOC_PREFIX = "loc://"
 FOX_PREFIX = "fox://"
@@ -140,10 +98,6 @@ WRITE_PV_ACTION = "write_pv"
 
 # `${NAME}` or `$(NAME)`; ASCII word characters, as JavaScript's `\w`.
 _MACRO_RE = re.compile(r"\$\{([A-Za-z0-9_]+)\}|\$\(([A-Za-z0-9_]+)\)")
-# Prop keys that name a PV channel, at any depth (JS `^(...)$`, so fullmatch).
-_CHANNEL_KEY = re.compile(r"pv|pvName|channel|[A-Za-z0-9]+_channels?|[a-z][A-Za-z0-9]*(?:Channel|PV)")
-# Props never read for channels.
-_SKIPPED_PROPS = frozenset({"actions", "macros", "rules"})
 # Upper bound on default-substitution passes, as the runtime's resolveScreenMacros.
 _MAX_DEFAULT_PASSES = 5
 
@@ -274,38 +228,9 @@ def _is_unresolved(written: str, resolved: str, empty_defaults: set[str]) -> boo
 # --- node set and channels ----------------------------------------------------------
 
 
-def _is_unmapped(ntype: Any) -> bool:
-    if not isinstance(ntype, str):
-        return True
-    return ntype == UNKNOWN_TYPE or (ntype not in _MAPPED and ntype not in _RENDERER_NATIVE_TYPES)
-
-
-def _mounts_children(ntype: Any) -> bool:
-    return ntype != EMBED_TYPE and not _is_unmapped(ntype)
-
-
-def _channels_of(value: Any, key: str | None, out: list[str]) -> None:
-    if isinstance(value, str):
-        if key is not None and _CHANNEL_KEY.fullmatch(key):
-            out.append(value)
-    elif isinstance(value, list):
-        for item in value:
-            _channels_of(item, key, out)
-    elif isinstance(value, dict):
-        for k, v in value.items():
-            if k not in _SKIPPED_PROPS:
-                _channels_of(v, k, out)
-
-
 def _raw_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
     """The PV channel strings a node's props name, as they stand (none for an embed or unmapped type)."""
-    if ntype == EMBED_TYPE or _is_unmapped(ntype):
-        return []
-    names: list[str] = []
-    for key, value in props.items():
-        if key not in _SKIPPED_PROPS:
-            _channels_of(value, key, names)
-    return names
+    return [name for _, name in iter_channels(ntype, props)]
 
 
 def _node_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
@@ -449,7 +374,7 @@ def _walk_mounted(root: Any, macros: Macros):
         elif props.get("visible") is False:
             state = _HIDDEN
         yield node, props, state
-        if not _mounts_children(node.get("type")):
+        if not mounts_children(node.get("type")):
             return
         children = node.get("children")
         for child in children if isinstance(children, list) else []:
@@ -764,7 +689,7 @@ def _rule_retargets(target: str) -> str | None:
     names = [name.strip() for name in _TARGET_SEPARATORS.split(target)]
     if any(name in RULE_REF_PROPS for name in names):
         return "rule_retargets_ref"
-    if any(_CHANNEL_KEY.fullmatch(name) for name in names):
+    if any(CHANNEL_KEY.fullmatch(name) for name in names):
         return "rule_retargets_channel"
     return None
 
