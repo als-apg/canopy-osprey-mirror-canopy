@@ -8,6 +8,7 @@ from canopy.main import app
 from tests.conftest import READ_HEADERS
 from canopy.hare.api.v1 import health as health_module
 from canopy.core.security import require_read_access
+from canopy.contracts.health import HareHealthSummaryDTO
 from canopy.hare.dependencies import get_pv_broker
 
 
@@ -36,6 +37,14 @@ def test_summary_reports_backend():
     assert body["label"] is None
     assert body["notice"] is None
     assert body["binding"] is None
+
+
+def test_the_summary_body_is_the_shared_contract():
+    with TestClient(app) as client:
+        resp = client.get("/hare/v1/health/summary", headers=READ_HEADERS)
+    assert resp.status_code == 200
+    parsed = HareHealthSummaryDTO.model_validate_json(resp.content, strict=True)
+    assert parsed.model_dump(by_alias=True, mode="json") == resp.json()
 
 
 def test_summary_requires_a_key():
