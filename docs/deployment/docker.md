@@ -16,6 +16,15 @@ cp ../.env.example .env     # optional — sensible defaults are baked in
 docker compose up -d
 ```
 
+The `api` and `worker` images install the screen converter from a private git
+source, so their build needs a read token for it: export it as
+`CONVERTER_MIRROR_TOKEN` before the first `docker compose up` (or any
+`docker compose build`). A GitHub token with read access to the converter
+repository is one — `export CONVERTER_MIRROR_TOKEN=$(gh auth token)` on a
+machine where `gh` is signed in. Without it the build fails at the converter
+fetch with an authentication error. The token is read from the environment at
+build time and is in no image layer and no file.
+
 This brings up four services:
 
 | Service | Image | Notes |
