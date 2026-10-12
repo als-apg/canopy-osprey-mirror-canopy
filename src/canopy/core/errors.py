@@ -203,11 +203,12 @@ class KeyStoreUnavailable(CanopyError):
 # --- PV write outcomes (CONTRACTS WC6) --------------------------------------- #
 #
 # One class per write code. The envelope ``detail`` is the toast text the viewer
-# shows, so every class carries a non-empty default and every raiser passes its
-# row's text (canopy/contracts/wc6_vectors.json holds the table).
+# shows, so every class carries a non-empty default. The base class trims the
+# detail and cuts it to `WRITE_DETAIL_MAX_CHARS`, so a raiser passes its text as
+# it has it (canopy/contracts/wc6_vectors.json holds the table).
 
-#: Longest envelope detail a dynamic row (OSPREY's message, the observed value)
-#: may carry, the ellipsis included. `cut_write_detail` enforces it.
+#: Longest envelope detail a write outcome carries, the ellipsis included; every
+#: write-outcome class enforces it on construction.
 WRITE_DETAIL_MAX_CHARS = 512
 
 #: Appended to a cut detail, one character.
@@ -234,7 +235,14 @@ def cut_write_detail(text: str, limit: int = WRITE_DETAIL_MAX_CHARS) -> str:
     return head.rstrip() + WRITE_DETAIL_ELLIPSIS
 
 
-class PVWriteRefused(CanopyError):
+class _PVWriteOutcome(CanopyError):
+    """Base of the write-outcome classes: the detail is the toast text, trimmed and capped here."""
+
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(cut_write_detail(detail.strip()))
+
+
+class PVWriteRefused(_PVWriteOutcome):
     """The write was refused before anything reached the channel (many WC6 rows)."""
 
     status_code = 403
@@ -242,7 +250,7 @@ class PVWriteRefused(CanopyError):
     default_detail = "the write was refused; nothing written"
 
 
-class PVTargetChanged(CanopyError):
+class PVTargetChanged(_PVWriteOutcome):
     """The PUT's binding is not this process's control target (WC6 rows 2, 3)."""
 
     status_code = 409
@@ -250,7 +258,7 @@ class PVTargetChanged(CanopyError):
     default_detail = "the control target changed; nothing written"
 
 
-class PVSwitchInProgress(CanopyError):
+class PVSwitchInProgress(_PVWriteOutcome):
     """A control-target switch is under way (WC6 row 5)."""
 
     status_code = 409
@@ -258,7 +266,7 @@ class PVSwitchInProgress(CanopyError):
     default_detail = "a target switch is in progress; nothing written"
 
 
-class PVWriteMismatch(CanopyError):
+class PVWriteMismatch(_PVWriteOutcome):
     """Written, but the confirming read saw another value (WC6 row 11)."""
 
     status_code = 409
@@ -267,11 +275,11 @@ class PVWriteMismatch(CanopyError):
 
     @classmethod
     def observed(cls, value: object) -> "PVWriteMismatch":
-        """The row-11 detail naming ``value``, cut by `cut_write_detail`."""
-        return cls(cut_write_detail(f"written; the channel holds {value}"))
+        """The row-11 detail naming ``value``."""
+        return cls(f"written; the channel holds {value}")
 
 
-class PVWriteUnconfirmed(CanopyError):
+class PVWriteUnconfirmed(_PVWriteOutcome):
     """Sent, but the put was not acknowledged or the confirming read failed (WC6 row 12)."""
 
     status_code = 502
@@ -279,7 +287,7 @@ class PVWriteUnconfirmed(CanopyError):
     default_detail = "sent, not verified"
 
 
-class PVWriteUnknown(CanopyError):
+class PVWriteUnknown(_PVWriteOutcome):
     """The write's outcome is unknown (WC6 rows 13, 14)."""
 
     status_code = 502
