@@ -15,9 +15,9 @@ from canopy.core.decimation import uniform_time_decimate
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint
 from canopy.mole.adapters.base import (
+    SEED_SAMPLE_BUDGET,
     LAST_BEFORE_CONCURRENCY,
     LAST_BEFORE_MAX_TIMESTAMPS,
-    SEED_SAMPLE_BUDGET,
     ArchiveBlock,
     ArchiverAdapter,
     LastBeforeNotSupported,

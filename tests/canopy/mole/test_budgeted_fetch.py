@@ -28,24 +28,24 @@ from pytest_httpx import HTTPXMock
 from canopy.mole import gateway
 from canopy.core.errors import BadRequest
 from canopy.mole.config import MoleConfig
-from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.mole.adapters import appliance as appliance_module
 from canopy.mole.adapters import osprey_mongodb as osprey_module
+from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.mole.adapters.base import (
+    WINDOW_GROWTH_MAX,
+    SEED_SAMPLE_BUDGET,
     LAST_BEFORE_CONCURRENCY,
     LAST_BEFORE_MAX_TIMESTAMPS,
-    SEED_SAMPLE_BUDGET,
-    WINDOW_GROWTH_MAX,
     ArchiveBlock,
-    ArchiverNotConfigured,
     PVNotFoundInArchiver,
+    ArchiverNotConfigured,
     fetch_window_budgeted_via,
 )
 from canopy.mole.adapters.registry import AdapterRegistry
 from canopy.mole.adapters.appliance import EpicsArchiverApplianceAdapter
+from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
 from canopy.mole.adapters.osprey_mongodb import DATE_FIELD, OspreyMongoRecorderAdapter
 from canopy.mole.services.archiver_service import ArchiverService
-from tests.canopy.mole.adapters._fakes import FakeArchiverAdapter
 
 S = 1_000_000_000
 T1 = 1_790_769_600 * S  # 2026-09-30T12:00:00Z

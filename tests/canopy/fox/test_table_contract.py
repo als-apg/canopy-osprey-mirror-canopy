@@ -19,7 +19,6 @@ from canopy.fox import gateway
 from canopy.main import app as parent_app
 from canopy.fox.app import app as fox_app
 from canopy.fox.config import FoxConfig
-from canopy.core.errors import ErrorCode
 from canopy.fox.errors import (
     TableLimit,
     TableLiveOnly,
@@ -30,20 +29,21 @@ from canopy.fox.errors import (
     FormulaCircularReference,
     is_retryable,
 )
+from canopy.core.errors import ErrorCode
 from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.fox.dependencies import get_formula_service, get_subscription_manager
-from canopy.contracts.formula import (
-    TABLE_MAX_LOOKBACK_NS,
-    FormulaSpec,
-    FormulaResult,
-)
+from canopy.contracts.formula import TABLE_MAX_LOOKBACK_NS, FormulaSpec, FormulaResult
 from tests.canopy.fox.conftest import FakeDataSource
 from canopy.fox.schemas.formula import FormulaResultDTO
 from canopy.fox.services.parser import Parser
-from canopy.vole.services.notifier import ChangeNotifier
 from canopy.fox.services.evaluator import bare_binding
+from canopy.vole.services.notifier import ChangeNotifier
 from canopy.fox.services.formula_service import FormulaService
-from canopy.fox.services.subscription_manager import _Listener, _SharedEval, SubscriptionManager
+from canopy.fox.services.subscription_manager import (
+    SubscriptionManager,
+    _Listener,
+    _SharedEval,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "table"
 

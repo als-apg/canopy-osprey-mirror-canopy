@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from canopy.contracts.formula import FormulaSpec
 from canopy.fox.gateway import make_offline_validator
+from canopy.contracts.formula import FormulaSpec
 
 FORMULA_KINDS = ("scalar", "timeseries", "waveform")
 DEFAULT_KIND = "scalar"

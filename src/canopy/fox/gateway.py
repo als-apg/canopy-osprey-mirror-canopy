@@ -11,11 +11,11 @@ parse formulas (the canopy_mcp lint pass): it never reads data, so it needs no
 Vole and no app startup.
 """
 
-from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
-from canopy.fox.config import FoxConfig
 from canopy.fox.ports import NullDataSource
-from canopy.fox.services.formula_service import FormulaService
+from canopy.fox.config import FoxConfig
+from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
 from canopy.fox.services.parser import Parser
+from canopy.fox.services.formula_service import FormulaService
 from canopy.fox.services.subscription_manager import SubscriptionManager
 
 _service: FormulaService | None = None

@@ -39,16 +39,16 @@ import orjson
 
 from canopy.fox.ports import RingSlice, SampleRecord
 from canopy.contracts.sample import AlarmSeverity
+from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.mole.adapters.base import (
     SEVERITY_ORDINAL,
     SEED_SAMPLE_BUDGET,
     FIRST_SEED_WINDOW_NS,
     LAST_BEFORE_MAX_TIMESTAMPS,
     ArchiveBlock,
-    ArchiverNotConfigured,
     PVNotFoundInArchiver,
+    ArchiverNotConfigured,
 )
-from canopy.epics.pv_protocol import strip_protocol_prefix
 from canopy.fox.services.parser import ParsedFormula
 from canopy.fox.services.evaluator import (
     bare_binding,
@@ -694,9 +694,7 @@ class TableStore:
 
     # --- trigger index seed --------------------------------------------------- #
 
-    async def _trigger_rows(
-        self, pv: str, lo: int, hi: int, need: int
-    ) -> tuple[np.ndarray, np.ndarray, History, bool]:
+    async def _trigger_rows(self, pv: str, lo: int, hi: int, need: int) -> tuple[np.ndarray, np.ndarray, History, bool]:
         """Newest ``need`` trigger samples in ``[lo, hi]``: the ring first, then the archive, newest-first.
 
         Returns the row times, their arrivals, the trigger's history and whether

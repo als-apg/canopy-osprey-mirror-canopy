@@ -12,13 +12,13 @@ roots from ``CANOPY_SCHEMA_SIBLINGS`` (an ``os.pathsep``-separated list) and is
 skipped when the variable is unset.
 """
 
-import json
 import os
 import re
+import json
 from pathlib import Path
 
-import jsonschema
 import pytest
+import jsonschema
 
 import canopy.converter
 

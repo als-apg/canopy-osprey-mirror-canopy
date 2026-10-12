@@ -14,14 +14,14 @@ import statistics
 
 import pytest
 
-from canopy.contracts.sample import AlarmSeverity
 from canopy.core.errors import BadRequest
-from canopy.mole.adapters.base import BinningNotSupported, PVNotFoundInArchiver
-from canopy.mole.adapters.osprey_mongodb import OspreyMongoRecorderAdapter
 from canopy.mole.config import ArchiverInstanceConfig
+from canopy.contracts.sample import AlarmSeverity
+from canopy.mole.adapters.base import BinningNotSupported, PVNotFoundInArchiver
 from tests.canopy.mole.adapters import _mongo_seed as seed
-from tests.canopy.mole.adapters.contract import assert_fetch_binned_auto
+from canopy.mole.adapters.osprey_mongodb import OspreyMongoRecorderAdapter
 from tests.canopy.mole.adapters.conftest import PASSWORD_ENV
+from tests.canopy.mole.adapters.contract import assert_fetch_binned_auto
 
 pytestmark = pytest.mark.mongo
 

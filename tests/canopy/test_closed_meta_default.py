@@ -5,13 +5,13 @@ The cases that hold on an install without the ``data`` extra live in
 """
 
 import pytest
-from starlette.testclient import WebSocketDenialResponse
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketDenialResponse
 
 from canopy.main import app, build_app
 from tests.conftest import READ_HEADERS
-from tests.canopy.test_closed_meta import _walk
 from canopy.core.config import ALL_MODULES
+from tests.canopy.test_closed_meta import _walk
 
 OPEN = ("GET", "/health")
 

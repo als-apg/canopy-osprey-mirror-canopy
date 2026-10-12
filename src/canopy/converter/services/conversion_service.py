@@ -20,8 +20,8 @@ from pydmconverter.ir.model import ScreenIR, WidgetNode
 from pydmconverter.ir.schema import validate_screen_json
 from pydmconverter.ir.registry import VendoredRegistry
 
-from canopy.core.color_scheme import ColorScheme
 from canopy.converter.errors import ConversionFailed, UnsupportedInput
+from canopy.core.color_scheme import ColorScheme
 
 logger = logging.getLogger(__name__)
 

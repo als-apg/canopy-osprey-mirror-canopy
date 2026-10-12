@@ -24,9 +24,9 @@ from collections.abc import Iterator
 
 import anyio
 
-from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.config import ConverterConfig, get_converter_config
 from canopy.converter.errors import ConverterError
+from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.adapters.edm_env import apply_edm_colors
 from canopy.converter.services.conversion_service import SUFFIX_KIND, ConversionService
 

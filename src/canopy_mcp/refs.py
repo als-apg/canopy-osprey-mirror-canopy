@@ -22,8 +22,8 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from canopy_mcp.check.refs import is_absolute, normalize
 from canopy_mcp.store import SCREEN_SUFFIX
+from canopy_mcp.check.refs import normalize, is_absolute
 
 # Legacy source suffix -> converter kind (``.opi`` goes through the .bob front-end).
 SOURCE_KINDS: dict[str, str] = {".bob": "bob", ".opi": "bob", ".edl": "edl", ".ui": "ui"}

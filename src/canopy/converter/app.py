@@ -5,9 +5,9 @@ from fastapi import FastAPI
 
 from canopy.converter import gateway
 from canopy.core.errors import register_canopy_error_handler
-from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.config import get_converter_config
 from canopy.converter.runtime import mark_started
+from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.api.v1.router import router as v1_router
 from canopy.converter.adapters.edm_env import apply_edm_colors
 from canopy.converter.services.conversion_service import ConversionService

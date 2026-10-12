@@ -12,20 +12,20 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from canopy.core.errors import BadRequest
 from canopy.main import app as parent_app
-from canopy.mole.adapters.base import PVNotFoundInArchiver
-from canopy.mole.adapters.osprey_mongodb import OspreyMongoRecorderAdapter
-from canopy.mole.adapters.registry import AdapterRegistry
-from canopy.mole.app import app as mole_app
-from canopy.mole.config import ArchiverInstanceConfig, MoleConfig
-from canopy.mole.dependencies import get_archiver_service
-from canopy.mole.schemas.pv import PVMetadata
-from canopy.mole.services.archiver_service import ArchiverService
-from tests.canopy.mole.adapters import _mongo_seed as seed
-from tests.canopy.mole.adapters import contract
-from tests.canopy.mole.adapters.conftest import PASSWORD_ENV
 from tests.conftest import READ_HEADERS
+from canopy.mole.app import app as mole_app
+from canopy.core.errors import BadRequest
+from canopy.mole.config import MoleConfig, ArchiverInstanceConfig
+from canopy.mole.schemas.pv import PVMetadata
+from canopy.mole.dependencies import get_archiver_service
+from canopy.mole.adapters.base import PVNotFoundInArchiver
+from tests.canopy.mole.adapters import contract
+from tests.canopy.mole.adapters import _mongo_seed as seed
+from canopy.mole.adapters.registry import AdapterRegistry
+from canopy.mole.adapters.osprey_mongodb import OspreyMongoRecorderAdapter
+from tests.canopy.mole.adapters.conftest import PASSWORD_ENV
+from canopy.mole.services.archiver_service import ArchiverService
 
 pytestmark = pytest.mark.mongo
 

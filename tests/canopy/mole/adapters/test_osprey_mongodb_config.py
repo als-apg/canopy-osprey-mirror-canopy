@@ -14,22 +14,22 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pymongo import errors as mongo_errors
 
+from canopy.mole.config import MoleConfig, ArchiverInstanceConfig, get_mole_config
 from canopy.mole.adapters import osprey_mongodb
 from canopy.mole.adapters.base import (
     AdapterHealth,
-    ArchiverBadResponse,
     ArchiverTimeout,
+    ArchiverBadResponse,
     ArchiverUnavailable,
     PVNotFoundInArchiver,
     get_registered_type,
 )
+from tests.canopy.mole.adapters import _mongo_seed as seed
+from canopy.mole.adapters.registry import build_registry
 from canopy.mole.adapters.osprey_mongodb import (
     OspreyMongoRecorderAdapter,
     map_mongo_error,
 )
-from canopy.mole.adapters.registry import build_registry
-from canopy.mole.config import ArchiverInstanceConfig, MoleConfig, get_mole_config
-from tests.canopy.mole.adapters import _mongo_seed as seed
 from tests.canopy.mole.adapters.conftest import PASSWORD_ENV
 
 COLLECTION = "pv_history"
@@ -245,7 +245,7 @@ FR9_TABLE = [
     # (2) timeouts -> 504
     pytest.param(mongo_errors.NetworkTimeout("socket timed out"), ArchiverTimeout, 504, id="2-network-timeout"),
     pytest.param(mongo_errors.ExecutionTimeout("maxTimeMS", code=50), ArchiverTimeout, 504, id="2-execution-timeout"),
-    pytest.param(asyncio.TimeoutError(), ArchiverTimeout, 504, id="2-asyncio-timeout"),
+    pytest.param(TimeoutError(), ArchiverTimeout, 504, id="2-asyncio-timeout"),
     pytest.param(_TimeoutFlagged("csot"), ArchiverTimeout, 504, id="2-timeout-flag"),
     # (3) bare AutoReconnect -> 503
     pytest.param(mongo_errors.AutoReconnect("connection reset"), ArchiverUnavailable, 503, id="3-autoreconnect"),

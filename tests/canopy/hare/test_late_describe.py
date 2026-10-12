@@ -15,9 +15,14 @@ from __future__ import annotations
 import time
 import asyncio
 
-from canopy.hare.services.broker import PVBroker
 from tests.canopy.hare.conftest import FakeWebSocket
-from tests.canopy.hare.test_broker_seeding import DEAD_DELAY_S, SlowConnector, _config, _wait_for
+from canopy.hare.services.broker import PVBroker
+from tests.canopy.hare.test_broker_seeding import (
+    DEAD_DELAY_S,
+    SlowConnector,
+    _config,
+    _wait_for,
+)
 
 
 class VoleLikeSocket(FakeWebSocket):
