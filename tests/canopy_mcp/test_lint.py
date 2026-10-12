@@ -26,6 +26,7 @@ from canopy_mcp.check.semantic import INERT_IN_OSPREY_TYPES
 BASE = "http://canopy.test"
 URL = BASE + RACCOON_VALIDATE_PATH
 IR_MAP_FIXTURE = Path(__file__).parent / "fixtures" / "ir-map.json"
+EXPAND_VECTORS = Path(__file__).parent / "fixtures" / "expand-vectors.json"
 
 LABEL_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -189,10 +190,35 @@ def test_collect_pvs_reads_y_channels_item_by_item():
     assert [(r.name, r.node_id, r.path) for r in refs] == [
         ("BPM:1:X", "a", ("root", "children", 0, "props", "curves", 0, "y_channels", 0)),
         ("BPM:2:X", "a", ("root", "children", 0, "props", "curves", 0, "y_channels", 1)),
-        ("SINGLE", "a", ("root", "children", 0, "props", "curves", 1, "y_channel")),
         ("BPM:1:Y", "a", ("root", "children", 0, "props", "curves", 1, "y_channels", 0)),
         ("loc://k", "a", ("root", "children", 0, "props", "curves", 1, "y_channels", 3)),
+        ("SINGLE", "a", ("root", "children", 0, "props", "curves", 1, "y_channel")),
+        ("NOT:A:LIST", "a", ("root", "children", 0, "props", "curves", 2, "y_channels")),
     ]
+
+
+def test_collect_pvs_reads_any_channel_prop():
+    doc = _doc(_node("s", "pv-slider", props={"controlPV": "SR:CTRL", "limits": {"lowChannel": "SR:LO"}}))
+    assert [(r.name, r.node_id, r.path) for r in collect_pvs(doc)] == [
+        ("SR:CTRL", "s", ("root", "children", 0, "props", "controlPV")),
+        ("SR:LO", "s", ("root", "children", 0, "props", "limits", "lowChannel")),
+    ]
+
+
+async def test_any_channel_prop_reaches_raccoon(httpx_mock, client):
+    httpx_mock.add_response(url=URL, method="POST", json={"known": ["SR:LO"], "unknown": ["SR:CTRL"]})
+    doc = _doc(_node("s", "pv-slider", props={"controlPV": "SR:CTRL", "limits": {"lowChannel": "SR:LO"}}))
+    findings, skipped = await pv_findings(collect_pvs(doc), client=client)
+    sent = json.loads(httpx_mock.get_requests()[0].content)
+    assert "SR:CTRL" in sent["pvs"]
+    assert [(f.node_id, f.code, f.path) for f in findings] == [("s", "unknown_pv", "/root/children/0/props/controlPV")]
+    assert skipped == []
+
+
+def test_collect_pvs_asks_what_the_viewer_mounts():
+    vectors = json.loads(EXPAND_VECTORS.read_bytes())["cases"]
+    (case,) = [c for c in vectors if c["name"].startswith("node set = what the renderer mounts")]
+    assert {r.name for r in collect_pvs(case["docs"]["um/top"])} == {"UNDER:GROUP", "UNMAPPED:RULE"}
 
 
 async def test_y_channels_reach_raccoon(httpx_mock, client):

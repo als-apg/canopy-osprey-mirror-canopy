@@ -12,8 +12,13 @@ Four passes, each tolerant of malformed input (the schema pass reports it):
   missing spec once, as ``spec_unavailable``).
 * **formulas** — every ``formulas[]`` entry parsed in-process by Fox
   (:mod:`canopy_mcp.fox`); a parse failure is error ``invalid_formula``.
-* **pvs** — PV names asked of Raccoon (``POST /raccoon/v1/pvs/validate``). Names
-  with macros (``${``) or ``loc://``/``fox://`` are not machine PVs and are
+* **pvs** — PV names asked of Raccoon (``POST /raccoon/v1/pvs/validate``):
+  the formula bindings, and for every node the renderer mounts the channels its
+  props name (:mod:`canopy_mcp.channels`), its rule PVs and its ``write_pv``
+  actions. Nodes under an ``embedded-display``, an ``unknown-widget`` or an
+  unmapped type are not read; such a node's own props name no channel, its rule
+  PVs and ``write_pv`` actions are read. Statically hidden nodes are read.
+  Names with macros (``${``) or ``loc://``/``fox://`` are not machine PVs and are
   dropped; ``ca://``/``pva://`` are stripped; names containing any of
   ``% * ? ( | [`` are warning ``pv_not_checkable`` and never sent (one such name
   makes Raccoon reject the whole batch). A name Raccoon lists in ``unknown`` is
@@ -41,6 +46,7 @@ from canopy_mcp import fox
 from canopy_mcp.client import error_reason, borrowed_client
 from canopy_mcp.config import Settings
 from canopy_mcp.catalog import Catalog
+from canopy_mcp.channels import iter_channels, mounts_children
 from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp.check.findings import Finding, node_id, pointer
 from canopy_mcp.check.semantic import UNKNOWN_WIDGET_TYPE, iter_nodes
@@ -53,13 +59,6 @@ _DROP_CONTAINS = ("${",)
 _DROP_PREFIXES = ("loc://", "fox://")
 _STRIP_PREFIXES = ("ca://", "pva://")
 _NOT_CHECKABLE_CHARS = frozenset("%*?(|[")
-
-#: Props that name a PV directly.
-_PV_PROPS = ("pv", "readbackPV")
-#: Keys inside ``props.curves[]`` items that name a PV.
-_CURVE_PV_KEYS = ("y_channel", "x_channel")
-#: Key inside ``props.curves[]`` items that names a list of PVs (``pv-array-plot``).
-_CURVE_PV_LIST_KEY = "y_channels"
 
 Path = tuple[str | int, ...]
 
@@ -298,23 +297,20 @@ def _iter_pvs(doc: dict[str, Any]) -> Iterator[PvRef]:
             for var, pv in bindings.items():
                 if isinstance(pv, str):
                     yield PvRef(pv, None, ("formulas", i, "bindings", var))
+    # iter_nodes is pre-order: a node under one the renderer does not mount
+    # children of comes after it, and its path starts with that node's path.
+    unmounted: list[Path] = []
     for path, node in iter_nodes(doc):
+        if any(path[: len(top)] == top for top in unmounted):
+            continue
+        ntype = node.get("type")
+        if not mounts_children(ntype):
+            unmounted.append(path)
         nid = node_id(node)
         props = node.get("props")
         if isinstance(props, dict):
-            for key in _PV_PROPS:
-                if isinstance(props.get(key), str):
-                    yield PvRef(props[key], nid, (*path, "props", key))
-            curves = props.get("curves")
-            for c, curve in enumerate(curves if isinstance(curves, list) else []):
-                if isinstance(curve, dict):
-                    for key in _CURVE_PV_KEYS:
-                        if isinstance(curve.get(key), str):
-                            yield PvRef(curve[key], nid, (*path, "props", "curves", c, key))
-                    channels = curve.get(_CURVE_PV_LIST_KEY)
-                    for k, channel in enumerate(channels if isinstance(channels, list) else []):
-                        if isinstance(channel, str):
-                            yield PvRef(channel, nid, (*path, "props", "curves", c, _CURVE_PV_LIST_KEY, k))
+            for sub, name in iter_channels(ntype, props):
+                yield PvRef(name, nid, (*path, "props", *sub))
             actions = props.get("actions")
             for a, action in enumerate(actions if isinstance(actions, list) else []):
                 if (
