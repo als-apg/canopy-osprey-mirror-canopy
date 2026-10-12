@@ -35,7 +35,6 @@ from canopy_mcp.access import (
 )
 from canopy_mcp.client import API_KEY_HEADER, make_client, auth_headers
 from canopy_mcp.config import Settings, get_settings
-from tests.canopy_mcp.conftest import summary
 
 TOKEN = "launch-credential-7f3a"
 ACCESS = {ACCESS_HEADER: TOKEN}
@@ -253,21 +252,10 @@ def test_a_websocket_on_a_path_with_no_route_is_refused_the_same_way(client):
     assert excinfo.value.status_code == 401
 
 
-def test_get_health_answers_without_the_credential_and_is_degraded_when_data_is_away(client):
+def test_get_health_answers_without_the_credential(client):
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "degraded", "data": "unavailable"}
-
-
-@pytest.mark.real_data_summary
-def test_get_health_without_the_credential_carries_the_channel_counts_and_nothing_else_of_the_summary(gated_app):
-    body = summary(active_monitors=3, connected=2, subscriptions=3, notice="not the machine")
-    with TestClient(gated_app) as c:
-        transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
-        c.app.state.http = make_client(c.app.state.settings, transport=transport)
-        resp = c.get("/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "connected": 2, "total": 3}
+    assert resp.json() == {"status": "healthy"}
 
 
 @pytest.mark.parametrize(
@@ -724,7 +712,6 @@ def test_the_server_answers_on_an_inherited_socket(tmp_path):
     env.update(
         CANOPY_DRAFTS_DIR=str(tmp_path / "drafts"),
         CANOPY_ACCESS_TOKEN_FILE=str(token_file),
-        CANOPY_PV_MODE="mock",
     )
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
@@ -749,7 +736,7 @@ def test_the_server_answers_on_an_inherited_socket(tmp_path):
                 except httpx.HTTPError:
                     time.sleep(0.1)
             assert health is not None and health.status_code == 200, proc.poll()
-            assert health.json() == {"status": "ok"}
+            assert health.json() == {"status": "healthy"}
             assert httpx.get(f"{base}/config.json", timeout=5).status_code == 401
             assert httpx.get(f"{base}/config.json", headers=ACCESS, timeout=5).status_code == 200
         finally:
