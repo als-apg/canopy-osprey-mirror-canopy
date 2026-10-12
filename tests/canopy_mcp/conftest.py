@@ -8,8 +8,8 @@ The FastMCP instance is one per process, so an app built with authoring off
 takes the seven authoring tools away from every later test. ``restore_authoring``
 puts them back after each test.
 
-In hare mode ``GET /config.json`` and ``GET /health`` ask DATA for its health
-summary. A test app's shared client points at the default backend URL, where a
+In hare mode ``GET /config.json`` and ``GET /health/summary`` ask DATA for its
+health summary. A test app's shared client points at the default backend URL, where a
 developer's own stack may be listening, so ``no_data_summary`` stubs that fetch
 to "no DATA" for every test. A test marked ``real_data_summary`` keeps the real
 fetch and supplies its own ``app.state.http``; a summary body is built with
@@ -38,7 +38,7 @@ REAL_DATA_SUMMARY = "real_data_summary"
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
-        "markers", f"{REAL_DATA_SUMMARY}: keep the real fetch of DATA's summary (config.json and /health)"
+        "markers", f"{REAL_DATA_SUMMARY}: keep the real fetch of DATA's summary (config.json and /health/summary)"
     )
 
 
@@ -83,7 +83,7 @@ def restore_authoring() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def no_data_summary(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No DATA for ``config.json`` (both identity fields null) and ``/health`` (``data: "unavailable"``) unless the test is marked ``real_data_summary``."""
+    """No DATA for ``config.json`` (both identity fields null) and ``/health/summary`` (``data-unavailable``) unless the test is marked ``real_data_summary``."""
     if request.node.get_closest_marker(REAL_DATA_SUMMARY) is not None:
         return
 

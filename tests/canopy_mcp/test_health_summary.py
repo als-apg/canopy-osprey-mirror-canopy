@@ -10,7 +10,7 @@ from canopy_mcp.app import create_app
 from canopy_mcp.access import ACCESS_HEADER
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings
-from canopy.contracts.health import DATA_DEGRADED, DATA_UNAVAILABLE
+from canopy.contracts.health import DATA_DEGRADED, DATA_UNAVAILABLE, HealthDTO
 from canopy.core.color_scheme import DEGRADED_KEY, clear_color_scheme_cache
 from tests.canopy_mcp.conftest import summary
 
@@ -141,3 +141,33 @@ def test_the_rollup_is_open_where_no_credential_is_configured(tmp_path):
     resp = _get(_settings(tmp_path), Data(summary(connected=2, active_monitors=3)), "/health/summary")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "degraded": [], "channels": {"connected": 2, "total": 3}}
+
+
+@pytest.mark.real_data_summary
+def test_open_health_asks_data_nothing(tmp_path):
+    data = Data(summary(connected=53, active_monitors=53))
+    resp = _get(_settings(tmp_path), data, "/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "healthy"}
+    assert data.requests == []
+
+
+@pytest.mark.real_data_summary
+@pytest.mark.parametrize("gated", [True, False], ids=["gated", "ungated"])
+@pytest.mark.parametrize("mode", ["mock", "hare"])
+@pytest.mark.parametrize("status", [200, 503], ids=["data-up", "data-503"])
+def test_open_health_is_one_body_everywhere(tmp_path, gated, mode, status):
+    data = Data(summary(status="degraded", connected=0, active_monitors=53), status)
+    resp = _get(_settings(tmp_path, mode=mode, gated=gated), data, "/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "healthy"}
+
+
+def test_open_health_is_the_apis_body(tmp_path):
+    resp = _get(_settings(tmp_path), Data(summary()), "/health")
+    assert resp.json() == HealthDTO.of().model_dump(by_alias=True, mode="json")
+
+
+def test_open_health_does_not_report_a_bad_scheme(tmp_path, monkeypatch):
+    monkeypatch.setenv("CANOPY_THEME_FILE", str(SCHEMES / "unparseable.json"))
+    assert _get(_settings(tmp_path, mode="mock"), Data(summary()), "/health").json() == {"status": "healthy"}

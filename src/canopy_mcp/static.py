@@ -64,23 +64,23 @@ false by default): whether the viewer asks for a confirmation before each
 write.
 
 In hare mode the ``config.json`` route (not :func:`viewer_config`) and
-``/health`` ask DATA for ``GET /hare/v1/health/summary`` through one fetch over
-the shared client (``app.state.http``, which carries the read key) within
-:data:`SUMMARY_TIMEOUT_S`, parsed with the shared contract
+``/health/summary`` ask DATA for ``GET /hare/v1/health/summary`` through one
+fetch over the shared client (``app.state.http``, which carries the read key)
+within :data:`SUMMARY_TIMEOUT_S`, parsed with the shared contract
 :class:`~canopy.contracts.health.HareHealthSummaryDTO`. ``config.json`` adds
 ``backend {name, label, notice}`` and a top-level ``binding`` from it: the
 connector's identity, as in the heartbeat frame. No shared client, a timeout,
 any transport error, a non-200 or a body that is not the summary gives
-``config.json`` both keys null and ``/health`` ``data: "unavailable"``; the
-fields are copied by name, so neither the key nor any other summary field
-reaches the document. Mock mode carries neither key.
+``config.json`` both keys null and ``/health/summary`` the cause
+``data-unavailable``; the fields are copied by name, so neither the key nor any
+other summary field reaches either document. Mock mode carries neither key.
 
-``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
-only when that scheme had load errors (it is then served as ``canopy-default``).
-In hare mode it also carries DATA's ``connected`` and ``total`` channel counts
-and is ``degraded`` when monitors exist and none is connected, or when DATA's
-summary cannot be fetched or is not the summary (``data: "unavailable"``). The status code is 200 on
-every branch.
+``/health`` answers :class:`canopy.contracts.health.HealthDTO`, the body
+canopy's own ``/health`` answers, and reads nothing from DATA or from the scheme,
+so it is the same in hare and mock mode and with or without the access gate.
+``/health/summary`` is the rollup
+(:class:`canopy.contracts.health.FrontHealthSummaryDTO`): the scheme fallback,
+DATA's verdict and its channel counts; status 200 on every branch.
 """
 
 import re
@@ -108,6 +108,7 @@ from canopy_mcp.config import Settings
 from canopy.contracts.health import (
     DATA_DEGRADED,
     DATA_UNAVAILABLE,
+    HealthDTO,
     ChannelCountsDTO,
     HareHealthSummaryDTO,
     FrontHealthSummaryDTO,
@@ -132,7 +133,7 @@ TRACE_CSP = (
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
 
-# DATA's summary, read by config.json, /health and /health/summary in hare mode, and the bound on that ask.
+# DATA's summary, read by config.json and /health/summary in hare mode, and the bound on that ask.
 SUMMARY_PATH = "/hare/v1/health/summary"
 SUMMARY_TIMEOUT_S = 1.0
 
@@ -214,23 +215,6 @@ def backend_identity(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
         "backend": {"name": summary.backend, "label": summary.label, "notice": summary.notice},
         "binding": summary.binding,
     }
-
-
-def channel_health(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
-    """``/health``'s channel keys for ``summary``: ``connected`` and ``total``, and the status they imply.
-
-    ``total`` is the summary's ``active_monitors``. With monitors and none of them connected the panel
-    is serving a machine that is not there, and ``status`` is ``degraded``; with no summary at all
-    FRONT can serve no channel and is ``degraded`` with ``data: "unavailable"``. The status code is
-    the caller's and stays 200 on every branch: the panel is answering, whatever the machine does.
-    """
-    if summary is None:
-        return {"status": "degraded", "data": "unavailable"}
-    connected, total = summary.connected, summary.active_monitors
-    keys: dict[str, Any] = {"connected": connected, "total": total}
-    if total > 0 and connected == 0:
-        keys["status"] = "degraded"
-    return keys
 
 
 def health_summary_body(settings: Settings, summary: HareHealthSummaryDTO | None) -> FrontHealthSummaryDTO:
@@ -404,13 +388,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         return _missing()
 
     async def health(request: Request) -> Response:
-        body: dict[str, Any] = {"status": "ok"}
-        degraded = get_color_scheme().degraded
-        if degraded:
-            body["degraded"] = list(degraded)
-        if settings.pv_mode == "hare":
-            body.update(channel_health(await fetch_data_summary(request)))
-        return JSONResponse(body)
+        return JSONResponse(HealthDTO.of().model_dump(by_alias=True, mode="json"))
 
     async def health_summary(request: Request) -> Response:
         summary = await fetch_data_summary(request) if settings.pv_mode == "hare" else None
