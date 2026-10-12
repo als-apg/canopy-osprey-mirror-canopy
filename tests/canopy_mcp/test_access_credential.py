@@ -35,6 +35,7 @@ from canopy_mcp.access import (
 )
 from canopy_mcp.client import API_KEY_HEADER, make_client, auth_headers
 from canopy_mcp.config import Settings, get_settings
+from tests.canopy_mcp.conftest import summary
 
 TOKEN = "launch-credential-7f3a"
 ACCESS = {ACCESS_HEADER: TOKEN}
@@ -252,7 +253,7 @@ def test_a_websocket_on_a_path_with_no_route_is_refused_the_same_way(client):
     assert excinfo.value.status_code == 401
 
 
-def test_get_health_answers_without_the_credential_and_says_only_status_when_data_is_away(client):
+def test_get_health_answers_without_the_credential_and_is_degraded_when_data_is_away(client):
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "degraded", "data": "unavailable"}
@@ -260,21 +261,9 @@ def test_get_health_answers_without_the_credential_and_says_only_status_when_dat
 
 @pytest.mark.real_data_summary
 def test_get_health_without_the_credential_carries_the_channel_counts_and_nothing_else_of_the_summary(gated_app):
-    summary = {
-        "status": "ok",
-        "backend": "osprey",
-        "connectorOk": True,
-        "clients": 1,
-        "activeMonitors": 3,
-        "connected": 2,
-        "warmMonitors": 0,
-        "subscriptions": 3,
-        "label": "Simulator",
-        "notice": "not the machine",
-        "binding": "va@3",
-    }
+    body = summary(active_monitors=3, connected=2, subscriptions=3, notice="not the machine")
     with TestClient(gated_app) as c:
-        transport = httpx.MockTransport(lambda request: httpx.Response(200, json=summary))
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
         c.app.state.http = make_client(c.app.state.settings, transport=transport)
         resp = c.get("/health")
     assert resp.status_code == 200

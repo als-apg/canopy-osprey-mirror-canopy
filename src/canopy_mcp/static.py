@@ -63,21 +63,23 @@ scheme. The document holds no secret, so it is served with
 false by default): whether the viewer asks for a confirmation before each
 write.
 
-In hare mode the ``config.json`` route (not :func:`viewer_config`) also asks
-DATA for ``GET /hare/v1/health/summary`` over the shared client
-(``app.state.http``, which carries the read key) within
-:data:`SUMMARY_TIMEOUT_S`, and adds ``backend {name, label, notice}`` and a
-top-level ``binding`` from it: the connector's identity, as in the heartbeat
-frame. No shared client, a timeout, any transport error, a non-200 or a body
-that is not the summary gives both as null; the fields are copied by name, so
-neither the key nor any other summary field reaches the document. Mock mode
-carries neither key.
+In hare mode the ``config.json`` route (not :func:`viewer_config`) and
+``/health`` ask DATA for ``GET /hare/v1/health/summary`` through one fetch over
+the shared client (``app.state.http``, which carries the read key) within
+:data:`SUMMARY_TIMEOUT_S`, parsed with the shared contract
+:class:`~canopy.contracts.health.HareHealthSummaryDTO`. ``config.json`` adds
+``backend {name, label, notice}`` and a top-level ``binding`` from it: the
+connector's identity, as in the heartbeat frame. No shared client, a timeout,
+any transport error, a non-200 or a body that is not the summary gives
+``config.json`` both keys null and ``/health`` ``data: "unavailable"``; the
+fields are copied by name, so neither the key nor any other summary field
+reaches the document. Mock mode carries neither key.
 
 ``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
 only when that scheme had load errors (it is then served as ``canopy-default``).
 In hare mode it also carries DATA's ``connected`` and ``total`` channel counts
 and is ``degraded`` when monitors exist and none is connected, or when DATA's
-summary cannot be fetched (``data: "unavailable"``). The status code is 200 on
+summary cannot be fetched or is not the summary (``data: "unavailable"``). The status code is 200 on
 every branch.
 """
 
@@ -90,6 +92,7 @@ import logging
 from typing import Any
 from pathlib import Path
 
+from pydantic import ValidationError
 from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
@@ -102,6 +105,7 @@ from canopy_mcp.store import (
     contained_file,
 )
 from canopy_mcp.config import Settings
+from canopy.contracts.health import HareHealthSummaryDTO
 from canopy.core.color_scheme import get_color_scheme
 
 PREFIX_HEADER = "x-forwarded-prefix"
@@ -122,7 +126,7 @@ TRACE_CSP = (
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
 
-# DATA's summary, asked for by config.json in hare mode, and the bound on that ask.
+# DATA's summary, read by config.json and /health in hare mode, and the bound on that ask.
 SUMMARY_PATH = "/hare/v1/health/summary"
 SUMMARY_TIMEOUT_S = 1.0
 
@@ -171,16 +175,13 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     return config
 
 
-def _optional_str(value: Any) -> bool:
-    return value is None or isinstance(value, str)
-
-
-async def fetch_data_summary(request: Request) -> dict[str, Any] | None:
+async def fetch_data_summary(request: Request) -> HareHealthSummaryDTO | None:
     """DATA's health summary over the shared client, or ``None`` on any failure.
 
-    The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. A body counts
-    only when it is an object whose ``backend`` is a string and whose
-    ``label``, ``notice`` and ``binding`` are strings or absent/null.
+    The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. The body counts
+    only when it validates strictly as :class:`HareHealthSummaryDTO`: a count
+    that is not a JSON integer, a missing field or a wrong type is no summary.
+    Unknown extra fields are ignored.
     """
     client = getattr(request.app.state, "http", None)
     if client is None:
@@ -188,41 +189,38 @@ async def fetch_data_summary(request: Request) -> dict[str, Any] | None:
     try:
         response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
         if response.status_code != 200:
+            logger.debug("DATA summary unavailable: HTTP %d", response.status_code)
             return None
-        body = response.json()
-    except Exception as exc:  # timeout, transport, decode: config.json must still answer
-        logger.debug("DATA summary unavailable for config.json: %r", exc)
+        return HareHealthSummaryDTO.model_validate_json(response.content, strict=True)
+    except ValidationError as exc:
+        logger.debug("DATA summary unavailable: the body is not the summary (%d invalid fields)", exc.error_count())
         return None
-    if not isinstance(body, dict) or not isinstance(body.get("backend"), str):
+    except Exception as exc:  # timeout, transport: every caller must still answer
+        logger.debug("DATA summary unavailable: %r", exc)
         return None
-    if not all(_optional_str(body.get(field)) for field in ("label", "notice", "binding")):
-        return None
-    return body
 
 
-def backend_identity(summary: dict[str, Any] | None) -> dict[str, Any]:
+def backend_identity(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
     """``config.json``'s ``backend`` and ``binding`` keys for ``summary`` (both null without one)."""
     if summary is None:
         return {"backend": None, "binding": None}
     return {
-        "backend": {"name": summary["backend"], "label": summary.get("label"), "notice": summary.get("notice")},
-        "binding": summary.get("binding"),
+        "backend": {"name": summary.backend, "label": summary.label, "notice": summary.notice},
+        "binding": summary.binding,
     }
 
 
-def channel_health(summary: dict[str, Any] | None) -> dict[str, Any]:
+def channel_health(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
     """``/health``'s channel keys for ``summary``: ``connected`` and ``total``, and the status they imply.
 
-    ``total`` is DATA's ``activeMonitors``. With monitors and none of them connected the panel
+    ``total`` is the summary's ``active_monitors``. With monitors and none of them connected the panel
     is serving a machine that is not there, and ``status`` is ``degraded``; with no summary at all
     FRONT can serve no channel and is ``degraded`` with ``data: "unavailable"``. The status code is
     the caller's and stays 200 on every branch: the panel is answering, whatever the machine does.
     """
     if summary is None:
         return {"status": "degraded", "data": "unavailable"}
-    connected, total = summary.get("connected"), summary.get("activeMonitors")
-    if type(connected) is not int or type(total) is not int:
-        return {}
+    connected, total = summary.connected, summary.active_monitors
     keys: dict[str, Any] = {"connected": connected, "total": total}
     if total > 0 and connected == 0:
         keys["status"] = "degraded"
