@@ -194,7 +194,8 @@ class SummaryReader:
 
     Nothing is kept once a reading lands, so every answer is a reading taken
     during the caller's own request. A caller that goes away does not cancel
-    the reading for the others. :meth:`read` never raises.
+    the reading for the others. :meth:`read` never raises. A reading is shared
+    only with callers on the event loop that owns it.
 
     The reader logs the summary's availability once per change: WARNING when it
     becomes unavailable or the reason changes, INFO when it is available again.
@@ -208,7 +209,9 @@ class SummaryReader:
     async def read(self, app: Starlette) -> HareHealthSummaryDTO | None:
         """DATA's health summary over ``app``'s shared client, or ``None`` on any failure."""
         flight = self._flight
-        if flight is None:
+        # A flight is shared only with callers on the loop that owns it: one left pending
+        # on a loop that closed can never land, so it is dropped, not awaited or cancelled.
+        if flight is None or flight.get_loop() is not asyncio.get_running_loop():
             flight = self._flight = asyncio.ensure_future(self._fetch(getattr(app.state, "http", None)))
             # Registered before any waiter, so the slot is clear when they resume.
             flight.add_done_callback(self._landed)
