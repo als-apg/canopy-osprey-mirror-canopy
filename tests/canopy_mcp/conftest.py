@@ -8,12 +8,12 @@ The FastMCP instance is one per process, so an app built with authoring off
 takes the seven authoring tools away from every later test. ``restore_authoring``
 puts them back after each test.
 
-In hare mode ``GET /config.json`` and ``GET /health/summary`` ask DATA for its
-health summary. A test app's shared client points at the default backend URL, where a
-developer's own stack may be listening, so ``no_data_summary`` stubs that fetch
-to "no DATA" for every test. A test marked ``real_data_summary`` keeps the real
-fetch and supplies its own ``app.state.http``; a summary body is built with
-``summary()``.
+In hare mode DATA's summary (read by ``config.json`` and ``/health/summary``)
+comes through ``static.SummaryReader.read``. A test app's shared client points at
+the default backend URL, where a developer's own stack may be listening, so
+``no_data_summary`` stubs ``SummaryReader.read`` to "no DATA" for every test. A
+test marked ``real_data_summary`` keeps the real reader and supplies its own
+``app.state.http``; a summary body is built with ``summary()``.
 
 ``CANOPY_SPEC_DIR`` is removed for every test, so a developer's staged spec
 never decides a result; the spec-present tests stage their own (``synthetic_spec``).
@@ -38,7 +38,8 @@ REAL_DATA_SUMMARY = "real_data_summary"
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
-        "markers", f"{REAL_DATA_SUMMARY}: keep the real fetch of DATA's summary (config.json and /health/summary)"
+        "markers",
+        f"{REAL_DATA_SUMMARY}: keep the real SummaryReader.read for DATA's summary (read by config.json and /health/summary)",
     )
 
 
@@ -83,14 +84,14 @@ def restore_authoring() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def no_data_summary(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No DATA for ``config.json`` (both identity fields null) and ``/health/summary`` (``data-unavailable``) unless the test is marked ``real_data_summary``."""
+    """``SummaryReader.read`` stubbed to no DATA's summary (read by ``config.json`` and ``/health/summary``) unless the test is marked ``real_data_summary``."""
     if request.node.get_closest_marker(REAL_DATA_SUMMARY) is not None:
         return
 
-    async def no_data(request: object) -> None:
+    async def no_data(self: object, app: object) -> None:
         return None
 
-    monkeypatch.setattr(static, "fetch_data_summary", no_data)
+    monkeypatch.setattr(static.SummaryReader, "read", no_data)
 
 
 @pytest.fixture(autouse=True)

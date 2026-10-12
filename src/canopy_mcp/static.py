@@ -65,9 +65,11 @@ write.
 
 In hare mode the ``config.json`` route (not :func:`viewer_config`) and
 ``/health/summary`` ask DATA for ``GET /hare/v1/health/summary`` through one
-fetch over the shared client (``app.state.http``, which carries the read key)
-within :data:`SUMMARY_TIMEOUT_S`, parsed with the shared contract
-:class:`~canopy.contracts.health.HareHealthSummaryDTO`. ``config.json`` adds
+:class:`SummaryReader` per app over the shared client (``app.state.http``, which
+carries the read key) within :data:`SUMMARY_TIMEOUT_S`, parsed with the shared
+contract :class:`~canopy.contracts.health.HareHealthSummaryDTO`. At most one
+request for it is in flight; callers who ask meanwhile share its answer, and
+nothing is reused after it lands. ``config.json`` adds
 ``backend {name, label, notice}`` and a top-level ``binding`` from it: the
 connector's identity, as in the heartbeat frame. No shared client, a timeout,
 any transport error, a non-200 or a body that is not the summary gives
@@ -92,10 +94,12 @@ import logging
 from typing import Any
 from pathlib import Path
 
+import httpx
 from pydantic import ValidationError
 from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
+from starlette.applications import Starlette
 
 from canopy_mcp.store import (
     LIBRARY,
@@ -182,29 +186,52 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     return config
 
 
-async def fetch_data_summary(request: Request) -> HareHealthSummaryDTO | None:
-    """DATA's health summary over the shared client, or ``None`` on any failure.
+class SummaryReader:
+    """DATA's summary for one app: one request in flight, shared by every caller who asks meanwhile.
 
-    The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. The body counts
-    only when it validates strictly as :class:`HareHealthSummaryDTO`: a count
-    that is not a JSON integer, a missing field or a wrong type is no summary.
-    Unknown extra fields are ignored.
+    Nothing is kept once a reading lands, so every answer is a reading taken
+    during the caller's own request. A caller that goes away does not cancel
+    the reading for the others. :meth:`read` never raises.
     """
-    client = getattr(request.app.state, "http", None)
-    if client is None:
-        return None
-    try:
-        response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
-        if response.status_code != 200:
-            logger.debug("DATA summary unavailable: HTTP %d", response.status_code)
+
+    def __init__(self) -> None:
+        self._flight: asyncio.Future[HareHealthSummaryDTO | None] | None = None
+
+    async def read(self, app: Starlette) -> HareHealthSummaryDTO | None:
+        """DATA's health summary over ``app``'s shared client, or ``None`` on any failure."""
+        flight = self._flight
+        if flight is None:
+            flight = self._flight = asyncio.ensure_future(self._fetch(getattr(app.state, "http", None)))
+            # Registered before any waiter, so the slot is clear when they resume.
+            flight.add_done_callback(self._landed)
+        return await asyncio.shield(flight)
+
+    def _landed(self, flight: asyncio.Future) -> None:
+        if self._flight is flight:
+            self._flight = None
+
+    async def _fetch(self, client: httpx.AsyncClient | None) -> HareHealthSummaryDTO | None:
+        """One request for the summary, or ``None`` on any failure.
+
+        The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. The body counts
+        only when it validates strictly as :class:`HareHealthSummaryDTO`: a count
+        that is not a JSON integer, a missing field or a wrong type is no summary.
+        Unknown extra fields are ignored.
+        """
+        if client is None:
             return None
-        return HareHealthSummaryDTO.model_validate_json(response.content, strict=True)
-    except ValidationError as exc:
-        logger.debug("DATA summary unavailable: the body is not the summary (%d invalid fields)", exc.error_count())
-        return None
-    except Exception as exc:  # timeout, transport: every caller must still answer
-        logger.debug("DATA summary unavailable: %r", exc)
-        return None
+        try:
+            response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
+            if response.status_code != 200:
+                logger.debug("DATA summary unavailable: HTTP %d", response.status_code)
+                return None
+            return HareHealthSummaryDTO.model_validate_json(response.content, strict=True)
+        except ValidationError as exc:
+            logger.debug("DATA summary unavailable: the body is not the summary (%d invalid fields)", exc.error_count())
+            return None
+        except Exception as exc:  # timeout, transport: every caller must still answer
+            logger.debug("DATA summary unavailable: %r", exc)
+            return None
 
 
 def backend_identity(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
@@ -294,6 +321,7 @@ def _screen_rev(store: DraftStore, target: Path) -> str | None:
 def build_routes(settings: Settings, store: DraftStore, library: DraftStore | None = None) -> list[Route]:
     """The viewer, config, draft and health routes for ``settings``, ``store`` and the optional ``library``."""
     dist = settings.viewer_dist
+    reader = SummaryReader()
 
     async def index(request: Request) -> Response:
         page = dist / "index.html" if dist else None
@@ -312,7 +340,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
     async def config(request: Request) -> Response:
         body = viewer_config(settings)
         if settings.pv_mode == "hare":
-            body.update(backend_identity(await fetch_data_summary(request)))
+            body.update(backend_identity(await reader.read(request.app)))
         return JSONResponse(
             body,
             headers={"Cache-Control": DRAFT_CACHE_CONTROL, "Access-Control-Allow-Origin": "*"},
@@ -391,7 +419,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         return JSONResponse(HealthDTO.of().model_dump(by_alias=True, mode="json"))
 
     async def health_summary(request: Request) -> Response:
-        summary = await fetch_data_summary(request) if settings.pv_mode == "hare" else None
+        summary = await reader.read(request.app) if settings.pv_mode == "hare" else None
         body = health_summary_body(settings, summary).model_dump(by_alias=True, mode="json")
         return JSONResponse(body, headers={"Cache-Control": DRAFT_CACHE_CONTROL})
 
