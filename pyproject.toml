@@ -97,7 +97,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "UP"]
-ignore = ["E402", "E501"]
+# isinstance takes a tuple of types; the union form is slower and ruff has since removed the rule.
+ignore = ["E402", "E501", "UP038"]
 
 [tool.isort]
 profile = "black"
