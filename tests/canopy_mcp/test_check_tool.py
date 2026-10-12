@@ -150,8 +150,12 @@ async def test_clean_document_has_no_findings(httpx_mock: HTTPXMock, client, sto
     assert result.findings == [] and result.errors == []
 
 
-async def test_a_plot_curve_without_its_channel_key_is_an_error_a_write_refuses_on(client, store):
+async def test_a_plot_curve_without_its_channel_key_is_an_error_a_write_refuses_on(
+    httpx_mock: HTTPXMock, client, store
+):
     """The semantic pass refuses the curve no matter what the staged spec says of props."""
+    # ``channel`` is a key the renderer subscribes to, so the PV pass asks about A:B.
+    httpx_mock.add_response(method="POST", url=RACCOON, json={"known": ["A:B"], "unknown": []})
     catalog = build_catalog(
         {"group": {"consumes": [], "verbatim": False}, "waveform-plot": {"consumes": ["curves"], "verbatim": False}}
     )
