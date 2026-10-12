@@ -82,6 +82,12 @@ null) or `data-degraded` (the backend reports its data plane degraded).
 `channels` counts the channels open panels monitor and is null without live
 channels. The status code is 200 either way.
 
+The cause of `data-unavailable` is in the panel server's log. It writes
+`DATA summary unavailable: <reason>` at WARNING when the backend's summary
+becomes unreadable or the reason changes (DEBUG while the same reason repeats)
+and `DATA summary available` at INFO when it is read again, so each change of
+state is one line.
+
 ## Switches
 
 An empty value counts as unset, so a manifest that renders a variable empty
