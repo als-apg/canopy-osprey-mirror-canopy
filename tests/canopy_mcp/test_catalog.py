@@ -20,7 +20,7 @@ from canopy_mcp.catalog import (
     ensure_catalog,
     load_prop_schemas,
 )
-from tests.canopy_mcp.synthetic_spec import COLOR_DEF, write_spec
+from tests.canopy_mcp.synthetic_spec import COLOR_DEF, PLOT_PROPS, write_spec
 
 FIXTURES = Path(__file__).parent / "fixtures"
 IR_MAP_FIXTURE = FIXTURES / "ir-map.json"
@@ -102,7 +102,7 @@ def test_load_ir_map_rejects_malformed(tmp_path, content):
 def test_prop_schemas_are_read_by_ir_id(tmp_path):
     spec = write_spec(tmp_path / "spec", props={"pv-led": PV_LED_SCHEMA, "arc": {"type": "object"}})
     (spec / "widgets" / "README.md").write_text("not a schema")
-    assert load_prop_schemas(spec) == {"arc": {"type": "object"}, "pv-led": PV_LED_SCHEMA}
+    assert load_prop_schemas(spec) == {**PLOT_PROPS, "arc": {"type": "object"}, "pv-led": PV_LED_SCHEMA}
 
 
 def test_no_spec_means_no_prop_schemas(tmp_path):
