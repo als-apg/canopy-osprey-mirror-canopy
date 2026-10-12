@@ -3,10 +3,14 @@
 Every caller who asks while a request for the summary is in flight gets that
 request's answer; the next caller after it lands sends a new one. The app is
 driven on the test's own event loop so the callers really overlap.
+
+The reader logs the summary's availability once per change: WARNING when it
+becomes unavailable or its reason changes, INFO when it is available again.
 """
 
 import time
 import asyncio
+import logging
 from pathlib import Path
 from collections.abc import Callable, Awaitable
 
@@ -22,6 +26,7 @@ from tests.canopy_mcp.conftest import summary
 pytestmark = pytest.mark.real_data_summary
 
 Respond = Callable[[httpx.Request], Awaitable[httpx.Response]]
+LOGGER = "canopy_mcp.static"
 
 
 @pytest.fixture
@@ -56,6 +61,11 @@ def _held(gate: asyncio.Event, body: dict) -> Respond:
         return httpx.Response(200, json=body)
 
     return respond
+
+
+def _lines(caplog: pytest.LogCaptureFixture, level: int = logging.INFO) -> list[tuple[int, str]]:
+    """The reader's log lines at ``level`` and above, as ``(level, message)``."""
+    return [(r.levelno, r.getMessage()) for r in caplog.records if r.name == LOGGER and r.levelno >= level]
 
 
 def _front(settings: Settings, data: Data) -> httpx.AsyncClient:
@@ -139,3 +149,56 @@ async def test_the_reader_is_per_app(settings: Settings) -> None:
         gate.set()
         answers = await asyncio.gather(*callers)
     assert [r.json()["binding"] for r in answers] == ["va@3", "va@3"]
+
+
+async def test_an_outage_is_logged_once(settings: Settings, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger=LOGGER)
+    data = Data(_json({"detail": "down"}, status=503))
+    down = (logging.WARNING, "DATA summary unavailable: HTTP 503")
+    async with _front(settings, data) as front:
+        for _ in range(3):
+            await front.get("/config.json")
+        assert _lines(caplog) == [down]
+        data.respond = _json(summary())
+        await front.get("/config.json")
+        await front.get("/config.json")
+        assert _lines(caplog) == [down, (logging.INFO, "DATA summary available")]
+        data.respond = _json({"detail": "down"}, status=503)
+        await front.get("/config.json")
+    assert _lines(caplog) == [down, (logging.INFO, "DATA summary available"), down]
+
+
+async def test_a_changed_reason_is_logged(
+    settings: Settings, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def hang(request: httpx.Request) -> httpx.Response:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(static, "SUMMARY_TIMEOUT_S", 0.05)
+    caplog.set_level(logging.DEBUG, logger=LOGGER)
+    data = Data(_json({"detail": "down"}, status=503))
+    async with _front(settings, data) as front:
+        await front.get("/config.json")
+        data.respond = hang
+        await front.get("/config.json")
+    assert _lines(caplog, logging.WARNING) == [
+        (logging.WARNING, "DATA summary unavailable: HTTP 503"),
+        (logging.WARNING, "DATA summary unavailable: TimeoutError()"),
+    ]
+
+
+async def test_a_body_that_is_not_the_summary_is_unavailable_on_both_routes(
+    settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger=LOGGER)
+    data = Data(_json({**summary(), "connected": "0"}))
+    async with _front(settings, data) as front:
+        rollup = await front.get("/health/summary")
+        config = await front.get("/config.json")
+    assert rollup.json() == {"status": "degraded", "degraded": ["data-unavailable"], "channels": None}
+    assert config.json()["backend"] is None
+    assert config.json()["binding"] is None
+    assert _lines(caplog, logging.WARNING) == [
+        (logging.WARNING, "DATA summary unavailable: the body is not the summary (1 invalid fields)")
+    ]

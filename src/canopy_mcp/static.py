@@ -69,7 +69,10 @@ In hare mode the ``config.json`` route (not :func:`viewer_config`) and
 carries the read key) within :data:`SUMMARY_TIMEOUT_S`, parsed with the shared
 contract :class:`~canopy.contracts.health.HareHealthSummaryDTO`. At most one
 request for it is in flight; callers who ask meanwhile share its answer, and
-nothing is reused after it lands. ``config.json`` adds
+nothing is reused after it lands. The reader logs ``DATA summary unavailable:
+<reason>`` at WARNING when the summary becomes unavailable or the reason
+changes (DEBUG while it stays the same) and ``DATA summary available`` at INFO
+when it is read again. ``config.json`` adds
 ``backend {name, label, notice}`` and a top-level ``binding`` from it: the
 connector's identity, as in the heartbeat frame. No shared client, a timeout,
 any transport error, a non-200 or a body that is not the summary gives
@@ -192,10 +195,15 @@ class SummaryReader:
     Nothing is kept once a reading lands, so every answer is a reading taken
     during the caller's own request. A caller that goes away does not cancel
     the reading for the others. :meth:`read` never raises.
+
+    The reader logs the summary's availability once per change: WARNING when it
+    becomes unavailable or the reason changes, INFO when it is available again.
     """
 
     def __init__(self) -> None:
         self._flight: asyncio.Future[HareHealthSummaryDTO | None] | None = None
+        # Why the last reading was unavailable; None while the summary is available.
+        self._reason: str | None = None
 
     async def read(self, app: Starlette) -> HareHealthSummaryDTO | None:
         """DATA's health summary over ``app``'s shared client, or ``None`` on any failure."""
@@ -223,15 +231,22 @@ class SummaryReader:
         try:
             response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
             if response.status_code != 200:
-                logger.debug("DATA summary unavailable: HTTP %d", response.status_code)
-                return None
-            return HareHealthSummaryDTO.model_validate_json(response.content, strict=True)
+                return self._unavailable(f"HTTP {response.status_code}")
+            summary = HareHealthSummaryDTO.model_validate_json(response.content, strict=True)
         except ValidationError as exc:
-            logger.debug("DATA summary unavailable: the body is not the summary (%d invalid fields)", exc.error_count())
-            return None
+            return self._unavailable(f"the body is not the summary ({exc.error_count()} invalid fields)")
         except Exception as exc:  # timeout, transport: every caller must still answer
-            logger.debug("DATA summary unavailable: %r", exc)
-            return None
+            return self._unavailable(repr(exc))
+        if self._reason is not None:
+            logger.info("DATA summary available")
+            self._reason = None
+        return summary
+
+    def _unavailable(self, reason: str) -> None:
+        """Log one unavailable reading: WARNING when ``reason`` is new, DEBUG while it repeats."""
+        level = logging.DEBUG if reason == self._reason else logging.WARNING
+        logger.log(level, "DATA summary unavailable: %s", reason)
+        self._reason = reason
 
 
 def backend_identity(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
