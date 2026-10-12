@@ -41,6 +41,17 @@ jobs:
       with:
         python-version: "3.12"
 
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
     - name: Install dependencies
       run: uv sync --group dev --all-extras
 
@@ -73,6 +84,17 @@ jobs:
       uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       with:
         python-version: "3.12"
+
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
 
     - name: Test under the OSPREY pins
       run: >-
@@ -108,6 +130,17 @@ jobs:
       uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       with:
         python-version: ${{ matrix.python-version }}
+
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
 
     - name: Install dependencies
       run: uv sync --group dev --all-extras
