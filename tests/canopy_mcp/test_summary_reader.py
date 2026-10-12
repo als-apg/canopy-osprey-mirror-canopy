@@ -202,3 +202,37 @@ async def test_a_body_that_is_not_the_summary_is_unavailable_on_both_routes(
     assert _lines(caplog, logging.WARNING) == [
         (logging.WARNING, "DATA summary unavailable: the body is not the summary (1 invalid fields)")
     ]
+
+
+def test_a_reading_left_on_a_closed_loop_is_not_shared(settings: Settings) -> None:
+    """A host that drives the app with a new loop per request asks DATA again instead of waiting on the old loop."""
+    reader = static.SummaryReader()
+    app = create_app(settings, startup_hooks=[])
+
+    async def hang(request: httpx.Request) -> httpx.Response:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    hanging = Data(hang)
+    app.state.http = make_client(settings, transport=httpx.MockTransport(hanging))
+    first = asyncio.new_event_loop()
+    try:
+        waiter = first.create_task(reader.read(app))
+        first.run_until_complete(asyncio.sleep(0.05))
+        waiter.cancel()
+        first.run_until_complete(asyncio.gather(waiter, return_exceptions=True))
+    finally:
+        # Closed with the reading still pending: nothing on this loop runs again.
+        first.close()
+    assert len(hanging.requests) == 1
+
+    answering = Data(_json(summary(binding="va@3")))
+    app.state.http = make_client(settings, transport=httpx.MockTransport(answering))
+    second = asyncio.new_event_loop()
+    try:
+        result = second.run_until_complete(asyncio.wait_for(reader.read(app), 2.0))
+    finally:
+        second.close()
+    assert result is not None
+    assert result.binding == "va@3"
+    assert len(answering.requests) == 1
