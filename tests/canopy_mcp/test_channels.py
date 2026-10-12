@@ -86,3 +86,16 @@ def test_module_imports_no_reader():
     imported = _imported_modules(SRC / "channels.py")
     assert imported, "the module imports at least the standard library"
     assert not [name for name in imported if name.split(".")[0] == "canopy_mcp"]
+
+
+def test_semantic_has_no_function_local_import_of_screens():
+    tree = ast.parse((SRC / "check" / "semantic.py").read_text(encoding="utf-8"))
+    local = [
+        node.module
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef)
+        for node in ast.walk(fn)
+        if isinstance(node, ast.ImportFrom)
+    ]
+    assert local == []
+    assert "canopy_mcp.channels" in _imported_modules(SRC / "check" / "semantic.py")
