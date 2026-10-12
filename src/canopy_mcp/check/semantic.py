@@ -28,6 +28,7 @@ import re
 from typing import Any
 from collections.abc import Iterator
 
+from canopy_mcp.channels import iter_channels
 from canopy_mcp.check.findings import Finding, node_id, pointer
 
 FOX_PREFIX = "fox://"
@@ -215,15 +216,6 @@ def is_machine_channel(name: Any) -> bool:
     return bool(name) and not name.startswith((LOC_PREFIX, FOX_PREFIX))
 
 
-def _control_channels(ntype: Any, props: dict[str, Any]) -> list[str]:
-    # The same channel reading as the write bindings (canopy_mcp.screens), so
-    # the check and the sidecar's write rows agree on what a control writes.
-    # Imported here: canopy_mcp.screens imports this module.
-    from canopy_mcp.screens import _raw_channels
-
-    return _raw_channels(ntype, props)
-
-
 def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> list[Finding]:
     nid = node_id(node)
     ntype = node.get("type")
@@ -231,7 +223,7 @@ def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> li
     out: list[Finding] = []
 
     if ntype in INERT_IN_OSPREY_TYPES:
-        if relay_on and any(is_machine_channel(c) for c in _control_channels(ntype, props)):
+        if relay_on and any(is_machine_channel(c) for _, c in iter_channels(ntype, props)):
             code, message = "writes_to_machine", f"'{ntype}' writes to the machine"
         else:
             code, message = "inert_in_osprey", f"'{ntype}' writes to the machine; it is inert when embedded in OSPREY"
