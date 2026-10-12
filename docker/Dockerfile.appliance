@@ -25,11 +25,11 @@
 # SDK_SHA, PYDM_SHA) are passed the same way and recorded as org.canopy.* labels.
 #
 # Plain pip on python:3.12 (ALS convention). pip ignores canopy's
-# [tool.uv.sources] path link, which is why the PyDMConverter wheel is passed
-# explicitly in the same `pip install` as canopy. The image serves every canopy
-# module, the MCP server and the converter, so it installs all three extras:
-# data (Postgres, Redis job queue), mcp and convert (PyDMConverter, satisfied
-# by that wheel).
+# [tool.uv.sources] git source, so the PyDMConverter wheel built in pydm-build
+# is passed explicitly in the same `pip install` as canopy. The image serves
+# every canopy module, the MCP server and the converter, so it installs all
+# three extras: data (Postgres, Redis job queue), mcp and convert
+# (PyDMConverter, satisfied by that wheel).
 
 # --- pydm-build: wheel of pydm-converter-tool --------------------------------
 FROM python:3.12 AS pydm-build
