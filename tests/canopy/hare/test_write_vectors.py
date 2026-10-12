@@ -439,6 +439,39 @@ def test_envelope_detail_is_the_toast(rows, code):
     assert resp.json() == {"code": code, "detail": cls.default_detail}
 
 
+@pytest.mark.parametrize("code", sorted(WRITE_CLASSES))
+def test_write_class_cuts_a_long_detail_at_a_word(code):
+    cls, _ = WRITE_CLASSES[code]
+    exc = cls(" ".join(["abcdefg"] * 200))
+    assert len(exc.detail) <= errors.WRITE_DETAIL_MAX_CHARS
+    assert exc.detail.endswith("abcdefg…")
+    assert str(exc) == exc.detail
+
+
+def test_write_class_trims_the_detail():
+    assert errors.PVWriteRefused("  no.\n").detail == "no."
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\n"])
+@pytest.mark.parametrize("code", sorted(WRITE_CLASSES))
+def test_write_class_blank_detail_takes_the_default(code, text):
+    cls, _ = WRITE_CLASSES[code]
+    assert cls(text).detail == cls.default_detail
+
+
+def test_static_texts_are_under_the_cap(rows):
+    cap = load_wc6_vectors()["detail_max_chars"]
+    for cls, _ in WRITE_CLASSES.values():
+        assert len(cls.default_detail) <= cap, cls.__name__
+    for row_id, row in rows.items():
+        if not row["dynamic"] and row["detail"] is not None:
+            assert len(row["detail"]) <= cap, row_id
+
+
+def test_other_errors_are_not_cut():
+    assert errors.BadRequest("x" * 1000).detail == "x" * 1000
+
+
 # --- PVWriteDTO -------------------------------------------------------------- #
 
 
