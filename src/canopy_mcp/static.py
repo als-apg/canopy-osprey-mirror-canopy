@@ -105,7 +105,13 @@ from canopy_mcp.store import (
     contained_file,
 )
 from canopy_mcp.config import Settings
-from canopy.contracts.health import HareHealthSummaryDTO
+from canopy.contracts.health import (
+    DATA_DEGRADED,
+    DATA_UNAVAILABLE,
+    ChannelCountsDTO,
+    HareHealthSummaryDTO,
+    FrontHealthSummaryDTO,
+)
 from canopy.core.color_scheme import get_color_scheme
 
 PREFIX_HEADER = "x-forwarded-prefix"
@@ -126,7 +132,7 @@ TRACE_CSP = (
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
 
-# DATA's summary, read by config.json and /health in hare mode, and the bound on that ask.
+# DATA's summary, read by config.json, /health and /health/summary in hare mode, and the bound on that ask.
 SUMMARY_PATH = "/hare/v1/health/summary"
 SUMMARY_TIMEOUT_S = 1.0
 
@@ -225,6 +231,24 @@ def channel_health(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
     if total > 0 and connected == 0:
         keys["status"] = "degraded"
     return keys
+
+
+def health_summary_body(settings: Settings, summary: HareHealthSummaryDTO | None) -> FrontHealthSummaryDTO:
+    """The rollup: this server's fallbacks, then DATA's own verdict and its channel counts.
+
+    ``summary`` counts only in hare mode, where ``None`` means DATA's summary could not be
+    read. The verdict is DATA's ``status``, relayed: the counts are reported, never judged.
+    """
+    causes = list(get_color_scheme().degraded)
+    channels = None
+    if settings.pv_mode == "hare":
+        if summary is None:
+            causes.append(DATA_UNAVAILABLE)
+        else:
+            channels = ChannelCountsDTO(connected=summary.connected, total=summary.active_monitors)
+            if summary.status == "degraded":
+                causes.append(DATA_DEGRADED)
+    return FrontHealthSummaryDTO(status="degraded" if causes else "ok", degraded=causes, channels=channels)
 
 
 def _trace_page(settings: Settings, name: str) -> Path | None:
@@ -388,6 +412,11 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             body.update(channel_health(await fetch_data_summary(request)))
         return JSONResponse(body)
 
+    async def health_summary(request: Request) -> Response:
+        summary = await fetch_data_summary(request) if settings.pv_mode == "hare" else None
+        body = health_summary_body(settings, summary).model_dump(by_alias=True, mode="json")
+        return JSONResponse(body, headers={"Cache-Control": DRAFT_CACHE_CONTROL})
+
     return [
         Route("/", index, methods=["GET", "HEAD"]),
         Route("/s/{path:path}", index, methods=["GET", "HEAD"]),
@@ -397,6 +426,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         Route("/drafts/manifest.json", manifest, methods=["GET", "HEAD"]),
         Route("/drafts/{path:path}", draft_file, methods=["GET", "HEAD"]),
         Route("/health", health, methods=["GET"]),
+        Route("/health/summary", health_summary, methods=["GET"]),
         Route("/channels", channels, methods=["GET", "HEAD"]),
         Route("/trace/", trace_index, methods=["GET", "HEAD"]),
         Route("/trace/assets/{path:path}", trace_asset, methods=["GET", "HEAD"]),
