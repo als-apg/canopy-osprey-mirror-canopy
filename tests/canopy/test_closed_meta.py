@@ -142,7 +142,7 @@ def test_every_websocket_route_is_refused_without_a_key(closed_app, routes):
 def test_get_health_answers_without_a_key(closed_app):
     resp = TestClient(closed_app).get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "healthy", "degraded": []}
+    assert resp.json() == {"status": "healthy"}
 
 
 @pytest.mark.parametrize(
