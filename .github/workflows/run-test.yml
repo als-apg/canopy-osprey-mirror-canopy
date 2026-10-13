@@ -158,6 +158,18 @@ jobs:
       with:
         python-version: "3.12"
 
+    # The browser tests drive the Chromium build of the floor Playwright. uvx
+    # resolves Playwright's own dependencies unlocked, so this runs before the
+    # converter token is written to the git configuration.
+    - name: Install Chromium for the floor Playwright
+      run: >-
+        uvx --from "playwright==$(sed -n 's/^ *"playwright>=\([0-9.]*\)".*/\1/p' pyproject.toml)"
+        playwright install --with-deps chromium
+
+    # The mongo tests start this image with --pull never.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
+
     # The convert extra is a git source in a private repository; git reads this
     # rewrite when uv fetches it.
     - name: Read access to the converter mirror
@@ -169,8 +181,9 @@ jobs:
         url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
         "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
 
+    # The perf bounds are for operator-class hardware, not a shared runner.
     - name: Test under the dependency floors
-      run: ci/run-under-floors.sh tests/
+      run: ci/run-under-floors.sh tests/ -m "not perf"
 
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
   # skips when Postgres is unreachable). They run on pushes to the integration branches and on
