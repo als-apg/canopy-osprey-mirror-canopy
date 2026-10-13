@@ -10,11 +10,15 @@
 #   <out>/STAGED.json                    the five commits, the two versions and the spec
 #
 # Nothing is built in a checkout. Every repo is exported with `git archive` at
-# its commit into one temp root, laid out as
-#   <root>/<repo dir name>/.claude/worktrees/panel-builder
-# which is the depth at which the runtime's relative `link:` to the SDK
-# resolves to the SDK export. An uncommitted edit in a checkout therefore
-# neither blocks the build nor enters it, and the checkouts are left untouched.
+# its commit into one temp root, as <root>/<repo dir name>. An uncommitted edit
+# in a checkout therefore neither blocks the build nor enters it, and the
+# checkouts are left untouched.
+#
+# The runtime vendors the SDK as the submodule vendor/canopy-sdk-js, which
+# `git archive` leaves empty. The SDK commit of a payload is therefore the one
+# the runtime commit pins there: it is exported into that directory of the
+# runtime export, where the runtime's own install builds it, and once more on
+# its own for Trace, which links the SDK packages it does not declare.
 #
 # The exports have no .git, so the two Python versions are computed in the
 # source checkouts first (setuptools_scm) and pretended to the wheel builds;
@@ -29,7 +33,7 @@ set -euo pipefail
 PROG=build-payload
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-LEAF=".claude/worktrees/panel-builder"
+SDK_VENDOR="vendor/canopy-sdk-js"
 
 usage() {
     cat <<EOF
@@ -42,14 +46,15 @@ detached exports of one commit per repo. This canopy checkout is $ROOT.
 Required inputs (environment):
   PYDM        pydm-converter-tool checkout
   RT          canopy-screen-runtime checkout (pnpm workspace with apps/viewer)
-  SDK         canopy-sdk-js checkout (the runtime's link: target)
+  SDK         canopy-sdk-js checkout holding the commit the runtime pins
   TRACE       react-trace checkout (required unless --no-trace)
   TRACE_REF   git ref in TRACE to build (required unless --no-trace)
 
 Optional inputs (environment):
   CANOPY_SHA      commit of this checkout to build (default: its HEAD)
   RT_SHA          commit of RT to build (default: its HEAD)
-  SDK_SHA         commit of SDK to build (default: its HEAD)
+  SDK_SHA         commit of SDK to build; it must be the commit RT_SHA pins at
+                  vendor/canopy-sdk-js, which is also the default
   PYDM_SHA        commit of PYDM to build (default: its HEAD)
   CANOPY_VERSION  PEP 440 version of canopy (default: setuptools_scm on this checkout,
                   whose +g<node> must be a prefix of CANOPY_SHA)
@@ -120,7 +125,20 @@ resolve() { # <var name> <checkout> <ref>
 }
 CANOPY_SHA="$(resolve CANOPY_SHA "$ROOT" "${CANOPY_SHA:-HEAD}")"
 RT_SHA="$(resolve RT_SHA "$RT" "${RT_SHA:-HEAD}")"
-SDK_SHA="$(resolve SDK_SHA "$SDK" "${SDK_SHA:-HEAD}")"
+# One SDK commit per payload: the one the runtime commit pins, so the viewer
+# and Trace are built from the SDK the runtime was proven with.
+SDK_PIN="$(git -C "$RT" ls-tree "$RT_SHA" -- "$SDK_VENDOR" | awk '$1 == "160000" && $2 == "commit" { print $3 }')"
+[ -n "$SDK_PIN" ] \
+    || die "RT_SHA=$RT_SHA has no submodule entry at $SDK_VENDOR; the payload needs a runtime commit that vendors the SDK there"
+git -C "$SDK" rev-parse --verify --quiet "$SDK_PIN^{commit}" >/dev/null \
+    || die "the SDK commit $SDK_PIN that RT_SHA=$RT_SHA pins at $SDK_VENDOR is not in SDK=$SDK (fetch it there)"
+if [ -n "${SDK_SHA:-}" ]; then
+    SDK_SHA="$(resolve SDK_SHA "$SDK" "$SDK_SHA")"
+    [ "$SDK_SHA" = "$SDK_PIN" ] \
+        || die "SDK_SHA=$SDK_SHA is not the commit RT_SHA=$RT_SHA pins at $SDK_VENDOR ($SDK_PIN); leave SDK_SHA unset or move the pin"
+else
+    SDK_SHA="$SDK_PIN"
+fi
 PYDM_SHA="$(resolve PYDM_SHA "$PYDM" "${PYDM_SHA:-HEAD}")"
 TRACE_SHA=""
 [ "$NO_TRACE" = 1 ] || TRACE_SHA="$(resolve TRACE_REF "$TRACE" "$TRACE_REF")"
@@ -148,7 +166,7 @@ names="$(printf '%s\n' "$CANOPY_NAME" "$RT_NAME" "$SDK_NAME" "$PYDM_NAME" $TRACE
 
 echo "$PROG: canopy  $CANOPY_SHA ($ROOT)" >&2
 echo "$PROG: runtime $RT_SHA ($RT)" >&2
-echo "$PROG: sdk     $SDK_SHA ($SDK)" >&2
+echo "$PROG: sdk     $SDK_SHA ($SDK, pinned by the runtime at $SDK_VENDOR)" >&2
 echo "$PROG: pydm    $PYDM_SHA ($PYDM)" >&2
 if [ -n "$SPEC_SHA" ]; then
     echo "$PROG: spec    $SPEC_SHA ($SPEC)" >&2
@@ -197,14 +215,18 @@ STAGE="$WORK/payload"
 mkdir -p "$STAGE"
 
 export_repo() { # <checkout> <sha> <repo dir name>; prints the export's path
-    local dest="$EXPORTS/$3/$LEAF"
+    local dest="$EXPORTS/$3"
     mkdir -p "$dest"
     git -C "$1" archive "$2" | tar -x -C "$dest"
     echo "$dest"
 }
 CANOPY_SRC="$(export_repo "$ROOT" "$CANOPY_SHA" "$CANOPY_NAME")"
 RT_SRC="$(export_repo "$RT" "$RT_SHA" "$RT_NAME")"
-SDK_SRC="$(export_repo "$SDK" "$SDK_SHA" "$SDK_NAME")"
+# The runtime export's submodule directory is empty; it gets the pinned SDK tree.
+mkdir -p "$RT_SRC/$SDK_VENDOR"
+git -C "$SDK" archive "$SDK_SHA" | tar -x -C "$RT_SRC/$SDK_VENDOR"
+SDK_SRC=""
+[ "$NO_TRACE" = 1 ] || SDK_SRC="$(export_repo "$SDK" "$SDK_SHA" "$SDK_NAME")"
 PYDM_SRC="$(export_repo "$PYDM" "$PYDM_SHA" "$PYDM_NAME")"
 TRACE_SRC=""
 [ "$NO_TRACE" = 1 ] || TRACE_SRC="$(export_repo "$TRACE" "$TRACE_SHA" "$TRACE_NAME")"
@@ -222,14 +244,12 @@ ls "$STAGE"/canopy-*.whl >/dev/null 2>&1 || die "no canopy wheel was built"
     || die "expected a canopy and a PyDMConverter wheel, got: $(cd "$STAGE" && ls)"
 
 # --- viewer --------------------------------------------------------------------
-# The SDK first: the runtime (and Trace, below) resolve it from the SDK's dist.
+# The runtime's install builds the SDK packages it vendors, then its own.
 # TRACE is unset for pnpm (it and the bundler read it as a tracing filter) and
 # HUSKY=0 turns the `prepare: husky` hooks into no-ops (an export has no .git).
 js() { env -u TRACE HUSKY=0 "$@"; }
-(cd "$SDK_SRC" && js pnpm install --frozen-lockfile && js pnpm run build) \
-    || die "building the SDK export of $SDK_SHA failed"
 (cd "$RT_SRC" && js pnpm install --frozen-lockfile && js pnpm run build) \
-    || die "building the runtime export of $RT_SHA failed"
+    || die "building the runtime export of $RT_SHA (SDK $SDK_SHA) failed"
 VIEWER_DIST="$RT_SRC/apps/viewer/dist"
 [ -s "$VIEWER_DIST/index.html" ] || die "viewer dist missing (apps/viewer/dist/index.html)"
 [ -s "$VIEWER_DIST/ir-map.json" ] || die "viewer dist has no ir-map.json"
@@ -244,6 +264,8 @@ cp -R "$VIEWER_DIST" "$STAGE/viewer"
 
 # --- trace -----------------------------------------------------------------------
 if [ "$NO_TRACE" = 0 ]; then
+    (cd "$SDK_SRC" && js pnpm install --frozen-lockfile && js pnpm run build) \
+        || die "building the SDK export of $SDK_SHA failed"
     (cd "$TRACE_SRC" && js pnpm install --frozen-lockfile) \
         || die "installing the Trace export of $TRACE_SHA failed"
     # Until the SDK is released, Trace imports SDK packages that its committed
