@@ -11,9 +11,9 @@ import logging
 
 from fastapi import Security, APIRouter, WebSocket, WebSocketDisconnect
 
+from canopy.fox.errors import TABLE_UPDATE_UNSUPPORTED_MESSAGE
 from canopy.core.errors import ErrorCode, CanopyError
 from canopy.core.security import ws_require_read_access
-from canopy.fox.errors import TABLE_UPDATE_UNSUPPORTED_MESSAGE
 from canopy.fox.dependencies import SubscriptionManagerDep
 from canopy.contracts.formula import FormulaSpec
 

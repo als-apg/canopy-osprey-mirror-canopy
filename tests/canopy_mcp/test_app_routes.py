@@ -283,8 +283,7 @@ def test_draft_missing_or_disallowed_is_404(client: TestClient, drafts: Path) ->
 def test_health(client: TestClient) -> None:
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
-    assert list(r.json()) == ["status"]
+    assert r.json() == {"status": "healthy"}
 
 
 def test_lifespan_opens_client_and_runs_hooks_in_order(settings: Settings) -> None:

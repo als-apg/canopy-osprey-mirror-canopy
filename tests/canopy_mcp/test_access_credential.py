@@ -252,15 +252,22 @@ def test_a_websocket_on_a_path_with_no_route_is_refused_the_same_way(client):
     assert excinfo.value.status_code == 401
 
 
-def test_get_health_answers_without_the_credential_and_says_only_status(client):
+def test_get_health_answers_without_the_credential(client):
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert list(resp.json()) == ["status"]
+    assert resp.json() == {"status": "healthy"}
 
 
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("HEAD", "/health"), ("POST", "/health"), ("GET", "/health/"), ("GET", "/healthz"), ("GET", "/x/health")],
+    [
+        ("HEAD", "/health"),
+        ("POST", "/health"),
+        ("GET", "/health/"),
+        ("GET", "/health/summary"),
+        ("GET", "/healthz"),
+        ("GET", "/x/health"),
+    ],
 )
 def test_only_get_on_the_exact_health_path_is_open(client, method, path):
     assert client.request(method, path, follow_redirects=False).status_code == 401
@@ -702,7 +709,10 @@ def test_the_server_answers_on_an_inherited_socket(tmp_path):
         "sys.exit(main(['--http', '--fd', sys.argv[1]]))\n"
     )
     env = {k: v for k, v in os.environ.items() if k not in ENV_VARS}
-    env.update(CANOPY_DRAFTS_DIR=str(tmp_path / "drafts"), CANOPY_ACCESS_TOKEN_FILE=str(token_file))
+    env.update(
+        CANOPY_DRAFTS_DIR=str(tmp_path / "drafts"),
+        CANOPY_ACCESS_TOKEN_FILE=str(token_file),
+    )
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
         held.listen()
@@ -726,7 +736,7 @@ def test_the_server_answers_on_an_inherited_socket(tmp_path):
                 except httpx.HTTPError:
                     time.sleep(0.1)
             assert health is not None and health.status_code == 200, proc.poll()
-            assert health.json() == {"status": "ok"}
+            assert health.json() == {"status": "healthy"}
             assert httpx.get(f"{base}/config.json", timeout=5).status_code == 401
             assert httpx.get(f"{base}/config.json", headers=ACCESS, timeout=5).status_code == 200
         finally:

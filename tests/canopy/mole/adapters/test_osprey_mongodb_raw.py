@@ -14,17 +14,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from canopy.contracts.sample import AlarmSeverity, Sample
 from canopy.core.errors import BadRequest
-from canopy.mole.adapters.base import PVNotFoundInArchiver
-from canopy.mole.adapters.osprey_mongodb import OspreyMongoRecorderAdapter
 from canopy.mole.config import ArchiverInstanceConfig
+from canopy.contracts.sample import Sample, AlarmSeverity
+from canopy.mole.adapters.base import PVNotFoundInArchiver
 from tests.canopy.mole.adapters import _mongo_seed as seed
+from canopy.mole.adapters.osprey_mongodb import OspreyMongoRecorderAdapter
+from tests.canopy.mole.adapters.conftest import PASSWORD_ENV
 from tests.canopy.mole.adapters.contract import (
     assert_fetch_last_before,
     assert_fetch_window_invariants,
 )
-from tests.canopy.mole.adapters.conftest import PASSWORD_ENV
 
 pytestmark = pytest.mark.mongo
 

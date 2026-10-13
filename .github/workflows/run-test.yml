@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - canopy-integration
   workflow_dispatch:
 
 permissions:
@@ -41,14 +42,34 @@ jobs:
       with:
         python-version: "3.12"
 
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
     - name: Install dependencies
       run: uv sync --group dev --all-extras
 
     - name: Check import contracts
       run: uv run --all-extras lint-imports
 
+    # The mongo tests start this image with --pull never and the browser tests
+    # drive Chromium; both fail, not skip, where their prerequisite is absent.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
+
+    - name: Install Chromium
+      run: uv run --all-extras playwright install --with-deps chromium
+
+    # The perf bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not perf"
       env:
         COVERAGE_FILE: ".coverage.linux"
 
@@ -74,6 +95,27 @@ jobs:
       with:
         python-version: "3.12"
 
+    # The browser tests drive the Chromium build of the pinned Playwright. uvx
+    # resolves Playwright's own dependencies unlocked, so this runs before the
+    # converter token is written to the git configuration.
+    - name: Install Chromium for the pinned Playwright
+      run: uvx --from "$(grep -E '^playwright==' ci/osprey-pins.txt)" playwright install --with-deps chromium
+
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
+    # The mongo tests start this image with --pull never.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
+
     - name: Test under the OSPREY pins
       run: >-
         ci/run-under-pins.sh
@@ -86,10 +128,55 @@ jobs:
         tests/canopy/test_module_selection.py
         tests/canopy/test_closed_meta.py
         tests/canopy_mcp
+        -m "not perf"
+
+  # The oldest release of every direct dependency pyproject.toml admits. A floor the
+  # tests do not pass at turns this job red; uv.lock is not what it installs.
+  tests-floors:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: canopy
+          POSTGRES_PASSWORD: canopy
+          POSTGRES_DB: canopy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        python-version: "3.12"
+
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
+    - name: Test under the dependency floors
+      run: ci/run-under-floors.sh tests/
 
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
-  # skips when Postgres is unreachable)
+  # skips when Postgres is unreachable). They run on pushes to the integration branches and on
+  # dispatch, not on pull requests: their minutes bill at 2x (Windows) and 10x (macOS) Linux's.
   tests-other:
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     permissions:
       pull-requests: write
@@ -109,11 +196,28 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
     - name: Install dependencies
       run: uv sync --group dev --all-extras
 
+    - name: Install Chromium
+      run: uv run --all-extras playwright install chromium
+
+    # No Docker daemon that runs Linux images here, so the mongo tests are
+    # deselected by their marker; tests-linux and tests-pins run them. The perf
+    # bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not mongo and not perf"
       env:
         COVERAGE_FILE: ".coverage.${{ matrix.python-version }}.${{ matrix.os }}"
 
@@ -128,6 +232,8 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     needs: [tests-linux, tests-other]
+    # On pull requests tests-other is skipped; the comment then covers the Linux run alone.
+    if: ${{ !cancelled() && needs.tests-linux.result == 'success' && needs.tests-other.result != 'failure' }}
     permissions:
       pull-requests: write
       contents: write

@@ -6,7 +6,7 @@ the event loop. Timeout is enforced via ``asyncio.wait_for``.
 
 import re
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping, Iterable
 
 import numpy as np
 import numexpr as ne

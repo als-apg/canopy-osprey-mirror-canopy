@@ -153,7 +153,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         hooks = STARTUP_HOOKS if startup_hooks is None else startup_hooks
-        get_color_scheme()  # never raises; a bad file degrades /health and serves canopy-default
+        get_color_scheme()  # never raises; a bad file degrades /health/summary and serves canopy-default
         async with mcp_app.lifespan(app), make_client(settings) as client, AsyncExitStack() as stack:
             app.state.http = client
             for hook in list(hooks):

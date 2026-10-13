@@ -53,10 +53,10 @@ from canopy.mole.config import ArchiverInstanceConfig
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.mole.adapters.base import (
-    SEED_SAMPLE_BUDGET,
     SEVERITY_ORDINAL,
-    AdapterHealth,
+    SEED_SAMPLE_BUDGET,
     ArchiveBlock,
+    AdapterHealth,
     ArchiverError,
     ArchiverTimeout,
     ArchiverBadResponse,

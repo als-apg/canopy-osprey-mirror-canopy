@@ -9,12 +9,12 @@ The corpus test is gated on ``PHOEBUS_CORPUS``; the curated glob and exclusion l
 below are kept in step with pydmconverter's ``tests/bob/corpus_manifest.py``.
 """
 
-import ast
 import os
 import re
-from collections import Counter
+import ast
 from fnmatch import fnmatch
 from pathlib import Path
+from collections import Counter
 
 import pytest
 from pydmconverter.react import convert_bytes

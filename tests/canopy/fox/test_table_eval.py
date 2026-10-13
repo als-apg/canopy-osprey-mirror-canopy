@@ -18,11 +18,12 @@ from canopy.main import app as parent_app
 from canopy.fox.app import app as fox_app
 from canopy.fox.config import FoxConfig
 from canopy.fox.errors import TableLimit, TableUpdateUnsupported
-from canopy.fox.schemas.formula import FormulaResultDTO
-from canopy.contracts.formula import FormulaSpec
 from canopy.fox.dependencies import get_formula_service, get_subscription_manager
+from canopy.contracts.formula import FormulaSpec
 from tests.canopy.fox.conftest import FakeDataSource
+from canopy.fox.schemas.formula import FormulaResultDTO
 from canopy.fox.services.parser import Parser
+from canopy.fox.services.table_store import TableSettings
 from tests.canopy.fox.test_table_store import (
     MS,
     T0,
@@ -33,7 +34,6 @@ from tests.canopy.fox.test_table_store import (
     strict_json,
     trigger_spec,
 )
-from canopy.fox.services.table_store import TableSettings
 from canopy.fox.services.formula_service import FormulaService
 from canopy.fox.services.subscription_manager import SubscriptionManager
 
@@ -704,6 +704,7 @@ def fox_server():
 
 
 def test_table_frames_arrive_as_text_through_the_canopy_mcp_forward(tmp_path, fox_server):
+    pytest.importorskip("fcntl", reason="the panel server is POSIX-only: its draft store takes fcntl file locks")
     from canopy_mcp.app import create_app
     from canopy_mcp.config import Settings
 

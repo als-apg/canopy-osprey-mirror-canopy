@@ -14,7 +14,7 @@ from fastmcp.exceptions import ToolError
 from canopy_mcp.store import DraftStore
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, get_settings
-from canopy_mcp.catalog import set_catalog, build_catalog
+from canopy_mcp.catalog import set_catalog, build_catalog, load_prop_schemas
 from canopy_mcp.check.lint import RACCOON_VALIDATE_PATH
 from canopy_mcp.tools.check import CheckResult, check, run_check
 from canopy_mcp.check.semantic import iter_nodes
@@ -148,6 +148,82 @@ async def test_clean_document_has_no_findings(httpx_mock: HTTPXMock, client, sto
     )
     assert result.to_dict() == {"schema": [], "semantic": [], "lint": [], "skipped": []}
     assert result.findings == [] and result.errors == []
+
+
+async def test_a_plot_curve_without_its_channel_key_is_an_error_a_write_refuses_on(
+    httpx_mock: HTTPXMock, client, store
+):
+    """The semantic pass refuses the curve no matter what the staged spec says of props."""
+    # ``channel`` is a key the renderer subscribes to, so the PV pass asks about A:B.
+    httpx_mock.add_response(method="POST", url=RACCOON, json={"known": ["A:B"], "unknown": []})
+    catalog = build_catalog(
+        {"group": {"consumes": [], "verbatim": False}, "waveform-plot": {"consumes": ["curves"], "verbatim": False}}
+    )
+    doc = _doc(_node("plt", "waveform-plot", {"curves": [{"channel": "A:B"}]}))
+
+    result = await run_check(doc, store=store, catalog=catalog, client=client)
+
+    assert _keys(result.to_dict()["semantic"]) == {
+        ("plt", "curve_channel", "/root/children/0/props/curves/0/y_channel")
+    }
+    assert [f.code for f in result.errors] == ["curve_channel"]
+    assert result.to_dict()["schema"] == [] and result.to_dict()["skipped"] == []
+
+
+def _plot_catalog(ntype: str, spec: Path):
+    """``ntype`` beside ``group``, with the prop schemas of the staged spec (strict ``curves.items``)."""
+    ir_map = {"group": {"consumes": [], "verbatim": False}, ntype: {"consumes": ["curves"], "verbatim": False}}
+    return build_catalog(ir_map, load_prop_schemas(spec))
+
+
+@pytest.mark.parametrize(
+    ("ntype", "curve", "path"),
+    [
+        ("waveform-plot", {"channel": "${P}:WF"}, "/root/children/0/props/curves/0/y_channel"),
+        ("xy-plot", {"y_channel": "${P}:Y", "x_channel": 3}, "/root/children/0/props/curves/0/x_channel"),
+        ("pv-array-plot", {"y_channel": "${P}:Y"}, "/root/children/0/props/curves/0/y_channels"),
+        ("waveform-plot", "${P}:WF", "/root/children/0/props/curves/0"),
+    ],
+)
+async def test_a_mistaken_curve_is_one_finding_with_strict_curve_schemas_staged(
+    client, store, staged_spec, ntype, curve, path
+):
+    """The prop lint does not repeat a curve the semantic pass refuses."""
+    doc = _doc(_node("plt", ntype, {"curves": [curve]}))
+
+    result = await run_check(doc, store=store, catalog=_plot_catalog(ntype, staged_spec), client=client)
+
+    assert [(f.node_id, f.code, f.path) for f in result.findings] == [("plt", "curve_channel", path)]
+    assert result.skipped == []
+
+
+async def test_a_well_keyed_curve_beside_a_mistaken_one_keeps_its_prop_finding(client, store, staged_spec):
+    curves = [{"channel": "${P}:WF"}, {"y_channel": "${P}:WF", "lineWidth": "thick"}]
+    doc = _doc(_node("plt", "waveform-plot", {"curves": curves}))
+
+    result = await run_check(doc, store=store, catalog=_plot_catalog("waveform-plot", staged_spec), client=client)
+
+    assert [(f.node_id, f.code, f.path) for f in result.findings] == [
+        ("plt", "curve_channel", "/root/children/0/props/curves/0/y_channel"),
+        ("plt", "invalid_prop", "/root/children/0/props/curves"),
+    ]
+    assert "'thick'" in result.findings[1].message
+
+
+async def test_a_refused_curves_mistaken_key_is_still_asked_of_the_pv_directory(
+    httpx_mock: HTTPXMock, client, store, staged_spec
+):
+    """``channel`` is a key the renderer subscribes to, so the PV pass asks about the name under it."""
+    httpx_mock.add_response(method="POST", url=RACCOON, json={"known": [], "unknown": ["A:B"]})
+    doc = _doc(_node("plt", "waveform-plot", {"curves": [{"channel": "A:B"}]}))
+
+    result = await run_check(doc, store=store, catalog=_plot_catalog("waveform-plot", staged_spec), client=client)
+
+    assert _keys(result.to_dict()["semantic"]) == {
+        ("plt", "curve_channel", "/root/children/0/props/curves/0/y_channel")
+    }
+    assert _keys(result.to_dict()["lint"]) == {("plt", "unknown_pv", "/root/children/0/props/curves/0/channel")}
+    assert result.skipped == []
 
 
 async def test_raccoon_outage_is_reported_in_skipped(httpx_mock: HTTPXMock, client, store):

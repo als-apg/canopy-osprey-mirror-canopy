@@ -18,12 +18,17 @@ import threading
 import numpy as np
 import pytest
 
-from canopy.contracts.sample import Sample, AlarmSeverity
-from canopy.mole.adapters.base import ArchiveBlock
 from canopy.fox.services import table_store as ts_mod
 from canopy.fox.services import subscription_manager as sm_mod
+from canopy.contracts.sample import Sample, AlarmSeverity
+from canopy.mole.adapters.base import ArchiveBlock
 from tests.canopy.fox.test_table_eval import Rig, Collector
 from tests.canopy.fox.test_table_store import MS, T0, HOUR, Harness, trigger_spec
+
+# The bounds are for the hardware CANOPY is operated on. A shared 2-core CI runner
+# measures 50-90 ms where they allow 20, so those jobs deselect the marker and
+# the gate on our own hosts enforces it.
+pytestmark = pytest.mark.perf
 
 INPUTS = ["X"] + [f"Y{i}" for i in range(1, 9)]
 TRIGGERS = ["TRIG_A", "TRIG_B", "TRIG_C"]

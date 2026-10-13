@@ -9,7 +9,11 @@ from starlette.testclient import TestClient
 from canopy_mcp import static
 from canopy_mcp.app import create_app
 from canopy_mcp.config import Settings
-from canopy.core.color_scheme import ColorScheme, get_color_scheme, clear_color_scheme_cache
+from canopy.core.color_scheme import (
+    ColorScheme,
+    get_color_scheme,
+    clear_color_scheme_cache,
+)
 
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
 

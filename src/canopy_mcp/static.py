@@ -63,15 +63,22 @@ scheme. The document holds no secret, so it is served with
 false by default): whether the viewer asks for a confirmation before each
 write.
 
-In hare mode the ``config.json`` route (not :func:`viewer_config`) also asks
-DATA for ``GET /hare/v1/health/summary`` over the shared client
-(``app.state.http``, which carries the read key) within
-:data:`SUMMARY_TIMEOUT_S`, and adds ``backend {name, label, notice}`` and a
-top-level ``binding`` from it: the connector's identity, as in the heartbeat
-frame. No shared client, a timeout, any transport error, a non-200 or a body
-that is not the summary gives both as null; the fields are copied by name, so
-neither the key nor any other summary field reaches the document. Mock mode
-carries neither key.
+In hare mode the ``config.json`` route (not :func:`viewer_config`) and
+``/health/summary`` ask DATA for ``GET /hare/v1/health/summary`` through one
+:class:`SummaryReader` per app over the shared client (``app.state.http``, which
+carries the read key) within :data:`SUMMARY_TIMEOUT_S`, parsed with the shared
+contract :class:`~canopy.contracts.health.HareHealthSummaryDTO`. At most one
+request for it is in flight; callers who ask meanwhile share its answer, and
+nothing is reused after it lands. The reader logs ``DATA summary unavailable:
+<reason>`` at WARNING when the summary becomes unavailable or the reason
+changes (DEBUG while it stays the same) and ``DATA summary available`` at INFO
+when it is read again. ``config.json`` adds
+``backend {name, label, notice}`` and a top-level ``binding`` from it: the
+connector's identity, as in the heartbeat frame. No shared client, a timeout,
+any transport error, a non-200 or a body that is not the summary gives
+``config.json`` both keys null and ``/health/summary`` the cause
+``data-unavailable``; the fields are copied by name, so neither the key nor any
+other summary field reaches either document. Mock mode carries neither key.
 
 With ``CANOPY_HOST_STYLESHEETS`` set, every entry page (``/``, ``/s/*``,
 ``/embed/*``, ``/trace/`` and ``/trace/correlation.html``) served under a
@@ -85,8 +92,12 @@ prefix, or a malformed one, gets the page unchanged, as does every request
 while the setting is empty. No script is ever added, so :data:`TRACE_CSP` is
 untouched, and no URL parameter reaches the list.
 
-``/health`` answers ``{"status": "ok"}``, plus ``"degraded": ["color-scheme"]``
-only when that scheme had load errors (it is then served as ``canopy-default``).
+``/health`` answers :class:`canopy.contracts.health.HealthDTO`, the body
+canopy's own ``/health`` answers, and reads nothing from DATA or from the scheme,
+so it is the same in hare and mock mode and with or without the access gate.
+``/health/summary`` is the rollup
+(:class:`canopy.contracts.health.FrontHealthSummaryDTO`): the scheme fallback,
+DATA's verdict and its channel counts; status 200 on every branch.
 """
 
 import re
@@ -98,9 +109,12 @@ import logging
 from typing import Any
 from pathlib import Path
 
+import httpx
+from pydantic import ValidationError
 from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
+from starlette.applications import Starlette
 
 from canopy_mcp.store import (
     LIBRARY,
@@ -110,6 +124,14 @@ from canopy_mcp.store import (
     contained_file,
 )
 from canopy_mcp.config import Settings
+from canopy.contracts.health import (
+    DATA_DEGRADED,
+    DATA_UNAVAILABLE,
+    HealthDTO,
+    ChannelCountsDTO,
+    HareHealthSummaryDTO,
+    FrontHealthSummaryDTO,
+)
 from canopy.core.color_scheme import get_color_scheme
 
 PREFIX_HEADER = "x-forwarded-prefix"
@@ -130,7 +152,7 @@ TRACE_CSP = (
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
 
-# DATA's summary, asked for by config.json in hare mode, and the bound on that ask.
+# DATA's summary, read by config.json and /health/summary in hare mode, and the bound on that ask.
 SUMMARY_PATH = "/hare/v1/health/summary"
 SUMMARY_TIMEOUT_S = 1.0
 
@@ -203,43 +225,95 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     return config
 
 
-def _optional_str(value: Any) -> bool:
-    return value is None or isinstance(value, str)
+class SummaryReader:
+    """DATA's summary for one app: one request in flight, shared by every caller who asks meanwhile.
 
+    Nothing is kept once a reading lands, so every answer is a reading taken
+    during the caller's own request. A caller that goes away does not cancel
+    the reading for the others. :meth:`read` never raises. A reading is shared
+    only with callers on the event loop that owns it.
 
-async def fetch_data_summary(request: Request) -> dict[str, Any] | None:
-    """DATA's health summary over the shared client, or ``None`` on any failure.
-
-    The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. A body counts
-    only when it is an object whose ``backend`` is a string and whose
-    ``label``, ``notice`` and ``binding`` are strings or absent/null.
+    The reader logs the summary's availability once per change: WARNING when it
+    becomes unavailable or the reason changes, INFO when it is available again.
     """
-    client = getattr(request.app.state, "http", None)
-    if client is None:
-        return None
-    try:
-        response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
-        if response.status_code != 200:
+
+    def __init__(self) -> None:
+        self._flight: asyncio.Future[HareHealthSummaryDTO | None] | None = None
+        # Why the last reading was unavailable; None while the summary is available.
+        self._reason: str | None = None
+
+    async def read(self, app: Starlette) -> HareHealthSummaryDTO | None:
+        """DATA's health summary over ``app``'s shared client, or ``None`` on any failure."""
+        flight = self._flight
+        # A flight is shared only with callers on the loop that owns it: one left pending
+        # on a loop that closed can never land, so it is dropped, not awaited or cancelled.
+        if flight is None or flight.get_loop() is not asyncio.get_running_loop():
+            flight = self._flight = asyncio.ensure_future(self._fetch(getattr(app.state, "http", None)))
+            # Registered before any waiter, so the slot is clear when they resume.
+            flight.add_done_callback(self._landed)
+        return await asyncio.shield(flight)
+
+    def _landed(self, flight: asyncio.Future) -> None:
+        if self._flight is flight:
+            self._flight = None
+
+    async def _fetch(self, client: httpx.AsyncClient | None) -> HareHealthSummaryDTO | None:
+        """One request for the summary, or ``None`` on any failure.
+
+        The whole exchange is bounded by :data:`SUMMARY_TIMEOUT_S`. The body counts
+        only when it validates strictly as :class:`HareHealthSummaryDTO`: a count
+        that is not a JSON integer, a missing field or a wrong type is no summary.
+        Unknown extra fields are ignored.
+        """
+        if client is None:
             return None
-        body = response.json()
-    except Exception as exc:  # timeout, transport, decode: config.json must still answer
-        logger.debug("DATA summary unavailable for config.json: %r", exc)
-        return None
-    if not isinstance(body, dict) or not isinstance(body.get("backend"), str):
-        return None
-    if not all(_optional_str(body.get(field)) for field in ("label", "notice", "binding")):
-        return None
-    return body
+        try:
+            response = await asyncio.wait_for(client.get(SUMMARY_PATH), SUMMARY_TIMEOUT_S)
+            if response.status_code != 200:
+                return self._unavailable(f"HTTP {response.status_code}")
+            summary = HareHealthSummaryDTO.model_validate_json(response.content, strict=True)
+        except ValidationError as exc:
+            return self._unavailable(f"the body is not the summary ({exc.error_count()} invalid fields)")
+        except Exception as exc:  # timeout, transport: every caller must still answer
+            return self._unavailable(repr(exc))
+        if self._reason is not None:
+            logger.info("DATA summary available")
+            self._reason = None
+        return summary
+
+    def _unavailable(self, reason: str) -> None:
+        """Log one unavailable reading: WARNING when ``reason`` is new, DEBUG while it repeats."""
+        level = logging.DEBUG if reason == self._reason else logging.WARNING
+        logger.log(level, "DATA summary unavailable: %s", reason)
+        self._reason = reason
 
 
-def backend_identity(summary: dict[str, Any] | None) -> dict[str, Any]:
+def backend_identity(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
     """``config.json``'s ``backend`` and ``binding`` keys for ``summary`` (both null without one)."""
     if summary is None:
         return {"backend": None, "binding": None}
     return {
-        "backend": {"name": summary["backend"], "label": summary.get("label"), "notice": summary.get("notice")},
-        "binding": summary.get("binding"),
+        "backend": {"name": summary.backend, "label": summary.label, "notice": summary.notice},
+        "binding": summary.binding,
     }
+
+
+def health_summary_body(settings: Settings, summary: HareHealthSummaryDTO | None) -> FrontHealthSummaryDTO:
+    """The rollup: this server's fallbacks, then DATA's own verdict and its channel counts.
+
+    ``summary`` counts only in hare mode, where ``None`` means DATA's summary could not be
+    read. The verdict is DATA's ``status``, relayed: the counts are reported, never judged.
+    """
+    causes = list(get_color_scheme().degraded)
+    channels = None
+    if settings.pv_mode == "hare":
+        if summary is None:
+            causes.append(DATA_UNAVAILABLE)
+        else:
+            channels = ChannelCountsDTO(connected=summary.connected, total=summary.active_monitors)
+            if summary.status == "degraded":
+                causes.append(DATA_DEGRADED)
+    return FrontHealthSummaryDTO(status="degraded" if causes else "ok", degraded=causes, channels=channels)
 
 
 def _trace_page(settings: Settings, name: str) -> Path | None:
@@ -312,6 +386,8 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             for path in host_paths
         )
 
+    reader = SummaryReader()
+
     async def index(request: Request) -> Response:
         page = dist / "index.html" if dist else None
         if page is None or not page.is_file():
@@ -330,7 +406,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
     async def config(request: Request) -> Response:
         body = viewer_config(settings)
         if settings.pv_mode == "hare":
-            body.update(backend_identity(await fetch_data_summary(request)))
+            body.update(backend_identity(await reader.read(request.app)))
         return JSONResponse(
             body,
             headers={"Cache-Control": DRAFT_CACHE_CONTROL, "Access-Control-Allow-Origin": "*"},
@@ -407,11 +483,12 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         return _missing()
 
     async def health(request: Request) -> Response:
-        body: dict[str, Any] = {"status": "ok"}
-        degraded = get_color_scheme().degraded
-        if degraded:
-            body["degraded"] = list(degraded)
-        return JSONResponse(body)
+        return JSONResponse(HealthDTO.of().model_dump(by_alias=True, mode="json"))
+
+    async def health_summary(request: Request) -> Response:
+        summary = await reader.read(request.app) if settings.pv_mode == "hare" else None
+        body = health_summary_body(settings, summary).model_dump(by_alias=True, mode="json")
+        return JSONResponse(body, headers={"Cache-Control": DRAFT_CACHE_CONTROL})
 
     return [
         Route("/", index, methods=["GET", "HEAD"]),
@@ -422,6 +499,7 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         Route("/drafts/manifest.json", manifest, methods=["GET", "HEAD"]),
         Route("/drafts/{path:path}", draft_file, methods=["GET", "HEAD"]),
         Route("/health", health, methods=["GET"]),
+        Route("/health/summary", health_summary, methods=["GET"]),
         Route("/channels", channels, methods=["GET", "HEAD"]),
         Route("/trace/", trace_index, methods=["GET", "HEAD"]),
         Route("/trace/assets/{path:path}", trace_asset, methods=["GET", "HEAD"]),
