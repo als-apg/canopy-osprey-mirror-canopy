@@ -59,6 +59,14 @@ jobs:
     - name: Check import contracts
       run: uv run --all-extras lint-imports
 
+    # The mongo tests start this image with --pull never and the browser tests
+    # drive Chromium; both fail, not skip, where their prerequisite is absent.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
+
+    - name: Install Chromium
+      run: uv run --all-extras playwright install --with-deps chromium
+
     - name: Test with pytest
       run: uv run --all-extras coverage run -m pytest tests/ -v
       env:
@@ -96,6 +104,14 @@ jobs:
         git config --global
         url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
         "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
+    # The mongo tests start this image with --pull never; the browser tests drive
+    # the Chromium build of the pinned Playwright.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
+
+    - name: Install Chromium for the pinned Playwright
+      run: uvx --from "$(grep -E '^playwright==' ci/osprey-pins.txt)" playwright install --with-deps chromium
 
     - name: Test under the OSPREY pins
       run: >-
@@ -148,8 +164,13 @@ jobs:
     - name: Install dependencies
       run: uv sync --group dev --all-extras
 
+    - name: Install Chromium
+      run: uv run --all-extras playwright install chromium
+
+    # No Docker daemon that runs Linux images here, so the mongo tests are
+    # deselected by their marker; tests-linux and tests-pins run them.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not mongo"
       env:
         COVERAGE_FILE: ".coverage.${{ matrix.python-version }}.${{ matrix.os }}"
 
