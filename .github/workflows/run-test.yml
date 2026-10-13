@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - canopy-integration
   workflow_dispatch:
 
 permissions:
@@ -110,8 +111,10 @@ jobs:
         tests/canopy_mcp
 
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
-  # skips when Postgres is unreachable)
+  # skips when Postgres is unreachable). They run on pushes to the integration branches and on
+  # dispatch, not on pull requests: their minutes bill at 2x (Windows) and 10x (macOS) Linux's.
   tests-other:
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     permissions:
       pull-requests: write
@@ -161,6 +164,8 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     needs: [tests-linux, tests-other]
+    # On pull requests tests-other is skipped; the comment then covers the Linux run alone.
+    if: ${{ !cancelled() && needs.tests-linux.result == 'success' && needs.tests-other.result != 'failure' }}
     permissions:
       pull-requests: write
       contents: write
