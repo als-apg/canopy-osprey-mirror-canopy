@@ -109,6 +109,48 @@ jobs:
         tests/canopy/test_closed_meta.py
         tests/canopy_mcp
 
+  # The oldest release of every direct dependency pyproject.toml admits. A floor the
+  # tests do not pass at turns this job red; uv.lock is not what it installs.
+  tests-floors:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: canopy
+          POSTGRES_PASSWORD: canopy
+          POSTGRES_DB: canopy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        python-version: "3.12"
+
+    # The convert extra is a git source in a private repository; git reads this
+    # rewrite when uv fetches it.
+    - name: Read access to the converter mirror
+      shell: bash
+      env:
+        CONVERTER_MIRROR_TOKEN: ${{ secrets.CONVERTER_MIRROR_TOKEN }}
+      run: >-
+        git config --global
+        url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
+        "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
+    - name: Test under the dependency floors
+      run: ci/run-under-floors.sh tests/
+
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
   # skips when Postgres is unreachable)
   tests-other:
