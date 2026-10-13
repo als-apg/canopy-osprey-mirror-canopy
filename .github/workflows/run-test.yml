@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - canopy-integration
   workflow_dispatch:
 
 permissions:
@@ -58,8 +59,17 @@ jobs:
     - name: Check import contracts
       run: uv run --all-extras lint-imports
 
+    # The mongo tests start this image with --pull never and the browser tests
+    # drive Chromium; both fail, not skip, where their prerequisite is absent.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
+
+    - name: Install Chromium
+      run: uv run --all-extras playwright install --with-deps chromium
+
+    # The perf bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not perf"
       env:
         COVERAGE_FILE: ".coverage.linux"
 
@@ -85,6 +95,12 @@ jobs:
       with:
         python-version: "3.12"
 
+    # The browser tests drive the Chromium build of the pinned Playwright. uvx
+    # resolves Playwright's own dependencies unlocked, so this runs before the
+    # converter token is written to the git configuration.
+    - name: Install Chromium for the pinned Playwright
+      run: uvx --from "$(grep -E '^playwright==' ci/osprey-pins.txt)" playwright install --with-deps chromium
+
     # The convert extra is a git source in a private repository; git reads this
     # rewrite when uv fetches it.
     - name: Read access to the converter mirror
@@ -95,6 +111,10 @@ jobs:
         git config --global
         url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
         "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
+
+    # The mongo tests start this image with --pull never.
+    - name: Pull the MongoDB image
+      run: docker pull mongo:7
 
     - name: Test under the OSPREY pins
       run: >-
@@ -108,6 +128,7 @@ jobs:
         tests/canopy/test_module_selection.py
         tests/canopy/test_closed_meta.py
         tests/canopy_mcp
+        -m "not perf"
 
   # The oldest release of every direct dependency pyproject.toml admits. A floor the
   # tests do not pass at turns this job red; uv.lock is not what it installs.
@@ -152,8 +173,10 @@ jobs:
       run: ci/run-under-floors.sh tests/
 
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
-  # skips when Postgres is unreachable)
+  # skips when Postgres is unreachable). They run on pushes to the integration branches and on
+  # dispatch, not on pull requests: their minutes bill at 2x (Windows) and 10x (macOS) Linux's.
   tests-other:
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     permissions:
       pull-requests: write
@@ -187,8 +210,14 @@ jobs:
     - name: Install dependencies
       run: uv sync --group dev --all-extras
 
+    - name: Install Chromium
+      run: uv run --all-extras playwright install chromium
+
+    # No Docker daemon that runs Linux images here, so the mongo tests are
+    # deselected by their marker; tests-linux and tests-pins run them. The perf
+    # bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not mongo and not perf"
       env:
         COVERAGE_FILE: ".coverage.${{ matrix.python-version }}.${{ matrix.os }}"
 
@@ -203,6 +232,8 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     needs: [tests-linux, tests-other]
+    # On pull requests tests-other is skipped; the comment then covers the Linux run alone.
+    if: ${{ !cancelled() && needs.tests-linux.result == 'success' && needs.tests-other.result != 'failure' }}
     permissions:
       pull-requests: write
       contents: write

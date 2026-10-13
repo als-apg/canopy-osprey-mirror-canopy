@@ -125,6 +125,7 @@ asyncio_mode = "auto"
 markers = [
     "live: needs a running canopy stack; skipped unless CANOPY_LIVE=1",
     "mongo: needs Docker and the local mongo:7 image; starts a throwaway MongoDB container",
+    "perf: asserts timing bounds that hold on operator-class hardware; deselected on shared CI runners",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
