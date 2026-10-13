@@ -356,18 +356,15 @@ async def test_compare_waveforms_of_different_length_differs(db_session: AsyncSe
     assert cmp.difference_count == 1  # length mismatch reports as a difference, not an error
 
 
-def test_values_within_tolerance_both_none_matches(db_session: AsyncSession):
-    svc = SnapshotService(db_session, restore_hooks=[])
-    assert svc._values_within_tolerance(None, None, 0.0, 0.0) is True
+def test_values_within_tolerance_both_none_matches():
+    assert SnapshotService._values_within_tolerance(None, None, 0.0, 0.0) is True
 
 
-def test_values_within_tolerance_one_none_differs(db_session: AsyncSession):
-    svc = SnapshotService(db_session, restore_hooks=[])
-    assert svc._values_within_tolerance(1.0, None, 0.0, 0.0) is False
-    assert svc._values_within_tolerance(None, 1.0, 0.0, 0.0) is False
+def test_values_within_tolerance_one_none_differs():
+    assert SnapshotService._values_within_tolerance(1.0, None, 0.0, 0.0) is False
+    assert SnapshotService._values_within_tolerance(None, 1.0, 0.0, 0.0) is False
 
 
-def test_values_within_tolerance_list_vs_scalar_differs(db_session: AsyncSession):
-    svc = SnapshotService(db_session, restore_hooks=[])
-    assert svc._values_within_tolerance([1.0, 2.0], 1.0, 0.0, 0.0) is False
-    assert svc._values_within_tolerance(1.0, [1.0, 2.0], 0.0, 0.0) is False
+def test_values_within_tolerance_list_vs_scalar_differs():
+    assert SnapshotService._values_within_tolerance([1.0, 2.0], 1.0, 0.0, 0.0) is False
+    assert SnapshotService._values_within_tolerance(1.0, [1.0, 2.0], 0.0, 0.0) is False

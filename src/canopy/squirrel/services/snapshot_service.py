@@ -692,7 +692,8 @@ class SnapshotService:
             difference_count=len(differences),
         )
 
-    def _values_within_tolerance(self, v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
+    @staticmethod
+    def _values_within_tolerance(v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
         """Absolute tolerance first, then relative (vs. ``|v1|``); non-numeric → exact match.
 
         Waveform (list) values are compared element-wise under the same rule;
@@ -707,10 +708,11 @@ class SnapshotService:
                 return False
             if len(v1) != len(v2):
                 return False
-            return all(self._scalar_within_tolerance(e1, e2, abs_tol, rel_tol) for e1, e2 in zip(v1, v2))
-        return self._scalar_within_tolerance(v1, v2, abs_tol, rel_tol)
+            return all(SnapshotService._scalar_within_tolerance(e1, e2, abs_tol, rel_tol) for e1, e2 in zip(v1, v2))
+        return SnapshotService._scalar_within_tolerance(v1, v2, abs_tol, rel_tol)
 
-    def _scalar_within_tolerance(self, v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
+    @staticmethod
+    def _scalar_within_tolerance(v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
         try:
             f1, f2 = float(v1), float(v2)
             diff = abs(f1 - f2)
