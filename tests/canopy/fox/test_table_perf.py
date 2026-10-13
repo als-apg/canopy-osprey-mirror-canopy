@@ -25,6 +25,11 @@ from canopy.fox.services import subscription_manager as sm_mod
 from tests.canopy.fox.test_table_eval import Rig, Collector
 from tests.canopy.fox.test_table_store import MS, T0, HOUR, Harness, trigger_spec
 
+# The bounds are for the hardware CANOPY is operated on. A shared 2-core CI runner
+# measures 50-90 ms where they allow 20, so those jobs deselect the marker and
+# the gate on our own hosts enforces it.
+pytestmark = pytest.mark.perf
+
 INPUTS = ["X"] + [f"Y{i}" for i in range(1, 9)]
 TRIGGERS = ["TRIG_A", "TRIG_B", "TRIG_C"]
 SAMPLES = 36_000
