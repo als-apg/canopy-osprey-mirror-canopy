@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from tests.conftest import wait_for
 from canopy.fox.config import FoxConfig
 from canopy.fox.errors import SubscriptionLimitExceeded
 from canopy.contracts.formula import FormulaSpec
@@ -206,9 +207,8 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await asyncio.sleep(0.05)
 
-        assert len(messages) >= 1
+        assert await wait_for(lambda: len(messages) >= 1)
         assert messages[0]["type"] == "result"
         assert messages[0]["id"] == "sub-1"
         assert "data" in messages[0]
@@ -219,13 +219,12 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: len(messages) >= 1)
 
         initial_count = len(messages)
         notifier.notify("PV:A")
-        await asyncio.sleep(0.05)
 
-        assert len(messages) > initial_count
+        assert await wait_for(lambda: len(messages) > initial_count)
         assert messages[-1]["type"] == "result"
 
         await manager.shutdown()
@@ -234,16 +233,18 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _timeseries_spec(), 1000, 0, send_fn)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: len(messages) >= 1)
         initial_count = len(messages)
 
         for _ in range(10):
             notifier.notify("PV:A")
-        await asyncio.sleep(0.1)
 
-        new_results = [m for m in messages[initial_count:] if m["type"] == "result"]
-        assert len(new_results) >= 1
-        assert len(new_results) <= 3
+        def new_results() -> list[dict]:
+            return [m for m in messages[initial_count:] if m["type"] == "result"]
+
+        assert await wait_for(lambda: len(new_results()) >= 1)
+        await asyncio.sleep(0.1)  # settle; a slow runner only lowers the count, so this can't flake
+        assert len(new_results()) <= 3
 
         await manager.shutdown()
 
@@ -293,9 +294,8 @@ class TestSubscriptionManager:
         )
 
         await manager.add_subscription("client-1", "sub-1", spec, 0, 0, send_fn)
-        await asyncio.sleep(0.05)
 
-        assert len(messages) >= 1
+        assert await wait_for(lambda: len(messages) >= 1)
         assert messages[0]["type"] == "error"
         assert "code" in messages[0]
 
@@ -332,10 +332,8 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn, interval_ms=50)
-        await asyncio.sleep(0.18)
 
-        results = [m for m in messages if m["type"] == "result"]
-        assert len(results) >= 3
+        assert await wait_for(lambda: len([m for m in messages if m["type"] == "result"]) >= 3)
 
         await manager.shutdown()
 
@@ -368,7 +366,7 @@ class TestSubscriptionManager:
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
         await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: messages_1 and messages_2)
 
         results_1 = [m for m in messages_1 if m["type"] == "result"]
         results_2 = [m for m in messages_2 if m["type"] == "result"]

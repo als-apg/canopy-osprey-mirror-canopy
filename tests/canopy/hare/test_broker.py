@@ -9,6 +9,7 @@ import contextlib
 
 import pytest
 
+from tests.conftest import wait_for
 from canopy.epics.base import PVWriteFailed
 from canopy.hare.config import HareConfig
 from canopy.contracts.sample import AlarmSeverity
@@ -248,9 +249,8 @@ class TestLoopSupervision:
         broker._running = True
         task = asyncio.create_task(broker._flush_loop())
         try:
-            await asyncio.sleep(0.05)  # several 10ms intervals
+            assert await wait_for(lambda: calls["n"] >= 2)  # kept flushing after the error
             assert not task.done()  # survived the first-iteration error
-            assert calls["n"] >= 2  # and kept flushing afterwards
         finally:
             broker._running = False
             task.cancel()

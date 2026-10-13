@@ -1,7 +1,5 @@
 """Regression tests for the EPICS connector's PV Access (``pva://``) path."""
 
-import asyncio
-
 import pytest
 
 pytest.importorskip("p4p.server")
@@ -11,6 +9,7 @@ from p4p.nt import NTScalar
 from p4p.server import Server
 from p4p.server.thread import SharedPV
 
+from tests.conftest import wait_for
 from canopy.epics.base import PVWriteFailed
 from canopy.contracts.pv import ValueKind
 from canopy.epics.config import EpicsConfig
@@ -34,15 +33,6 @@ def pva_server(monkeypatch):
         yield pv
     finally:
         server.stop()
-
-
-async def _wait_for(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool:
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        if predicate():
-            return True
-        await asyncio.sleep(interval)
-    return False
 
 
 async def test_pva_get(pva_server):
@@ -127,10 +117,10 @@ async def test_pva_monitor_delivers_updates(pva_server):
     received = []
     try:
         sub = await conn.subscribe(f"pva://{PV_NAME}", received.append)
-        assert await _wait_for(lambda: len(received) >= 1), "no initial value from monitor"
+        assert await wait_for(lambda: len(received) >= 1), "no initial value from monitor"
         assert received[0].connected is True
         pva_server.post(2.0)
-        assert await _wait_for(lambda: any(r.value == 2.0 for r in received)), "posted update not delivered"
+        assert await wait_for(lambda: any(r.value == 2.0 for r in received)), "posted update not delivered"
         await sub.close()
     finally:
         await conn.close()

@@ -1,9 +1,8 @@
 """Simulation connector backend."""
 
-import asyncio
-
 import pytest
 
+from tests.conftest import wait_for
 from canopy.contracts.pv import PVValue, ValueKind
 from canopy.epics.config import EpicsConfig
 from canopy.epics.backends.simulation import SimulationConnector
@@ -22,9 +21,8 @@ async def test_subscribe_emits_and_closes():
     conn = SimulationConnector(update_hz=50.0)
     received: list[PVValue] = []
     sub = await conn.subscribe("SIM:Y", received.append)
-    await asyncio.sleep(0.05)  # let the monitor task emit a few times
+    assert await wait_for(lambda: received), "expected at least one emit"
     await sub.close()
-    assert received, "expected at least one emit"
     assert all(r.pv == "SIM:Y" for r in received)
     await conn.close()
 
