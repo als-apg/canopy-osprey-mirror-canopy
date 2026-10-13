@@ -67,8 +67,9 @@ jobs:
     - name: Install Chromium
       run: uv run --all-extras playwright install --with-deps chromium
 
+    # The perf bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not perf"
       env:
         COVERAGE_FILE: ".coverage.linux"
 
@@ -125,6 +126,7 @@ jobs:
         tests/canopy/test_module_selection.py
         tests/canopy/test_closed_meta.py
         tests/canopy_mcp
+        -m "not perf"
 
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
   # skips when Postgres is unreachable). They run on pushes to the integration branches and on
@@ -168,9 +170,10 @@ jobs:
       run: uv run --all-extras playwright install chromium
 
     # No Docker daemon that runs Linux images here, so the mongo tests are
-    # deselected by their marker; tests-linux and tests-pins run them.
+    # deselected by their marker; tests-linux and tests-pins run them. The perf
+    # bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
-      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not mongo"
+      run: uv run --all-extras coverage run -m pytest tests/ -v -m "not mongo and not perf"
       env:
         COVERAGE_FILE: ".coverage.${{ matrix.python-version }}.${{ matrix.os }}"
 
