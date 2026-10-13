@@ -22,20 +22,20 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Awaitable, Callable
 from pathlib import Path
+from collections.abc import Callable, Awaitable
 
 import pytest
 from pymongo import MongoClient
 
+from canopy.mole.config import ArchiverInstanceConfig
 from canopy.mole.adapters.osprey_mongodb import (
     DATE_FIELD,
     OspreyMongoRecorderAdapter,
-    datetime_to_ns,
     ns_ceil_ms,
     ns_floor_ms,
+    datetime_to_ns,
 )
-from canopy.mole.config import ArchiverInstanceConfig
 
 pytestmark = [
     pytest.mark.live,

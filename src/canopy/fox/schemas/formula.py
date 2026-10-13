@@ -4,7 +4,12 @@ from pydantic import Field
 
 from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
-from canopy.contracts.formula import FormulaKind, FormulaSpec, TableHistory, TableInputState
+from canopy.contracts.formula import (
+    FormulaKind,
+    FormulaSpec,
+    TableHistory,
+    TableInputState,
+)
 
 
 class EvaluateRequestDTO(CanopyModel):

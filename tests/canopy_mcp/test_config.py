@@ -210,9 +210,7 @@ def test_http_serves_the_full_app_not_bare_fastmcp(monkeypatch):
 
     assert entry.main(["--http", "--host", "0.0.0.0", "--port", "9124"]) == 0
     assert built == [((), {"self_url": "http://127.0.0.1:9124"})]
-    assert calls == [
-        ((sentinel,), {"host": "0.0.0.0", "port": 9124, "ws_per_message_deflate": False})
-    ]
+    assert calls == [((sentinel,), {"host": "0.0.0.0", "port": 9124, "ws_per_message_deflate": False})]
 
 
 # --- server -----------------------------------------------------------------

@@ -13,6 +13,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
+      secrets:
+        - converter_mirror_token
     container_name: canopy-api
     command: uv run uvicorn canopy.main:app --host 0.0.0.0 --port 8000 --reload
     logging: *default-logging
@@ -61,6 +63,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
+      secrets:
+        - converter_mirror_token
     container_name: canopy-worker
     command: uv run arq canopy.worker.WorkerSettings
     logging: *default-logging
@@ -122,3 +126,9 @@ services:
 
 volumes:
   canopy-pgdata:
+
+# The convert extra is a git source in a private repository; Dockerfile.dev fetches
+# it with this read token, taken from the developer's environment at build time.
+secrets:
+  converter_mirror_token:
+    environment: CONVERTER_MIRROR_TOKEN

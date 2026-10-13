@@ -175,8 +175,8 @@ def _contains_color_role(node: Any) -> bool:
 def _stamp_schema_version(doc: Any) -> str:
     """``"1.1"`` iff ``doc`` holds a well-formed colour role, else ``"1.0"``; never raises.
 
-    Uses ``pydmconverter.scheme.stamp_schema_version`` when the installed converter
-    has it, and otherwise (for example the PyPI 1.0.5 release) a local walk with
+    Uses ``pydmconverter.scheme.stamp_schema_version`` when it imports, and otherwise
+    (no converter installed, or one without its ``scheme`` module) a local walk with
     the same rule, so an edit never fails for want of the converter.
     """
     try:

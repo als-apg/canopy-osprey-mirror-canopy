@@ -160,11 +160,14 @@ server serves:
 `{ "path", "message" }`. `colorScheme` is omitted when the scheme flattener is not
 installed. It describes this server's scheme only, not the converter's.
 
-**`GET /health`** is the same body whether or not the scheme loaded:
+**`GET /health`** is the same body whether or not the scheme loaded. The
+converter's summary on canopy-api reports the scheme the converter uses, and
+asks for a read key:
 
-| canopy and canopy-api | Healthy | Scheme rejected |
-|-----------------------|---------|-----------------|
-| `GET /health` | `{"status": "healthy"}` | `{"status": "healthy"}` |
+| Route | Healthy | Scheme rejected |
+|-------|---------|-----------------|
+| `GET /health` on canopy and canopy-api | `{"status": "healthy"}` | `{"status": "healthy"}` |
+| `GET /converter/v1/health/summary` on canopy-api | `{"status": "ok", "degraded": []}` | `{"status": "degraded", "degraded": ["color-scheme"]}` |
 
 On canopy, `GET /health/summary` lists `color-scheme` in `degraded` and reports
 `"status": "degraded"`. It asks for the access credential.

@@ -5,8 +5,8 @@ import pytest
 from pytest_httpx import HTTPXMock
 from fastmcp.exceptions import ToolError
 
-from canopy_mcp.config import get_settings
 from canopy_mcp.client import API_KEY_HEADER
+from canopy_mcp.config import get_settings
 from canopy_mcp.tools.pvs import read_pv, search_pvs
 
 BASE = "http://canopy-api:8000"

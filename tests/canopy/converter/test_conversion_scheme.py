@@ -14,10 +14,14 @@ import canopy.converter.tasks as tasks_module
 from canopy.main import app
 from tests.conftest import READ_HEADERS
 from canopy.converter.app import app as converter_app
-from canopy.core.color_scheme import DEFAULT_ID, get_color_scheme, clear_color_scheme_cache
 from canopy.converter.config import ConverterConfig
-from canopy.converter.dependencies import get_conversion_service
+from canopy.core.color_scheme import (
+    DEFAULT_ID,
+    get_color_scheme,
+    clear_color_scheme_cache,
+)
 from canopy.converter.services import conversion_service as service_module
+from canopy.converter.dependencies import get_conversion_service
 from canopy.converter.services.conversion_service import ConversionService
 
 FIXTURES = Path(__file__).parent / "fixtures"

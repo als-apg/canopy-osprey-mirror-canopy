@@ -26,13 +26,13 @@ hide that the adapter was never exercised.
 from __future__ import annotations
 
 import os
-import secrets
-import shutil
-import subprocess
 import time
 import uuid
-from collections.abc import Iterator
+import shutil
+import secrets
+import subprocess
 from dataclasses import dataclass
+from collections.abc import Iterator
 
 import pytest
 

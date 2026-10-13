@@ -12,8 +12,8 @@ from urllib.parse import quote
 import httpx
 from fastmcp.exceptions import ToolError
 
-from canopy_mcp.server import mcp
 from canopy_mcp.client import make_client, error_reason
+from canopy_mcp.server import mcp
 
 TIMEOUT_S = 10.0
 

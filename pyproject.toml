@@ -5,14 +5,23 @@ description = "Canopy — backend for the SLAC EED control-system display platfo
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.121.1",
-    "uvicorn[standard]>=0.30",
+    # The oldest release that leaves the event-loop policy alone, so a subprocess
+    # started under a served app (the screenshot browser) can spawn; proven by the
+    # floors job.
+    "uvicorn[standard]>=0.36",
     "pydantic>=2.7",
-    "pydantic-settings>=2.4",
+    # The oldest release with pydantic_settings.sources.providers.dotenv, which the
+    # test suite patches to keep a local .env out; proven by the floors job.
+    "pydantic-settings>=2.9",
     "httpx>=0.27",
     "aioca>=1.7",
-    "p4p>=4.1",
+    # The oldest release with a Python 3.12 wheel: every 4.1 release needs an EPICS
+    # base (epicscorelibs < 7.0.7.99.1) built from source; proven by the floors job.
+    "p4p>=4.2",
     "numpy>=1.26",
-    "numexpr>=2.8",
+    # The oldest release that installs on Python 3.12 (from source: the first
+    # cp312 wheel is 2.8.7), proven by the floors job.
+    "numexpr>=2.8.3",
     "asteval>=1.0",
     "jsonschema>=4.21,<5",
     "python-multipart>=0.0.32",
@@ -60,21 +69,25 @@ PyDMConverter = { git = "https://github.com/als-apg/canopy-osprey-mirror-pydm-co
 
 [dependency-groups]
 dev = [
-    "pre-commit",
-    "pytest",
-    "pytest-asyncio>=0.23",
+    "pre-commit>=3.6",
+    "pytest>=8.0",
+    # The oldest release that collects package directories under pytest 8, proven
+    # by the floors job.
+    "pytest-asyncio>=0.23.5",
     "pytest-httpx>=0.30",
     "hypothesis>=6.100",
     "import-linter>=2.0",
-    "fakeredis>=2.21",
+    # The oldest release that gives each FakeRedis() a server of its own, which the
+    # tests rely on for isolation; proven by the floors job.
+    "fakeredis>=2.21.3",
     "caproto>=1.1",
     "coverage>=7.15.1",
     "pyyaml>=6",
 ]
 docs = [
     "zensical>=0.0.51",
-    "mkdocstrings",
-    "mkdocstrings-python",
+    "mkdocstrings>=0.24",
+    "mkdocstrings-python>=1.8",
 ]
 
 [build-system]
@@ -97,7 +110,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "UP"]
-ignore = ["E402", "E501"]
+# isinstance takes a tuple of types; the union form is slower and ruff has since removed the rule.
+ignore = ["E402", "E501", "UP038"]
 
 [tool.isort]
 profile = "black"

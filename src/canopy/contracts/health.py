@@ -74,3 +74,15 @@ class FrontHealthSummaryDTO(CanopyModel):
     status: Literal["ok", "degraded"]
     degraded: list[str] = []
     channels: ChannelCountsDTO | None = None
+
+
+class ConverterHealthSummaryDTO(CanopyModel):
+    """``GET /converter/v1/health/summary`` on canopy, behind the read credential.
+
+    ``degraded`` names every cause (``color-scheme`` when the converter's scheme
+    file was rejected and ``canopy-default`` is served), and ``status`` is
+    ``degraded`` exactly when it is non-empty.
+    """
+
+    status: Literal["ok", "degraded"]
+    degraded: list[str] = []

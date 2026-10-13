@@ -27,6 +27,8 @@ unchanged. A host binds it to loopback, so that only FRONT reaches it.
 FRONT ships in the same wheel as a second package, `canopy_mcp`, installed
 with the `mcp` extra. Its settings are flat `CANOPY_*` names, listed below. It
 reads no `.env` file: it is always launched with an explicit environment.
+FRONT is a Linux appliance: it runs on POSIX systems only, because its draft
+store takes `fcntl` file locks.
 
 A browser never talks to DATA. The viewer that FRONT serves reads live values
 through FRONT's relays (`WS /hare/v1/ws/pvs`, `WS /fox/v1/ws/formulas`,
@@ -81,6 +83,12 @@ like every other route:
 null) or `data-degraded` (the backend reports its data plane degraded).
 `channels` counts the channels open panels monitor and is null without live
 channels. The status code is 200 either way.
+
+The cause of `data-unavailable` is in the panel server's log. It writes
+`DATA summary unavailable: <reason>` at WARNING when the backend's summary
+becomes unreadable or the reason changes (DEBUG while the same reason repeats)
+and `DATA summary available` at INFO when it is read again, so each change of
+state is one line.
 
 ## Switches
 

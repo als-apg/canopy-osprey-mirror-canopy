@@ -22,10 +22,10 @@ from canopy.converter.dependencies import (
     ConversionServiceDep,
 )
 from canopy.converter.schemas.conversions import (
+    SchemeMetaDTO,
     BatchScreenDTO,
     DroppedPropsDTO,
     UnknownWidgetDTO,
-    SchemeMetaDTO,
     FormulaSummaryDTO,
     ValidateResultDTO,
     ConversionStatsDTO,
