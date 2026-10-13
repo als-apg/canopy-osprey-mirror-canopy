@@ -95,6 +95,12 @@ jobs:
       with:
         python-version: "3.12"
 
+    # The browser tests drive the Chromium build of the pinned Playwright. uvx
+    # resolves Playwright's own dependencies unlocked, so this runs before the
+    # converter token is written to the git configuration.
+    - name: Install Chromium for the pinned Playwright
+      run: uvx --from "$(grep -E '^playwright==' ci/osprey-pins.txt)" playwright install --with-deps chromium
+
     # The convert extra is a git source in a private repository; git reads this
     # rewrite when uv fetches it.
     - name: Read access to the converter mirror
@@ -106,13 +112,9 @@ jobs:
         url."https://x-access-token:${CONVERTER_MIRROR_TOKEN}@github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool".insteadOf
         "https://github.com/als-apg/canopy-osprey-mirror-pydm-converter-tool"
 
-    # The mongo tests start this image with --pull never; the browser tests drive
-    # the Chromium build of the pinned Playwright.
+    # The mongo tests start this image with --pull never.
     - name: Pull the MongoDB image
       run: docker pull mongo:7
-
-    - name: Install Chromium for the pinned Playwright
-      run: uvx --from "$(grep -E '^playwright==' ci/osprey-pins.txt)" playwright install --with-deps chromium
 
     - name: Test under the OSPREY pins
       run: >-
