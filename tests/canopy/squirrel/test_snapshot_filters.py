@@ -60,6 +60,20 @@ async def test_omitted_bounds_stay_none(service, repo):
     assert repo.searches[0]["end"] is None
 
 
+async def test_paging_defaults_reach_the_repository(service, repo):
+    await service.list_snapshots()
+
+    assert repo.searches[0]["limit"] == 100
+    assert repo.searches[0]["offset"] == 0
+
+
+async def test_paging_values_reach_the_repository(service, repo):
+    await service.list_snapshots(limit=25, offset=50)
+
+    assert repo.searches[0]["limit"] == 25
+    assert repo.searches[0]["offset"] == 50
+
+
 async def test_start_after_end_is_a_bad_request(service, repo):
     with pytest.raises(BadRequest, match="must not be after end"):
         await service.list_snapshots(
