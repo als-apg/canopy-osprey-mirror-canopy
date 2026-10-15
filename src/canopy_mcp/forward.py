@@ -1,4 +1,4 @@
-"""The forward of the CANOPY API: two WebSocket relays, the Mole reads and the opt-in PV write.
+"""The forward of the CANOPY API: two WebSocket relays, the Mole reads, two Fox POSTs and the opt-in PV write.
 
 The served viewer reads live values over ``WS /hare/v1/ws/pvs`` and
 ``WS /fox/v1/ws/formulas``. Both are relayed to ``CANOPY_BASE_URL`` with the
@@ -13,6 +13,18 @@ before the browser's handshake is refused with close code 1011.
 way over HTTP: only ``Accept`` and the server key go upstream, ``api_key`` is
 dropped, and a path that would leave ``/mole/v1/`` once decoded is a 404.
 
+``POST /fox/v1/validate`` and ``POST /fox/v1/evaluate`` (read access on Fox,
+used by Trace's formula curves) are forwarded under the same rules: only
+``Content-Type``, ``Accept`` and the server key go upstream, ``api_key`` is
+dropped, and the upstream path is the route's own fixed path, so nothing a
+client encodes into it can leave ``/fox/v1/``. A request whose
+``Sec-Fetch-Site`` is present and not in
+:data:`canopy_mcp.views.ALLOWED_FETCH_SITES` is refused 403, a body over
+:data:`FOX_BODY_MAX_BYTES` 413, an upstream that does not answer within
+:data:`FOX_TIMEOUT` seconds is 504 ``formula_eval_timeout`` and one that cannot
+be reached 502, all as ``{code, detail}``. Upstream's status, body and content
+type are returned verbatim.
+
 With ``CANOPY_PUT_RELAY`` on, ``PUT /hare/v1/pvs/{pv}`` -- and nothing else --
 is relayed exactly: the raw path (no query string) after the same containment
 check under ``/hare/v1/pvs/`` with a non-empty PV, only ``Content-Type`` and the
@@ -26,8 +38,8 @@ and one that cannot be reached 502, both ``pv_write_unknown`` with row 13's
 text, since the write may or may not have happened.
 
 Every other method and path under the backend's service prefixes answers 405,
-in particular ``PUT /hare/v1/pvs/*`` with the relay off and
-``POST /squirrel/*/restore``. WebSocket connections to any other path fall
+in particular ``PUT /hare/v1/pvs/*`` with the relay off,
+``POST /squirrel/*/restore`` and every Fox path but the two POSTs above. WebSocket connections to any other path fall
 through to Starlette's default, which refuses the handshake.
 """
 
@@ -56,6 +68,13 @@ RELAYED_PATHS = ("/hare/v1/ws/pvs", "/fox/v1/ws/formulas")
 SERVICE_PREFIXES = ("hare", "fox", "squirrel", "raccoon", "mole")
 MOLE_PREFIX = "/mole/v1/"
 MOLE_TIMEOUT = 15.0
+# The Fox HTTP endpoints relayed (POST only), both read access upstream.
+FOX_POST_PATHS = ("/fox/v1/validate", "/fox/v1/evaluate")
+# Largest formula request body the relay accepts (a JSON spec, plus a window for evaluate).
+FOX_BODY_MAX_BYTES = 256 * 1024
+# Evaluate may read an archive window before computing, so it gets longer than a Mole read.
+FOX_TIMEOUT = 30.0
+FOX_UNAVAILABLE = "formula_service_unavailable"
 PVS_PREFIX = "/hare/v1/pvs/"
 # Largest PV write body the relay accepts (a JSON ``{"value": ...}``).
 PUT_BODY_MAX_BYTES = 64 * 1024
@@ -206,7 +225,7 @@ def _query_without_api_key(query: bytes) -> bytes:
     return b"&".join(kept)
 
 
-def _mole_error(code: ErrorCode, detail: str, status_code: int) -> JSONResponse:
+def _mole_error(code: ErrorCode | str, detail: str, status_code: int) -> JSONResponse:
     return JSONResponse({"code": str(code), "detail": detail}, status_code=status_code)
 
 
@@ -233,6 +252,48 @@ def make_mole_forward(settings: Settings) -> Callable[[Request], Awaitable[Respo
             )
         except httpx.TransportError as exc:
             return _mole_error(ErrorCode.ARCHIVER_UNAVAILABLE, f"the CANOPY API is unreachable: {exc}", 502)
+        relayed = {}
+        if "content-type" in upstream.headers:
+            relayed["content-type"] = upstream.headers["content-type"]
+        return Response(upstream.content, status_code=upstream.status_code, headers=relayed)
+
+    return forward
+
+
+def make_fox_post(settings: Settings, path: str) -> Callable[[Request], Awaitable[Response]]:
+    """The ``POST`` endpoint for one of :data:`FOX_POST_PATHS`, forwarding it to the backend."""
+    base = httpx.URL(settings.base_url)
+    base_path = base.raw_path.split(b"?", 1)[0].rstrip(b"/")
+    headers = auth_headers(settings)
+    timeout = httpx.Timeout(FOX_TIMEOUT)
+
+    async def forward(request: Request) -> Response:
+        site = request.headers.get("sec-fetch-site")
+        if site is not None and site.strip().lower() not in ALLOWED_FETCH_SITES:
+            return _mole_error(ErrorCode.BAD_REQUEST, "cross-site requests are not relayed", 403)
+        # The route matched ``path`` exactly; the fixed path is what goes upstream.
+        if request.scope["path"] != path:
+            return _mole_error(ErrorCode.NOT_FOUND, f"path is not {path}", 404)
+        body = await _capped_body(request, FOX_BODY_MAX_BYTES)
+        if body is None:
+            return _mole_error(ErrorCode.BAD_REQUEST, f"the request body exceeds {FOX_BODY_MAX_BYTES} bytes", 413)
+        query = _query_without_api_key(request.scope.get("query_string", b""))
+        raw_target = base_path + path.encode("ascii") + (b"?" + query if query else b"")
+        url = base.copy_with(raw_path=raw_target)
+        # Built from scratch: no client header but Content-Type and Accept, and the server key.
+        upstream_headers = {"Accept": request.headers.get("accept", "*/*")}
+        if "content-type" in request.headers:
+            upstream_headers["Content-Type"] = request.headers["content-type"]
+        upstream_headers.update(headers)
+        client: httpx.AsyncClient = request.app.state.http
+        try:
+            upstream = await client.post(url, content=body, headers=upstream_headers, timeout=timeout)
+        except httpx.TimeoutException:
+            return _mole_error(
+                ErrorCode.FORMULA_EVAL_TIMEOUT, f"the formula service did not answer within {FOX_TIMEOUT:g} s", 504
+            )
+        except httpx.TransportError as exc:
+            return _mole_error(FOX_UNAVAILABLE, f"the CANOPY API is unreachable: {exc}", 502)
         relayed = {}
         if "content-type" in upstream.headers:
             relayed["content-type"] = upstream.headers["content-type"]
@@ -313,16 +374,17 @@ def make_put_relay(settings: Settings) -> Callable[[Request], Awaitable[Response
 async def not_allowed(request: Request) -> PlainTextResponse:
     return PlainTextResponse(
         "canopy_mcp forwards the CANOPY API read-only: only the PV and formula WebSockets"
-        " and GET /mole/v1/ are relayed",
+        ", GET /mole/v1/ and POST /fox/v1/validate and /fox/v1/evaluate are relayed",
         status_code=405,
         headers={"Allow": ""},
     )
 
 
 def build_forward_routes(settings: Settings) -> list[BaseRoute]:
-    """The two relays, the Mole GET and (relay on) the PV PUT, then a 405 for everything else of each service."""
+    """The two relays, the Mole GET, the Fox POSTs and (relay on) the PV PUT, then a 405 for everything else."""
     routes: list[BaseRoute] = [WebSocketRoute(path, make_relay(settings, path)) for path in RELAYED_PATHS]
     routes.append(Route(MOLE_PREFIX + "{path:path}", make_mole_forward(settings), methods=["GET"]))
+    routes.extend(Route(path, make_fox_post(settings, path), methods=["POST"]) for path in FOX_POST_PATHS)
     if settings.put_relay:
         routes.append(Route(PVS_PREFIX + "{pv:path}", make_put_relay(settings), methods=["PUT"]))
     for service in SERVICE_PREFIXES:
