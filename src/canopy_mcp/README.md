@@ -66,7 +66,8 @@ a non-zero status before any socket is bound.
 
 A host that embeds the panel behind a proxy can restyle it with its own
 stylesheets. With `CANOPY_HOST_STYLESHEETS` set, every entry page (`/`,
-`/s/*`, `/embed/*`, `/trace/`, `/trace/correlation.html`) requested with a
+`/s/*`, `/embed/*`, `/trace/`, `/trace/correlation.html`,
+`/trace/waveform.html`) requested with a
 valid `X-Forwarded-Prefix` carries one
 
 ```html

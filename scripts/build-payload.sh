@@ -14,11 +14,11 @@
 # in a checkout therefore neither blocks the build nor enters it, and the
 # checkouts are left untouched.
 #
-# The runtime vendors the SDK as the submodule vendor/canopy-sdk-js, which
-# `git archive` leaves empty. The SDK commit of a payload is therefore the one
-# the runtime commit pins there: it is exported into that directory of the
-# runtime export, where the runtime's own install builds it, and once more on
-# its own for Trace, which links the SDK packages it does not declare.
+# The runtime and Trace each vendor the SDK as the submodule
+# vendor/canopy-sdk-js, which `git archive` leaves empty. A payload has one SDK
+# commit: the one the runtime commit pins there. Trace's commit must pin the
+# same one, or the build is refused. That commit is exported into the vendor
+# directory of each export, where that repo's own install builds it.
 #
 # The exports have no .git, so the two Python versions are computed in the
 # source checkouts first (setuptools_scm) and pretended to the wheel builds;
@@ -48,7 +48,8 @@ Required inputs (environment):
   RT          canopy-screen-runtime checkout (pnpm workspace with apps/viewer)
   SDK         canopy-sdk-js checkout holding the commit the runtime pins
   TRACE       react-trace checkout (required unless --no-trace)
-  TRACE_REF   git ref in TRACE to build (required unless --no-trace)
+  TRACE_REF   git ref in TRACE to build (required unless --no-trace); it must
+              pin the same SDK commit at vendor/canopy-sdk-js as RT_SHA
 
 Optional inputs (environment):
   CANOPY_SHA      commit of this checkout to build (default: its HEAD)
@@ -125,9 +126,14 @@ resolve() { # <var name> <checkout> <ref>
 }
 CANOPY_SHA="$(resolve CANOPY_SHA "$ROOT" "${CANOPY_SHA:-HEAD}")"
 RT_SHA="$(resolve RT_SHA "$RT" "${RT_SHA:-HEAD}")"
+# The SDK commit a commit pins at vendor/canopy-sdk-js (its gitlink); empty
+# when that commit has no submodule entry there.
+sdk_pin() { # <checkout> <sha>
+    git -C "$1" ls-tree "$2" -- "$SDK_VENDOR" | awk '$1 == "160000" && $2 == "commit" { print $3 }'
+}
 # One SDK commit per payload: the one the runtime commit pins, so the viewer
 # and Trace are built from the SDK the runtime was proven with.
-SDK_PIN="$(git -C "$RT" ls-tree "$RT_SHA" -- "$SDK_VENDOR" | awk '$1 == "160000" && $2 == "commit" { print $3 }')"
+SDK_PIN="$(sdk_pin "$RT" "$RT_SHA")"
 [ -n "$SDK_PIN" ] \
     || die "RT_SHA=$RT_SHA has no submodule entry at $SDK_VENDOR; the payload needs a runtime commit that vendors the SDK there"
 git -C "$SDK" rev-parse --verify --quiet "$SDK_PIN^{commit}" >/dev/null \
@@ -141,7 +147,14 @@ else
 fi
 PYDM_SHA="$(resolve PYDM_SHA "$PYDM" "${PYDM_SHA:-HEAD}")"
 TRACE_SHA=""
-[ "$NO_TRACE" = 1 ] || TRACE_SHA="$(resolve TRACE_REF "$TRACE" "$TRACE_REF")"
+if [ "$NO_TRACE" = 0 ]; then
+    TRACE_SHA="$(resolve TRACE_REF "$TRACE" "$TRACE_REF")"
+    TRACE_PIN="$(sdk_pin "$TRACE" "$TRACE_SHA")"
+    [ -n "$TRACE_PIN" ] \
+        || die "TRACE_REF=$TRACE_REF ($TRACE_SHA) has no submodule entry at $SDK_VENDOR: it predates the vendored SDK, and a payload needs a Trace commit that vendors the SDK there (build a later Trace commit, or use --no-trace)"
+    [ "$TRACE_PIN" = "$SDK_PIN" ] \
+        || die "TRACE_REF=$TRACE_REF ($TRACE_SHA) pins SDK $TRACE_PIN at $SDK_VENDOR, but RT_SHA=$RT_SHA pins SDK $SDK_PIN; a payload has one SDK commit, so move one gitlink to match the other"
+fi
 
 # A checkout's directory name: the repository's, also when the checkout is a
 # linked worktree somewhere below it.
@@ -156,11 +169,10 @@ repo_name() {
 }
 CANOPY_NAME="$(repo_name "$ROOT")"
 RT_NAME="$(repo_name "$RT")"
-SDK_NAME="$(repo_name "$SDK")"
 PYDM_NAME="$(repo_name "$PYDM")"
 TRACE_NAME=""
 [ "$NO_TRACE" = 1 ] || TRACE_NAME="$(repo_name "$TRACE")"
-names="$(printf '%s\n' "$CANOPY_NAME" "$RT_NAME" "$SDK_NAME" "$PYDM_NAME" $TRACE_NAME)"
+names="$(printf '%s\n' "$CANOPY_NAME" "$RT_NAME" "$PYDM_NAME" $TRACE_NAME)"
 [ -z "$(printf '%s\n' "$names" | sort | uniq -d)" ] \
     || die "two checkouts share a directory name ($(printf '%s\n' "$names" | sort | uniq -d | tr '\n' ' ')); their exports would collide"
 
@@ -174,7 +186,7 @@ else
     echo "$PROG: spec    none (SPEC unset)" >&2
 fi
 if [ "$NO_TRACE" = 0 ]; then
-    echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE)" >&2
+    echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE, pins the same sdk)" >&2
 else
     echo "$PROG: trace   none (--no-trace)" >&2
 fi
@@ -220,16 +232,21 @@ export_repo() { # <checkout> <sha> <repo dir name>; prints the export's path
     git -C "$1" archive "$2" | tar -x -C "$dest"
     echo "$dest"
 }
+# An export of a repo that vendors the SDK: its submodule directory, which
+# `git archive` leaves empty, gets the tree of the payload's SDK commit (the one
+# both the runtime and Trace commits were checked to pin above).
+export_vendoring_sdk() { # <checkout> <sha> <repo dir name>; prints the export's path
+    local dest
+    dest="$(export_repo "$1" "$2" "$3")"
+    mkdir -p "$dest/$SDK_VENDOR"
+    git -C "$SDK" archive "$SDK_SHA" | tar -x -C "$dest/$SDK_VENDOR"
+    echo "$dest"
+}
 CANOPY_SRC="$(export_repo "$ROOT" "$CANOPY_SHA" "$CANOPY_NAME")"
-RT_SRC="$(export_repo "$RT" "$RT_SHA" "$RT_NAME")"
-# The runtime export's submodule directory is empty; it gets the pinned SDK tree.
-mkdir -p "$RT_SRC/$SDK_VENDOR"
-git -C "$SDK" archive "$SDK_SHA" | tar -x -C "$RT_SRC/$SDK_VENDOR"
-SDK_SRC=""
-[ "$NO_TRACE" = 1 ] || SDK_SRC="$(export_repo "$SDK" "$SDK_SHA" "$SDK_NAME")"
+RT_SRC="$(export_vendoring_sdk "$RT" "$RT_SHA" "$RT_NAME")"
 PYDM_SRC="$(export_repo "$PYDM" "$PYDM_SHA" "$PYDM_NAME")"
 TRACE_SRC=""
-[ "$NO_TRACE" = 1 ] || TRACE_SRC="$(export_repo "$TRACE" "$TRACE_SHA" "$TRACE_NAME")"
+[ "$NO_TRACE" = 1 ] || TRACE_SRC="$(export_vendoring_sdk "$TRACE" "$TRACE_SHA" "$TRACE_NAME")"
 
 # --- wheels ------------------------------------------------------------------
 # hatch-vcs does not hand setuptools_scm the distribution name, so canopy's
@@ -264,24 +281,9 @@ cp -R "$VIEWER_DIST" "$STAGE/viewer"
 
 # --- trace -----------------------------------------------------------------------
 if [ "$NO_TRACE" = 0 ]; then
-    (cd "$SDK_SRC" && js pnpm install --frozen-lockfile && js pnpm run build) \
-        || die "building the SDK export of $SDK_SHA failed"
+    # Like the runtime's, Trace's install builds the SDK packages it vendors.
     (cd "$TRACE_SRC" && js pnpm install --frozen-lockfile) \
-        || die "installing the Trace export of $TRACE_SHA failed"
-    # Until the SDK is released, Trace imports SDK packages that its committed
-    # package.json does not declare (its checkout carries an uncommitted link:).
-    # Each SDK package the install did not provide is linked to the SDK export
-    # built above, so Trace bundles the payload's own SDK commit. A Trace that
-    # declares the package gets it from its lockfile and no link is made.
-    for pkg in "$SDK_SRC"/packages/*/; do
-        [ -f "$pkg/package.json" ] || continue
-        name="$(sed -n 's/^ *"name": *"\([^"]*\)".*/\1/p' "$pkg/package.json" | head -n 1)"
-        [ -n "$name" ] || continue
-        [ ! -e "$TRACE_SRC/node_modules/$name" ] || continue
-        mkdir -p "$(dirname "$TRACE_SRC/node_modules/$name")"
-        ln -s "${pkg%/}" "$TRACE_SRC/node_modules/$name"
-        echo "$PROG: trace   $name -> sdk $SDK_SHA" >&2
-    done
+        || die "installing the Trace export of $TRACE_SHA (SDK $SDK_SHA) failed"
     (cd "$TRACE_SRC" && js pnpm exec tsc -b && js pnpm exec vite build --base=./) \
         || die "building the Trace export of $TRACE_SHA failed"
     [ -s "$TRACE_SRC/dist/index.html" ] || die "trace dist missing (dist/index.html)"

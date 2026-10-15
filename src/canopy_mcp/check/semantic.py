@@ -7,14 +7,21 @@ reports it.
 
 Codes: ``macro_default``, ``unresolved_formula``, ``duplicate_node_id``,
 ``open_webpage`` and ``curve_channel`` are errors; ``inert_in_osprey``,
-``writes_to_machine``, ``warning`` and ``unknown_widget`` are warnings.
-Draft-ref codes live in ``check.refs``.
+``writes_to_machine``, ``warning``, ``unknown_widget`` and ``waveform_tab`` are
+warnings. Draft-ref codes live in ``check.refs``.
 
 A plot's ``props.curves[]`` entries bind their PVs under the key the renderer
 reads (``y_channel`` on ``waveform-plot`` and ``xy-plot``, ``y_channels`` on
 ``pv-array-plot``); a curve without it is ``curve_channel``. This is checked
 here rather than left to the staged prop schemas, which may not be staged at all.
 A curve refused here draws no ``invalid_prop`` from the prop lint.
+
+A screen that is little more than a ``waveform-plot`` is ``waveform_tab``: one
+hint, on its first plot, when every plot of the screen draws (a non-empty
+``curves`` list with no ``curve_channel`` error) and every other node is a
+container, a shape or a static label. A live view of array PVs, overlays or the
+delta to a reference is the viewer's Waveform tab's job; a waveform plot beside
+other controls is a screen.
 
 A write-capable control or a ``write_pv`` action is ``inert_in_osprey`` while
 the server relays no writes (``relay_on=False``). With the PUT relay on it is
@@ -37,6 +44,31 @@ LOC_PREFIX = "loc://"
 WRITE_PV_ACTION = "write_pv"
 UNKNOWN_WIDGET_TYPE = "unknown-widget"
 CURVE_CHANNEL_CODE = "curve_channel"
+WAVEFORM_TAB_CODE = "waveform_tab"
+WAVEFORM_PLOT_TYPE = "waveform-plot"
+
+#: Node types that are not controls: containers, shapes and static labels. A
+#: screen of waveform plots and nothing but these draws the ``waveform_tab`` hint.
+PASSIVE_TYPES: frozenset[str] = frozenset(
+    {
+        "absolute-canvas",
+        "arc",
+        "ellipse",
+        "frame",
+        "group",
+        "group-box",
+        "image-view",
+        "line",
+        "polygon",
+        "rectangle",
+        "scroll-area",
+        "text-label",
+    }
+)
+_WAVEFORM_TAB_HINT = (
+    "this screen is little more than a waveform-plot; a live view of array PVs, overlays or the delta "
+    "to a reference is not a screen, it is the viewer's Waveform tab's job"
+)
 
 #: The key the renderer reads a plot curve's PV(s) from: ``y_channel`` on a
 #: waveform or XY plot (one PV per curve), ``y_channels`` on a PV array plot
@@ -98,6 +130,7 @@ def check_semantic(doc: Any, *, relay_on: bool = False) -> list[Finding]:
     for path, node in nodes:
         findings += _node_checks(path, node, relay_on)
         findings += _curve_channels(path, node)
+    findings += _waveform_tab(nodes)
     return findings
 
 
@@ -273,6 +306,22 @@ def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> li
             )
         )
     return out
+
+
+def _waveform_tab(nodes: list[tuple[Path, dict[str, Any]]]) -> list[Finding]:
+    """The ``waveform_tab`` hint: a screen of drawing waveform plots and nothing but passive nodes."""
+    plots = [(path, node) for path, node in nodes if node.get("type") == WAVEFORM_PLOT_TYPE]
+    if not plots:
+        return []
+    if any(node.get("type") not in PASSIVE_TYPES for _, node in nodes if node.get("type") != WAVEFORM_PLOT_TYPE):
+        return []
+    for path, node in plots:
+        props = node.get("props")
+        curves = props.get("curves") if isinstance(props, dict) else None
+        if not isinstance(curves, list) or not curves or _curve_findings(path, node):
+            return []
+    path, node = plots[0]
+    return [Finding(node_id(node), WAVEFORM_TAB_CODE, pointer((*path, "type")), "warning", _WAVEFORM_TAB_HINT)]
 
 
 def _curve_channels(path: Path, node: dict[str, Any]) -> list[Finding]:

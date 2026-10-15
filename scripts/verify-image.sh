@@ -15,9 +15,9 @@
 #   - in the image: /app/viewer/index.html and /app/trace/index.html exist, the
 #     trace index uses relative ./assets/ URLs (no ="/assets/ or ="/favicon.svg),
 #     and `import pymongo` and `import pydmconverter.scheme` work; when the
-#     trace dist also ships /app/trace/correlation.html, that page passes the
-#     same URL checks (an image built from an upstream react-trace without it
-#     still verifies).
+#     trace dist also ships /app/trace/correlation.html or
+#     /app/trace/waveform.html, each such page passes the same URL checks (an
+#     image built from a react-trace without them still verifies).
 # An image built with `build-image.sh --worktree` carries `<sha>+dirty.<fp>`
 # labels instead; each is accepted only when the checkout's HEAD is <sha> and
 # its working tree still hashes to <fp> (canopy, sdk, trace), and for such a trace
@@ -139,13 +139,14 @@ if docker run --rm --entrypoint sh "$IMAGE" -c '
     for f in /app/viewer/index.html /app/trace/index.html; do
         [ -f "$f" ] || { echo "missing $f"; rc=1; }
     done
-    for t in /app/trace/index.html /app/trace/correlation.html; do
+    for t in /app/trace/index.html /app/trace/correlation.html /app/trace/waveform.html; do
         [ -f "$t" ] || continue
         grep -qF "./assets/" "$t" || { echo "$t has no ./assets/ reference"; rc=1; }
         ! grep -qF "=\"/assets/" "$t" || { echo "$t has an absolute /assets/ URL"; rc=1; }
         ! grep -qF "=\"/favicon.svg" "$t" || { echo "$t has an absolute /favicon.svg URL"; rc=1; }
     done
     [ -f /app/trace/correlation.html ] && echo "checked /app/trace/correlation.html"
+    [ -f /app/trace/waveform.html ] && echo "checked /app/trace/waveform.html"
     python -c "import pymongo" || { echo "import pymongo failed"; rc=1; }
     python -c "import pydmconverter.scheme" || { echo "import pydmconverter.scheme failed"; rc=1; }
     exit $rc

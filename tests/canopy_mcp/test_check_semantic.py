@@ -338,7 +338,8 @@ def test_curve_channel_names_the_key_that_was_written_instead() -> None:
     ],
 )
 def test_curve_channel_waveform_and_xy_curves_with_y_channel_pass(curve: dict[str, Any]) -> None:
-    assert check_semantic(_plot("waveform-plot", curve)) == []
+    """No ``curve_channel``; a lone waveform plot draws only the ``waveform_tab`` hint."""
+    assert _codes(_plot("waveform-plot", curve)) == ["waveform_tab"]
     assert check_semantic(_plot("xy-plot", curve)) == []
 
 
@@ -372,6 +373,73 @@ def test_curve_channel_reports_each_bad_curve_and_tolerates_malformed_input() ->
     assert check_semantic(_doc(_node("w-p", "waveform-plot", props={}))) == []
     assert check_semantic(_doc(_node("w-p", "waveform-plot", props=[]))) == []
     assert check_semantic(_doc(_node("w-l", "pv-label", props={"curves": [{"channel": "SR:X"}]}))) == []
+
+
+# --- waveform_tab ----------------------------------------------------------
+
+_WF_CURVE = {"y_channel": "SR:WF"}
+
+
+def test_waveform_tab_hint_for_a_screen_that_is_a_lone_waveform_plot() -> None:
+    (f,) = check_semantic(_plot("waveform-plot", _WF_CURVE))
+    assert (f.code, f.severity, f.node_id, f.path) == ("waveform_tab", "warning", "w-p", "/root/children/0/type")
+    assert "Waveform tab" in f.message and "waveform-plot" in f.message
+
+
+def test_waveform_tab_hint_tolerates_titles_frames_and_overlaid_curves() -> None:
+    """Labels, boxes and containers are not controls; two overlaid curves are still the tab's job."""
+    plot = _node("w-p", "waveform-plot", props={"curves": [_WF_CURVE, {"y_channel": "SR:REF"}]})
+    doc = _doc(_node("w-t", "text-label", props={"text": "Orbit"}), _node("w-b", "group-box", [plot]))
+    findings = check_semantic(doc)
+    assert [(f.code, f.node_id, f.path) for f in findings] == [
+        ("waveform_tab", "w-p", "/root/children/1/children/0/type")
+    ]
+    canvas = _doc()
+    canvas["root"] = _node("w-root", "absolute-canvas", [_node("w-p", "waveform-plot", props={"curves": [_WF_CURVE]})])
+    assert _codes(canvas) == ["waveform_tab"]
+
+
+def test_waveform_tab_hint_is_raised_once_for_several_lone_waveform_plots() -> None:
+    a = _node("w-a", "waveform-plot", props={"curves": [_WF_CURVE]})
+    b = _node("w-b", "waveform-plot", props={"curves": [{"y_channel": "SR:WF2"}]})
+    (f,) = check_semantic(_doc(a, b))
+    assert (f.code, f.node_id) == ("waveform_tab", "w-a")
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        _node("w-l", "pv-label", props={"pv": "SR:CUR"}),
+        _node("w-s", "pv-slider", props={"pv": "SR:SET"}),
+        _node("w-x", "xy-plot", props={"curves": [{"y_channel": "SR:Y", "x_channel": "SR:X"}]}),
+        _node("w-e", "embedded-display", props={"file": "other.screen.json"}),
+        _node("w-u", "unknown-widget", props={}),
+    ],
+)
+def test_no_waveform_tab_hint_for_a_waveform_plot_beside_other_controls(other: dict[str, Any]) -> None:
+    doc = _doc(_node("w-p", "waveform-plot", props={"curves": [_WF_CURVE]}), other)
+    assert "waveform_tab" not in _codes(doc)
+
+
+def test_no_waveform_tab_hint_when_a_control_is_nested_deeper() -> None:
+    plot = _node("w-p", "waveform-plot", props={"curves": [_WF_CURVE]})
+    doc = _doc(plot, _node("w-g", "group", [_node("w-btn", "pv-button", props={"pv": "SR:CMD"})]))
+    assert "waveform_tab" not in _codes(doc)
+
+
+@pytest.mark.parametrize(
+    "props",
+    [{}, [], {"curves": []}, {"curves": "nope"}, {"curves": [{"channel": "SR:WF"}]}, {"curves": [_WF_CURVE, "x"]}],
+)
+def test_no_waveform_tab_hint_for_a_plot_that_draws_nothing_or_has_a_refused_curve(props: Any) -> None:
+    """A broken plot gets its ``curve_channel`` error alone; the hint waits until the plot draws."""
+    assert "waveform_tab" not in _codes(_doc(_node("w-p", "waveform-plot", props=props)))
+
+
+def test_no_waveform_tab_hint_for_a_screen_without_a_waveform_plot() -> None:
+    assert check_semantic(_doc(_node("w-t", "text-label", props={"text": "x"}))) == []
+    assert check_semantic(_plot("xy-plot", {"y_channel": "SR:Y", "x_channel": "SR:X"})) == []
+    assert check_semantic({"root": None}) == []
 
 
 def test_curve_key_per_plot_type_is_the_one_key_the_staged_schema_requires(tmp_path: Path) -> None:

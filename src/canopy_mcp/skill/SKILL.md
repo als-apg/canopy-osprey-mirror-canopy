@@ -195,6 +195,14 @@ the user to open the viewer's Trace tab and enter the PV name and time range
 there, or the two PV names on its correlation page. Do not build a plot widget
 for it. If the viewer has no Trace tab, say that a screen cannot show it.
 
+A live view of one or more array PVs, overlays of several of them, or their
+delta to a reference trace is not a screen either: it is the Waveform tab's
+job. Tell the user to open the viewer's Waveform tab and enter the PV names
+there. Build a `waveform-plot` only for a screen that shows the array
+beside other controls. A screen that is little more than a `waveform-plot`
+draws the `waveform_tab` warning. If the viewer has no Waveform tab, a
+`waveform-plot` screen is the way to show the array.
+
 ## Edit with `rev` and `base_rev`
 
 Every screen has a `rev`, the hash of its file. Every write returns the new

@@ -124,6 +124,8 @@ def _assert_row(response: httpx.Response, row: str, status: int | None = None) -
 # --- route table -----------------------------------------------------------------
 
 MUTATING = {"PUT", "POST", "DELETE", "PATCH"}
+# POSTs that only compute: Fox serves both under read access, so they are not write paths.
+READ_ONLY_POSTS = {("POST", "/fox/v1/validate"), ("POST", "/fox/v1/evaluate")}
 
 
 def _forwarded_mutating_pairs(settings: Settings) -> set[tuple[str, str]]:
@@ -137,12 +139,19 @@ def _forwarded_mutating_pairs(settings: Settings) -> set[tuple[str, str]]:
     return pairs
 
 
-def test_relay_on_forwards_exactly_one_mutating_pair(tmp_path: Path) -> None:
-    assert _forwarded_mutating_pairs(_settings(tmp_path)) == {("PUT", "/hare/v1/pvs/{pv:path}")}
+@pytest.mark.parametrize("put_relay", [True, False])
+def test_the_read_only_fox_posts_are_forwarded_either_way(tmp_path: Path, put_relay: bool) -> None:
+    pairs = _forwarded_mutating_pairs(_settings(tmp_path, put_relay=put_relay))
+    assert pairs & READ_ONLY_POSTS == READ_ONLY_POSTS
 
 
-def test_relay_off_forwards_no_mutating_pair(tmp_path: Path) -> None:
-    assert _forwarded_mutating_pairs(_settings(tmp_path, put_relay=False)) == set()
+def test_relay_on_forwards_exactly_one_write_pair(tmp_path: Path) -> None:
+    pairs = _forwarded_mutating_pairs(_settings(tmp_path)) - READ_ONLY_POSTS
+    assert pairs == {("PUT", "/hare/v1/pvs/{pv:path}")}
+
+
+def test_relay_off_forwards_no_write_pair(tmp_path: Path) -> None:
+    assert _forwarded_mutating_pairs(_settings(tmp_path, put_relay=False)) - READ_ONLY_POSTS == set()
 
 
 @pytest.mark.parametrize("method", ["GET", "POST", "DELETE", "PATCH"])
