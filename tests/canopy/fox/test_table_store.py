@@ -724,3 +724,303 @@ class TestTriggerHistory:
         h.archived("X", [(T0 - HOUR, 1.0)])
         store = await seeded_store(h, trigger_spec(n=100), lookback_ns=60 * S)
         assert frame_dict(store)["inputs"]["trig"]["history"] == "truncated"
+
+
+def edge_spec(edge: str | None, trig: str = "TRIG", *, trigger_only: bool = False) -> FormulaSpec:
+    if trigger_only:
+        # The trigger is the only input: once it moves past a row, every input has.
+        return FormulaSpec(
+            kind="table",
+            bindings={"trig": trig},
+            columns={"t": "{trig}"},
+            index="first_input",
+            trigger="trig",
+            max_points=1000,
+            trigger_edge=edge,
+        )
+    return FormulaSpec(**{**trigger_spec(trig=trig).model_dump(), "trigger_edge": edge})
+
+
+class TestIndexKey:
+    """A19: stores are reused and copied only between subscriptions with the same edge rule."""
+
+    def test_the_view_carries_the_spec_edge(self):
+        assert make_view(edge_spec("rising")).trigger_edge == "rising"
+        assert make_view(edge_spec("falling")).trigger_edge == "falling"
+        assert make_view(trigger_spec()).trigger_edge is None
+        assert make_view(timer_spec()).trigger_edge is None
+
+    def test_an_every_update_key_equals_the_edgeless_key(self):
+        assert make_view(trigger_spec()).index_key == "trigger:TRIG"
+        assert make_view(timer_spec(dt_ns=S)).index_key == f"grid:{S}"
+
+    def test_every_update_and_rising_on_one_trigger_get_different_stores(self):
+        every, rising = make_view(edge_spec(None)), make_view(edge_spec("rising"))
+        assert every.trigger_pv == rising.trigger_pv == "TRIG"
+        assert every.index_key != rising.index_key
+
+    def test_rising_and_falling_on_one_trigger_get_different_stores(self):
+        assert make_view(edge_spec("rising")).index_key != make_view(edge_spec("falling")).index_key
+
+    def test_two_rising_subscriptions_share_one_store(self):
+        assert make_view(edge_spec("rising")).index_key == make_view(edge_spec("rising")).index_key
+
+    def test_the_edge_key_never_collides_with_a_trigger_pv_name(self):
+        rising = make_view(edge_spec("rising")).index_key
+        for pv in ("TRIG:rising", "TRIG:edge=rising", "TRIG|rising", "rising:TRIG", "-rising:TRIG"):
+            assert make_view(edge_spec(None, trig=pv)).index_key != rising
+
+
+# --------------------------------------------------------------------------- #
+# Edge detection (A19)
+# --------------------------------------------------------------------------- #
+
+#: Trigger samples relative to a base time: an intra-bucket 0->1->0->1->0 at 3.01-3.04 s.
+EDGE_SEQ = [
+    (0, 0.0),
+    (1000 * MS, 1.0),
+    (2000 * MS, 0.0),
+    (3010 * MS, 1.0),
+    (3020 * MS, 0.0),
+    (3030 * MS, 1.0),
+    (3040 * MS, 0.0),
+    (4000 * MS, 1.0),
+]
+#: Rows per edge: two edges in one 100 ms bucket coalesce to the last one.
+EDGE_ROWS = {
+    "rising": [1000 * MS, 3030 * MS, 4000 * MS],
+    "falling": [2000 * MS, 3040 * MS],
+}
+
+
+async def edge_harness() -> Harness:
+    h = Harness()
+    # Every row needs a non-null cell: X has a ring sample before everything.
+    await h.live("X", T0 - 120 * S, 1.0, after_connect=True, recv=T0 - 120 * S)
+    return h
+
+
+async def edge_live_store(h: Harness, edge: str, *, trigger_only: bool = False) -> TableStore:
+    """A seeded store with nothing to seed, whose first tick (the backfill) already ran."""
+    store = await seeded_store(h, edge_spec(edge, trigger_only=trigger_only), lookback_ns=60 * S)
+    store.tick()
+    return store
+
+
+async def feed(h: Harness, store: TableStore, base: int, seq, *, tick_each: bool = True) -> None:
+    for off, value in seq:
+        h.now = max(h.now, base + off + MS)
+        h.wm = h.now
+        await h.live("TRIG", base + off, value, recv=h.now)
+        if tick_each:
+            store.tick()
+
+
+def settle(h: Harness, store: TableStore) -> dict:
+    h.advance(10 * S)
+    store.tick()
+    return frame_dict(store)
+
+
+class TestTriggerEdges:
+    """A19: edges between consecutive trigger samples in time order, whatever their source."""
+
+    @pytest.mark.parametrize("trigger_only", [False, True], ids=["with-static-inputs", "trigger-only"])
+    @pytest.mark.parametrize("edge", ["rising", "falling"])
+    async def test_intra_bucket_edges_give_identical_rows_on_seed_live_and_backfill(self, edge, trigger_only):
+        # trigger-only: every input moves past a row as soon as the trigger does, so the
+        # live path must hold an edge row while its flush bucket is still open.
+        expected = EDGE_ROWS[edge]
+        spec = edge_spec(edge, trigger_only=trigger_only)
+        results = {}
+
+        # Archive seed.
+        h = await edge_harness()
+        base = T0 - 20 * S
+        h.archived("TRIG", [(base + off, v) for off, v in EDGE_SEQ])
+        store = await seeded_store(h, spec, lookback_ns=60 * S)
+        results["archive seed"] = [t - base for t in settle(h, store)["tsNs"]]
+
+        # Ring seed: the samples are in Vole's ring before the subscribe.
+        h = await edge_harness()
+        for off, v in EDGE_SEQ:
+            await h.live("TRIG", base + off, v, recv=base + off)
+        store = await seeded_store(h, spec, lookback_ns=60 * S)
+        results["ring seed"] = [t - base for t in settle(h, store)["tsNs"]]
+
+        # Live: one tick per sample, so the intra-bucket edges span ticks.
+        h = await edge_harness()
+        store = await edge_live_store(h, edge, trigger_only=trigger_only)
+        base = T0 + S
+        await feed(h, store, base, EDGE_SEQ)
+        results["live"] = [t - base for t in settle(h, store)["tsNs"]]
+
+        # Backfill: every sample lands before the store's first tick.
+        h = await edge_harness()
+        store = await seeded_store(h, spec, lookback_ns=60 * S)
+        await feed(h, store, base, EDGE_SEQ, tick_each=False)
+        results["backfill"] = [t - base for t in settle(h, store)["tsNs"]]
+
+        assert results == {k: expected for k in results}
+
+    async def test_none_between_two_numbers_neither_fires_nor_breaks_the_pair(self):
+        h = await edge_harness()
+        store = await edge_live_store(h, "rising")
+        base = T0 + S
+        seq = [(0, 0.0), (500 * MS, None), (1000 * MS, 1.0), (1500 * MS, None), (2000 * MS, 1.0)]
+        await feed(h, store, base, seq)
+        # 0 -> 1 fires across the None; 1 -> 1 across the second None does not.
+        assert settle(h, store)["tsNs"] == [base + 1000 * MS]
+
+    async def test_enum_label_trigger_never_fires_and_never_updates_the_predecessor(self):
+        h = await edge_harness()
+        store = await edge_live_store(h, "rising")
+        base = T0 + S
+        seq = [
+            (0, "OFF"),
+            (500 * MS, "ON"),
+            (1000 * MS, "OFF"),
+            (1500 * MS, 0),
+            (2000 * MS, "ON"),  # a label between 0 and 1: 0 stays the predecessor
+            (2500 * MS, b"\x01"),
+            (3000 * MS, 1),
+        ]
+        await feed(h, store, base, seq)
+        assert settle(h, store)["tsNs"] == [base + 3000 * MS]
+
+    async def test_bool_trigger_coerces_to_int(self):
+        h = await edge_harness()
+        store = await edge_live_store(h, "falling")
+        base = T0 + S
+        await feed(h, store, base, [(0, True), (500 * MS, False), (1000 * MS, 1), (1500 * MS, False)])
+        assert settle(h, store)["tsNs"] == [base + 500 * MS, base + 1500 * MS]
+
+    @pytest.mark.parametrize("edge", ["rising", "falling"])
+    async def test_the_oldest_sample_ever_seen_never_fires(self, edge):
+        # Seed: one archived sample, nothing before it.
+        h = await edge_harness()
+        h.archived("TRIG", [(T0 - 10 * S, 5.0)])
+        store = await seeded_store(h, edge_spec(edge), lookback_ns=60 * S)
+        assert settle(h, store)["tsNs"] == []
+        # Live: the store's very first sample.
+        h = await edge_harness()
+        store = await edge_live_store(h, edge)
+        await feed(h, store, T0 + S, [(0, 5.0 if edge == "rising" else -5.0)])
+        assert settle(h, store)["tsNs"] == []
+
+    @pytest.mark.parametrize("source", ["archive", "ring"])
+    async def test_seed_to_live_boundary_carries_the_predecessor(self, source):
+        h = await edge_harness()
+        seeded = [(T0 - 5 * S, 0.0), (T0 - 3 * S, 1.0)]
+        if source == "archive":
+            h.archived("TRIG", seeded)
+        else:
+            for t, v in seeded:
+                await h.live("TRIG", t, v, recv=t)
+        store = await seeded_store(h, edge_spec("rising"), lookback_ns=60 * S)
+        store.tick()
+        # The first live sample fires against the seed's newest one (1 -> 2), and
+        # the seed's samples are not decided again.
+        await feed(h, store, T0 + S, [(0, 2.0), (S, 2.0), (2 * S, 1.0), (3 * S, 3.0)])
+        assert settle(h, store)["tsNs"] == [T0 - 3 * S, T0 + S, T0 + 4 * S]
+
+    async def test_a_ring_seed_takes_the_newest_numeric_sample_before_the_lookback_as_predecessor(self):
+        h = await edge_harness()
+        # Before the lookback: 0, then a label; inside it: 1 (fires against the 0).
+        for t, v in [(T0 - 90 * S, 0.0), (T0 - 70 * S, "OFF"), (T0 - 10 * S, 1.0)]:
+            await h.live("TRIG", t, v, recv=t)
+        store = await seeded_store(h, edge_spec("rising"), lookback_ns=60 * S)
+        assert settle(h, store)["tsNs"] == [T0 - 10 * S]
+
+    async def test_a_copied_store_inherits_the_predecessor(self):
+        h = await edge_harness()
+        source = await edge_live_store(h, "rising")
+        await feed(h, source, T0 + S, [(0, 0.0), (S, 1.0)])
+        h.advance(5 * S)
+        source.tick()
+        view = make_view(edge_spec("rising"), 60 * S)
+        copy = TableStore(view, TableSettings(), h.port())
+        copy.adopt(view, source=source)
+        await copy.wait_ready()
+        copy.tick()
+        # The copy's first sample fires against the source's predecessor (1 -> 2).
+        base = h.now
+        await feed(h, copy, base, [(S, 2.0)])
+        assert settle(h, copy)["tsNs"] == [T0 + 2 * S, base + S]
+
+    async def test_every_update_keeps_a_row_per_sample(self):
+        h = await edge_harness()
+        store = await edge_live_store(h, None)
+        base = T0 + S
+        await feed(h, store, base, [(0, 0.0), (500 * MS, None), (1000 * MS, "ON"), (1500 * MS, 1.0)])
+        assert settle(h, store)["tsNs"] == [base, base + 500 * MS, base + 1000 * MS, base + 1500 * MS]
+
+
+# --------------------------------------------------------------------------- #
+# Edge seed reach (A19): fetch until n edges, not n samples
+# --------------------------------------------------------------------------- #
+
+#: A 1 Hz trigger over the last 1000 s that is 0 except one 1 every 100 s:
+#: one rising edge per 100 s (at k = 50, 150, ..., 950), far sparser than its samples.
+SPARSE_K = 1000
+
+
+def sparse_ts(k: int, base: int = T0 - SPARSE_K * S) -> int:
+    return base + k * S
+
+
+def sparse_seq() -> list[tuple[int, float]]:
+    return [(k * S, 1.0 if k % 100 == 50 else 0.0) for k in range(SPARSE_K)]
+
+
+def sparse_spec(edge: str | None, n: int) -> FormulaSpec:
+    return FormulaSpec(**{**edge_spec(edge).model_dump(), "max_points": n})
+
+
+async def sparse_harness() -> Harness:
+    h = await edge_harness()
+    h.archived("X", [(T0 - 2 * HOUR, 1.0)])
+    h.archived("TRIG", [(sparse_ts(0) + off, v) for off, v in sparse_seq()])
+    return h
+
+
+class TestEdgeSeedReach:
+    async def test_a_sparse_rising_trigger_seeds_n_edges_across_several_blocks(self):
+        h = await sparse_harness()
+        store = await seeded_store(h, sparse_spec("rising", 5), lookback_ns=HOUR)
+        table = settle(h, store)
+        assert table["tsNs"] == [sparse_ts(k) for k in (550, 650, 750, 850, 950)]
+        assert table["inputs"]["trig"]["history"] == "seeded"
+        # The first 60 s window already held far more than 5 samples, but only one edge.
+        assert len(h.mole_calls("TRIG")) > 1
+
+    async def test_the_lookback_bound_stops_the_seed_with_fewer_rows(self):
+        h = await sparse_harness()
+        store = await seeded_store(h, sparse_spec("rising", 5), lookback_ns=250 * S)
+        table = settle(h, store)
+        assert table["tsNs"] == [sparse_ts(k) for k in (750, 850, 950)]
+        assert table["inputs"]["trig"]["history"] == "truncated"
+        windows = [c for c in h.mole_calls("TRIG") if c[0] == "window"]
+        assert min(c[2] for c in windows) == T0 - 250 * S
+
+    async def test_every_update_seeds_exactly_as_before(self):
+        h = await sparse_harness()
+        store = await seeded_store(h, sparse_spec(None, 5), lookback_ns=HOUR)
+        table = settle(h, store)
+        # The newest 5 samples, from one window: the edge reach does not apply.
+        assert table["tsNs"] == [sparse_ts(k) for k in range(995, 1000)]
+        assert [c[0] for c in h.mole_calls("TRIG")] == ["window"]
+
+    async def test_a_backfill_re_read_gives_the_same_rows_as_the_live_path(self):
+        expected = [k * S for k in (550, 650, 750, 850, 950)]
+        # Archive seed across several blocks.
+        h = await sparse_harness()
+        store = await seeded_store(h, sparse_spec("rising", 5), lookback_ns=HOUR)
+        seeded = [t - sparse_ts(0) for t in settle(h, store)["tsNs"]]
+        # Backfill: the same samples land live before the store's first tick.
+        h = await edge_harness()
+        store = await seeded_store(h, sparse_spec("rising", 5), lookback_ns=60 * S)
+        base = T0 + S
+        await feed(h, store, base, sparse_seq(), tick_each=False)
+        backfilled = [t - base for t in settle(h, store)["tsNs"]]
+        assert seeded == backfilled == expected

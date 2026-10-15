@@ -17,6 +17,8 @@ AlignmentMode = Literal["last", "interpolate"]
 IndexMode = Literal["union", "intersection", "grid", "first_input"]
 TableHistory = Literal["seeded", "live-only", "not-archived", "truncated"]
 TableInputState = Literal["ok", "no-data"]
+# Which trigger updates produce a row (A19). Absent (``None``) means Every update.
+TriggerEdge = Literal["rising", "falling"]
 
 # --- table kind limits (FR1) --- #
 # A timer-driven table may not sample faster than this.
@@ -52,6 +54,10 @@ class FormulaSpec(CanopyModel):
     # ``table`` with ``index='first_input'`` only: the binding whose updates
     # produce rows. The server indexes on this, never on binding order.
     trigger: str | None = None
+    # ``table`` with ``index='first_input'`` only: fire a row on the trigger's
+    # rising or falling edge instead of on every update (A19). Absent means
+    # Every update, the plain ``first_input`` rule.
+    trigger_edge: TriggerEdge | None = None
 
     @model_validator(mode="after")
     def _check_kind_shape(self) -> "FormulaSpec":
@@ -62,6 +68,8 @@ class FormulaSpec(CanopyModel):
                 raise ValueError("'columns' is only valid for kind 'table'")
             if self.trigger is not None:
                 raise ValueError("'trigger' is only valid for kind 'table'")
+            if self.trigger_edge is not None:
+                raise ValueError("'triggerEdge' is only valid for kind 'table'")
             return self
         return self._check_table_shape()
 
@@ -76,6 +84,8 @@ class FormulaSpec(CanopyModel):
             raise ValueError("a table is evaluated in 'raw' mode only")
         if self.align != "last":
             raise ValueError("a table aligns on the last value only ('align': 'last')")
+        if self.trigger_edge is not None and self.index != "first_input":
+            raise ValueError("'triggerEdge' is only valid for a table indexed on 'first_input' (trigger PV)")
         if self.index == "first_input":
             if self.trigger is None:
                 raise ValueError("a table indexed on 'first_input' needs a 'trigger' binding")

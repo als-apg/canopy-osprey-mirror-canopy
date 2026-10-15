@@ -62,6 +62,8 @@ _INVALID = SEVERITY_ORDINAL[AlarmSeverity.INVALID]
 #: Hare flushes every 100 ms; seeded and ring-backfilled trigger samples are
 #: coalesced to the last one per bucket, matching live ingest (b4:CC-13).
 FLUSH_BUCKET_NS = 100_000_000
+#: How many non-numeric ring samples an edge seed walks back over for its predecessor (A19).
+_PREV_WALK = 64
 #: Above this many samples a cell fill runs in a worker thread.
 _THREAD_FILL_THRESHOLD = 2_000
 #: The far future, for "latest sample" lookups.
@@ -160,10 +162,24 @@ class TableView:
     grid_dt_ns: int | None
     n: int
     lookback_ns: int
+    # Trigger PV mode only: "rising" / "falling" fires rows on that edge (A19);
+    # None is Every update, the plain rule.
+    trigger_edge: str | None = None
 
     @property
     def index_key(self) -> str:
-        return f"trigger:{self.trigger_pv}" if self.trigger_pv is not None else f"grid:{self.grid_dt_ns}"
+        """Stores are reused and copied only between views with the same key.
+
+        An edge rule gets its own ``trigger-<edge>:`` prefix, so its rows, held
+        trigger value and persisted predecessor never cross into an Every update
+        store (whose key, ``trigger:<pv>``, is unchanged) or another edge's, and no
+        PV name can make an edgeless key equal an edge key.
+        """
+        if self.trigger_pv is None:
+            return f"grid:{self.grid_dt_ns}"
+        if self.trigger_edge is None:
+            return f"trigger:{self.trigger_pv}"
+        return f"trigger-{self.trigger_edge}:{self.trigger_pv}"
 
 
 _TOKEN_RE = re.compile(r"\{([^{}]+)\}")
@@ -182,6 +198,7 @@ def build_view(spec: Any, parsed_columns: dict[str, ParsedFormula | None], lookb
         variables = tuple((f"__v{i}", bindings[token]) for i, token in enumerate(parsed.tokens))
         columns.append(ColumnDef(name=name, pv=None, parsed=parsed, variables=variables))
     trigger_pv = bindings[spec.trigger] if spec.index == "first_input" else None
+    trigger_edge = getattr(spec, "trigger_edge", None) if spec.index == "first_input" else None
     return TableView(
         bindings=bindings,
         pvs=tuple(dict.fromkeys(bindings.values())),
@@ -190,6 +207,7 @@ def build_view(spec: Any, parsed_columns: dict[str, ParsedFormula | None], lookb
         grid_dt_ns=spec.grid_dt_ns if spec.index == "grid" else None,
         n=int(spec.max_points),
         lookback_ns=int(lookback_ns),
+        trigger_edge=trigger_edge,
     )
 
 
@@ -282,6 +300,37 @@ def _outage_mask(ts: np.ndarray, outages: list[tuple[int, int | None]]) -> np.nd
         else:
             mask |= (ts >= start) & (ts <= end)
     return mask
+
+
+def _object_array(values: list[Any]) -> np.ndarray:
+    """An object array holding ``values`` as-is (a list value stays one element)."""
+    out = np.empty(len(values), dtype=object)
+    for i, v in enumerate(values):
+        out[i] = v
+    return out
+
+
+def _edge_mask(values: np.ndarray, edge: str, prev: float | None) -> tuple[np.ndarray, float | None]:
+    """Which of ``values`` (raw trigger samples, time order) fire ``edge`` (A19).
+
+    Each numeric sample is compared with the numeric sample before it -- ``prev``
+    for the first one, the store's persisted predecessor (None: the oldest sample
+    ever seen, which never fires). bool counts as int; None, str, bytes and any
+    other non-numeric value (also NaN / inf) neither fire nor become the
+    predecessor. Returns the fire mask and the new predecessor.
+    """
+    fire = np.zeros(len(values), dtype=bool)
+    if not len(values):
+        return fire, prev
+    v = numeric_array(values)
+    idx = np.flatnonzero(~np.isnan(v))
+    if not idx.size:
+        return fire, prev
+    vv = v[idx]
+    before = np.concatenate([[math.nan if prev is None else prev], vv[:-1]])
+    with np.errstate(invalid="ignore"):
+        fire[idx] = vv > before if edge == "rising" else vv < before
+    return fire, float(vv[-1])
 
 
 def _coalesce(ts: np.ndarray, *others: np.ndarray) -> tuple[np.ndarray, ...]:
@@ -478,6 +527,11 @@ class TableStore:
         # Archive blocks fetched during the current seed step, per PV.
         self._cache: dict[str, ArchiveBlock] = {}
         self._event_faithful: bool | None = None
+        # Edge rule only (A19): the newest numeric trigger sample consumed so far,
+        # the predecessor the next sample's edge is decided against (None: none yet).
+        self.edge_prev: float | None = None
+        # The newest trigger sample a seed step saw (any value): ``(ts, predecessor)``.
+        self._seed_seen: tuple[int, float | None] | None = None
 
     # --- ownership / task chain ---------------------------------------------- #
 
@@ -600,6 +654,8 @@ class TableStore:
         self.tail_ts = list(source.tail_ts)
         self.tail_arrival = list(source.tail_arrival)
         self.tail_base = {t: dict(cells) for t, cells in source.tail_base.items()}
+        # The index key holds the edge rule, so only a same-rule store is a source.
+        self.edge_prev = source.edge_prev if source.view.trigger_edge == view.trigger_edge else None
         for pv in view.pvs:
             if pv in shared and pv in source.inputs:
                 self.inputs[pv] = replace(source.inputs[pv])
@@ -623,9 +679,18 @@ class TableStore:
                 st.history = trig_history
             # Only a failed fetch is retried; an archive with no trigger samples is not.
             st.retry_at = now + self.settings.retry_ns if failed else None
-            if fresh:
+            if fresh and view.trigger_edge is None:
                 # No rows yet: live trigger samples from the lookback on may still become rows.
                 self.index_hwm = int(row_ts[-1]) if row_ts.size else lo - 1
+            elif fresh:
+                # An edge index resumes after the newest *sample* the seed saw, with its
+                # predecessor -- never behind what the live path already consumed.
+                seen = self._seed_seen
+                hwm = seen[0] if seen is not None else lo - 1
+                if self.index_hwm is None or hwm >= self.index_hwm:
+                    self.index_hwm = hwm
+                    if seen is not None:
+                        self.edge_prev = seen[1]
         else:
             failed = False
             dt = view.grid_dt_ns
@@ -700,22 +765,26 @@ class TableStore:
         Returns the row times, their arrivals, the trigger's history and whether
         the archive fetch failed transiently (the only case that is retried).
         """
-        sl = await _ring_read(self.port.ring_slice, pv, lo)
-        in_range = sl.ts_ns <= hi
-        (r_ts,) = _coalesce(sl.ts_ns[in_range])
-        ring_covers = self.port.last_at_or_before(pv, lo - 1) is not None
-        history: History = "seeded"
-        a_ts = np.empty(0, dtype=np.int64)
-        if r_ts.size < need and not ring_covers:
-            a_hi = int(r_ts[0]) - 1 if r_ts.size else hi
-            fetched, history = await _from_archive(
-                self._archive_trigger(pv, lo, a_hi, need - r_ts.size), "table trigger seed", pv
-            )
-            if fetched is not None:
-                a_ts = fetched
+        edge = self.view.trigger_edge
+        if edge is not None:
+            row_ts, history, ring_covers = await self._edge_trigger_rows(pv, edge, lo, hi, need)
+        else:
+            sl = await _ring_read(self.port.ring_slice, pv, lo)
+            in_range = sl.ts_ns <= hi
+            (r_ts,) = _coalesce(sl.ts_ns[in_range])
+            ring_covers = self.port.last_at_or_before(pv, lo - 1) is not None
+            history = "seeded"
+            a_ts = np.empty(0, dtype=np.int64)
+            if r_ts.size < need and not ring_covers:
+                a_hi = int(r_ts[0]) - 1 if r_ts.size else hi
+                fetched, history = await _from_archive(
+                    self._archive_trigger(pv, lo, a_hi, need - r_ts.size), "table trigger seed", pv
+                )
+                if fetched is not None:
+                    a_ts = fetched
+            row_ts = np.concatenate([a_ts, r_ts])[-need:] if need > 0 else np.empty(0, np.int64)
         # Only a transient archive failure leaves "live-only" here.
         failed = history == "live-only"
-        row_ts = np.concatenate([a_ts, r_ts])[-need:] if need > 0 else np.empty(0, np.int64)
         # Seeded rows arrive at their own time: they are history, final unless within H of now.
         arrival = row_ts.copy()
         if history == "seeded":
@@ -725,8 +794,68 @@ class TableStore:
                 history = "truncated"
         return row_ts.astype(np.int64), arrival.astype(np.int64), history, failed
 
-    async def _archive_trigger(self, pv: str, lo: int, hi: int, need: int) -> np.ndarray:
-        """Archive trigger samples in ``[lo, hi]``, newest-first in windows until ``need`` rows."""
+    async def _edge_trigger_rows(
+        self, pv: str, edge: str, lo: int, hi: int, need: int
+    ) -> tuple[np.ndarray, History, bool]:
+        """Edge rows in ``[lo, hi]`` (A19): edges decided over the raw archive + ring samples, then coalesced.
+
+        Records the newest sample seen and its predecessor in ``_seed_seen``.
+        """
+        sl = await _ring_read(self.port.ring_slice, pv, lo)
+        in_range = sl.ts_ns <= hi
+        r_ts, r_vals = sl.ts_ns[in_range], sl.values[in_range]
+        ring_before = self.port.last_at_or_before(pv, lo - 1)
+        ring_covers = ring_before is not None
+        first_prev: float | None = None
+        # The predecessor is the newest NUMERIC sample before ``lo``: walk back over
+        # non-numeric ring samples (bounded; past that the oldest sample never fires).
+        rec = ring_before
+        for _ in range(_PREV_WALK):
+            if rec is None:
+                break
+            _, first_prev = _edge_mask(_object_array([rec.value]), edge, None)
+            if first_prev is not None:
+                break
+            rec = self.port.last_at_or_before(pv, rec.ts_ns - 1)
+        fire, _ = _edge_mask(r_vals, edge, first_prev)
+        (r_edges,) = _coalesce(r_ts[fire])
+        history: History = "seeded"
+        a_ts, a_vals = np.empty(0, dtype=np.int64), np.empty(0, dtype=object)
+        if r_edges.size < need and not ring_covers:
+            # The archive's newest sample is the predecessor of the ring's oldest.
+            a_hi = int(r_ts[0]) - 1 if r_ts.size else hi
+            block, history = await _from_archive(
+                self._archive_trigger_raw(pv, lo, a_hi, need - r_edges.size), "table trigger seed", pv
+            )
+            if block is not None:
+                keep = np.asarray(block.ts_ns) <= a_hi
+                a_ts, a_vals = np.asarray(block.ts_ns, dtype=np.int64)[keep], block.values[keep]
+        all_ts = np.concatenate([a_ts, r_ts]).astype(np.int64)
+        all_vals = np.concatenate([a_vals, r_vals]) if a_ts.size else r_vals
+        # Samples before ``lo`` (an archive block's leading prior sample) are predecessors only;
+        # ``first_prev`` is set only where the ring covers ``lo``, when no archive is read.
+        fire, prev = _edge_mask(all_vals, edge, first_prev)
+        (edges,) = _coalesce(all_ts[fire & (all_ts >= lo)])
+        if all_ts.size:
+            self._seed_seen = (int(all_ts[-1]), prev)
+        elif ring_before is not None:
+            self._seed_seen = (int(ring_before.ts_ns), first_prev)
+        else:
+            self._seed_seen = None
+        row_ts = edges[-need:] if need > 0 else np.empty(0, np.int64)
+        return row_ts.astype(np.int64), history, ring_covers
+
+    async def _archive_trigger_raw(self, pv: str, lo: int, hi: int, need: int) -> ArchiveBlock:
+        """The raw archive trigger samples up to ``hi`` back to ``lo``, newest-first in windows."""
+        await self._archive_trigger(pv, lo, hi, need, self.view.trigger_edge)
+        return self._cache[pv]
+
+    async def _archive_trigger(self, pv: str, lo: int, hi: int, need: int, edge: str | None = None) -> np.ndarray:
+        """Archive trigger samples in ``[lo, hi]``, newest-first in windows until ``need`` rows.
+
+        With an edge rule a row is an edge, not a sample: the walk goes on until the
+        fetched samples hold ``need`` edge rows or it reaches ``lo`` (A19).
+        """
         fetch = self.port.fetch_window_budgeted
         if fetch is None:
             raise ArchiverNotConfigured("no archiver configured")
@@ -739,13 +868,19 @@ class TableStore:
             a = max(lo, cur_hi - width)
             block = await fetch(pv, a, cur_hi)
             blocks.append(block)
-            if not faithful:
+            if edge is not None:
+                found = _edge_rows(ArchiveBlock.concat(blocks), edge, lo, hi)
+            elif not faithful:
                 found = len(_changes(ArchiveBlock.concat(blocks), lo))
             else:
                 found += int(np.unique(np.asarray(block.ts_ns)[np.asarray(block.ts_ns) >= a] // FLUSH_BUCKET_NS).size)
             if found >= need or a == lo:
                 break
-            rate = max(len(block), 1) / max(cur_hi - a, 1)
+            if edge is not None:
+                # Rows per ns over everything walked so far (edges can be far sparser than samples).
+                rate = max(found, 1) / max(hi - a, 1)
+            else:
+                rate = max(len(block), 1) / max(cur_hi - a, 1)
             width = int(min(max((need - found) / rate * 1.2, width), width * 8))
             cur_hi = a - 1
         merged = ArchiveBlock.concat(blocks)
@@ -917,9 +1052,17 @@ class TableStore:
         """How many leading pending rows are final: settled by watermark or clock, or every input moved past."""
         settle = self.settings.settle_ns
         latest = {pv: self._latest_ts(pv) for pv in view.pvs}
+        # Edge rows (A19): a later edge in the same flush bucket replaces the row, so
+        # moving past it does not finalize a row while the newest trigger sample
+        # consumed is still in its bucket -- live then coalesces as a seed does.
+        open_bucket = (
+            self.index_hwm // FLUSH_BUCKET_NS if view.trigger_edge is not None and self.index_hwm is not None else None
+        )
         n = 0
         for t, a in zip(p_ts, p_arr):
             moved_past = all(latest[pv] is not None and latest[pv] > t for pv in view.pvs)
+            if open_bucket is not None and t // FLUSH_BUCKET_NS == open_bucket:
+                moved_past = False
             if not (wm >= a + settle or now >= a + 2 * settle or moved_past):
                 break
             n += 1
@@ -948,6 +1091,10 @@ class TableStore:
     def _advance_index(self, view: TableView, now: int, trig_recs: list[SampleRecord]) -> list[tuple[int, int]]:
         """New index points as ``(row ts, arrival)``, at most N; moves ``index_hwm`` past them."""
         hwm = self.index_hwm
+        if view.trigger_pv is not None and view.trigger_edge is not None:
+            new_rows = self._advance_edges(view, trig_recs)
+            self.backfill_pending = False
+            return new_rows[-view.n :]
         if view.trigger_pv is not None:
             if self.backfill_pending:
                 sl = self.port.ring_slice(view.trigger_pv, (hwm + 1) if hwm is not None else 0)
@@ -976,6 +1123,41 @@ class TableStore:
         if new_rows:
             self.index_hwm = new_rows[-1][0]
         return new_rows
+
+    def _advance_edges(self, view: TableView, trig_recs: list[SampleRecord]) -> list[tuple[int, int]]:
+        """New edge rows as ``(row ts, arrival)`` from the trigger samples after ``index_hwm`` (A19).
+
+        Edges are decided over the raw samples (the ring slice on a backfill, the
+        raw live records otherwise) against the persisted predecessor, then only
+        the edge times are coalesced to the last per flush bucket. An edge in the
+        bucket of the newest tail row replaces that row, so a bucket split over
+        two ticks gives the row a seed would.
+        """
+        hwm = self.index_hwm
+        samples: list[tuple[int, int, Any]] = []
+        if self.backfill_pending:
+            sl = self.port.ring_slice(view.trigger_pv, (hwm + 1) if hwm is not None else 0)
+            recv_map = {r.ts_ns: r.recv_ns for r in trig_recs}
+            samples = [(int(t), recv_map.get(int(t), 0) or int(t), v) for t, v in zip(sl.ts_ns.tolist(), sl.values)]
+            seen = {t for t, _, _ in samples}
+            samples += [(r.ts_ns, r.recv_ns, r.value) for r in trig_recs if r.ts_ns not in seen]
+        else:
+            samples = [(r.ts_ns, r.recv_ns, r.value) for r in trig_recs]
+        samples = sorted((s for s in samples if hwm is None or s[0] > hwm), key=lambda s: s[0])
+        if not samples:
+            return []
+        ts = np.fromiter((s[0] for s in samples), dtype=np.int64, count=len(samples))
+        arrival = np.fromiter((s[1] for s in samples), dtype=np.int64, count=len(samples))
+        fire, self.edge_prev = _edge_mask(_object_array([s[2] for s in samples]), view.trigger_edge, self.edge_prev)
+        self.index_hwm = int(ts[-1])
+        e_ts, e_arr = _coalesce(ts[fire], arrival[fire])
+        if e_ts.size and self.tail_ts:
+            last = self.tail_ts[-1]
+            if last < e_ts[0] and last // FLUSH_BUCKET_NS == int(e_ts[0]) // FLUSH_BUCKET_NS:
+                self.tail_ts = self.tail_ts[:-1]
+                self.tail_arrival = self.tail_arrival[:-1]
+                self.tail_base.pop(last, None)
+        return [(int(t), int(a)) for t, a in zip(e_ts.tolist(), e_arr.tolist())]
 
     def _newest_row_ts(self) -> int | None:
         if len(self._tail_vis_ts):
@@ -1083,6 +1265,20 @@ def _seq_equal(a: list[tuple[int, tuple]], b: list[tuple[int, tuple]]) -> bool:
             if not (x == y or (math.isnan(x) and math.isnan(y))):
                 return False
     return True
+
+
+def _edge_rows(block: ArchiveBlock, edge: str, lo: int, hi: int) -> int:
+    """How many ``edge`` rows the samples of ``block`` give in ``[lo, hi]`` (A19).
+
+    The oldest sample has no predecessor here and never fires, so this never
+    over-counts what the seed decides with the full sample run.
+    """
+    ts = np.asarray(block.ts_ns)
+    if ts.size == 0:
+        return 0
+    fire, _ = _edge_mask(block.values, edge, None)
+    (edges,) = _coalesce(ts[fire & (ts >= lo) & (ts <= hi)].astype(np.int64))
+    return int(edges.size)
 
 
 def _changes(block: ArchiveBlock, lo: int) -> np.ndarray:

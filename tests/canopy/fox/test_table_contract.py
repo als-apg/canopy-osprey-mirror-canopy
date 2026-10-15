@@ -53,10 +53,13 @@ FIXTURE_SHA256 = {
     "result-trigger.json": "db5eae12cac8c9176544b3b6f0abc838a35826dcfd729016e01268a030be6c27",
     "spec-max-points-absent.json": "ededfd70cdb9d34c2b96db79babfdbd18d35dabda2cb51c4f13736c0b0f8a26b",
     "spec-reject-max-points-0.json": "726dc8abdc71806c5e97645e5b5771534e6094dd5a6ae9efd9180e0aa214566b",
+    "spec-reject-edge-on-grid.json": "35ec841bdff3d6d0b0c2bd058c2f5a939faf1600e919f7f3b50bb3bf2e1cdc51",
     "spec-reject-max-points-10001.json": "d80a26c31964b81fc53c5cd84acff848ff3e71d11b31b46ebebf9f3182d15977",
     "spec-timer.json": "fc289736da0a01a13a1770c2d3ebf202a0c6d584d6430ef12068cecbd703b6cb",
     "spec-trigger-plotted.json": "b3623eeca40147e1962bb5a803310463931eee48cf41371eede0cbe3a35b2dd3",
     "spec-trigger.json": "6139acb178013631174b975be3136db85e934de17ca8bc9540047b08dbf183fb",
+    "spec-trigger-falling.json": "a8d14d97a170238ca51ffedb4ad2dba2df074d94c81d645b70e39b5b03828c35",
+    "spec-trigger-rising.json": "e98a02139fa363b96456bef437331b55491785bc0cc72d55bb93b4f6a12a959a",
     "spec-x-equals-y.json": "f002685eb32970e0a2ae86ebaec08ccddea4ed77f77b9058b90309759a12ddf2",
 }
 
@@ -170,6 +173,9 @@ class TestSpecValidator:
             {"maxPoints": 1},
             {"maxPoints": 10_000},
             {"trigger": "y"},
+            {"triggerEdge": "rising"},
+            {"triggerEdge": "falling"},
+            {"trigger_edge": "rising"},
         ],
     )
     def test_accepts(self, overrides):
@@ -196,11 +202,28 @@ class TestSpecValidator:
             ({"index": "grid", "trigger": None, "gridDtNs": 99_999_999}, "100 ms"),
             ({"maxPoints": 0}, "greater than 0"),
             ({"maxPoints": 10_001}, "between 1 and 10000"),
+            ({"index": "grid", "trigger": None, "gridDtNs": 1_000_000_000, "triggerEdge": "rising"}, "'triggerEdge'"),
+            ({"index": "grid", "trigger": None, "gridDtNs": 1_000_000_000, "triggerEdge": "falling"}, "'triggerEdge'"),
+            ({"index": "union", "triggerEdge": "rising"}, "'triggerEdge'"),
+            ({"index": "intersection", "triggerEdge": "falling"}, "'triggerEdge'"),
+            ({"triggerEdge": "both"}, "rising"),
+            ({"triggerEdge": "Rising"}, "rising"),
         ],
     )
     def test_rejects(self, overrides, fragment):
         with pytest.raises(ValidationError, match=fragment):
             FormulaSpec(**_table(**overrides))
+
+    def test_absent_trigger_edge_means_every_update(self):
+        spec = FormulaSpec(**_table())
+        assert spec.trigger_edge is None
+        assert "triggerEdge" not in spec.model_dump(by_alias=True, exclude_none=True)
+
+    @pytest.mark.parametrize("edge", ["rising", "falling"])
+    def test_trigger_edge_round_trips_on_the_wire(self, edge):
+        spec = FormulaSpec(**_table(triggerEdge=edge))
+        assert spec.trigger_edge == edge
+        assert spec.model_dump(by_alias=True)["triggerEdge"] == edge
 
     def test_absent_max_points_means_1000(self):
         assert FormulaSpec(**_table()).max_points == 1000
@@ -209,7 +232,9 @@ class TestSpecValidator:
         with pytest.raises(ValidationError, match="expression"):
             FormulaSpec(kind="scalar", bindings={"a": "PV:A"})
 
-    @pytest.mark.parametrize("extra", [{"columns": {"x": "{a}"}}, {"trigger": "a"}])
+    @pytest.mark.parametrize(
+        "extra", [{"columns": {"x": "{a}"}}, {"trigger": "a"}, {"trigger_edge": "rising"}, {"triggerEdge": "falling"}]
+    )
     def test_non_table_kinds_reject_table_fields(self, extra):
         with pytest.raises(ValidationError, match="only valid for kind 'table'"):
             FormulaSpec(kind="timeseries", expression="{a}", bindings={"a": "PV:A"}, **extra)
@@ -246,10 +271,32 @@ class TestFixtures:
         assert "maxPoints" not in frame["spec"]
         assert FormulaSpec(**frame["spec"]).max_points == 1000
 
-    @pytest.mark.parametrize("name", ["spec-reject-max-points-0.json", "spec-reject-max-points-10001.json"])
-    def test_reject_fixtures_are_rejected(self, name):
-        with pytest.raises(ValidationError, match="maxPoints|max_points|greater than 0"):
+    @pytest.mark.parametrize(
+        ("name", "fragment"),
+        [
+            ("spec-reject-max-points-0.json", "maxPoints|max_points|greater than 0"),
+            ("spec-reject-max-points-10001.json", "maxPoints|max_points|greater than 0"),
+            ("spec-reject-edge-on-grid.json", "'triggerEdge'"),
+        ],
+    )
+    def test_reject_fixtures_are_rejected(self, name, fragment):
+        with pytest.raises(ValidationError, match=fragment):
             FormulaSpec(**_load(name)["spec"])
+
+    @pytest.mark.parametrize("edge", ["rising", "falling"])
+    def test_edge_fixtures_are_the_trigger_fixture_plus_one_edge(self, edge):
+        """An edge spec differs from the Every-update spec only by ``triggerEdge``."""
+        base = _load("spec-trigger.json")
+        frame = _load(f"spec-trigger-{edge}.json")
+        assert frame["spec"].pop("triggerEdge") == edge
+        assert frame == base
+        assert "triggerEdge" not in base["spec"]
+        assert FormulaSpec(**base["spec"]).trigger_edge is None
+
+    def test_edge_on_grid_fixture_is_the_timer_fixture_plus_an_edge(self):
+        frame = _load("spec-reject-edge-on-grid.json")
+        assert frame["spec"].pop("triggerEdge") == "rising"
+        assert frame == _load("spec-timer.json")
 
     def test_trigger_fixture_has_a_trigger_that_is_not_plotted(self):
         spec = FormulaSpec(**_load("spec-trigger.json")["spec"])
