@@ -5,6 +5,7 @@ canopy-sdk-js, pydm-converter-tool and react-trace. ``pnpm``, ``uv`` and
 ``uvx`` are PATH stubs that log every call (tool, working directory, argv) and
 write the artifact the real tool would, built from the files they find in
 their working directory, so the payload's content shows which tree was built.
+The runtime and Trace each pin an SDK commit at ``vendor/canopy-sdk-js``.
 """
 
 from __future__ import annotations
@@ -19,8 +20,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "build-payload.sh"
-# Where canopy-screen-runtime vendors the SDK: a submodule whose gitlink names
-# the SDK commit the runtime is built against.
+# Where canopy-screen-runtime and react-trace vendor the SDK: a submodule whose
+# gitlink names the SDK commit each is built against.
 SDK_VENDOR = "vendor/canopy-sdk-js"
 
 UV_STUB = r"""#!/bin/sh
@@ -50,38 +51,24 @@ if grep -q PyDMConverter pyproject.toml; then echo "4.5.6+g$node"; else echo "1.
 PNPM_STUB = r"""#!/bin/sh
 printf 'pnpm\t%s\t%s\tTRACE=%s HUSKY=%s\n' "$PWD" "$*" "${TRACE:-unset}" "${HUSKY:-unset}" >> "$STUB_LOG"
 case "$*" in
-    "install --frozen-lockfile")
-        # Only the fake Trace has a lockfile: it may declare the SDK client itself.
-        if [ -n "${STUB_OWN_CLIENT:-}" ] && [ -f pnpm-lock.yaml ]; then
-            mkdir -p node_modules/@slaclab/canopy-client
-            echo "from the lockfile" > node_modules/@slaclab/canopy-client/own.txt
-        fi
-        ;;
+    "install --frozen-lockfile") ;;
     "run build")
-        if [ -d apps/viewer ]; then
-            [ -z "${STUB_FAIL_VIEWER:-}" ] || exit 1
-            mkdir -p apps/viewer/dist
-            {
-                cat marker.txt
-                # The SDK tree the runtime vendors, as the build finds it.
-                cat vendor/canopy-sdk-js/marker.txt
-            } > apps/viewer/dist/index.html || exit 95
-            cp packages/runtime/ir-map.json apps/viewer/dist/ir-map.json
-        else
-            mkdir -p dist
-            cat marker.txt > dist/built.txt
-        fi
+        [ -d apps/viewer ] || exit 97
+        [ -z "${STUB_FAIL_VIEWER:-}" ] || exit 1
+        mkdir -p apps/viewer/dist
+        {
+            cat marker.txt
+            # The SDK tree the runtime vendors, as the build finds it.
+            cat vendor/canopy-sdk-js/marker.txt
+        } > apps/viewer/dist/index.html || exit 95
+        cp packages/runtime/ir-map.json apps/viewer/dist/ir-map.json
         ;;
     "exec tsc -b") ;;
     "exec vite build --base=./")
         mkdir -p dist
         cat marker.txt > dist/index.html
-        # Where the SDK client resolves: its own copy, or two levels above a
-        # linked packages/client, the SDK tree's marker.
-        client=node_modules/@slaclab/canopy-client
-        if [ -f "$client/own.txt" ]; then cat "$client/own.txt" > dist/sdk.txt
-        elif [ -e "$client" ]; then cat "$client/../../marker.txt" > dist/sdk.txt
-        fi
+        # The SDK tree Trace vendors, as the build finds it.
+        cat vendor/canopy-sdk-js/marker.txt > dist/sdk.txt || exit 95
         ;;
     "run check-dist")
         [ -z "${STUB_FAIL_CHECK_DIST:-}" ] || exit 1
@@ -207,7 +194,13 @@ def world(tmp_path: Path) -> dict:
     rt_files = {"package.json": "{}\n", "apps/viewer/package.json": "{}\n", "packages/runtime/ir-map.json": IR_MAP}
     commit_pinning(rt, {**rt_files, "marker.txt": "canopy-screen-runtime v1\n"}, first(sdk), "one")
     commit_pinning(rt, {"marker.txt": "canopy-screen-runtime v2\n"}, head(sdk), "two")
-    trace = make_repo(src / "react-trace", {"package.json": "{}\n", "pnpm-lock.yaml": "lock\n"})
+    # So does each Trace commit: ``feature`` pins the first SDK commit, ``main`` the second.
+    trace = src / "react-trace"
+    trace.mkdir(parents=True)
+    git(trace, "init", "-q", "-b", "main")
+    trace_files = {"package.json": "{}\n", "pnpm-lock.yaml": "lock\n"}
+    commit_pinning(trace, {**trace_files, "marker.txt": "react-trace v1\n"}, first(sdk), "one")
+    commit_pinning(trace, {"marker.txt": "react-trace v2\n"}, head(sdk), "two")
     git(trace, "branch", "feature", "HEAD~1")
 
     bin_dir = tmp_path / "bin"
@@ -308,7 +301,8 @@ def test_staged_names_five_commits_and_both_versions(world):
 
 
 def test_trace_ref_is_resolved_to_its_commit(world):
-    ok(build(world, TRACE_REF="feature"))
+    # ``feature`` pins the SDK commit the first runtime commit pins.
+    ok(build(world, TRACE_REF="feature", RT_SHA=first(world["rt"])))
     assert staged(world)["trace"] == first(world["trace"])
     assert (world["out"] / "trace" / "index.html").read_text() == "react-trace v1\n"
 
@@ -320,13 +314,14 @@ def test_recorded_shas_are_built_instead_of_head(world):
         "SDK_SHA": first(world["sdk"]),
         "PYDM_SHA": first(world["pydm"]),
     }
+    # Trace's ``feature`` pins the SDK commit the first runtime commit pins.
     # A computed version would name HEAD, not the recorded commit; given versions are used as is.
     versions = {"CANOPY_VERSION": "1.2.2", "PYDM_VERSION": "4.5.5"}
-    ok(build(world, **shas, **versions))
+    ok(build(world, **shas, **versions, TRACE_REF="feature"))
     out = world["out"]
     s = staged(world)
     assert (s["canopy"], s["runtime"], s["sdk"], s["pydm"]) == tuple(shas.values())
-    assert s["trace"] == head(world["trace"])
+    assert s["trace"] == first(world["trace"])
     assert (s["canopy_version"], s["pydm_version"]) == ("1.2.2", "4.5.5")
     assert (out / "canopy-1.2.2-py3-none-any.whl").read_text() == "canopy v1\n"
     assert (out / "pydmconverter-4.5.5-py3-none-any.whl").read_text() == "pydm-converter-tool v1\n"
@@ -335,7 +330,7 @@ def test_recorded_shas_are_built_instead_of_head(world):
 
 def test_short_sha_is_recorded_in_full(world):
     full = first(world["rt"])
-    ok(build(world, RT_SHA=full[:10]))
+    ok(build(world, RT_SHA=full[:10], TRACE_REF="feature"))
     assert staged(world)["runtime"] == full
 
 
@@ -351,7 +346,8 @@ def test_builds_run_only_in_exports_under_one_root(world):
     for _tool, cwd, _argv in builds:
         seen.add(cwd.name)
         roots.add(cwd.parent)
-    assert seen == {r.name for r in world["repos"]}
+    # The SDK is built only inside the runtime and Trace exports, never on its own.
+    assert seen == {r.name for r in world["repos"]} - {world["sdk"].name}
     assert len(roots) == 1
     root = roots.pop()
     assert world["scratch"].resolve() in root.parents
@@ -364,8 +360,7 @@ def test_runtime_is_built_with_the_sdk_commit_it_pins(world):
     assert (world["out"] / "viewer" / "index.html").read_text() == "canopy-screen-runtime v2\ncanopy-sdk-js v2\n"
     order = [(cwd.name, argv) for tool, cwd, argv, _ in calls(world) if tool == "pnpm"]
     assert ("canopy-screen-runtime", "install --frozen-lockfile") in order
-    # Trace links the SDK packages it does not declare from a built SDK export.
-    assert order.index(("canopy-sdk-js", "run build")) < order.index(("react-trace", "exec vite build --base=./"))
+    assert not [cwd for cwd, _ in order if cwd == "canopy-sdk-js"]
 
 
 def test_sdk_commit_defaults_to_the_runtime_pin_not_the_sdk_head(world):
@@ -407,17 +402,42 @@ def test_trace_is_built_with_the_image_steps(world):
     assert trace == ["install --frozen-lockfile", "exec tsc -b", "exec vite build --base=./", "run check-dist"]
 
 
-def test_trace_resolves_an_undeclared_sdk_package_from_the_sdk_export(world):
-    # The first runtime commit pins the first SDK commit.
-    ok(build(world, RT_SHA=first(world["rt"])))
-    assert (world["out"] / "trace" / "sdk.txt").read_text() == "canopy-sdk-js v1\n"
-    order = [(cwd.name, argv) for tool, cwd, argv, _ in calls(world) if tool == "pnpm"]
-    assert order.index(("canopy-sdk-js", "run build")) < order.index(("react-trace", "exec tsc -b"))
+def test_trace_is_built_with_the_sdk_commit_it_pins(world):
+    # Matching gitlinks: the first runtime commit and ``feature`` both pin the first SDK commit.
+    proc = build(world, RT_SHA=first(world["rt"]), TRACE_REF="feature")
+    ok(proc)
+    out = world["out"]
+    # The stub's Trace build reads the SDK tree vendored into the Trace export.
+    assert (out / "trace" / "sdk.txt").read_text() == "canopy-sdk-js v1\n"
+    assert (out / "viewer" / "index.html").read_text() == "canopy-screen-runtime v1\ncanopy-sdk-js v1\n"
+    assert staged(world)["sdk"] == first(world["sdk"])  # still one SDK commit
 
 
-def test_trace_keeps_an_sdk_package_its_own_install_provides(world):
-    ok(build(world, STUB_OWN_CLIENT="1"))
-    assert (world["out"] / "trace" / "sdk.txt").read_text() == "from the lockfile\n"
+def test_a_trace_pinning_another_sdk_commit_is_refused(world):
+    # ``feature`` pins the first SDK commit, the runtime's HEAD the second.
+    proc = build(world, TRACE_REF="feature")
+    assert proc.returncode != 0
+    assert first(world["sdk"]) in proc.stderr and head(world["sdk"]) in proc.stderr
+    assert "TRACE_REF" in proc.stderr and "RT_SHA" in proc.stderr and SDK_VENDOR in proc.stderr
+    assert calls(world) == []
+    assert not world["out"].exists()
+
+
+def test_a_trace_commit_from_before_vendoring_is_refused(world):
+    old = commit_pinning(world["trace"], {"marker.txt": "react-trace v3\n"}, None, "unvendored")
+    proc = build(world)
+    assert proc.returncode != 0
+    assert "predates the vendored SDK" in proc.stderr
+    assert old in proc.stderr and SDK_VENDOR in proc.stderr
+    assert calls(world) == []
+    assert not world["out"].exists()
+
+
+def test_no_trace_ignores_a_trace_without_the_sdk_gitlink(world):
+    commit_pinning(world["trace"], {"marker.txt": "react-trace v3\n"}, None, "unvendored")
+    ok(build(world, "--no-trace"))
+    assert staged(world)["trace"] is None
+    assert staged(world)["sdk"] == head(world["sdk"])
 
 
 def test_pnpm_never_sees_trace_and_husky_is_off(world):
@@ -494,7 +514,7 @@ def test_no_trace_needs_no_trace_checkout(world):
     assert (out / "trace").is_dir() and list((out / "trace").iterdir()) == []
     assert (out / "viewer" / "index.html").is_file()
     assert not [c for c in calls(world) if "vite" in c[2]]
-    # Only Trace needs a standalone SDK build; the runtime builds its vendored copy.
+    # No SDK build of its own: the runtime builds its vendored copy.
     assert not [c for c in calls(world) if c[0] == "pnpm" and c[1].name == "canopy-sdk-js"]
 
 
@@ -602,10 +622,13 @@ def test_computed_version_with_a_dirty_suffix_is_accepted(world):
 
 
 def test_checkouts_sharing_a_directory_name_are_refused(world, tmp_path):
-    twin = make_repo(tmp_path / "other" / "canopy-sdk-js", {"package.json": "{}\n"})
+    twin = tmp_path / "other" / "pydm-converter-tool"
+    twin.mkdir(parents=True)
+    git(twin, "init", "-q", "-b", "main")
+    commit_pinning(twin, {"marker.txt": "twin\n"}, head(world["sdk"]), "one")
     proc = build(world, TRACE=str(twin), TRACE_REF="main")
     assert proc.returncode != 0
-    assert "canopy-sdk-js" in proc.stderr
+    assert "pydm-converter-tool" in proc.stderr
     assert calls(world) == []
 
 
