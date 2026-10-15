@@ -8,6 +8,7 @@ snapshots are seeded directly through the shared test session.
 from datetime import UTC, datetime
 
 from httpx import AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.squirrel.data.models import Pv, Snapshot, SnapshotValue
@@ -78,6 +79,36 @@ async def test_list_snapshots(client: AsyncClient, db_session: AsyncSession):
     titles = {row["title"] for row in r.json()}
     assert {"snap-A", "snap-B"} <= titles
     assert all("createdDate" in row and "pvCount" in row for row in r.json())
+
+
+async def test_list_reports_value_counts(client: AsyncClient, db_session: AsyncSession):
+    pv = await _seed_pv(db_session)
+    await _seed_snapshot(db_session, "with-value", pv=pv)
+    await _seed_snapshot(db_session, "empty")
+    r = await client.get("/v1/snapshots", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert {row["title"]: row["pvCount"] for row in r.json()} == {"with-value": 1, "empty": 0}
+
+
+async def test_list_does_not_load_snapshot_values(client: AsyncClient, db_session: AsyncSession, test_engine):
+    """Listing must count values in SQL, never fetch the rows — a full machine save holds ~16k."""
+    pv = await _seed_pv(db_session)
+    await _seed_snapshot(db_session, "with-value", pv=pv)
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        r = await client.get("/v1/snapshots", headers=READ_HEADERS)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert r.status_code == 200, r.text
+    value_reads = [s for s in statements if "FROM squirrel.snapshot_value" in s and "count(" not in s]
+    assert value_reads == []
 
 
 async def test_list_filtered_by_title(client: AsyncClient, db_session: AsyncSession):
