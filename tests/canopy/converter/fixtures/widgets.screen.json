@@ -50,11 +50,12 @@
         "id": "w-003",
         "type": "related-display-button",
         "props": {
-          "file": "subscreen",
+          "file": "subscreen.screen.json",
           "label": "Open",
           "macros": {
             "DEV": "${P}"
-          }
+          },
+          "openInNewWindow": true
         },
         "geometry": {
           "x": 10,

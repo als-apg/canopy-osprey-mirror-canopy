@@ -34,6 +34,14 @@ class HareConfig(BaseSettings):
     event_queue_maxsize: int = 100_000
     # Max concurrent seed (get+describe) calls when activating a subscribe batch.
     seed_concurrency: int = 32
+    seed_retry_backoff_s: float = 30.0
+    """Seconds a subscribe waits before re-seeding a PV whose last seed left its value or metadata missing.
+
+    Bounds how often an unreachable PV makes a subscribe block on connector
+    get/describe timeouts. The default is several times the 5.0 s CA and PVA
+    connector timeouts, so repeated subscribes of a dead PV pay that timeout at
+    most once per window rather than on nearly every subscribe.
+    """
 
 
 def get_hare_config() -> HareConfig:

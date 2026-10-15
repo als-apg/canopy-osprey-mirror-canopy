@@ -57,6 +57,13 @@ def test_unknown_suffix_is_unsupported():
     assert resp.json()["code"] == "converter_unsupported_input"
 
 
+def test_upload_filename_names_the_screen():
+    with TestClient(app) as client:
+        resp = _post(client, filename="sdr_fb.edl")
+    assert resp.status_code == 200
+    assert resp.json()["screen"]["id"] == "sdr_fb"
+
+
 def test_requires_api_key():
     with TestClient(app) as client:
         resp = _post(client, headers={})
@@ -74,7 +81,7 @@ def test_formula_validation_warnings_are_surfaced():
     )
 
     class _FakeService:
-        def convert(self, _data, *, kind):
+        def convert(self, _data, *, kind, filename=None):
             return fake_result
 
     async def _fake_validate(_spec):
