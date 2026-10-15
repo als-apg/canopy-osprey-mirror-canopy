@@ -26,7 +26,7 @@ import anyio
 
 from canopy.converter.config import ConverterConfig, get_converter_config
 from canopy.converter.errors import ConverterError
-from canopy.converter.adapters.edm_env import apply_edm_colors
+from canopy.converter.adapters.edm_lists import resolve_edm_lists
 from canopy.converter.services.conversion_service import ConversionService
 
 logger = logging.getLogger(__name__)
@@ -42,12 +42,25 @@ _service: ConversionService | None = None
 
 
 def _get_service() -> ConversionService:
-    """Build (once per worker process) the ConversionService used for batches."""
+    """Build, once per worker process, the ConversionService used for batches.
+
+    The first call resolves the ``colors.list`` and ``calc.list`` and builds
+    the widget registry from config; later calls return the memoized service.
+
+    Returns
+    -------
+    ConversionService
+        The worker's shared conversion service.
+    """
     global _service
     if _service is None:
         config = get_converter_config()
-        apply_edm_colors(config)
-        _service = ConversionService()
+        colors_list, calc_list = resolve_edm_lists(config)
+        _service = ConversionService(
+            colors_list_path=colors_list,
+            calc_list_path=calc_list,
+            search_paths=config.search_paths,
+        )
     return _service
 
 
@@ -160,7 +173,7 @@ async def _convert_entry(
     if kind is None:
         return {"path": path, "status": "skipped", "warnings": ["not a .edl/.ui screen"]}
     try:
-        result = await anyio.to_thread.run_sync(lambda: service.convert(raw, kind=kind))
+        result = await anyio.to_thread.run_sync(lambda: service.convert(raw, kind=kind, filename=path))
     except ConverterError as exc:
         return {"path": path, "status": "failed", "warnings": [exc.detail]}
 
