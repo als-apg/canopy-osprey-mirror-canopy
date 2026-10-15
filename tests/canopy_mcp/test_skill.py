@@ -250,6 +250,16 @@ def test_the_skill_sends_a_scalar_time_series_to_trace_not_to_a_widget() -> None
     assert "no Trace tab" in section
 
 
+def test_the_skill_sends_a_live_array_view_to_the_waveform_tab() -> None:
+    """A live view of array PVs, overlays or the delta to a reference is the Waveform tab's job."""
+    section = TEXT.split("\n## Plots\n", 1)[1].split("\n## ", 1)[0]
+    paragraph = next(block for block in section.split("\n\n") if "Waveform tab" in block)
+    for phrase in ("array PV", "overlay", "delta", "reference", "beside other controls", "`waveform-plot`"):
+        assert phrase in paragraph
+    assert "`waveform_tab`" in paragraph
+    assert "no Waveform tab" in paragraph
+
+
 def test_the_skill_keeps_edits_of_an_existing_draft_on_patch_node() -> None:
     paragraph = next(block for block in TEXT.split("\n\n") if "`overwrite=true` it replaces" in block)
     assert "`patch_node`" in paragraph and "`add_node`" in paragraph and "`remove_node`" in paragraph
