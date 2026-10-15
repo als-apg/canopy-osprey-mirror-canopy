@@ -142,6 +142,7 @@ changes only on the host: a user asks for a screen to be added with
 | `CANOPY_TRACE_DIST` | unset | The built Trace pages. Unset means no Trace tab. |
 | `CANOPY_TRACE_DEFAULT_QUERY` | empty | The query the Trace tab opens with when the URL carries none (`pv=...&range=...`). |
 | `CANOPY_CORRELATION_DEFAULT_QUERY` | empty | The query the correlation page opens with when the URL carries none (`x=...&y=...`). |
+| `CANOPY_WAVEFORM_DEFAULT_QUERY` | empty | The query the waveform page opens with when the URL carries none (`pv=...`). |
 | `CANOPY_CHANNELS_FILE` | unset | A JSON array of channel addresses, served on `GET /channels` for the PV autocomplete of the Trace pages. |
 | `CANOPY_THEME_FILE` | unset | The color scheme, as described under [Color schemes](color-schemes.md). FRONT hands it to the viewer in `config.json`. |
 
