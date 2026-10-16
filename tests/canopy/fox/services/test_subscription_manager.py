@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from tests.conftest import wait_for
 from canopy.fox.config import FoxConfig
 from canopy.fox.errors import (
     FormulaTypeError,
@@ -211,9 +212,8 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await asyncio.sleep(0.05)
 
-        assert len(messages) >= 1
+        assert await wait_for(lambda: len(messages) >= 1)
         assert messages[0]["type"] == "result"
         assert messages[0]["id"] == "sub-1"
         assert "data" in messages[0]
@@ -224,13 +224,12 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: len(messages) >= 1)
 
         initial_count = len(messages)
         notifier.notify("PV:A")
-        await asyncio.sleep(0.05)
 
-        assert len(messages) > initial_count
+        assert await wait_for(lambda: len(messages) > initial_count)
         assert messages[-1]["type"] == "result"
 
         await manager.shutdown()
@@ -239,16 +238,18 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _timeseries_spec(), 1000, 0, send_fn)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: len(messages) >= 1)
         initial_count = len(messages)
 
         for _ in range(10):
             notifier.notify("PV:A")
-        await asyncio.sleep(0.1)
 
-        new_results = [m for m in messages[initial_count:] if m["type"] == "result"]
-        assert len(new_results) >= 1
-        assert len(new_results) <= 3
+        def new_results() -> list[dict]:
+            return [m for m in messages[initial_count:] if m["type"] == "result"]
+
+        assert await wait_for(lambda: len(new_results()) >= 1)
+        await asyncio.sleep(0.1)  # settle; a slow runner only lowers the count, so this can't flake
+        assert len(new_results()) <= 3
 
         await manager.shutdown()
 
@@ -298,9 +299,8 @@ class TestSubscriptionManager:
         )
 
         await manager.add_subscription("client-1", "sub-1", spec, 0, 0, send_fn)
-        await asyncio.sleep(0.05)
 
-        assert len(messages) >= 1
+        assert await wait_for(lambda: len(messages) >= 1)
         assert messages[0]["type"] == "error"
         assert "code" in messages[0]
 
@@ -337,10 +337,8 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn, interval_ms=50)
-        await asyncio.sleep(0.18)
 
-        results = [m for m in messages if m["type"] == "result"]
-        assert len(results) >= 3
+        assert await wait_for(lambda: len([m for m in messages if m["type"] == "result"]) >= 3)
 
         await manager.shutdown()
 
@@ -373,7 +371,7 @@ class TestSubscriptionManager:
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
         await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: messages_1 and messages_2)
 
         results_1 = [m for m in messages_1 if m["type"] == "result"]
         results_2 = [m for m in messages_2 if m["type"] == "result"]
@@ -457,13 +455,11 @@ async def test_late_joiner_of_existing_eval_receives_a_result(manager):
     """
     first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
-    assert any(m["type"] == "result" for m in first)
+    assert await wait_for(lambda: any(m["type"] == "result" for m in first))
 
     late, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.1)
-    assert any(m["type"] == "result" for m in late), "late joiner never got a result"
+    assert await wait_for(lambda: any(m["type"] == "result" for m in late)), "late joiner never got a result"
 
     await manager.shutdown()
 
@@ -476,12 +472,12 @@ async def test_late_join_does_not_duplicate_result_for_existing_listener(manager
     """
     first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
     assert sum(1 for m in first if m["type"] == "result") == 1
 
     late, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.1)
+    assert await wait_for(lambda: late)
 
     assert sum(1 for m in first if m["type"] == "result") == 1, (
         "c1 received a duplicate result triggered by c2's late join"
@@ -501,14 +497,12 @@ async def test_all_dead_listeners_retire_the_shared_eval(manager, notifier):
         raise RuntimeError("socket closed")
 
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=dead_send)
-    await asyncio.sleep(0.1)
-    assert manager._shared_evals == {}
+    assert await wait_for(lambda: manager._shared_evals == {})
     assert manager._client_subs.get("c1", {}) == {}
 
     fresh, fresh_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=fresh_send)
-    await asyncio.sleep(0.1)
-    assert any(m["type"] == "result" for m in fresh)
+    assert await wait_for(lambda: any(m["type"] == "result" for m in fresh))
 
     await manager.shutdown()
 
@@ -525,9 +519,8 @@ async def test_all_dead_listeners_retire_on_the_error_path_too(manager):
         raise RuntimeError("socket closed")
 
     await manager.add_subscription("c1", "s1", bad_spec, t0_ns=0, t1_ns=0, send_fn=dead_send)
-    await asyncio.sleep(0.1)
+    assert await wait_for(lambda: manager._shared_evals == {})
 
-    assert manager._shared_evals == {}
     assert manager._client_subs.get("c1", {}) == {}
 
     await manager.shutdown()
@@ -539,14 +532,16 @@ async def test_shutdown_cancels_an_in_flight_catch_up(manager):
     The catch-up task is tracked on its SharedEval, so it never sends to a
     client after shutdown.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
 
     gate = asyncio.Event()
+    entered = asyncio.Event()
     real_evaluate = manager._formula_service.evaluate
 
     async def slow_evaluate(*args, **kwargs):
+        entered.set()
         await gate.wait()
         return await real_evaluate(*args, **kwargs)
 
@@ -554,7 +549,7 @@ async def test_shutdown_cancels_an_in_flight_catch_up(manager):
 
     late, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.02)
+    await asyncio.wait_for(entered.wait(), 5.0)
 
     await manager.shutdown()
     gate.set()
@@ -569,9 +564,9 @@ async def test_shutdown_stops_retries_handed_over_by_a_catch_up(manager):
     Shutdown leaves the listener list intact, so nothing but cancelling the
     shared eval's loop ends the retries.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
 
     calls = 0
 
@@ -584,7 +579,7 @@ async def test_shutdown_stops_retries_handed_over_by_a_catch_up(manager):
 
     _, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.6)
+    assert await wait_for(lambda: calls >= 2)
 
     await manager.shutdown()
     settled = calls
@@ -617,9 +612,9 @@ async def test_catch_up_result_does_not_overwrite_a_newer_fan_out(manager, notif
     catch-up completes, the joiner has already been served by the shared eval,
     so it keeps exactly one result carrying the fresh value.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
 
     real_evaluate = manager._formula_service.evaluate
     stale_read_done = asyncio.Event()
@@ -643,7 +638,7 @@ async def test_catch_up_result_does_not_overwrite_a_newer_fan_out(manager, notif
 
     fake_data_source.latest["PV:A"] = fake_data_source.latest["PV:A"].model_copy(update={"ts_ns": 5000, "value": 10.0})
     notifier.notify("PV:A")
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: _scalar_values(late))
     assert _scalar_values(late) == [13.0]
 
     release.set()
@@ -662,9 +657,9 @@ async def test_catch_up_does_not_send_behind_an_in_flight_fan_out(manager, notif
     is marked delivered, and must not queue its older value behind the fresh
     one.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
 
     real_evaluate = manager._formula_service.evaluate
     stale_read_done = asyncio.Event()
@@ -717,9 +712,9 @@ async def test_catch_up_hands_a_retriable_error_to_the_shared_eval(manager, monk
     it exactly once, and the shared eval's own loop does the retrying.
     """
     monkeypatch.setattr("canopy.fox.services.subscription_manager._INPUT_RETRY_DELAY_S", 0.01)
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
     shared = manager._shared_evals[manager._client_subs["c1"]["s1"]]
 
     callers: list[asyncio.Task] = []
@@ -734,10 +729,9 @@ async def test_catch_up_hands_a_retriable_error_to_the_shared_eval(manager, monk
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
     (catch_up,) = shared.catch_up_tasks
     await asyncio.wait_for(catch_up, 1.0)
-    await asyncio.sleep(0.05)
 
+    assert await wait_for(lambda: callers.count(shared.task) > 1), "the shared eval did not take over the retries"
     assert callers.count(catch_up) == 1
-    assert callers.count(shared.task) > 1, "the shared eval did not take over the retries"
     await manager.shutdown()
 
 
@@ -775,7 +769,7 @@ async def test_joiners_of_an_eval_without_output_share_its_first_result(manager,
     assert calls <= 20, f"{calls} evaluations in 0.1 s; expected one retry loop of about 10"
 
     fake_data_source.latest["PV:C"] = Sample(ts_ns=3000, value=1.0, severity=AlarmSeverity.NO_ALARM, source="archive")
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: all(_scalar_values(messages) for messages in collected))
 
     assert [_scalar_values(messages) for messages in collected] == [[6.0]] * 10
     await manager.shutdown()
@@ -788,11 +782,12 @@ async def test_resubscribe_during_a_catch_up_delivers_one_result(manager):
     though the new listener carries the same client, id and send function, so
     the client receives a single result.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c0", "s0", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
 
     real_evaluate = manager._formula_service.evaluate
+    stalled = asyncio.Event()
     release = asyncio.Event()
     gate_armed = True
 
@@ -801,6 +796,7 @@ async def test_resubscribe_during_a_catch_up_delivers_one_result(manager):
         result = await real_evaluate(*args, **kwargs)
         if gate_armed:
             gate_armed = False
+            stalled.set()
             await release.wait()
         return result
 
@@ -808,9 +804,9 @@ async def test_resubscribe_during_a_catch_up_delivers_one_result(manager):
 
     late, late_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.02)
+    await asyncio.wait_for(stalled.wait(), 5.0)
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: late)
     release.set()
     await asyncio.sleep(0.05)
 
@@ -838,7 +834,7 @@ async def test_fan_out_skips_a_listener_updated_away_mid_send(manager, notifier,
     moving, moving_send = _make_collector()
     await manager.add_subscription("c0", "s0", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=moving_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: moving)
     moving.clear()
 
     gate_armed = True
@@ -847,7 +843,7 @@ async def test_fan_out_skips_a_listener_updated_away_mid_send(manager, notifier,
     await asyncio.wait_for(first_blocked.wait(), 1.0)
 
     await manager.update_subscription("c1", "s1", moving_send, spec=product)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: moving)
     release_first.set()
     await asyncio.sleep(0.05)
 
@@ -869,11 +865,11 @@ async def test_update_onto_a_running_eval_receives_a_result(manager):
     product = FormulaSpec(kind="scalar", expression="{a} * {b}", bindings={"a": "PV:A", "b": "PV:B"})
     moving, moving_send = _make_collector()
     await manager.add_subscription("c3", "s3", product, t0_ns=0, t1_ns=0, send_fn=moving_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: moving and first and second)
     assert _scalar_values(moving) == [15.0]
 
     ok = await manager.update_subscription("c3", "s3", moving_send, spec=_scalar_spec())
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: len(moving) >= 2)
 
     assert ok is True
     assert _scalar_values(moving) == [15.0, 8.0], "updated subscription never got a result from the joined eval"
@@ -890,7 +886,7 @@ async def test_catch_up_non_retriable_error_goes_to_the_joiner_only(manager):
     """
     first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
     first_before = list(first)
 
     async def type_error(*args, **kwargs):
@@ -900,7 +896,7 @@ async def test_catch_up_non_retriable_error_goes_to_the_joiner_only(manager):
 
     late, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: late)
 
     assert late == [{"type": "error", "id": "s2", "code": ErrorCode.FORMULA_TYPE_ERROR.value, "message": "bad operand"}]
     assert first == first_before
@@ -911,7 +907,7 @@ async def test_catch_up_unhandled_exception_sends_unhandled_error(manager):
     """A generic exception in the catch-up becomes an ``UNHANDLED_EXCEPTION`` frame for the joiner."""
     first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
     first_before = list(first)
 
     async def explode(*args, **kwargs):
@@ -921,7 +917,7 @@ async def test_catch_up_unhandled_exception_sends_unhandled_error(manager):
 
     late, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: late)
 
     assert late == [{"type": "error", "id": "s2", "code": ErrorCode.UNHANDLED_EXCEPTION.value, "message": "kaboom"}]
     assert first == first_before
@@ -935,16 +931,16 @@ async def test_catch_up_send_failure_drops_only_the_joiner(manager):
     subscription map; the eval stays registered because the first listener
     remains.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: first)
     key = manager._client_subs["c1"]["s1"]
 
     async def dead_send(_msg: dict) -> None:
         raise RuntimeError("socket closed")
 
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=dead_send)
-    await asyncio.sleep(0.05)
+    assert await wait_for(lambda: "c2" not in manager._client_subs)
 
     shared = manager._shared_evals[key]
     assert [(ls.client_id, ls.sub_id) for ls in shared.listeners] == [("c1", "s1")]
@@ -958,9 +954,9 @@ async def test_poll_mode_join_schedules_no_catch_up(manager):
     The next poll tick reaches every listener, so the joiner receives nothing
     before that tick.
     """
-    _, first_send = _make_collector()
+    first, first_send = _make_collector()
     await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send, interval_ms=500)
-    await asyncio.sleep(0.02)
+    assert await wait_for(lambda: first)
 
     late, late_send = _make_collector()
     await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send, interval_ms=500)
