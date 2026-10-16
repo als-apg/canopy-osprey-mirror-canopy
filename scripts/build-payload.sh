@@ -24,6 +24,11 @@
 # source checkouts first (setuptools_scm) and pretended to the wheel builds;
 # a computed version whose +g<node> does not match the commit built is refused.
 #
+# When the runtime commit carries the collections fixtures, the compared fixture
+# set (member-key-vectors.json, valid/, invalid/, responses/) must be byte-equal
+# between the two recorded commits, or the build is refused; STAGED.json records
+# "fixtures" as "compared", or "absent" for a runtime commit without them.
+#
 # STAGED.json is written last: a directory without it is not a payload.
 #
 # Needs git, tar, uv/uvx, pnpm, python3 and sha256sum or shasum. Run with
@@ -65,6 +70,13 @@ Optional inputs (environment):
                   SHA), copied to <out>/spec/ and recorded in STAGED.json as "spec"
                   (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
                   unset means no spec/ and both recorded as null
+
+Checks (before anything is built):
+  fixtures    when RT_SHA has apps/viewer/e2e/fixtures/collections/, its
+              member-key-vectors.json, valid/, invalid/ and responses/ must equal
+              tests/canopy_mcp/fixtures/collections/ at CANOPY_SHA byte for byte
+              (library/ is not compared); STAGED.json records "fixtures" as
+              "compared", or "absent" when RT_SHA has no such directory
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -156,6 +168,44 @@ if [ "$NO_TRACE" = 0 ]; then
         || die "TRACE_REF=$TRACE_REF ($TRACE_SHA) pins SDK $TRACE_PIN at $SDK_VENDOR, but RT_SHA=$RT_SHA pins SDK $SDK_PIN; a payload has one SDK commit, so move one gitlink to match the other"
 fi
 
+# The collections fixtures are one wire contract held twice: canopy's copy and
+# the runtime's byte copy. Compared at the recorded commits (never a working
+# tree), by object id: equal blob ids are equal bytes. library/ is canopy's alone.
+FIX_CANOPY="tests/canopy_mcp/fixtures/collections"
+FIX_RT="apps/viewer/e2e/fixtures/collections"
+fixture_set() { # <checkout> <sha> <dir>: "<path below dir><TAB><type> <object>" per entry of the compared set, C-sorted
+    git -C "$1" -c core.quotePath=false ls-tree -r --full-tree "$2" -- "$3/" \
+        | awk -F'\t' -v dir="$3/" '{
+            split($1, m, " ")
+            rel = substr($2, length(dir) + 1)
+            if (rel == "member-key-vectors.json" || rel ~ /^(valid|invalid|responses)\//)
+                print rel "\t" m[2] " " m[3]
+        }' \
+        | LC_ALL=C sort
+}
+if [ "$(git -C "$RT" cat-file -t "$RT_SHA:$FIX_RT" 2>/dev/null || true)" = tree ]; then
+    canopy_set="$(fixture_set "$ROOT" "$CANOPY_SHA" "$FIX_CANOPY")"
+    rt_set="$(fixture_set "$RT" "$RT_SHA" "$FIX_RT")"
+    if [ "$canopy_set" != "$rt_set" ]; then
+        differing="$(LC_ALL=C comm -3 <(printf '%s\n' "$canopy_set") <(printf '%s\n' "$rt_set") \
+            | awk -F'\t' '{ p = ($1 == "" ? $2 : $1); if (p != "") print p }' | LC_ALL=C sort -u)"
+        first_path="${differing%%$'\n'*}"
+        in_canopy="$(printf '%s\n' "$canopy_set" | awk -F'\t' -v p="$first_path" '$1 == p { print "y" }')"
+        in_rt="$(printf '%s\n' "$rt_set" | awk -F'\t' -v p="$first_path" '$1 == p { print "y" }')"
+        if [ -z "$in_rt" ]; then
+            how="is in CANOPY_SHA=$CANOPY_SHA but not in RT_SHA=$RT_SHA"
+        elif [ -z "$in_canopy" ]; then
+            how="is in RT_SHA=$RT_SHA but not in CANOPY_SHA=$CANOPY_SHA"
+        else
+            how="differs between CANOPY_SHA=$CANOPY_SHA and RT_SHA=$RT_SHA"
+        fi
+        die "collections fixture $first_path $how ($FIX_CANOPY/ vs $FIX_RT/); the runtime's copy must be a byte copy of canopy's"
+    fi
+    FIXTURES=compared
+else
+    FIXTURES=absent
+fi
+
 # A checkout's directory name: the repository's, also when the checkout is a
 # linked worktree somewhere below it.
 repo_name() {
@@ -189,6 +239,11 @@ if [ "$NO_TRACE" = 0 ]; then
     echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE, pins the same sdk)" >&2
 else
     echo "$PROG: trace   none (--no-trace)" >&2
+fi
+if [ "$FIXTURES" = compared ]; then
+    echo "$PROG: fixtures compared ($FIX_CANOPY/ at canopy = $FIX_RT/ at runtime)" >&2
+else
+    echo "$PROG: fixtures absent (the runtime commit has no $FIX_RT/)" >&2
 fi
 
 # PEP 440 versions from the source checkouts (an export has no .git).
@@ -326,7 +381,8 @@ cat > "$OUT/STAGED.json.tmp" <<EOF
   "canopy_version": $(json_str "$CANOPY_VERSION"),
   "pydm_version": $(json_str "$PYDM_VERSION"),
   "spec": $(json_str "$SPEC_SHA"),
-  "spec-digest": $(json_str "$SPEC_DIGEST")
+  "spec-digest": $(json_str "$SPEC_DIGEST"),
+  "fixtures": $(json_str "$FIXTURES")
 }
 EOF
 mv "$OUT/STAGED.json.tmp" "$OUT/STAGED.json"
