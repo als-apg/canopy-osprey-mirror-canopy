@@ -122,7 +122,7 @@ finds beside a legacy file. No tool uploads a single image.
 
 ## The tools
 
-The server has 16 tools. The nine marked "reads" change nothing. The seven
+The server has 17 tools. The ten marked "reads" change nothing. The seven
 marked "writes" create, change or delete drafts, or file a draft for the
 shared library. A server may be started without the seven. If they are
 missing from your tool list, this server is read-only: say so, and do not
@@ -139,6 +139,7 @@ look for another way to write.
 | `list_drafts` | reads | List your drafts, followed by the library screens. |
 | `get_screen` | reads | Read one screen and its `rev`. |
 | `screenshot` | reads | Render a screen as a PNG and look at it. |
+| `list_collections` | reads | List the collections: named sets of screens and tools. Give the user a collection's `open_url` to open all its members at once. |
 | `new_screen` | writes | Save a whole document as a new draft, or replace a draft. |
 | `add_node` | writes | Append one widget node to a container of a draft. |
 | `patch_node` | writes | Change the props, geometry, rules or warnings of one node. |
