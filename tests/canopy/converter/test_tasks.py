@@ -66,6 +66,13 @@ async def test_batch_converts_each_entry_and_classifies_outcomes():
     assert skipped[0]["path"] == "notes.txt"
 
 
+async def test_batch_names_each_screen_after_its_entry():
+    manifest, redis = await _run(_zip({"screens/a.edl": GOOD_EDL, "screens/b.edl": GOOD_EDL}))
+
+    ids = {r["path"]: json.loads(await redis.get(r["resultKey"]))["id"] for r in manifest["rows"]}
+    assert ids == {"screens/a.edl": "a", "screens/b.edl": "b"}
+
+
 async def test_batch_deletes_staged_input_when_done():
     manifest, redis = await _run(_zip({"a.edl": GOOD_EDL}), token="cleanup")
     assert manifest["succeeded"] == 1
@@ -105,3 +112,26 @@ async def test_batch_reports_progress(monkeypatch):
     monkeypatch.setattr(jobs_gateway, "report_progress", fake_report)
     await _run(_zip({"a.edl": GOOD_EDL}))
     assert seen and seen[-1][0] == 100
+
+
+def test_worker_service_uses_the_configured_edm_lists(monkeypatch, tmp_path):
+    """The worker's service carries the configured ``colors.list`` and ``calc.list`` and is memoized.
+
+    ``canopy-worker`` does not run ``converter_lifespan``, so ``_get_service``
+    resolves the lists itself on its first call.
+    """
+    from canopy.converter import tasks
+    from canopy.converter.config import ConverterConfig
+
+    calc = tmp_path / "site-calcs.list"
+    calc.write_text("CALC1\n\nsum\nA+B\n", encoding="utf-8")
+    config = ConverterConfig(calc_list_path=calc)
+    monkeypatch.setattr(tasks, "_service", None)
+    monkeypatch.setattr(tasks, "get_converter_config", lambda: config)
+
+    first = tasks._get_service()
+    second = tasks._get_service()
+
+    assert first._colors_list_path == config.colors_list_path
+    assert first._calc_list_path == calc
+    assert first is second

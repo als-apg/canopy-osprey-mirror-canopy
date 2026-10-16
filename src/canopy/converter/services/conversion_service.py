@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Literal
+from pathlib import Path
 from dataclasses import dataclass
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 from pydmconverter.react import convert_bytes
 from pydmconverter.ir.emit import to_wire_dict
@@ -56,7 +57,7 @@ class ConversionResult:
     """Domain result of a single screen conversion.
 
     ``screen`` is the validated camelCase Screen IR wire dict; the rest are
-    out-of-band diagnostics (the IR itself never carries screen-level notes).
+    diagnostics rolled up from its nodes (screen-level notes ride on the root canvas).
     """
 
     screen: dict[str, Any]
@@ -67,16 +68,47 @@ class ConversionResult:
 
 
 class ConversionService:
-    """Converts ``.edl``/``.ui`` bytes to validated Screen IR + diagnostics."""
+    """Converts ``.edl``/``.ui`` bytes to validated Screen IR + diagnostics.
 
-    def __init__(self) -> None:
+    Parameters
+    ----------
+    colors_list_path : Path, optional
+        EDM ``colors.list`` used to resolve palette-indexed colours.
+    calc_list_path : Path, optional
+        EDM ``calc.list`` used to resolve named ``CALC\\`` PVs.
+    search_paths : sequence of str or Path, optional
+        ``EDMDATAFILES``-style directories searched for files an EDM screen
+        references, such as symbol files. Used for ``.edl`` conversions only.
+    """
+
+    def __init__(
+        self,
+        *,
+        colors_list_path: Path | None = None,
+        calc_list_path: Path | None = None,
+        search_paths: Sequence[str | Path] = (),
+    ) -> None:
         # One registry instance, reused across requests (the adapters would
         # otherwise rebuild a VendoredRegistry per call).
         self._registry = VendoredRegistry()
+        self._colors_list_path = colors_list_path
+        self._calc_list_path = calc_list_path
+        # EDMDATAFILES-style directories for symbol files (EDM screens only).
+        self._search_paths = [str(p) for p in search_paths]
 
-    def convert(self, data: bytes, *, kind: Literal["edl", "ui"]) -> ConversionResult:
+    def convert(self, data: bytes, *, kind: Literal["edl", "ui"], filename: str | None = None) -> ConversionResult:
+        """Convert one screen. ``filename`` is the upload's original name; the screen
+        id and title derive from it (without it both are ``"screen"``)."""
         try:
-            screen = convert_bytes(data, kind=kind, registry=self._registry)
+            screen = convert_bytes(
+                data,
+                kind=kind,
+                registry=self._registry,
+                color_list_path=self._colors_list_path,
+                calc_list_path=self._calc_list_path,
+                filename=filename,
+                search_paths=self._search_paths if kind == "edl" and self._search_paths else None,
+            )
         except ValueError as exc:
             # convert_bytes raises ValueError for an unsupported kind/suffix.
             raise UnsupportedInput(str(exc)) from exc

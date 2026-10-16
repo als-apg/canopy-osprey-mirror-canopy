@@ -35,6 +35,16 @@ class ClientChannel(Protocol):
 
 
 class PVBroker:
+    """Fan live PV updates from one connector out to subscribed WebSocket clients.
+
+    Parameters
+    ----------
+    connector : PVConnector
+        Backend used for monitors, one-shot reads, describes and writes.
+    config : HareConfig
+        Batching, heartbeat, resource-cap and seeding settings.
+    """
+
     def __init__(self, connector: PVConnector, config: HareConfig) -> None:
         self._connector = connector
         self._config = config
@@ -43,6 +53,8 @@ class PVBroker:
         self._monitors: dict[str, Subscription] = {}
         self._latest: dict[str, PVValue] = {}
         self._meta: dict[str, PVMeta] = {}
+        self._seed_retry_after: dict[str, float] = {}
+        self._seed_locks: dict[str, asyncio.Lock] = {}
         self._buffer: dict[str, PVValue] = {}
         self._buffer_lock = asyncio.Lock()
         # Bounded so a fast producer can't grow the queue without limit; the
@@ -206,11 +218,37 @@ class PVBroker:
         return accepted
 
     async def subscribe(self, client_id: str, pvs: list[str]) -> list[str]:
-        """Subscribe a client to PVs; returns the names actually accepted.
+        """Subscribe a client to PVs and send it their cached values and metadata.
 
         Invalid names and names past the caps are dropped rather than raised, so
         callers must use the return value rather than assume the whole request
-        was honoured.
+        was honoured. Invalid names are reported to the client in an
+        ``invalid_pv_name`` error frame.
+
+        Every accepted PV whose cached value or static metadata is missing is
+        seeded before the ``initial`` frame is sent, so the subscriber gets an
+        immediate value and describe info instead of waiting for a monitor tick
+        that a quiet record may never produce. A PV whose last seed attempt left
+        either half missing is skipped until its ``seed_retry_backoff_s`` window
+        has elapsed, so repeated subscribes of an unreachable PV do not each
+        block on connector timeouts. Seeds run concurrently, bounded by
+        ``seed_concurrency``, so a large batch cannot open unbounded connections
+        and one slow PV does not stall the rest. Concurrent subscribes of the
+        same PV share one seed attempt: a later subscribe waits for the attempt
+        in flight, then re-checks the cache and retry deadline it left behind.
+
+        Parameters
+        ----------
+        client_id : str
+            Identifier of a client registered with `add_client`.
+        pvs : list[str]
+            Requested PV names; may contain duplicates and invalid names.
+
+        Returns
+        -------
+        list[str]
+            The PV names subscribed after validation, de-duplication and cap
+            enforcement.
         """
         pvs, rejected = self._accept_names(pvs)
         if rejected:
@@ -234,18 +272,14 @@ class PVBroker:
         new_for_client = [pv for pv in pvs if pv not in previously_subscribed]
         if new_for_client:
             await self._fire_activation_hooks(new_for_client, client_id)
-        # Seed latest value + static metadata for newly-activated PVs so the
-        # subscriber gets an immediate value (and describe info) rather than
-        # waiting for the first monitor tick. Seed concurrently -- but bounded by
-        # a semaphore so a huge batch can't open thousands of connections at once
-        # -- so one slow or unreachable PV can't stall the rest of the batch.
         sem = asyncio.Semaphore(self._config.seed_concurrency)
 
         async def _seed(pv: str) -> None:
-            async with sem:
-                await self._seed_pv(pv)
+            async with sem, self._seed_locks.setdefault(pv, asyncio.Lock()):
+                if self._needs_seed(pv):
+                    await self._seed_pv(pv)
 
-        await asyncio.gather(*(_seed(pv) for pv in newly))
+        await asyncio.gather(*(_seed(pv) for pv in pvs if self._needs_seed(pv)))
         initial = {pv: self._latest[pv] for pv in pvs if pv in self._latest}
         meta = {pv: self._meta[pv] for pv in pvs if pv in self._meta}
         if initial or meta:
@@ -260,11 +294,43 @@ class PVBroker:
             )
         return pvs
 
-    async def _seed_pv(self, pv: str) -> None:
-        """Fetch the seed value + static metadata for one newly-activated PV.
+    def _needs_seed(self, pv: str) -> bool:
+        """Report whether a PV is missing its cached value or metadata and is past its retry deadline.
 
-        Per-PV failures are logged and swallowed so that one bad PV doesn't sink
-        the concurrent seed of the rest of the batch.
+        Parameters
+        ----------
+        pv : str
+            Validated name of a subscribed PV.
+
+        Returns
+        -------
+        bool
+            ``True`` when either half is uncached and no retry deadline is
+            pending, otherwise ``False``.
+        """
+        if pv in self._latest and pv in self._meta:
+            return False
+        now = time.monotonic()
+        return now >= self._seed_retry_after.get(pv, now)
+
+    async def _seed_pv(self, pv: str) -> None:
+        """Fetch whichever of the seed value and static metadata a PV is missing.
+
+        Each half is fetched only when absent from the cache, so a half that
+        failed on an earlier attempt is retried while one already held is left
+        alone. Per-PV failures are logged and swallowed so that one bad PV does
+        not sink the concurrent seed of the rest of the batch.
+
+        When either half is still missing after the attempt, the PV's retry
+        deadline is set ``seed_retry_backoff_s`` ahead; when both halves are
+        present the deadline is cleared. A deadline whose PV later receives its
+        value through the monitor is kept until `_stop_monitors` releases the
+        PV, so the deadlines are bounded by the PVs that have subscribers.
+
+        Parameters
+        ----------
+        pv : str
+            Validated name of a subscribed PV.
         """
         if pv not in self._latest:
             try:
@@ -276,6 +342,10 @@ class PVBroker:
                 self._meta[pv] = await self._connector.describe(pv)
             except Exception as exc:
                 logger.debug("describe failed for %s: %s", pv, exc)
+        if pv in self._latest and pv in self._meta:
+            self._seed_retry_after.pop(pv, None)
+        else:
+            self._seed_retry_after[pv] = time.monotonic() + self._config.seed_retry_backoff_s
 
     async def unsubscribe(self, client_id: str, pvs: list[str]) -> None:
         if not pvs:
@@ -302,6 +372,18 @@ class PVBroker:
                 logger.error("failed to start monitor for %s: %s", pv, exc)
 
     async def _stop_monitors(self, pvs: Iterable[str]) -> None:
+        """Close the monitors of released PVs and discard their cached state.
+
+        A monitor that fails to close is logged and does not stop the rest of
+        the batch. The cached value, static metadata, seed retry deadline and
+        seed lock of every given PV are dropped whether or not it had a
+        monitor, so a later subscribe seeds the PV afresh.
+
+        Parameters
+        ----------
+        pvs : Iterable[str]
+            PVs that have no subscribers left.
+        """
         for pv in pvs:
             sub = self._monitors.pop(pv, None)
             if sub is not None:
@@ -311,6 +393,8 @@ class PVBroker:
                     logger.exception("error closing monitor for %s", pv)
             self._latest.pop(pv, None)
             self._meta.pop(pv, None)
+            self._seed_retry_after.pop(pv, None)
+            self._seed_locks.pop(pv, None)
 
     # --- event ingestion ------------------------------------------------- #
 

@@ -1,11 +1,9 @@
-"""The bundled EDM colors.list is valid, and the env wiring points the parser at it."""
+"""The bundled EDM colors.list is valid, and conversions resolve palette indices through it."""
 
-import os
-
-from pydmconverter.edm.parser_helpers import parse_colors_list, search_color_list
+from pydmconverter.edm.parser_helpers import parse_colors_list
 
 from canopy.converter.config import ConverterConfig
-from canopy.converter.adapters.edm_env import apply_edm_colors
+from canopy.converter.adapters.edm_lists import resolve_edm_lists
 from canopy.converter.services.conversion_service import ConversionService
 
 # Minimal EDM screen whose only widget declares palette-indexed colours
@@ -58,43 +56,50 @@ def test_bundled_colors_list_exists_and_parses_cleanly():
     assert len(data["static"]) == 101
 
 
-def test_apply_edm_colors_points_env_at_bundled_file(monkeypatch):
-    monkeypatch.delenv("EDMCOLORFILE", raising=False)
-    applied = apply_edm_colors(ConverterConfig())
-    assert applied is not None
-    assert os.environ["EDMCOLORFILE"] == str(applied)
-    # The parser's own resolver now finds our file first.
-    assert search_color_list() == str(applied)
+def test_resolve_edm_lists_returns_the_bundled_colors_list():
+    """The default config resolves the bundled ``colors.list``."""
+    config = ConverterConfig()
+    colors, _ = resolve_edm_lists(config)
+    assert colors == config.colors_list_path
 
 
-def test_apply_edm_colors_missing_file_returns_none(monkeypatch, tmp_path):
-    monkeypatch.delenv("EDMCOLORFILE", raising=False)
-    cfg = ConverterConfig(colors_list_path=tmp_path / "absent.list")
-    assert apply_edm_colors(cfg) is None
+def test_resolve_edm_lists_drops_a_missing_colors_list(tmp_path):
+    """A configured ``colors.list`` with no file behind it resolves to ``None``."""
+    colors, _ = resolve_edm_lists(ConverterConfig(colors_list_path=tmp_path / "absent.list"))
+    assert colors is None
 
 
-def test_conversion_resolves_indexed_colors_via_env(monkeypatch):
-    """A screen using ``fgColor index N`` converts with the env-provisioned palette.
+def test_conversion_resolves_indexed_colors_from_the_explicit_palette(monkeypatch):
+    """A screen using ``fgColor index N`` carries the colour the bundled palette assigns that index.
 
-    The pinned pydmconverter (1.0.4) resolves indices in its EDM parser but does
-    not yet surface colours in the emitted IR, so this pins the plumbing: the
-    conversion succeeds end-to-end and the parser-side resolver maps index 25
-    through our EDMCOLORFILE wiring to the bundled palette's value.
-
-    TODO(pydm-converter-tool#150 + dep bump): once the pinned pydmconverter
-    grows ``color_list_path=`` and IR colour props, pass the path explicitly
-    and tighten this to assert the emitted widget carries the resolved
-    ``foregroundColor``.
+    The palette reaches the converter only as the explicit path; the parser's
+    own environment search is emptied.
     """
     monkeypatch.delenv("EDMCOLORFILE", raising=False)
-    applied = apply_edm_colors(ConverterConfig())
-    assert applied is not None
+    monkeypatch.delenv("EDMFILES", raising=False)
+    colors, _ = resolve_edm_lists(ConverterConfig())
 
-    result = ConversionService().convert(_INDEXED_COLOR_EDL, kind="edl")
+    result = ConversionService(colors_list_path=colors).convert(_INDEXED_COLOR_EDL, kind="edl")
+
     assert result.stats.widget_count == 1
     label = result.screen["root"]["children"][0]
     assert label["type"] == "text-label"
     assert label["props"]["text"] == "Indexed colours"
+    assert parse_colors_list(str(colors))["static"][25] == {"name": "Controller", "rgb": [0, 0, 65535]}
+    assert label["props"]["foregroundColor"] == "#0000ff"
 
-    # The parser's resolver, pointed at our file, resolves the index the screen used.
-    assert parse_colors_list(search_color_list())["static"][25] == {"name": "Controller", "rgb": [0, 0, 65535]}
+
+def test_conversion_resolves_the_screen_background_from_the_explicit_palette(monkeypatch):
+    """A screen declaring ``bgColor index N`` carries the palette's colour on its root canvas.
+
+    The parser's own environment search is emptied, so the colour can only come
+    from the explicit palette.
+    """
+    monkeypatch.delenv("EDMCOLORFILE", raising=False)
+    monkeypatch.delenv("EDMFILES", raising=False)
+    colors, _ = resolve_edm_lists(ConverterConfig())
+    edl = _INDEXED_COLOR_EDL.replace(b"endScreenProperties", b"bgColor index 25\nendScreenProperties", 1)
+
+    result = ConversionService(colors_list_path=colors).convert(edl, kind="edl")
+
+    assert result.screen["root"]["props"]["backgroundColor"] == "#0000ff"
