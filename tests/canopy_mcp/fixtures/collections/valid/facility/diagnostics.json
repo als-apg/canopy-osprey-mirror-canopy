@@ -1,0 +1,17 @@
+{
+  "name": "Diagnostics",
+  "description": "Knob panel, the B1 development screen and the Waveform tool.",
+  "members": [
+    {
+      "screen": "library/common/KnobPanel"
+    },
+    {
+      "screen": "library/dev/b1-dev"
+    },
+    {
+      "tool": "waveform",
+      "name": "Waveform"
+    }
+  ],
+  "updated": "2026-10-16T00:00:00+00:00"
+}

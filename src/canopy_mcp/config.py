@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     # Directory holding the saved-view ``*.json`` files; unset means
     # ``<drafts_dir>/views``.
     views_dir: Path | None = None
+    # Directory holding the personal collection ``<id>.json`` files and the
+    # per-user ``.state.json``; unset means ``<drafts_dir>/collections``.
+    collections_dir: Path | None = None
+    # Read-only directory of facility collection ``<id>.json`` files shipped
+    # with the deployment; unset means no facility collections.
+    facility_collections_dir: Path | None = None
     # Seconds the WebSocket relays keep retrying an upstream that refuses the
     # connection before they close the browser socket; 0 means one attempt.
     relay_connect_retry_s: float = Field(default=0.0, ge=0)
@@ -158,6 +164,8 @@ class Settings(BaseSettings):
         "self_url",
         "authoring",
         "views_dir",
+        "collections_dir",
+        "facility_collections_dir",
         "relay_connect_retry_s",
         "spec_dir",
         "library_dir",
@@ -209,6 +217,13 @@ class Settings(BaseSettings):
         if self.viewer_dist is not None:
             return Path(self.viewer_dist).parent / "spec"
         return None
+
+    @property
+    def personal_collections_dir(self) -> Path:
+        """The personal collections directory: ``collections_dir``, else ``<drafts_dir>/collections``."""
+        if self.collections_dir is not None:
+            return Path(self.collections_dir)
+        return Path(self.drafts_dir) / "collections"
 
     @property
     def host_stylesheet_paths(self) -> list[str]:

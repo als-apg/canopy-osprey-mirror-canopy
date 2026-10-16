@@ -13,6 +13,7 @@ from canopy_mcp import __main__ as entry
 from canopy_mcp.access import CredentialFileError
 from canopy_mcp.client import API_KEY_HEADER, make_client
 from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.static import viewer_config
 
 ENV_VARS = (
     "CANOPY_BASE_URL",
@@ -24,6 +25,8 @@ ENV_VARS = (
     "CANOPY_API_KEY_FILE",
     "CANOPY_ACCESS_TOKEN_FILE",
     "CANOPY_SELF_URL",
+    "CANOPY_COLLECTIONS_DIR",
+    "CANOPY_FACILITY_COLLECTIONS_DIR",
 )
 
 
@@ -46,6 +49,8 @@ def test_settings_read_every_variable_from_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CANOPY_VIEWER_DIST", str(tmp_path / "viewer"))
     monkeypatch.setenv("CANOPY_PANEL_ID", "canopy")
     monkeypatch.setenv("CANOPY_PV_MODE", "mock")
+    monkeypatch.setenv("CANOPY_COLLECTIONS_DIR", str(tmp_path / "collections"))
+    monkeypatch.setenv("CANOPY_FACILITY_COLLECTIONS_DIR", str(tmp_path / "facility"))
 
     s = Settings()
 
@@ -55,6 +60,8 @@ def test_settings_read_every_variable_from_env(monkeypatch, tmp_path):
     assert s.viewer_dist == tmp_path / "viewer"
     assert s.panel_id == "canopy"
     assert s.pv_mode == "mock"
+    assert s.collections_dir == tmp_path / "collections"
+    assert s.facility_collections_dir == tmp_path / "facility"
 
 
 def test_settings_defaults():
@@ -64,6 +71,35 @@ def test_settings_defaults():
     assert s.api_key == ""
     assert isinstance(s.drafts_dir, Path)
     assert (s.api_key_file, s.access_token_file, s.self_url) == (None, None, None)
+    assert (s.collections_dir, s.facility_collections_dir) == (None, None)
+    assert s.personal_collections_dir == Path(s.drafts_dir) / "collections"
+
+
+def test_settings_read_the_collection_dirs_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("CANOPY_DRAFTS_DIR", str(tmp_path / "drafts"))
+    monkeypatch.setenv("CANOPY_COLLECTIONS_DIR", str(tmp_path / "mine"))
+    monkeypatch.setenv("CANOPY_FACILITY_COLLECTIONS_DIR", str(tmp_path / "facility"))
+    s = Settings()
+    assert s.collections_dir == tmp_path / "mine"
+    assert s.personal_collections_dir == tmp_path / "mine"
+    assert s.facility_collections_dir == tmp_path / "facility"
+
+
+def test_viewer_config_always_names_collections(tmp_path):
+    for collections_dir in (None, tmp_path / "mine"):
+        s = Settings(drafts_dir=tmp_path / "drafts", collections_dir=collections_dir)
+        assert viewer_config(s)["collections"] == {"path": "collections"}
+
+
+_ROOT = Path(__file__).resolve().parents[2]
+_DOCUMENTED_IN = ("src/canopy_mcp/README.md", "docs/deployment/appliance.md")
+
+
+@pytest.mark.parametrize("doc", _DOCUMENTED_IN)
+@pytest.mark.parametrize("name", ["CANOPY_COLLECTIONS_DIR", "CANOPY_FACILITY_COLLECTIONS_DIR"])
+def test_the_collection_dirs_are_documented_settings(doc, name):
+    assert name.removeprefix("CANOPY_").lower() in Settings.model_fields
+    assert f"| `{name}` |" in (_ROOT / doc).read_text(encoding="utf-8")
 
 
 def test_settings_read_the_file_and_self_url_variables(monkeypatch, tmp_path):

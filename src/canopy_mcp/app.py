@@ -33,7 +33,7 @@ the first ``screenshot`` call); neither keeps the server from starting when
 it fails. Building the app calls
 :func:`~canopy_mcp.server.register_all`, so every tool is on ``mcp``, and then
 applies ``CANOPY_AUTHORING``: off takes the seven authoring tools off ``mcp``,
-leaving the nine that only read. ``mcp`` is process-wide, so the last app
+leaving the ten that only read. ``mcp`` is process-wide, so the last app
 built decides which tools every app in the process offers.
 """
 
@@ -58,6 +58,11 @@ from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.forward import build_forward_routes
 from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
+from canopy_mcp.collections import (
+    CollectionStore,
+    FacilityCollections,
+    build_collection_routes,
+)
 from canopy.core.color_scheme import get_color_scheme
 
 MCP_PATH = "/mcp"
@@ -148,6 +153,12 @@ def create_app(
     set_authoring(settings.authoring)
     store, library = open_stores(settings.drafts_dir, settings.library_dir)
     views = ViewStore(settings.drafts_dir, views_dir=settings.views_dir)
+    facility = (
+        FacilityCollections(settings.facility_collections_dir)
+        if settings.facility_collections_dir is not None
+        else None
+    )
+    collections = CollectionStore(settings.personal_collections_dir, facility=facility)
     mcp_app = mcp.http_app(path=MCP_PATH)
 
     @asynccontextmanager
@@ -166,6 +177,7 @@ def create_app(
             *build_forward_routes(settings),
             *build_routes(settings, store, library),
             *build_view_routes(views),
+            *build_collection_routes(collections, facility),
         ],
         # FastMCP's own middleware (request context, host/origin guard) must
         # wrap its routes here too, since only the routes were lifted.
@@ -178,6 +190,8 @@ def create_app(
     app.state.store = store
     app.state.library = library
     app.state.views = views
+    app.state.collections = collections
+    app.state.facility_collections = facility
     app.state.self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
     return app
 

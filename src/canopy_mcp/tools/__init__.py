@@ -6,6 +6,6 @@ imports this package; nothing else needs to. ``drafts`` precedes ``convert``,
 which imports it; ``push`` imports ``check`` itself.
 """
 
-from canopy_mcp.tools import pvs, push, check, drafts, convert, widgets, screenshot
+from canopy_mcp.tools import pvs, push, check, drafts, convert, widgets, screenshot, collections
 
-__all__ = ["check", "convert", "drafts", "push", "pvs", "screenshot", "widgets"]
+__all__ = ["check", "collections", "convert", "drafts", "push", "pvs", "screenshot", "widgets"]

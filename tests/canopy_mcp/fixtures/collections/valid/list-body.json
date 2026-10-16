@@ -1,0 +1,201 @@
+{
+  "collections": [
+    {
+      "source": "facility",
+      "ref": "facility:control-assistant",
+      "id": "control-assistant",
+      "name": "Control assistant",
+      "description": "The storage ring overview with Trace and Correlation at their defaults.",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "tool": "trace",
+          "name": "Trace"
+        },
+        {
+          "tool": "correlation",
+          "name": "Correlation"
+        }
+      ],
+      "default": true,
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "facility",
+      "ref": "facility:diagnostics",
+      "id": "diagnostics",
+      "name": "Diagnostics",
+      "description": "Knob panel, the B1 development screen and the Waveform tool.",
+      "members": [
+        {
+          "screen": "library/common/KnobPanel"
+        },
+        {
+          "screen": "library/dev/b1-dev"
+        },
+        {
+          "tool": "waveform",
+          "name": "Waveform"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "facility",
+      "ref": "facility:injector",
+      "id": "injector",
+      "name": "Injector",
+      "description": "Gun-to-linac and booster-to-storage-ring transfer lines.",
+      "members": [
+        {
+          "screen": "library/gtb/GTLView"
+        },
+        {
+          "screen": "library/bts/BTSView"
+        },
+        {
+          "tool": "trace",
+          "query": "pv=EG______HV_____AM00&pv=EG______HTR____AM00&range=-1h",
+          "name": "Gun high voltage and heater"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "facility",
+      "ref": "facility:storage-ring",
+      "id": "storage-ring",
+      "name": "Storage ring",
+      "description": "Storage ring overview and the S3 promotion screen.",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "screen": "library/s3-promo/promotion"
+        },
+        {
+          "tool": "correlation",
+          "query": "x=SR:DIAG:DCCT:01:CURRENT:RB&y=SR:RF:CAVITY:01:POWER:FWD&range=-1h",
+          "name": "Beam current vs. RF forward power"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:drafts",
+      "id": "drafts",
+      "name": "my drafts",
+      "members": [
+        {
+          "screen": "drafts/bts/view"
+        },
+        {
+          "screen": "library/sr/overview",
+          "macros": {
+            "S": "SR01"
+          }
+        },
+        {
+          "tool": "trace"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:undocked",
+      "id": "undocked",
+      "name": "Partly docked",
+      "description": "Two docked members; the others open undocked.",
+      "members": [
+        {
+          "screen": "library/gtb/GTLView",
+          "slot": "left"
+        },
+        {
+          "screen": "library/bts/BTSView",
+          "slot": "right"
+        },
+        {
+          "screen": "library/common/KnobPanel",
+          "slot": "spare"
+        },
+        {
+          "tool": "waveform",
+          "query": ""
+        }
+      ],
+      "layout": {
+        "split": "column",
+        "items": [
+          {
+            "slot": "left"
+          },
+          {
+            "slot": "right"
+          }
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:grid",
+      "id": "grid",
+      "name": "Ring grid",
+      "members": [
+        {
+          "screen": "library/sr/overview",
+          "slot": "a"
+        },
+        {
+          "screen": "library/s3-promo/promotion",
+          "slot": "b"
+        },
+        {
+          "tool": "trace",
+          "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+          "name": "Beam current",
+          "slot": "c"
+        },
+        {
+          "tool": "correlation",
+          "slot": "d"
+        }
+      ],
+      "layout": {
+        "split": "row",
+        "items": [
+          {
+            "items": [
+              {
+                "slot": "a"
+              },
+              {
+                "slot": "c"
+              }
+            ],
+            "size": 2
+          },
+          {
+            "items": [
+              {
+                "slot": "b"
+              },
+              {
+                "slot": "d"
+              }
+            ],
+            "size": 1
+          }
+        ],
+        "active": "a"
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    }
+  ]
+}

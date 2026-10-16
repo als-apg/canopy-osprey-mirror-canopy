@@ -123,6 +123,8 @@ what adds it.
 | `CANOPY_LIBRARY_DIR` | unset | A read-only screen library served beside the personal store. Its screens are `library/<id>` to the tools and `/embed/library/<id>` to the viewer. Unset means no library. |
 | `CANOPY_PUSH_DIR` | unset | Where [`request_push`](../how_to/request_push.md) writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |
+| `CANOPY_COLLECTIONS_DIR` | `<CANOPY_DRAFTS_DIR>/collections` | Where the user's own [collections](../how_to/collections.md) and their selection state are stored. |
+| `CANOPY_FACILITY_COLLECTIONS_DIR` | unset | A read-only directory of facility collections shipped with the deployment. Unset means no facility collections. |
 | `CANOPY_AUTHORING` | `1` | `0` takes the seven authoring tools off the server and leaves the nine that only read. |
 
 Only the `screens/` subtree of the library is served. A
@@ -268,9 +270,10 @@ As a worked example, OSPREY's web terminal launches FRONT for each user with:
 
 - `CANOPY_BASE_URL`, `CANOPY_SELF_URL`, `CANOPY_API_KEY_FILE` and
   `CANOPY_ACCESS_TOKEN_FILE` for the user's own DATA and proxy;
-- `CANOPY_DRAFTS_DIR`, `CANOPY_VIEWS_DIR` and `CANOPY_PUSH_DIR` inside the
-  user's own data, and `CANOPY_LIBRARY_DIR` only when the deployment has a
-  library;
+- `CANOPY_DRAFTS_DIR`, `CANOPY_VIEWS_DIR`, `CANOPY_COLLECTIONS_DIR` and
+  `CANOPY_PUSH_DIR` inside the user's own data, `CANOPY_LIBRARY_DIR` only when
+  the deployment has a library, and `CANOPY_FACILITY_COLLECTIONS_DIR` only when
+  it ships facility collections;
 - `CANOPY_VIEWER_DIST` and, when the payload has one, `CANOPY_TRACE_DIST`;
   `CANOPY_SPEC_DIR` is left unset, so `<payload>/spec` is used when it
   exists;

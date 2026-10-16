@@ -182,7 +182,7 @@ def test_the_frontmatter_names_the_skill() -> None:
 
 async def test_the_skill_names_every_tool_the_server_registers() -> None:
     names = await _tool_names()
-    assert len(names) == 16
+    assert len(names) == 17
     documented = set(re.findall(r"^\| `([a-z_]+)` \|", TEXT, flags=re.MULTILINE))
     assert documented == names
 
@@ -191,8 +191,8 @@ async def test_the_skill_marks_exactly_the_authoring_tools_as_writing() -> None:
     rows = dict(re.findall(r"^\| `([a-z_]+)` \| (reads|writes) \|", TEXT, flags=re.MULTILINE))
     assert set(rows) == await _tool_names()
     assert {name for name, kind in rows.items() if kind == "writes"} == set(AUTHORING_TOOLS)
-    assert "16 tools" in TEXT
-    assert "nine" in TEXT and "seven" in TEXT
+    assert "17 tools" in TEXT
+    assert "ten" in TEXT and "seven" in TEXT
 
 
 @pytest.mark.parametrize(
@@ -217,6 +217,8 @@ async def test_the_skill_marks_exactly_the_authoring_tools_as_writing() -> None:
         "`y_channel`",
         "`y_channels`",
         "Trace tab",
+        "`list_collections`",
+        "`open_url`",
     ],
 )
 def test_the_skill_covers(phrase: str) -> None:

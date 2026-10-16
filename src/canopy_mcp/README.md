@@ -53,6 +53,8 @@ unset.
 | `CANOPY_AUTHORING` | `1` | `0` takes the seven authoring tools off the server. |
 | `CANOPY_PUSH_DIR` | unset | Where `request_push` writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |
+| `CANOPY_COLLECTIONS_DIR` | `<CANOPY_DRAFTS_DIR>/collections` | Where the user's own collections and their selection state are stored. |
+| `CANOPY_FACILITY_COLLECTIONS_DIR` | unset | A read-only directory of facility collections shipped with the deployment. Unset means no facility collections. |
 | `CANOPY_PV_MODE` | `hare` | `mock` makes the served viewer draw PVs from the mock service instead of the backend. |
 | `CANOPY_VIEWER_DIST` | unset | The built viewer. Its `ir-map.json` is the widget catalog. |
 | `CANOPY_SPEC_DIR` | `spec/` beside `CANOPY_VIEWER_DIST` | The staged specification: the Screen-IR schemas and the per-widget prop schemas `check` validates against. Without it `check` returns one `spec_unavailable` warning in place of the schema and prop findings, and `list_widgets`, `get_widget` and `get_schema` carry a `spec_unavailable` note. |
@@ -87,9 +89,9 @@ parameter reaches the list.
 
 ## Tools
 
-The server offers 16 tools. Nine only read. Seven are authoring tools: they
+The server offers 17 tools. Ten only read. Seven are authoring tools: they
 create, change or delete drafts, or file a draft for the shared library. With
-`CANOPY_AUTHORING=0` the server offers the nine.
+`CANOPY_AUTHORING=0` the server offers the ten.
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -102,6 +104,7 @@ create, change or delete drafts, or file a draft for the shared library. With
 | `search_pvs` | read | Searches the PV directory by a glob pattern. |
 | `read_pv` | read | Reads one PV once. |
 | `screenshot` | read | Renders a screen as a PNG. |
+| `list_collections` | read | Lists the collections the viewer offers, with each member checked against this host. |
 | `new_screen` | authoring | Saves a whole document as a draft. |
 | `patch_node` | authoring | Changes one node by JSON Merge Patch. |
 | `add_node` | authoring | Appends one node to a container. |
@@ -173,6 +176,27 @@ their own. As a CSRF guard, `PUT` and `DELETE` answer 403 when a
 `Sec-Fetch-Site` header is present and is neither `same-origin` nor `none`.
 Writes are atomic (temp file plus `os.replace`). A views directory that cannot
 be written answers `PUT` and `DELETE` with 403 and the code `read_only_store`.
+
+## Collections
+
+A collection is a named, ordered set of screens and tools the viewer opens
+together, optionally with a dock layout. The viewer finds the API through
+`config.json` (`"collections": {"path": "collections"}`). Two directories feed
+it:
+
+- the user's own collections, `<CANOPY_DRAFTS_DIR>/collections/<id>.json`
+  (or `CANOPY_COLLECTIONS_DIR`), written through `PUT` and `DELETE
+  /collections/{id}`, beside the per-user `.state.json` that records which
+  collections are ticked, the pinned members and the recently opened ones;
+- the facility collections, `CANOPY_FACILITY_COLLECTIONS_DIR/<id>.json`, which
+  the server only reads. A file that breaks a rule is logged once and skipped.
+
+`GET /collections` lists the facility collections first, then the personal
+ones. The file format, the rules and the routes are described in the
+[collections author page](../../docs/how_to/collections.md) and in the
+docstring of `canopy_mcp.collections`, which is the one specification.
+`python -m canopy_mcp.collections <dir> --check [--library <root>]` checks a
+facility directory before it is deployed.
 
 ## Screenshots
 

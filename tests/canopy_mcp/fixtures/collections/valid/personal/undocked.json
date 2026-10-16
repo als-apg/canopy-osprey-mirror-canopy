@@ -1,0 +1,35 @@
+{
+  "id": "undocked",
+  "name": "Partly docked",
+  "description": "Two docked members; the others open undocked.",
+  "members": [
+    {
+      "screen": "library/gtb/GTLView",
+      "slot": "left"
+    },
+    {
+      "screen": "library/bts/BTSView",
+      "slot": "right"
+    },
+    {
+      "screen": "library/common/KnobPanel",
+      "slot": "spare"
+    },
+    {
+      "tool": "waveform",
+      "query": ""
+    }
+  ],
+  "layout": {
+    "split": "column",
+    "items": [
+      {
+        "slot": "left"
+      },
+      {
+        "slot": "right"
+      }
+    ]
+  },
+  "updated": "2026-10-16T00:00:00+00:00"
+}

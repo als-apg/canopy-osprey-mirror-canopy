@@ -1,0 +1,19 @@
+{
+  "name": "Control assistant",
+  "description": "The storage ring overview with Trace and Correlation at their defaults.",
+  "default": true,
+  "members": [
+    {
+      "screen": "library/sr/overview"
+    },
+    {
+      "tool": "trace",
+      "name": "Trace"
+    },
+    {
+      "tool": "correlation",
+      "name": "Correlation"
+    }
+  ],
+  "updated": "2026-10-16T00:00:00+00:00"
+}

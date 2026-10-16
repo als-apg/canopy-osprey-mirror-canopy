@@ -24,6 +24,7 @@ EXPECTED_TOOLS = [
     "add_node",
     "remove_node",
     "list_drafts",
+    "list_collections",
     "delete_draft",
     "convert_legacy",
     "search_pvs",
@@ -37,7 +38,7 @@ async def list_tools() -> list[str]:
     return [tool.name for tool in await mcp.list_tools()]
 
 
-async def test_register_all_registers_all_sixteen_tools() -> None:
+async def test_register_all_registers_all_seventeen_tools() -> None:
     assert register_all() is mcp
     assert sorted(await list_tools()) == sorted(EXPECTED_TOOLS)
 
@@ -46,7 +47,7 @@ async def test_register_all_is_idempotent() -> None:
     register_all()
     register_all()
     names = await list_tools()
-    assert len(names) == len(set(names)) == 16
+    assert len(names) == len(set(names)) == 17
 
 
 async def test_building_the_app_registers_the_tools() -> None:

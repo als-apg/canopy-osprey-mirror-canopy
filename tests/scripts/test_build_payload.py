@@ -297,6 +297,7 @@ def test_staged_names_five_commits_and_both_versions(world):
         "pydm_version": pydm_version(world),
         "spec": None,
         "spec-digest": None,
+        "fixtures": "absent",
     }
 
 
@@ -712,3 +713,155 @@ def test_a_bad_spec_fails_before_any_tool_runs(world, tmp_path, problem):
     assert "SPEC=" in proc.stderr
     assert calls(world) == []
     assert not world["out"].exists()
+
+
+# --- the compared collections fixture set -----------------------------------------
+
+FIX_CANOPY = "tests/canopy_mcp/fixtures/collections"
+FIX_RT = "apps/viewer/e2e/fixtures/collections"
+# Bytes that are not UTF-8, as invalid/not-utf8.json is: the comparison is by bytes.
+NOT_UTF8 = b'{"name": "\xff\xfe"}\n'
+FIXTURE_SET = {
+    "member-key-vectors.json": b'{"vectors": []}\n',
+    "valid/facility/injector.json": b'{"name": "Injector"}\n',
+    "valid/personal/grid.json": b'{"layout": {"split": "row"}}\n',
+    "invalid/not-utf8.json": NOT_UTF8,
+    "invalid/not-a-file.json/keep": b"",
+    "responses/state.json": b'{"collections": []}\n',
+}
+
+
+def commit_bytes(repo: Path, files: dict[str, bytes | None], message: str) -> str:
+    """Commit raw bytes (None deletes); a pinned SDK commit carries over, as in commit()."""
+    pin = sdk_pin(repo)
+    for name, data in files.items():
+        f = repo / name
+        if data is None:
+            f.unlink()
+        else:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(data)
+    return commit_pinning(repo, {}, pin, message)
+
+
+def fixtures(prefix: str, files: dict[str, bytes | None]) -> dict[str, bytes | None]:
+    return {f"{prefix}/{name}": data for name, data in files.items()}
+
+
+def with_fixtures(world: dict, canopy: dict | None = None, rt: dict | None = None) -> None:
+    """Commit the fixture set to both repos' HEAD; ``canopy``/``rt`` override single files."""
+    commit_bytes(world["canopy"], fixtures(FIX_CANOPY, {**FIXTURE_SET, **(canopy or {})}), "fixtures")
+    commit_bytes(world["rt"], fixtures(FIX_RT, {**FIXTURE_SET, **(rt or {})}), "fixtures")
+
+
+def refused(world: dict, proc, path: str) -> None:
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert f"collections fixture {path} " in proc.stderr
+    assert not world["out"].exists() or not (world["out"] / "STAGED.json").exists()
+    # The comparison runs before any tool: a refusal builds nothing.
+    assert calls(world) == []
+
+
+def test_runtime_without_the_fixture_dir_records_absent(world):
+    # Canopy carries fixtures the runtime commit predates: nothing to compare.
+    commit_bytes(world["canopy"], fixtures(FIX_CANOPY, FIXTURE_SET), "fixtures")
+    proc = build(world)
+    ok(proc)
+    assert staged(world)["fixtures"] == "absent"
+    assert "fixtures absent" in proc.stderr
+
+
+def test_identical_fixture_sets_record_compared(world):
+    with_fixtures(world)
+    proc = build(world)
+    ok(proc)
+    assert staged(world)["fixtures"] == "compared"
+    assert "fixtures compared" in proc.stderr
+
+
+def test_a_byte_difference_is_refused_naming_the_path(world):
+    with_fixtures(world, rt={"valid/personal/grid.json": b'{"layout": {"split": "column"}}\n'})
+    proc = build(world)
+    refused(world, proc, "valid/personal/grid.json")
+    assert "differs between" in proc.stderr
+
+
+def test_a_non_utf8_byte_difference_is_refused(world):
+    with_fixtures(world, canopy={"invalid/not-utf8.json": NOT_UTF8.replace(b"\xfe", b"\xfd")})
+    refused(world, build(world), "invalid/not-utf8.json")
+
+
+def test_the_first_differing_path_is_named(world):
+    with_fixtures(
+        world,
+        rt={"responses/state.json": b"{}\n", "invalid/not-utf8.json": b"{}\n", "valid/personal/grid.json": b"{}\n"},
+    )
+    refused(world, build(world), "invalid/not-utf8.json")
+
+
+def test_a_fixture_only_in_the_runtime_is_refused(world):
+    with_fixtures(world, rt={"responses/extra.json": b"{}\n"})
+    proc = build(world)
+    refused(world, proc, "responses/extra.json")
+    assert "is in RT_SHA=" in proc.stderr
+
+
+def test_a_fixture_only_in_canopy_is_refused(world):
+    with_fixtures(world, canopy={"invalid/extra.json": b"{}\n"})
+    proc = build(world)
+    refused(world, proc, "invalid/extra.json")
+    assert "is in CANOPY_SHA=" in proc.stderr
+
+
+def test_a_runtime_dir_without_canopy_fixtures_is_refused(world):
+    commit_bytes(world["rt"], fixtures(FIX_RT, FIXTURE_SET), "fixtures")
+    refused(world, build(world), "invalid/not-a-file.json/keep")
+
+
+def test_a_fixture_deleted_on_one_side_is_refused(world):
+    with_fixtures(world)
+    commit_bytes(world["rt"], fixtures(FIX_RT, {"member-key-vectors.json": None}), "drop")
+    refused(world, build(world), "member-key-vectors.json")
+
+
+def test_library_and_other_paths_are_not_compared(world):
+    with_fixtures(
+        world,
+        canopy={"library/als.json": b'{"canopy": 1}\n', "README.md": b"canopy\n"},
+        rt={"library/als.json": b'{"runtime": 2}\n', "notes.txt": b"rt\n"},
+    )
+    ok(build(world))
+    assert staged(world)["fixtures"] == "compared"
+
+
+def test_the_recorded_commits_are_compared_not_head(world):
+    with_fixtures(world)
+    matching = head(world["canopy"])
+    # Canopy's HEAD drifts from the runtime; the recorded CANOPY_SHA does not.
+    commit_bytes(world["canopy"], fixtures(FIX_CANOPY, {"responses/state.json": b"{}\n"}), "drift")
+    ok(build(world, CANOPY_SHA=matching, CANOPY_VERSION="1.2.2"))
+    assert staged(world)["fixtures"] == "compared"
+    assert staged(world)["canopy"] == matching
+
+
+def test_a_drifted_recorded_commit_is_refused_even_when_head_matches(world):
+    with_fixtures(world)
+    commit_bytes(world["rt"], fixtures(FIX_RT, {"responses/state.json": b"{}\n"}), "drift")
+    drifted = head(world["rt"])
+    commit_bytes(world["rt"], fixtures(FIX_RT, {"responses/state.json": FIXTURE_SET["responses/state.json"]}), "back")
+    refused(world, build(world, RT_SHA=drifted), "responses/state.json")
+
+
+def test_uncommitted_fixture_edits_are_not_compared(world):
+    with_fixtures(world)
+    (world["rt"] / FIX_RT / "valid" / "personal" / "grid.json").write_bytes(b"edited\n")
+    (world["canopy"] / FIX_CANOPY / "responses" / "new.json").write_bytes(b"{}\n")
+    ok(build(world))
+    assert staged(world)["fixtures"] == "compared"
+
+
+def test_help_names_the_fixture_check(world):
+    proc = build(world, "--help", out=False)
+    ok(proc)
+    assert "fixtures" in proc.stdout
+    assert FIX_RT in proc.stdout

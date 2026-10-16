@@ -1,0 +1,9 @@
+{
+  "id": "has space",
+  "name": "Broken",
+  "members": [
+    {
+      "screen": "library/sr/overview"
+    }
+  ]
+}

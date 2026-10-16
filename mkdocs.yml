@@ -114,6 +114,7 @@ nav:
     - Panel-builder skill: how_to/panel_builder_skill.md
     - Library report: how_to/library_report.md
     - Request a push: how_to/request_push.md
+    - Collections: how_to/collections.md
   - Observability:
     - observability/index.md
     - Setup guide: observability/setup_guide.md
