@@ -234,6 +234,8 @@ class SnapshotService:
         tag_ids: list[str] | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[SnapshotSummaryDTO]:
         """List snapshots, optionally filtered by title, tags and/or creation time.
 
@@ -248,6 +250,10 @@ class SnapshotService:
             ``created_at`` is a ``timestamptz`` and asyncpg refuses a naive bind parameter.
         end : datetime | None
             Upper bound on creation time, inclusive. Converted the same way as ``start``.
+        limit : int
+            Maximum number of summaries returned.
+        offset : int
+            Number of matching snapshots to skip, for paging past the first ``limit``.
 
         Returns
         -------
@@ -264,7 +270,9 @@ class SnapshotService:
         end = _utc_bound("end", end)
         if start is not None and end is not None and start > end:
             raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
-        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids, start=start, end=end)
+        snapshots = await self.snapshot_repo.search(
+            title=title, tag_ids=tag_ids, start=start, end=end, limit=limit, offset=offset
+        )
 
         # One grouped query for all value counts (avoids N+1).
         snapshot_ids = [snap.id for snap in snapshots]

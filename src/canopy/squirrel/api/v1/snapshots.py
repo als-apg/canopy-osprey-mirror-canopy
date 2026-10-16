@@ -52,6 +52,8 @@ async def list_snapshots(
             )
         ),
     ] = None,
+    limit: int = Query(100, ge=1, le=1000, description="Max snapshots to return"),
+    offset: int = Query(0, ge=0, description="Snapshots to skip, for paging past the first `limit`"),
 ) -> list[SnapshotSummaryDTO]:
     """List snapshots, optionally filtered by title, tag IDs and/or creation time.
 
@@ -69,6 +71,10 @@ async def list_snapshots(
     end : datetime | None
         Upper bound on creation time, inclusive. A value without an offset is read as UTC,
         and a bare ``YYYY-MM-DD`` is refused with a 422.
+    limit : int
+        Page size, 1–1000 (default 100).
+    offset : int
+        Matching snapshots to skip. A page shorter than ``limit`` is the last one.
 
     Returns
     -------
@@ -80,7 +86,9 @@ async def list_snapshots(
     BadRequest
         When both bounds are given and ``start`` is after ``end``.
     """
-    return await service.list_snapshots(title=title, tag_ids=tags or None, start=start, end=end)
+    return await service.list_snapshots(
+        title=title, tag_ids=tags or None, start=start, end=end, limit=limit, offset=offset
+    )
 
 
 @router.post("", dependencies=[Security(require_write_access)])
