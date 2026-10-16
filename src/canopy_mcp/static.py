@@ -40,6 +40,15 @@ the page advertises nothing and 404s there. The waveform page,
 ``trace_dist/waveform.html``, is served at ``/trace/waveform.html`` and named as
 ``{"waveform": {"path": "trace/waveform.html", "query": ...}}`` the same way.
 
+The tools the viewer can open are :data:`TOOL_IDS` (``trace``, ``correlation``,
+``waveform``): one static tuple, the ``config.json`` key of each tool, and the set a
+collection's tool member may name (:mod:`canopy_mcp.collections` checks against the
+tuple, never against what this host serves, so a host with fewer pages drops no
+file). :func:`configured_tools` is the subset this host serves, in tuple order: a tool
+is configured exactly when ``config.json`` names it. ``list_collections`` reports a
+tool member ``available`` from it, and the viewer resolves tool members the same way,
+against the tools its ``config.json`` names.
+
 ``GET /channels`` serves the build-time channel catalog named by
 ``CANOPY_CHANNELS_FILE`` (a JSON array of channel addresses, written by
 ``osprey build`` and mounted read-only) for the Trace pages' PV
@@ -53,6 +62,12 @@ is absent: no catalog, not an empty one.
 ``/views`` and ``/views/{id}`` are served by :mod:`canopy_mcp.views` from
 ``<drafts_dir>/views/``, beside (never inside) ``screens/``, so a view is
 neither listed in the drafts manifest nor served under ``/drafts``.
+
+It always names the collections API too (``{"collections": {"path":
+"collections"}}``): ``/collections``, ``/collections/{id}`` and the per-user state
+at ``/collections-state`` (``<path>-state``) are served by
+:mod:`canopy_mcp.collections`. The personal store always exists (``CANOPY_COLLECTIONS_DIR``,
+else ``<drafts_dir>/collections``), so the key is never omitted.
 
 ``config.json`` also carries ``colorScheme``: the flat scheme plus ``meta`` from
 :func:`canopy.core.color_scheme.get_color_scheme`, which reads ``CANOPY_THEME_FILE``
@@ -143,6 +158,8 @@ ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 DRAFT_CACHE_CONTROL = "no-cache"
 SCREENS_PATH = "drafts"
 VIEWS_PATH = "views"
+# The collections surface; its state lives at ``<path>-state`` (canopy_mcp.collections).
+COLLECTIONS_PATH = "collections"
 # Headers on every non-screen draft response (200 and 304).
 IMAGE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff"}
 
@@ -151,6 +168,14 @@ CORRELATION_PAGE = "correlation.html"
 CORRELATION_PATH = TRACE_PATH + CORRELATION_PAGE
 WAVEFORM_PAGE = "waveform.html"
 WAVEFORM_PATH = TRACE_PATH + WAVEFORM_PAGE
+# The tools, in viewer order; each is the config.json key naming its page. The page a tool
+# is served from under ``trace_dist`` and the route config.json names for it:
+TOOL_PAGES: dict[str, tuple[str, str]] = {
+    "trace": ("index.html", TRACE_PATH),
+    "correlation": (CORRELATION_PAGE, CORRELATION_PATH),
+    "waveform": (WAVEFORM_PAGE, WAVEFORM_PATH),
+}
+TOOL_IDS: tuple[str, ...] = tuple(TOOL_PAGES)
 # On the trace index: same-origin, unsandboxed iframe of the viewer.
 TRACE_CSP = (
     "script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; "
@@ -218,18 +243,26 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
         "screensPath": SCREENS_PATH,
         "themes": dict(THEMES),
         "views": {"path": VIEWS_PATH},
+        # The personal store always exists (default ``<drafts_dir>/collections``).
+        "collections": {"path": COLLECTIONS_PATH},
         "confirmWrites": settings.confirm_writes,
     }
-    if _trace_index(settings) is not None:
-        config["trace"] = {"path": TRACE_PATH, "query": settings.trace_default_query}
-    if _trace_page(settings, CORRELATION_PAGE) is not None:
-        config["correlation"] = {"path": CORRELATION_PATH, "query": settings.correlation_default_query}
-    if _trace_page(settings, WAVEFORM_PAGE) is not None:
-        config["waveform"] = {"path": WAVEFORM_PATH, "query": settings.waveform_default_query}
+    for tool in configured_tools(settings):
+        config[tool] = {"path": TOOL_PAGES[tool][1], "query": _default_query(settings, tool)}
     flat = get_color_scheme().flat_json
     if flat is not None:
         config["colorScheme"] = flat
     return config
+
+
+def configured_tools(settings: Settings) -> tuple[str, ...]:
+    """The :data:`TOOL_IDS` whose page this host serves, in tuple order (the tools config.json names)."""
+    return tuple(tool for tool in TOOL_IDS if _trace_page(settings, TOOL_PAGES[tool][0]) is not None)
+
+
+def _default_query(settings: Settings, tool: str) -> str:
+    query: str = getattr(settings, f"{tool}_default_query")
+    return query
 
 
 class SummaryReader:
