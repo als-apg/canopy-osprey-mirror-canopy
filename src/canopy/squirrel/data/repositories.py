@@ -122,7 +122,10 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         list[Snapshot]
             Matching snapshots ordered by ``created_at`` descending.
         """
-        query = select(Snapshot)
+        # ``noload`` skips the relationship's selectin default: listing needs only snapshot
+        # rows, and loading every value for every listed snapshot (~16k each for a full
+        # machine save) dominated the response time.
+        query = select(Snapshot).options(noload(Snapshot.values))
 
         if title:
             query = query.where(Snapshot.title.ilike(f"%{title}%"))
