@@ -688,3 +688,74 @@ def test_every_response_fixture_is_an_error_body_or_a_state_document() -> None:
         else:
             assert name.startswith("error-")
             assert set(body) <= {"error", "detail"} and body["error"] == name[len("error-") : -5].replace("-", "_")
+
+
+# --- conditional GET (ETag) on the list and the state ---------------------------
+
+
+def _sha_etag(body: bytes) -> str:
+    import hashlib
+
+    return f'"{hashlib.sha256(body).hexdigest()}"'
+
+
+@pytest.mark.parametrize("path", ["/collections", "/collections-state"])
+def test_list_and_state_carry_an_etag_of_the_body(client: TestClient, path: str) -> None:
+    r = client.get(path)
+    assert r.status_code == 200
+    assert r.headers["etag"] == _sha_etag(r.content)
+    assert r.headers["cache-control"] == "no-cache"
+
+
+@pytest.mark.parametrize("path", ["/collections", "/collections-state"])
+def test_unchanged_etag_is_304_with_no_body(client: TestClient, path: str) -> None:
+    assert _create(client, "mine", _collection()).status_code == 201
+    first = client.get(path)
+    r = client.get(path, headers={"if-none-match": first.headers["etag"]})
+    assert r.status_code == 304
+    assert r.content == b""
+    assert r.headers["etag"] == first.headers["etag"]
+    assert r.headers["cache-control"] == "no-cache"
+    # Weak and list forms match too.
+    listed = client.get(path, headers={"if-none-match": f'"other", W/{first.headers["etag"]}'})
+    assert listed.status_code == 304
+
+
+def test_changed_list_etag_is_200_with_a_new_etag(client: TestClient) -> None:
+    first = client.get("/collections")
+    assert _create(client, "mine", _collection()).status_code == 201
+    r = client.get("/collections", headers={"if-none-match": first.headers["etag"]})
+    assert r.status_code == 200
+    assert r.headers["etag"] != first.headers["etag"]
+    assert r.headers["etag"] == _sha_etag(r.content)
+    assert [c["id"] for c in r.json()["collections"]] == ["mine"]
+
+
+def test_changed_state_etag_is_200_with_a_new_etag(client: TestClient) -> None:
+    assert _create(client, "mine", _collection()).status_code == 201
+    first = client.get("/collections-state")
+    assert _op(client, {"op": "tick", "ref": "personal:mine"}).status_code == 200
+    r = client.get("/collections-state", headers={"if-none-match": first.headers["etag"]})
+    assert r.status_code == 200
+    assert r.headers["etag"] != first.headers["etag"]
+    assert r.headers["etag"] == _sha_etag(r.content)
+    assert r.json()["ticked"] == ["personal:mine"]
+
+
+@pytest.mark.parametrize("path", ["/collections", "/collections-state"])
+def test_head_mirrors_get_etag(client: TestClient, path: str) -> None:
+    got = client.get(path)
+    head = client.head(path)
+    assert head.status_code == 200
+    assert head.headers["etag"] == got.headers["etag"]
+    assert head.headers["cache-control"] == "no-cache"
+    cached = client.head(path, headers={"if-none-match": got.headers["etag"]})
+    assert cached.status_code == 304
+    assert cached.headers["etag"] == got.headers["etag"]
+
+
+def test_mismatched_etag_is_200_with_the_body(client: TestClient) -> None:
+    r = client.get("/collections", headers={"if-none-match": '"nope"'})
+    assert r.status_code == 200
+    assert r.headers["etag"] == _sha_etag(r.content)
+    assert r.json() == {"collections": []}

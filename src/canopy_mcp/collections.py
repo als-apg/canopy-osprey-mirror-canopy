@@ -146,13 +146,21 @@ HTTP surface
 :func:`build_collection_routes`, every response ``Cache-Control: no-cache``:
 
 * ``GET /collections`` -> 200 ``{"collections": [...]}``: facility first, then personal,
-  each sorted by case-folded name, then id, each carrying ``source`` and ``ref``
-* ``GET /collections/{id}`` -> 200 the personal collection, 404 ``not_found``
-* ``PUT /collections/{id}`` with a JSON collection body -> 201 created, 200 replaced
-  (body: the listed collection); ``If-None-Match: *`` makes it create-only (412
-  ``exists``). A ``default`` key, or any broken rule, is 400 ``invalid_collection``
-* ``DELETE /collections/{id}`` -> 204, 404 ``not_found``
-* ``GET /collections-state`` -> 200 the state document
+  each sorted by case-folded name, then id, each carrying ``source``, ``ref`` and
+  ``rev``. It answers an ``ETag`` (the quoted sha256 hex of the body) and 304 with no
+  body, keeping ``ETag`` and ``Cache-Control``, on a matching ``If-None-Match`` (weak
+  and list forms match); ``HEAD`` mirrors ``GET``
+* ``GET /collections/{id}`` -> 200 the listed personal collection (with ``rev``), 404
+  ``not_found``
+* ``PUT /collections/{id}`` with a JSON collection body and ``If-None-Match: *`` or
+  ``If-Match: <rev>`` -> 201 created, 200 replaced (body: the listed collection, its
+  new ``rev``); 428 ``precondition_required`` without either, 412 ``exists`` /
+  ``gone`` / ``stale`` (the table above). A ``default`` key, or any broken rule, is
+  400 ``invalid_collection``
+* ``DELETE /collections/{id}`` -> 204, 404 ``not_found``; with ``If-Match``, 412
+  ``stale`` on another rev
+* ``GET /collections-state`` -> 200 the state document, conditional like
+  ``GET /collections`` (``ETag`` = sha256 of the body, 304 on a match)
 * ``POST /collections-state`` with one JSON op -> 200 the new state document; 400
   ``invalid_op``, 409 ``pinned_full`` / ``selection_full``, 413 ``too_large``
 
@@ -204,7 +212,7 @@ from canopy_mcp.views import (
     clean_name,
     check_query,
 )
-from canopy_mcp.static import TOOL_IDS
+from canopy_mcp.static import TOOL_IDS, _etag, _not_modified
 from canopy_mcp.listing import Judged, scan, judge
 from canopy_mcp.member_key import InvalidMember, member_key
 
@@ -1084,7 +1092,7 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         if request.method not in ("GET", "HEAD"):
             return _not_allowed("GET, HEAD")
         listed = await asyncio.to_thread(all_collections, facility, personal)
-        return _json({"collections": listed})
+        return _conditional(request, _json({"collections": listed}))
 
     async def put(
         request: Request, collection_id: str, *, create_only: bool, if_match: frozenset[str] | None
@@ -1141,7 +1149,7 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         if method not in ("GET", "HEAD", "POST"):
             return _not_allowed("GET, HEAD, POST")
         if method != "POST":
-            return _json(await asyncio.to_thread(personal.state))
+            return _conditional(request, _json(await asyncio.to_thread(personal.state)))
         if (refused := _cross_site(request)) is not None:
             return refused
         body, failed = await _json_body(request, MAX_POST_BODY_BYTES)
