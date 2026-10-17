@@ -12,12 +12,14 @@ from starlette.testclient import TestClient
 from canopy_mcp.app import create_app
 from canopy_mcp.config import Settings
 from canopy_mcp.collections import (
+    STATE_OPS,
     MAX_REFS,
     MAX_PINNED,
     MAX_RECENT,
     STATE_FILE,
     MAX_PUT_BODY_BYTES,
     MAX_STATE_OP_BYTES,
+    MAX_RECENT_MANY_OP_BYTES,
     MAX_POST_BODY_BYTES,
     MAX_COLLECTION_BYTES,
 )
@@ -439,6 +441,55 @@ def test_recent_dedups_moves_first_and_keeps_ten(client: TestClient) -> None:
     assert "pv=P0" not in queries and "pv=P1" not in queries
 
 
+def test_recent_remove_and_recent_clear(client: TestClient) -> None:
+    _op(client, {"op": "pin", "member": TOOL})
+    _op(client, {"op": "recent", "member": SCREEN})
+    _op(client, {"op": "recent", "member": DRAFT})
+    r = _op(client, {"op": "recent-remove", "member": SCREEN})
+    assert r.status_code == 200 and r.json()["recent"] == [DRAFT]
+    r = _op(client, {"op": "recent-clear"})
+    assert r.status_code == 200
+    assert r.json()["recent"] == [] and r.json()["pinned"] == [TOOL]
+    assert client.get("/collections-state").json() == r.json()
+
+
+def test_recent_many_lands_members_first_in_order(client: TestClient) -> None:
+    _op(client, {"op": "recent", "member": TOOL})
+    r = _op(client, {"op": "recent-many", "members": [SCREEN, DRAFT, TOOL]})
+    assert r.status_code == 200 and r.json()["recent"] == [SCREEN, DRAFT, TOOL]
+
+
+def test_recent_clear_with_a_member_is_400_invalid_op(client: TestClient, personal: Path) -> None:
+    r = _op(client, {"op": "recent-clear", "member": SCREEN})
+    assert r.status_code == 400
+    assert r.json() == {"error": "invalid_op", "detail": "a recent-clear op is exactly {op}"}
+    assert not (personal / STATE_FILE).exists()
+
+
+def test_recent_many_over_max_recent_is_400_invalid_op(client: TestClient, personal: Path) -> None:
+    members = [{"tool": "trace", "query": f"pv=M{i}"} for i in range(MAX_RECENT + 1)]
+    r = _op(client, {"op": "recent-many", "members": members})
+    assert r.status_code == 400
+    assert r.json()["error"] == "invalid_op" and "MAX_RECENT" in r.json()["detail"]
+    assert not (personal / STATE_FILE).exists()
+
+
+def test_recent_many_op_cap_is_48_kib(client: TestClient, personal: Path) -> None:
+    assert MAX_RECENT_MANY_OP_BYTES == 48 * 1024 < MAX_POST_BODY_BYTES
+    fits = [{"tool": "trace", "query": f"pv=B{i}&" + "q" * 4000} for i in range(MAX_RECENT)]
+    assert _op(client, {"op": "recent-many", "members": fits}).status_code == 200
+    big = [{"tool": "trace", "query": f"pv=C{i}&" + "q" * 5000} for i in range(MAX_RECENT)]
+    r = _op(client, {"op": "recent-many", "members": big})
+    assert r.status_code == 413
+    assert r.json()["error"] == "too_large" and "MAX_RECENT_MANY_OP_BYTES" in r.json()["detail"]
+
+
+def test_invalid_op_detail_lists_every_state_op(client: TestClient) -> None:
+    r = _op(client, {"op": "bogus"})
+    assert r.json() == {"error": "invalid_op", "detail": f"op must be one of {', '.join(STATE_OPS)}"}
+    assert "recent-many" in r.json()["detail"]
+
+
 @pytest.mark.parametrize(
     "op",
     [
@@ -448,6 +499,9 @@ def test_recent_dedups_moves_first_and_keeps_ten(client: TestClient) -> None:
         {"op": "pin", "member": {**SCREEN, "slot": "a"}},
         {"op": "pin", "member": {"screen": "elsewhere/x"}},
         {"op": "recent", "member": SCREEN, "extra": 1},
+        {"op": "recent-clear", "member": SCREEN},
+        {"op": "recent-remove", "members": [SCREEN]},
+        {"op": "recent-many", "members": [{**SCREEN, "slot": "a"}]},
         ["not", "an", "object"],
     ],
 )

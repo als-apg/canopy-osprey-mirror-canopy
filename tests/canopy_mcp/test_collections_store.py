@@ -11,12 +11,15 @@ import pytest
 from canopy_mcp.config import Settings
 from canopy_mcp.member_key import member_key
 from canopy_mcp.collections import (
+    OP_FIELDS,
+    STATE_OPS,
     MAX_REFS,
     MAX_PINNED,
     MAX_RECENT,
     STATE_FILE,
     MAX_STATE_BYTES,
     MAX_STATE_OP_BYTES,
+    MAX_RECENT_MANY_OP_BYTES,
     MAX_COLLECTION_BYTES,
     PinnedFull,
     ReadOnlyStore,
@@ -358,6 +361,88 @@ async def test_recent_dedups_by_member_key_puts_first_and_truncates(store):
     assert state["recent"][0] == {"tool": "trace", "query": f"pv=R{MAX_RECENT + 2}"}
 
 
+def test_state_ops_derive_from_the_op_fields_table():
+    assert STATE_OPS == tuple(OP_FIELDS)
+    assert OP_FIELDS == {
+        "tick": "ref",
+        "untick": "ref",
+        "pin": "member",
+        "unpin": "member",
+        "recent": "member",
+        "recent-remove": "member",
+        "recent-clear": None,
+        "recent-many": "members",
+    }
+
+
+async def test_recent_remove_drops_by_member_key_and_is_idempotent(store):
+    a = {"screen": "library/a", "macros": {"x": "1"}}
+    await store.apply_op({"op": "recent", "member": a})
+    await store.apply_op({"op": "recent", "member": TOOL})
+    state = await store.apply_op({"op": "recent-remove", "member": {**TOOL, "name": "Other label"}})
+    assert state["recent"] == [a]
+    assert (await store.apply_op({"op": "recent-remove", "member": TOOL}))["recent"] == [a]
+    assert (await store.apply_op({"op": "recent-remove", "member": a}))["recent"] == []
+
+
+async def test_recent_clear_empties_recent_only(store):
+    await store.apply_op({"op": "pin", "member": SCREEN})
+    await store.apply_op({"op": "recent", "member": TOOL})
+    state = await store.apply_op({"op": "recent-clear"})
+    assert state["recent"] == [] and state["pinned"] == [SCREEN]
+    assert (await store.apply_op({"op": "recent-clear"}))["recent"] == []
+
+
+async def test_recent_many_puts_members_first_in_order_and_truncates(store):
+    for i in range(MAX_RECENT):
+        await store.apply_op({"op": "recent", "member": {"tool": "trace", "query": f"pv=Old{i}"}})
+    many = [{"tool": "trace", "query": f"pv=New{i}"} for i in range(3)]
+    # An already-recent member moves up into the batch's position.
+    old = {"tool": "trace", "query": "pv=Old0"}
+    state = await store.apply_op({"op": "recent-many", "members": [*many, old]})
+    assert state["recent"][:4] == [*many, old]
+    assert len(state["recent"]) == MAX_RECENT
+    assert [m["query"] for m in state["recent"]].count("pv=Old0") == 1
+    full = [{"tool": "trace", "query": f"pv=F{i}"} for i in range(MAX_RECENT)]
+    state = await store.apply_op({"op": "recent-many", "members": full})
+    assert state["recent"] == full
+
+
+async def test_recent_many_keeps_the_first_of_duplicate_keys(store):
+    state = await store.apply_op({"op": "recent-many", "members": [TOOL, SCREEN, {**TOOL, "name": "Again"}]})
+    assert state["recent"] == [TOOL, SCREEN]
+    assert (await store.apply_op({"op": "recent-many", "members": []}))["recent"] == [TOOL, SCREEN]
+
+
+async def test_recent_many_over_max_recent_is_refused_without_writing(store, personal_dir):
+    members = [{"tool": "trace", "query": f"pv=M{i}"} for i in range(MAX_RECENT + 1)]
+    with pytest.raises(InvalidStateOp, match="MAX_RECENT"):
+        await store.apply_op({"op": "recent-many", "members": members})
+    assert not (personal_dir / STATE_FILE).exists()
+
+
+async def test_recent_many_names_the_bad_member_and_applies_nothing(store):
+    await store.apply_op({"op": "recent", "member": SCREEN})
+    with pytest.raises(InvalidStateOp, match=r"members\[1\]"):
+        await store.apply_op({"op": "recent-many", "members": [TOOL, {"screen": "library/a", "slot": "s"}]})
+    assert store.state()["recent"] == [SCREEN]
+
+
+async def test_recent_many_has_its_own_op_cap(store):
+    # Over MAX_STATE_OP_BYTES but within MAX_RECENT_MANY_OP_BYTES: accepted.
+    members = [{"tool": "trace", "query": f"pv=B{i}&" + "q" * 4000} for i in range(MAX_RECENT)]
+    assert _size({"op": "recent-many", "members": members}) > MAX_STATE_OP_BYTES
+    state = await store.apply_op({"op": "recent-many", "members": members})
+    assert state["recent"] == members
+    big = [{"tool": "trace", "query": f"pv=C{i}&" + "q" * 5000} for i in range(MAX_RECENT)]
+    with pytest.raises(StateTooLarge, match="MAX_RECENT_MANY_OP_BYTES"):
+        await store.apply_op({"op": "recent-many", "members": big})
+    assert _size({"op": "recent-many", "members": big}) > MAX_RECENT_MANY_OP_BYTES
+    # The larger cap is for recent-many only.
+    with pytest.raises(StateTooLarge, match="MAX_STATE_OP_BYTES"):
+        await store.apply_op({"op": "recent", "member": {"tool": "trace", "name": "n" * MAX_STATE_OP_BYTES}})
+
+
 async def test_state_members_follow_personal_rules(store):
     await store.apply_op({"op": "pin", "member": {"screen": "drafts/mine"}})
     state = await store.apply_op({"op": "pin", "member": {"tool": "trace", "name": "  Padded  "}})
@@ -382,6 +467,14 @@ async def test_state_members_follow_personal_rules(store):
         {"op": "recent", "member": {"tool": "nope"}},
         {"op": "unpin", "member": {"screen": "library/a", "tool": "trace"}},
         {"op": "pin", "member": "library/a"},
+        {"op": "recent-clear", "member": SCREEN},
+        {"op": "recent-remove"},
+        {"op": "recent-remove", "ref": "facility:a"},
+        {"op": "recent-many", "member": SCREEN},
+        {"op": "recent-many", "members": SCREEN},
+        {"op": "recent-many", "members": [SCREEN], "extra": 1},
+        {"op": "recent-many", "members": [{"screen": "elsewhere/a"}]},
+        {"op": ["tick"], "ref": "facility:a"},
     ],
 )
 async def test_bad_ops_are_refused(store, op):

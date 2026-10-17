@@ -1,4 +1,4 @@
 {
   "error": "invalid_op",
-  "detail": "op must be one of tick, untick, pin, unpin, recent"
+  "detail": "op must be one of tick, untick, pin, unpin, recent, recent-remove, recent-clear, recent-many"
 }

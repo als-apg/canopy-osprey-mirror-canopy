@@ -109,16 +109,33 @@ and changes only through one op at a time, applied read-modify-write under the s
 lock (:meth:`CollectionStore.apply_op`)::
 
     {"op": "tick" | "untick", "ref": "<source>:<id>"}
-    {"op": "pin" | "unpin" | "recent", "member": <member>}
+    {"op": "pin" | "unpin" | "recent" | "recent-remove", "member": <member>}
+    {"op": "recent-many", "members": [<member>, ...]}
+    {"op": "recent-clear"}
 
-``tick`` adds the ref to ``ticked`` and drops it from ``unticked``; ``untick`` the
-reverse. ``pin`` appends a member whose ``member_key`` is not pinned yet, ``unpin``
-drops the one that has its key; ``recent`` moves the member to the front, dropping any
-other with its key, and keeps the first ``MAX_RECENT`` (10). All are idempotent. A
-member here follows the personal member rules without ``slot``. Bounds: an op is at
-most ``MAX_STATE_OP_BYTES`` (8 KiB), the stored state at most ``MAX_STATE_BYTES``
-(512 KiB), both as compact UTF-8 JSON; ``MAX_PINNED`` (50) pinned members, at most
-``MAX_REFS`` (100) refs per list. A full list first evicts the refs naming no current
+:data:`OP_FIELDS` maps each op to the one field it carries besides ``op``; an op is
+exactly those keys:
+
+| op | field | effect |
+| --- | --- | --- |
+| ``tick`` | ``ref`` | add the ref to ``ticked``, drop it from ``unticked`` |
+| ``untick`` | ``ref`` | the reverse |
+| ``pin`` | ``member`` | append a member whose ``member_key`` is not pinned yet |
+| ``unpin`` | ``member`` | drop the pinned member with its key |
+| ``recent`` | ``member`` | move it to the front of ``recent``, dropping any other with its key |
+| ``recent-remove`` | ``member`` | drop the recent member with its key |
+| ``recent-clear`` | (none) | empty ``recent`` |
+| ``recent-many`` | ``members`` | put up to ``MAX_RECENT`` members, in order, at the front of ``recent`` |
+
+``recent-many`` keeps the first of a repeated key and drops the other recent members
+with its keys; ``recent`` and ``recent-many`` keep the first ``MAX_RECENT`` (10). All
+are idempotent, and an op that changes nothing writes nothing. An unknown op is
+400 ``invalid_op`` "op must be one of tick, untick, pin, unpin, recent, recent-remove,
+recent-clear, recent-many". A member here follows the personal member rules without
+``slot``. Bounds: an op is at most ``MAX_STATE_OP_BYTES`` (8 KiB), a ``recent-many``
+op at most ``MAX_RECENT_MANY_OP_BYTES`` (48 KiB), the stored state at most
+``MAX_STATE_BYTES`` (512 KiB), all as compact UTF-8 JSON; ``MAX_PINNED`` (50)
+pinned members, at most ``MAX_REFS`` (100) refs per list. A full list first evicts the refs naming no current
 collection, then raises :class:`SelectionFull` (409 ``selection_full``); a full
 ``pinned`` raises :class:`PinnedFull` (409 ``pinned_full``). Deleting a personal
 collection prunes ``personal:<id>`` from both ref lists under the same lock.
@@ -254,7 +271,20 @@ MAX_POST_BODY_BYTES = 8 * MAX_STATE_OP_BYTES
 COLLECTIONS_CACHE_CONTROL = "no-cache"
 STATE_FILE = ".state.json"
 STATE_LISTS = ("ticked", "unticked", "pinned", "recent")
-STATE_OPS = ("tick", "untick", "pin", "unpin", "recent")
+# Each state op and the one field it carries besides ``op`` (``None``: no field).
+OP_FIELDS: dict[str, str | None] = {
+    "tick": "ref",
+    "untick": "ref",
+    "pin": "member",
+    "unpin": "member",
+    "recent": "member",
+    "recent-remove": "member",
+    "recent-clear": None,
+    "recent-many": "members",
+}
+STATE_OPS = tuple(OP_FIELDS)
+# ``recent-many`` carries up to MAX_RECENT members, so it gets its own op cap.
+MAX_RECENT_MANY_OP_BYTES = 48 * 1024
 
 log = logging.getLogger(__name__)
 
@@ -890,12 +920,20 @@ class CollectionStore(_Reader):
                     if len(state[into]) >= MAX_REFS:
                         raise SelectionFull(f"{into} holds {MAX_REFS} refs (MAX_REFS)")
                     state[into].append(value)
+            elif name == "recent-clear":
+                state["recent"] = []
+            elif name == "recent-many":
+                keys = {member_key(member) for member in value}
+                others = [member for member in state["recent"] if member_key(member) not in keys]
+                state["recent"] = [*value, *others][:MAX_RECENT]
             else:
                 key = member_key(value)
-                listed = "recent" if name == "recent" else "pinned"
+                listed = "recent" if name.startswith("recent") else "pinned"
                 others = [member for member in state[listed] if member_key(member) != key]
                 if name == "recent":
                     state["recent"] = [value, *others][:MAX_RECENT]
+                elif name == "recent-remove":
+                    state["recent"] = others
                 elif name == "unpin":
                     state["pinned"] = others
                 elif len(others) == len(state["pinned"]):
@@ -914,17 +952,48 @@ def _parse_op(op: Any) -> tuple[str, Any]:
         size = _size(op)
     except (TypeError, ValueError) as exc:
         raise InvalidStateOp(f"an op must be JSON: {exc}") from None
-    if size > MAX_STATE_OP_BYTES:
-        raise StateTooLarge(f"the op is {size} bytes, at most {MAX_STATE_OP_BYTES} (MAX_STATE_OP_BYTES)")
     name = op.get("op")
-    if name not in STATE_OPS:
+    cap, cap_name = (
+        (MAX_RECENT_MANY_OP_BYTES, "MAX_RECENT_MANY_OP_BYTES")
+        if name == "recent-many"
+        else (MAX_STATE_OP_BYTES, "MAX_STATE_OP_BYTES")
+    )
+    if size > cap:
+        raise StateTooLarge(f"the op is {size} bytes, at most {cap} ({cap_name})")
+    if not isinstance(name, str) or name not in OP_FIELDS:
         raise InvalidStateOp(f"op must be one of {', '.join(STATE_OPS)}")
-    field = "ref" if name in ("tick", "untick") else "member"
-    if set(op) != {"op", field}:
-        raise InvalidStateOp(f"a {name} op is exactly {{op, {field}}}")
+    field = OP_FIELDS[name]
+    expected = {"op"} if field is None else {"op", field}
+    if set(op) != expected:
+        shape = "{op}" if field is None else f"{{op, {field}}}"
+        raise InvalidStateOp(f"a {name} op is exactly {shape}")
+    if field is None:
+        return name, None
     if field == "ref":
         return name, validate_ref(op["ref"])
+    if field == "members":
+        return name, _parse_recent_members(op["members"])
     return name, validate_state_member(op["member"])
+
+
+def _parse_recent_members(members: Any) -> list[dict[str, Any]]:
+    """``recent-many``'s members cleaned, first occurrence of each member key kept."""
+    if not isinstance(members, list):
+        raise InvalidStateOp("members must be an array")
+    if len(members) > MAX_RECENT:
+        raise InvalidStateOp(f"members holds {len(members)}, at most {MAX_RECENT} (MAX_RECENT)")
+    out: list[dict[str, Any]] = []
+    keys: set[str] = set()
+    for index, member in enumerate(members):
+        try:
+            clean = validate_state_member(member)
+        except InvalidStateOp as exc:
+            raise InvalidStateOp(str(exc).replace("member", f"members[{index}]", 1)) from None
+        key = member_key(clean)
+        if key not in keys:
+            keys.add(key)
+            out.append(clean)
+    return out
 
 
 def all_collections(facility: FacilityCollections | None, personal: CollectionStore | None) -> list[dict[str, Any]]:
@@ -950,6 +1019,18 @@ def _json(body: Any, status_code: int = 200, headers: dict[str, str] | None = No
 def _error(status_code: int, code: str, detail: str | None = None, headers: dict[str, str] | None = None) -> Response:
     body = {"error": code} if detail is None else {"error": code, "detail": detail}
     return _json(body, status_code, headers)
+
+
+def _conditional(request: Request, response: Response) -> Response:
+    """``response`` with an ``ETag`` (sha256 of its body); 304 on a matching ``If-None-Match``.
+
+    The 304 keeps ``ETag`` and ``Cache-Control: no-cache`` and carries no body.
+    """
+    etag = _etag(hashlib.sha256(response.body).hexdigest())
+    if _not_modified(request, etag):
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": COLLECTIONS_CACHE_CONTROL})
+    response.headers["ETag"] = etag
+    return response
 
 
 _PRECONDITION_DETAIL = "send If-None-Match: * to create or If-Match: <rev> to replace"
