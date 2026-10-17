@@ -162,6 +162,13 @@ def test_unknown_top_level_keys_are_refused() -> None:
     refused(personal(colour="red"), "unknown key")
 
 
+def test_a_facility_file_carrying_rev_is_refused() -> None:
+    # rev is computed on read, never stored: a file that carries one breaks the key rule.
+    refused(facility(rev="0123456789abcdef"), "unknown key", source="facility")
+    for key in ("rev", "source", "ref"):
+        refused(personal(**{key: "x"}), "unknown key")
+
+
 def test_description_must_be_a_string() -> None:
     refused(personal(description=3), "description must be a string")
 

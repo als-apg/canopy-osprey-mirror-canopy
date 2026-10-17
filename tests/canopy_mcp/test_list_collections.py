@@ -202,3 +202,31 @@ async def test_list_collections_is_registered_and_read_only(settings: Settings) 
         assert "list_collections" in names
         result = await client.call_tool("list_collections", {})
     assert [c["ref"] for c in result.structured_content["collections"]][:1] == ["facility:control-assistant"]
+
+
+# A14: the agent answers in plain language. The tool description and the skill
+# row both carry this instruction; RST double backticks read as single ones.
+PLAIN_LANGUAGE = (
+    "Answer with collection names and member counts, render `open_url` as a link, "
+    "and never quote field names to the operator."
+)
+SKILL_MD = Path(tool_module.__file__).parent.parent / "skill" / "SKILL.md"
+
+
+def _normalised(text: str) -> str:
+    return " ".join(text.replace("``", "`").split())
+
+
+def test_docstring_tells_the_agent_to_answer_in_plain_language() -> None:
+    doc = _normalised(tool_module.list_collections.__doc__ or "")
+    assert PLAIN_LANGUAGE in doc
+    for field in ("ref", "source", "available_count", "open_url", "available"):
+        assert f"`{field}`" in doc  # the Returns paragraph keeps its field names
+
+
+def test_skill_row_tells_the_agent_to_answer_in_plain_language() -> None:
+    rows = [
+        line for line in SKILL_MD.read_text(encoding="utf-8").splitlines() if line.startswith("| `list_collections` |")
+    ]
+    assert len(rows) == 1
+    assert PLAIN_LANGUAGE in rows[0]

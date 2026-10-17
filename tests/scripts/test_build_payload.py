@@ -723,6 +723,7 @@ FIX_RT = "apps/viewer/e2e/fixtures/collections"
 NOT_UTF8 = b'{"name": "\xff\xfe"}\n'
 FIXTURE_SET = {
     "member-key-vectors.json": b'{"vectors": []}\n',
+    "match-vectors.json": b'{"about": []}\n',
     "valid/facility/injector.json": b'{"name": "Injector"}\n',
     "valid/personal/grid.json": b'{"layout": {"split": "row"}}\n',
     "invalid/not-utf8.json": NOT_UTF8,
@@ -822,6 +823,14 @@ def test_a_fixture_deleted_on_one_side_is_refused(world):
     with_fixtures(world)
     commit_bytes(world["rt"], fixtures(FIX_RT, {"member-key-vectors.json": None}), "drop")
     refused(world, build(world), "member-key-vectors.json")
+
+
+def test_match_vectors_dropped_by_the_runtime_is_refused(world):
+    with_fixtures(world)
+    commit_bytes(world["rt"], fixtures(FIX_RT, {"match-vectors.json": None}), "drop")
+    proc = build(world)
+    refused(world, proc, "match-vectors.json")
+    assert "is in CANOPY_SHA=" in proc.stderr
 
 
 def test_library_and_other_paths_are_not_compared(world):

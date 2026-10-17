@@ -78,9 +78,27 @@ changes) and skipped. The personal store (:class:`CollectionStore`) keeps
 ``<personal dir>/<id>.json`` with the rules of :mod:`canopy_mcp.views`: every write
 is one section under an exclusive ``flock`` on the personal directory, each file is
 replaced atomically, an unwritable directory raises
-:class:`~canopy_mcp.store.ReadOnlyStore` (``read_only_store``), and a create with
-``If-None-Match: *`` on an existing id raises :class:`CollectionExists` (412). A
-listed collection carries ``source`` and ``ref`` (``<source>:<id>``).
+:class:`~canopy_mcp.store.ReadOnlyStore` (``read_only_store``). A listed collection
+carries ``source``, ``ref`` (``<source>:<id>``) and ``rev``.
+
+``rev`` is the first 16 hex digits of the sha256 of the stored file bytes: it changes
+whenever the file does and is never stored itself. A client that echoes a listed
+collection back may leave ``source``, ``ref``, ``rev`` and ``updated`` in it; ``PUT``
+drops them before validation. Every personal write states what it expects, and the
+store compares under the lock, so no other writer lands between check and write:
+
+| Request | Outcome | Refusal |
+| --- | --- | --- |
+| ``PUT``, neither header | refused | 428 ``precondition_required`` |
+| ``PUT`` + ``If-None-Match: *`` | create only | 412 ``exists``: the id is stored |
+| ``PUT`` + ``If-Match: <rev>`` | replace that rev only | 412 ``gone``: id not stored; 412 ``stale``: another rev |
+| ``DELETE`` + ``If-Match: <rev>`` | remove that rev only | 412 ``stale``: another rev; 404 ``not_found`` |
+| ``DELETE``, no ``If-Match`` | remove whatever is stored | 404 ``not_found`` |
+
+The details read "send If-None-Match: * to create or If-Match: <rev> to replace",
+"collection '<id>' exists", "collection '<id>' is gone" and "collection '<id>' has
+changed". ``If-Match`` names one or more revs, comma-separated, each bare, quoted
+or ``W/``; ``*`` matches any stored rev. When both headers are sent, ``If-Match`` decides.
 
 The per-user state is ``<personal dir>/.state.json`` (its stem is outside
 ``VIEW_ID_PATTERN``, so it is never a collection)::
@@ -91,16 +109,33 @@ and changes only through one op at a time, applied read-modify-write under the s
 lock (:meth:`CollectionStore.apply_op`)::
 
     {"op": "tick" | "untick", "ref": "<source>:<id>"}
-    {"op": "pin" | "unpin" | "recent", "member": <member>}
+    {"op": "pin" | "unpin" | "recent" | "recent-remove", "member": <member>}
+    {"op": "recent-many", "members": [<member>, ...]}
+    {"op": "recent-clear"}
 
-``tick`` adds the ref to ``ticked`` and drops it from ``unticked``; ``untick`` the
-reverse. ``pin`` appends a member whose ``member_key`` is not pinned yet, ``unpin``
-drops the one that has its key; ``recent`` moves the member to the front, dropping any
-other with its key, and keeps the first ``MAX_RECENT`` (10). All are idempotent. A
-member here follows the personal member rules without ``slot``. Bounds: an op is at
-most ``MAX_STATE_OP_BYTES`` (8 KiB), the stored state at most ``MAX_STATE_BYTES``
-(512 KiB), both as compact UTF-8 JSON; ``MAX_PINNED`` (50) pinned members, at most
-``MAX_REFS`` (100) refs per list. A full list first evicts the refs naming no current
+:data:`OP_FIELDS` maps each op to the one field it carries besides ``op``; an op is
+exactly those keys:
+
+| op | field | effect |
+| --- | --- | --- |
+| ``tick`` | ``ref`` | add the ref to ``ticked``, drop it from ``unticked`` |
+| ``untick`` | ``ref`` | the reverse |
+| ``pin`` | ``member`` | append a member whose ``member_key`` is not pinned yet |
+| ``unpin`` | ``member`` | drop the pinned member with its key |
+| ``recent`` | ``member`` | move it to the front of ``recent``, dropping any other with its key |
+| ``recent-remove`` | ``member`` | drop the recent member with its key |
+| ``recent-clear`` | (none) | empty ``recent`` |
+| ``recent-many`` | ``members`` | put up to ``MAX_RECENT`` members, in order, at the front of ``recent`` |
+
+``recent-many`` keeps the first of a repeated key and drops the other recent members
+with its keys; ``recent`` and ``recent-many`` keep the first ``MAX_RECENT`` (10). All
+are idempotent, and an op that changes nothing writes nothing. An unknown op is
+400 ``invalid_op`` "op must be one of tick, untick, pin, unpin, recent, recent-remove,
+recent-clear, recent-many". A member here follows the personal member rules without
+``slot``. Bounds: an op is at most ``MAX_STATE_OP_BYTES`` (8 KiB), a ``recent-many``
+op at most ``MAX_RECENT_MANY_OP_BYTES`` (48 KiB), the stored state at most
+``MAX_STATE_BYTES`` (512 KiB), all as compact UTF-8 JSON; ``MAX_PINNED`` (50)
+pinned members, at most ``MAX_REFS`` (100) refs per list. A full list first evicts the refs naming no current
 collection, then raises :class:`SelectionFull` (409 ``selection_full``); a full
 ``pinned`` raises :class:`PinnedFull` (409 ``pinned_full``). Deleting a personal
 collection prunes ``personal:<id>`` from both ref lists under the same lock.
@@ -111,13 +146,21 @@ HTTP surface
 :func:`build_collection_routes`, every response ``Cache-Control: no-cache``:
 
 * ``GET /collections`` -> 200 ``{"collections": [...]}``: facility first, then personal,
-  each sorted by case-folded name, then id, each carrying ``source`` and ``ref``
-* ``GET /collections/{id}`` -> 200 the personal collection, 404 ``not_found``
-* ``PUT /collections/{id}`` with a JSON collection body -> 201 created, 200 replaced
-  (body: the listed collection); ``If-None-Match: *`` makes it create-only (412
-  ``exists``). A ``default`` key, or any broken rule, is 400 ``invalid_collection``
-* ``DELETE /collections/{id}`` -> 204, 404 ``not_found``
-* ``GET /collections-state`` -> 200 the state document
+  each sorted by case-folded name, then id, each carrying ``source``, ``ref`` and
+  ``rev``. It answers an ``ETag`` (the quoted sha256 hex of the body) and 304 with no
+  body, keeping ``ETag`` and ``Cache-Control``, on a matching ``If-None-Match`` (weak
+  and list forms match); ``HEAD`` mirrors ``GET``
+* ``GET /collections/{id}`` -> 200 the listed personal collection (with ``rev``), 404
+  ``not_found``
+* ``PUT /collections/{id}`` with a JSON collection body and ``If-None-Match: *`` or
+  ``If-Match: <rev>`` -> 201 created, 200 replaced (body: the listed collection, its
+  new ``rev``); 428 ``precondition_required`` without either, 412 ``exists`` /
+  ``gone`` / ``stale`` (the table above). A ``default`` key, or any broken rule, is
+  400 ``invalid_collection``
+* ``DELETE /collections/{id}`` -> 204, 404 ``not_found``; with ``If-Match``, 412
+  ``stale`` on another rev
+* ``GET /collections-state`` -> 200 the state document, conditional like
+  ``GET /collections`` (``ETag`` = sha256 of the body, 304 on a match)
 * ``POST /collections-state`` with one JSON op -> 200 the new state document; 400
   ``invalid_op``, 409 ``pinned_full`` / ``selection_full``, 413 ``too_large``
 
@@ -137,6 +180,7 @@ from __future__ import annotations
 
 import json
 import math
+import hashlib
 import asyncio
 import logging
 from typing import Any, Literal
@@ -168,7 +212,7 @@ from canopy_mcp.views import (
     clean_name,
     check_query,
 )
-from canopy_mcp.static import TOOL_IDS
+from canopy_mcp.static import TOOL_IDS, _etag, _not_modified
 from canopy_mcp.listing import Judged, scan, judge
 from canopy_mcp.member_key import InvalidMember, member_key
 
@@ -235,7 +279,20 @@ MAX_POST_BODY_BYTES = 8 * MAX_STATE_OP_BYTES
 COLLECTIONS_CACHE_CONTROL = "no-cache"
 STATE_FILE = ".state.json"
 STATE_LISTS = ("ticked", "unticked", "pinned", "recent")
-STATE_OPS = ("tick", "untick", "pin", "unpin", "recent")
+# Each state op and the one field it carries besides ``op`` (``None``: no field).
+OP_FIELDS: dict[str, str | None] = {
+    "tick": "ref",
+    "untick": "ref",
+    "pin": "member",
+    "unpin": "member",
+    "recent": "member",
+    "recent-remove": "member",
+    "recent-clear": None,
+    "recent-many": "members",
+}
+STATE_OPS = tuple(OP_FIELDS)
+# ``recent-many`` carries up to MAX_RECENT members, so it gets its own op cap.
+MAX_RECENT_MANY_OP_BYTES = 48 * 1024
 
 log = logging.getLogger(__name__)
 
@@ -509,6 +566,18 @@ class CollectionExists(Exception):
     code = "exists"
 
 
+class CollectionGone(LookupError):
+    """A conditional ``PUT`` (``If-Match``) named an id that is not stored (412)."""
+
+    code = "gone"
+
+
+class CollectionStale(Exception):
+    """An ``If-Match`` rev no longer matches the stored collection (412)."""
+
+    code = "stale"
+
+
 class StateFull(Exception):
     """A state list is at its cap (409); ``code`` names which."""
 
@@ -581,8 +650,16 @@ def _serialize_state(state: Mapping[str, Any]) -> bytes:
     return json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-def _listed(doc: dict[str, Any], source: str) -> dict[str, Any]:
-    return {"source": source, "ref": f"{source}:{doc['id']}", **doc}
+# Keys the server adds to a listed collection; a client echoing a listed doc back may
+# carry them, so ``put`` strips them before validation. ``rev`` is never stored.
+_LISTED_KEYS = frozenset({"source", "ref", "rev", "updated"})
+
+
+def _listed(doc: dict[str, Any], source: str, data: bytes) -> dict[str, Any]:
+    """``doc`` as listed: ``source``, ``ref`` and ``rev``, the first 16 hex of the
+    sha256 of the stored file bytes ``data``."""
+    rev = hashlib.sha256(data).hexdigest()[:16]
+    return {"source": source, "ref": f"{source}:{doc['id']}", "rev": rev, **doc}
 
 
 def _sorted(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -610,7 +687,8 @@ class _Reader:
 
     def _load(self, path: Path, collection_id: str) -> dict[str, Any] | None:
         try:
-            doc = json.loads(path.read_bytes())
+            data = path.read_bytes()
+            doc = json.loads(data)
         except (OSError, ValueError) as exc:
             self._skip(path, f"unreadable: {exc}")
             return None
@@ -624,7 +702,7 @@ class _Reader:
                 clean["updated"] = _mtime(path)
             except OSError:
                 return None
-        return _listed(clean, self.source)
+        return _listed(clean, self.source, data)
 
     def list(self) -> list[dict[str, Any]]:
         """Every readable, valid collection, sorted by case-folded name, then id."""
@@ -651,6 +729,23 @@ class FacilityCollections(_Reader):
     """The read-only facility collections in ``directory`` (id = file stem)."""
 
     source = FACILITY
+
+
+def _rev_matches(data: bytes, if_match: frozenset[str]) -> bool:
+    """Whether the stored bytes ``data`` have a rev ``if_match`` names (``*``: any)."""
+    return "*" in if_match or hashlib.sha256(data).hexdigest()[:16] in if_match
+
+
+def _parse_if_match(header: str) -> frozenset[str]:
+    """The revs an ``If-Match`` header names: comma-separated, each bare, quoted or ``W/``."""
+    revs = set()
+    for part in header.split(","):
+        part = part.strip().removeprefix("W/").strip()
+        if len(part) >= 2 and part[0] == part[-1] == '"':
+            part = part[1:-1]
+        if part:
+            revs.add(part)
+    return frozenset(revs)
 
 
 class CollectionStore(_Reader):
@@ -689,42 +784,61 @@ class CollectionStore(_Reader):
         doc: Any,
         *,
         create_only: bool = False,
+        if_match: frozenset[str] | None = None,
         library: Path | str | Judged | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Validate and store ``doc`` under ``collection_id``; returns ``(listed doc, created)``.
 
-        ``updated`` is set to now. ``create_only`` (``If-None-Match: *``) raises
-        :class:`CollectionExists` when the id is stored. Raises
+        ``updated`` is set to now; a client-sent ``rev``, ``source`` or ``ref`` (an
+        echoed listed doc) is dropped before validation. ``create_only`` (``If-None-Match: *``) raises
+        :class:`CollectionExists` when the id is stored. ``if_match`` (the parsed
+        ``If-Match`` revs) replaces only the stored rev it names: :class:`CollectionGone`
+        when the id is not stored, :class:`CollectionStale` when its rev differs. Raises
         :class:`InvalidCollection` (400) and :class:`ReadOnlyStore` (403).
         """
         path = self.path_for(collection_id)
         if isinstance(doc, Mapping):
-            doc = {**doc, "updated": _now()}
+            doc = {**{k: v for k, v in doc.items() if k not in _LISTED_KEYS}, "updated": _now()}
         clean = validate_collection(doc, source=PERSONAL, library=library, file_id=collection_id)
         stored = {"id": collection_id, **{k: v for k, v in clean.items() if k != "id"}}
         data = _serialize(stored)
         async with self._lock:
-            created = await asyncio.to_thread(self._put_locked, path, data, create_only)
-        return _listed(stored, PERSONAL), created
+            created = await asyncio.to_thread(self._put_locked, path, data, create_only, if_match)
+        return _listed(stored, PERSONAL, data), created
 
-    def _put_locked(self, path: Path, data: bytes, create_only: bool) -> bool:
+    def _put_locked(self, path: Path, data: bytes, create_only: bool, if_match: frozenset[str] | None = None) -> bool:
         make_dirs(self.dir)
         with lock_root(self.dir):
             created = not path.exists()
             if create_only and not created:
                 raise CollectionExists(f"collection {path.stem!r} exists")
+            if if_match is not None:
+                # Compared under the lock, so no other writer lands between check and write.
+                try:
+                    current = path.read_bytes()
+                except FileNotFoundError:
+                    raise CollectionGone(path.stem) from None
+                if not _rev_matches(current, if_match):
+                    raise CollectionStale(path.stem)
             write_atomic(path, data)
         return created
 
-    async def delete(self, collection_id: str) -> None:
-        """Remove the collection and prune ``personal:<id>`` from ``ticked`` and ``unticked``."""
+    async def delete(self, collection_id: str, *, if_match: frozenset[str] | None = None) -> None:
+        """Remove the collection and prune ``personal:<id>`` from ``ticked`` and ``unticked``.
+
+        ``if_match`` (the parsed ``If-Match`` revs) removes only the stored rev it names
+        (:class:`CollectionStale` otherwise); a missing id is :class:`CollectionNotFound`
+        either way.
+        """
         path = self.path_for(collection_id)
         async with self._lock:
-            await asyncio.to_thread(self._delete_locked, collection_id, path)
+            await asyncio.to_thread(self._delete_locked, collection_id, path, if_match)
 
-    def _delete_locked(self, collection_id: str, path: Path) -> None:
+    def _delete_locked(self, collection_id: str, path: Path, if_match: frozenset[str] | None = None) -> None:
         try:
             with lock_root(self.dir):
+                if if_match is not None and not _rev_matches(path.read_bytes(), if_match):
+                    raise CollectionStale(collection_id)
                 remove_file(path)
                 state = self._read_state()
                 ref = f"{PERSONAL}:{collection_id}"
@@ -814,12 +928,20 @@ class CollectionStore(_Reader):
                     if len(state[into]) >= MAX_REFS:
                         raise SelectionFull(f"{into} holds {MAX_REFS} refs (MAX_REFS)")
                     state[into].append(value)
+            elif name == "recent-clear":
+                state["recent"] = []
+            elif name == "recent-many":
+                keys = {member_key(member) for member in value}
+                others = [member for member in state["recent"] if member_key(member) not in keys]
+                state["recent"] = [*value, *others][:MAX_RECENT]
             else:
                 key = member_key(value)
-                listed = "recent" if name == "recent" else "pinned"
+                listed = "recent" if name.startswith("recent") else "pinned"
                 others = [member for member in state[listed] if member_key(member) != key]
                 if name == "recent":
                     state["recent"] = [value, *others][:MAX_RECENT]
+                elif name == "recent-remove":
+                    state["recent"] = others
                 elif name == "unpin":
                     state["pinned"] = others
                 elif len(others) == len(state["pinned"]):
@@ -838,17 +960,48 @@ def _parse_op(op: Any) -> tuple[str, Any]:
         size = _size(op)
     except (TypeError, ValueError) as exc:
         raise InvalidStateOp(f"an op must be JSON: {exc}") from None
-    if size > MAX_STATE_OP_BYTES:
-        raise StateTooLarge(f"the op is {size} bytes, at most {MAX_STATE_OP_BYTES} (MAX_STATE_OP_BYTES)")
     name = op.get("op")
-    if name not in STATE_OPS:
+    cap, cap_name = (
+        (MAX_RECENT_MANY_OP_BYTES, "MAX_RECENT_MANY_OP_BYTES")
+        if name == "recent-many"
+        else (MAX_STATE_OP_BYTES, "MAX_STATE_OP_BYTES")
+    )
+    if size > cap:
+        raise StateTooLarge(f"the op is {size} bytes, at most {cap} ({cap_name})")
+    if not isinstance(name, str) or name not in OP_FIELDS:
         raise InvalidStateOp(f"op must be one of {', '.join(STATE_OPS)}")
-    field = "ref" if name in ("tick", "untick") else "member"
-    if set(op) != {"op", field}:
-        raise InvalidStateOp(f"a {name} op is exactly {{op, {field}}}")
+    field = OP_FIELDS[name]
+    expected = {"op"} if field is None else {"op", field}
+    if set(op) != expected:
+        shape = "{op}" if field is None else f"{{op, {field}}}"
+        raise InvalidStateOp(f"a {name} op is exactly {shape}")
+    if field is None:
+        return name, None
     if field == "ref":
         return name, validate_ref(op["ref"])
+    if field == "members":
+        return name, _parse_recent_members(op["members"])
     return name, validate_state_member(op["member"])
+
+
+def _parse_recent_members(members: Any) -> list[dict[str, Any]]:
+    """``recent-many``'s members cleaned, first occurrence of each member key kept."""
+    if not isinstance(members, list):
+        raise InvalidStateOp("members must be an array")
+    if len(members) > MAX_RECENT:
+        raise InvalidStateOp(f"members holds {len(members)}, at most {MAX_RECENT} (MAX_RECENT)")
+    out: list[dict[str, Any]] = []
+    keys: set[str] = set()
+    for index, member in enumerate(members):
+        try:
+            clean = validate_state_member(member)
+        except InvalidStateOp as exc:
+            raise InvalidStateOp(str(exc).replace("member", f"members[{index}]", 1)) from None
+        key = member_key(clean)
+        if key not in keys:
+            keys.add(key)
+            out.append(clean)
+    return out
 
 
 def all_collections(facility: FacilityCollections | None, personal: CollectionStore | None) -> list[dict[str, Any]]:
@@ -874,6 +1027,21 @@ def _json(body: Any, status_code: int = 200, headers: dict[str, str] | None = No
 def _error(status_code: int, code: str, detail: str | None = None, headers: dict[str, str] | None = None) -> Response:
     body = {"error": code} if detail is None else {"error": code, "detail": detail}
     return _json(body, status_code, headers)
+
+
+def _conditional(request: Request, response: Response) -> Response:
+    """``response`` with an ``ETag`` (sha256 of its body); 304 on a matching ``If-None-Match``.
+
+    The 304 keeps ``ETag`` and ``Cache-Control: no-cache`` and carries no body.
+    """
+    etag = _etag(hashlib.sha256(response.body).hexdigest())
+    if _not_modified(request, etag):
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": COLLECTIONS_CACHE_CONTROL})
+    response.headers["ETag"] = etag
+    return response
+
+
+_PRECONDITION_DETAIL = "send If-None-Match: * to create or If-Match: <rev> to replace"
 
 
 def _not_allowed(allow: str) -> Response:
@@ -924,19 +1092,24 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         if request.method not in ("GET", "HEAD"):
             return _not_allowed("GET, HEAD")
         listed = await asyncio.to_thread(all_collections, facility, personal)
-        return _json({"collections": listed})
+        return _conditional(request, _json({"collections": listed}))
 
-    async def put(request: Request, collection_id: str) -> Response:
+    async def put(
+        request: Request, collection_id: str, *, create_only: bool, if_match: frozenset[str] | None
+    ) -> Response:
         body, failed = await _json_body(request, MAX_PUT_BODY_BYTES)
         if failed is not None:
             return failed
-        create_only = request.headers.get("if-none-match", "").strip() == "*"
         try:
-            doc, created = await personal.put(collection_id, body, create_only=create_only)
+            doc, created = await personal.put(collection_id, body, create_only=create_only, if_match=if_match)
         except InvalidCollection as exc:
             return _error(400, "invalid_collection", str(exc))
         except CollectionExists:
             return _error(412, CollectionExists.code, f"collection {collection_id!r} exists")
+        except CollectionGone:
+            return _error(412, CollectionGone.code, f"collection {collection_id!r} is gone")
+        except CollectionStale:
+            return _error(412, CollectionStale.code, f"collection {collection_id!r} has changed")
         except ReadOnlyStore:
             return _read_only()
         return _json(doc, 201 if created else 200)
@@ -951,15 +1124,23 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
             collection_id = validate_collection_id(request.path_params["collection_id"])
         except InvalidCollectionId as exc:
             return _error(400, "invalid_id", str(exc))
+        header = request.headers.get("if-match")
+        if_match = None if header is None else _parse_if_match(header)
         if method == "PUT":
-            return await put(request, collection_id)
+            # A PUT says what it expects: create (If-None-Match: *) or replace the rev it saw (If-Match).
+            create_only = if_match is None and request.headers.get("if-none-match", "").strip() == "*"
+            if if_match is None and not create_only:
+                return _error(428, "precondition_required", _PRECONDITION_DETAIL)
+            return await put(request, collection_id, create_only=create_only, if_match=if_match)
         try:
             if method == "DELETE":
-                await personal.delete(collection_id)
+                await personal.delete(collection_id, if_match=if_match)
                 return Response(status_code=204, headers={"Cache-Control": COLLECTIONS_CACHE_CONTROL})
             return _json(await asyncio.to_thread(personal.get, collection_id))
         except CollectionNotFound:
             return _error(404, "not_found", f"no personal collection {collection_id!r}")
+        except CollectionStale:
+            return _error(412, CollectionStale.code, f"collection {collection_id!r} has changed")
         except ReadOnlyStore:
             return _read_only()
 
@@ -968,7 +1149,7 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         if method not in ("GET", "HEAD", "POST"):
             return _not_allowed("GET, HEAD, POST")
         if method != "POST":
-            return _json(await asyncio.to_thread(personal.state))
+            return _conditional(request, _json(await asyncio.to_thread(personal.state)))
         if (refused := _cross_site(request)) is not None:
             return refused
         body, failed = await _json_body(request, MAX_POST_BODY_BYTES)

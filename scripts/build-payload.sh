@@ -25,9 +25,10 @@
 # a computed version whose +g<node> does not match the commit built is refused.
 #
 # When the runtime commit carries the collections fixtures, the compared fixture
-# set (member-key-vectors.json, valid/, invalid/, responses/) must be byte-equal
-# between the two recorded commits, or the build is refused; STAGED.json records
-# "fixtures" as "compared", or "absent" for a runtime commit without them.
+# set (member-key-vectors.json, match-vectors.json, valid/, invalid/,
+# responses/) must be byte-equal between the two recorded commits, or the build
+# is refused; STAGED.json records "fixtures" as "compared", or "absent" for a
+# runtime commit without them.
 #
 # STAGED.json is written last: a directory without it is not a payload.
 #
@@ -73,10 +74,11 @@ Optional inputs (environment):
 
 Checks (before anything is built):
   fixtures    when RT_SHA has apps/viewer/e2e/fixtures/collections/, its
-              member-key-vectors.json, valid/, invalid/ and responses/ must equal
-              tests/canopy_mcp/fixtures/collections/ at CANOPY_SHA byte for byte
-              (library/ is not compared); STAGED.json records "fixtures" as
-              "compared", or "absent" when RT_SHA has no such directory
+              member-key-vectors.json, match-vectors.json, valid/, invalid/ and
+              responses/ must equal tests/canopy_mcp/fixtures/collections/ at
+              CANOPY_SHA byte for byte (library/ is not compared);
+              STAGED.json records "fixtures" as "compared", or "absent" when
+              RT_SHA has no such directory
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -178,7 +180,7 @@ fixture_set() { # <checkout> <sha> <dir>: "<path below dir><TAB><type> <object>"
         | awk -F'\t' -v dir="$3/" '{
             split($1, m, " ")
             rel = substr($2, length(dir) + 1)
-            if (rel == "member-key-vectors.json" || rel ~ /^(valid|invalid|responses)\//)
+            if (rel == "member-key-vectors.json" || rel == "match-vectors.json" || rel ~ /^(valid|invalid|responses)\//)
                 print rel "\t" m[2] " " m[3]
         }' \
         | LC_ALL=C sort
