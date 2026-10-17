@@ -110,11 +110,14 @@ async def list_collections() -> dict[str, Any]:
     Returns ``{collections: [...]}``, facility collections first, then the user's
     own. Each has ``ref`` (``<source>:<id>``), ``source`` (``facility`` or
     ``personal``), ``name``, ``description``, ``default`` (shown to every user who
-    has not unticked it), ``available_count`` and ``open_url``: give the user
-    ``open_url`` and the viewer opens every member of the collection at once.
-    Each member has ``key`` and ``available`` (whether this host can open it);
-    a screen member adds ``title`` and ``url`` (opens that one screen), a tool
-    member (Trace, Correlation, Waveform) adds ``label`` and ``open_url: null``.
+    has not unticked it), ``available_count`` and ``open_url`` (the viewer opens
+    every member of the collection at once). Each member has ``key`` and
+    ``available`` (whether this host can open it); a screen member adds ``title``
+    and ``url`` (opens that one screen), a tool member (Trace, Correlation,
+    Waveform) adds ``label`` and ``open_url: null``.
+
+    Answer with collection names and member counts, render ``open_url`` as a link,
+    and never quote field names to the operator.
     """
     settings = get_settings()
     facility, personal = _open_readers(settings)
