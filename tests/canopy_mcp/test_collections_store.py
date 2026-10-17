@@ -2,6 +2,7 @@
 
 import os
 import json
+import hashlib
 import asyncio
 import logging
 
@@ -157,6 +158,43 @@ async def test_put_creates_then_replaces(store, personal_dir):
     assert created is False
     assert doc["updated"] != "ignored"
     assert store.get("mine")["name"] == "Renamed"
+
+
+def _rev(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
+def test_facility_rev_is_the_sha256_prefix_of_the_file_bytes(facility_dir):
+    path = _write(facility_dir, "a.json", _collection())
+    (doc,) = FacilityCollections(facility_dir).list()
+    assert doc["rev"] == _rev(path.read_bytes())
+    assert len(doc["rev"]) == 16 and int(doc["rev"], 16) >= 0
+    path.write_text(path.read_text() + "\n", encoding="utf-8")
+    (changed,) = FacilityCollections(facility_dir).list()
+    assert changed["rev"] == _rev(path.read_bytes()) != doc["rev"]
+
+
+async def test_put_returns_the_rev_of_the_bytes_it_wrote(store, personal_dir):
+    doc, _ = await store.put("mine", _collection())
+    data = (personal_dir / "mine.json").read_bytes()
+    assert doc["rev"] == _rev(data)
+    assert store.get("mine")["rev"] == doc["rev"]
+    (listed,) = store.list()
+    assert listed["rev"] == doc["rev"]
+    again, _ = await store.put("mine", _collection("Renamed"))
+    assert again["rev"] != doc["rev"]
+    assert again["rev"] == _rev((personal_dir / "mine.json").read_bytes())
+
+
+async def test_an_echoed_rev_never_reaches_the_file(store, personal_dir):
+    first, _ = await store.put("mine", _collection())
+    echoed = {**first, "rev": "ffffffffffffffff"}  # the listed doc sent straight back
+    doc, created = await store.put("mine", echoed)
+    assert created is False
+    stored = json.loads((personal_dir / "mine.json").read_text())
+    assert not {"rev", "source", "ref"} & stored.keys()
+    assert doc["rev"] == _rev((personal_dir / "mine.json").read_bytes())
+    assert doc["source"] == "personal" and doc["ref"] == "personal:mine"
 
 
 async def test_put_accepts_drafts_members_and_rejects_default(store):

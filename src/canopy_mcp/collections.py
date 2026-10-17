@@ -78,9 +78,27 @@ changes) and skipped. The personal store (:class:`CollectionStore`) keeps
 ``<personal dir>/<id>.json`` with the rules of :mod:`canopy_mcp.views`: every write
 is one section under an exclusive ``flock`` on the personal directory, each file is
 replaced atomically, an unwritable directory raises
-:class:`~canopy_mcp.store.ReadOnlyStore` (``read_only_store``), and a create with
-``If-None-Match: *`` on an existing id raises :class:`CollectionExists` (412). A
-listed collection carries ``source`` and ``ref`` (``<source>:<id>``).
+:class:`~canopy_mcp.store.ReadOnlyStore` (``read_only_store``). A listed collection
+carries ``source``, ``ref`` (``<source>:<id>``) and ``rev``.
+
+``rev`` is the first 16 hex digits of the sha256 of the stored file bytes: it changes
+whenever the file does and is never stored itself. A client that echoes a listed
+collection back may leave ``source``, ``ref``, ``rev`` and ``updated`` in it; ``PUT``
+drops them before validation. Every personal write states what it expects, and the
+store compares under the lock, so no other writer lands between check and write:
+
+| Request | Outcome | Refusal |
+| --- | --- | --- |
+| ``PUT``, neither header | refused | 428 ``precondition_required`` |
+| ``PUT`` + ``If-None-Match: *`` | create only | 412 ``exists``: the id is stored |
+| ``PUT`` + ``If-Match: <rev>`` | replace that rev only | 412 ``gone``: id not stored; 412 ``stale``: another rev |
+| ``DELETE`` + ``If-Match: <rev>`` | remove that rev only | 412 ``stale``: another rev; 404 ``not_found`` |
+| ``DELETE``, no ``If-Match`` | remove whatever is stored | 404 ``not_found`` |
+
+The details read "send If-None-Match: * to create or If-Match: <rev> to replace",
+"collection '<id>' exists", "collection '<id>' is gone" and "collection '<id>' has
+changed". ``If-Match`` names one or more revs, comma-separated, each bare, quoted
+or ``W/``; ``*`` matches any stored rev. When both headers are sent, ``If-Match`` decides.
 
 The per-user state is ``<personal dir>/.state.json`` (its stem is outside
 ``VIEW_ID_PATTERN``, so it is never a collection)::
@@ -137,6 +155,7 @@ from __future__ import annotations
 
 import json
 import math
+import hashlib
 import asyncio
 import logging
 from typing import Any, Literal
@@ -509,6 +528,18 @@ class CollectionExists(Exception):
     code = "exists"
 
 
+class CollectionGone(LookupError):
+    """A conditional ``PUT`` (``If-Match``) named an id that is not stored (412)."""
+
+    code = "gone"
+
+
+class CollectionStale(Exception):
+    """An ``If-Match`` rev no longer matches the stored collection (412)."""
+
+    code = "stale"
+
+
 class StateFull(Exception):
     """A state list is at its cap (409); ``code`` names which."""
 
@@ -581,8 +612,16 @@ def _serialize_state(state: Mapping[str, Any]) -> bytes:
     return json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-def _listed(doc: dict[str, Any], source: str) -> dict[str, Any]:
-    return {"source": source, "ref": f"{source}:{doc['id']}", **doc}
+# Keys the server adds to a listed collection; a client echoing a listed doc back may
+# carry them, so ``put`` strips them before validation. ``rev`` is never stored.
+_LISTED_KEYS = frozenset({"source", "ref", "rev", "updated"})
+
+
+def _listed(doc: dict[str, Any], source: str, data: bytes) -> dict[str, Any]:
+    """``doc`` as listed: ``source``, ``ref`` and ``rev``, the first 16 hex of the
+    sha256 of the stored file bytes ``data``."""
+    rev = hashlib.sha256(data).hexdigest()[:16]
+    return {"source": source, "ref": f"{source}:{doc['id']}", "rev": rev, **doc}
 
 
 def _sorted(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -610,7 +649,8 @@ class _Reader:
 
     def _load(self, path: Path, collection_id: str) -> dict[str, Any] | None:
         try:
-            doc = json.loads(path.read_bytes())
+            data = path.read_bytes()
+            doc = json.loads(data)
         except (OSError, ValueError) as exc:
             self._skip(path, f"unreadable: {exc}")
             return None
@@ -624,7 +664,7 @@ class _Reader:
                 clean["updated"] = _mtime(path)
             except OSError:
                 return None
-        return _listed(clean, self.source)
+        return _listed(clean, self.source, data)
 
     def list(self) -> list[dict[str, Any]]:
         """Every readable, valid collection, sorted by case-folded name, then id."""
@@ -651,6 +691,23 @@ class FacilityCollections(_Reader):
     """The read-only facility collections in ``directory`` (id = file stem)."""
 
     source = FACILITY
+
+
+def _rev_matches(data: bytes, if_match: frozenset[str]) -> bool:
+    """Whether the stored bytes ``data`` have a rev ``if_match`` names (``*``: any)."""
+    return "*" in if_match or hashlib.sha256(data).hexdigest()[:16] in if_match
+
+
+def _parse_if_match(header: str) -> frozenset[str]:
+    """The revs an ``If-Match`` header names: comma-separated, each bare, quoted or ``W/``."""
+    revs = set()
+    for part in header.split(","):
+        part = part.strip().removeprefix("W/").strip()
+        if len(part) >= 2 and part[0] == part[-1] == '"':
+            part = part[1:-1]
+        if part:
+            revs.add(part)
+    return frozenset(revs)
 
 
 class CollectionStore(_Reader):
@@ -689,42 +746,61 @@ class CollectionStore(_Reader):
         doc: Any,
         *,
         create_only: bool = False,
+        if_match: frozenset[str] | None = None,
         library: Path | str | Judged | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Validate and store ``doc`` under ``collection_id``; returns ``(listed doc, created)``.
 
-        ``updated`` is set to now. ``create_only`` (``If-None-Match: *``) raises
-        :class:`CollectionExists` when the id is stored. Raises
+        ``updated`` is set to now; a client-sent ``rev``, ``source`` or ``ref`` (an
+        echoed listed doc) is dropped before validation. ``create_only`` (``If-None-Match: *``) raises
+        :class:`CollectionExists` when the id is stored. ``if_match`` (the parsed
+        ``If-Match`` revs) replaces only the stored rev it names: :class:`CollectionGone`
+        when the id is not stored, :class:`CollectionStale` when its rev differs. Raises
         :class:`InvalidCollection` (400) and :class:`ReadOnlyStore` (403).
         """
         path = self.path_for(collection_id)
         if isinstance(doc, Mapping):
-            doc = {**doc, "updated": _now()}
+            doc = {**{k: v for k, v in doc.items() if k not in _LISTED_KEYS}, "updated": _now()}
         clean = validate_collection(doc, source=PERSONAL, library=library, file_id=collection_id)
         stored = {"id": collection_id, **{k: v for k, v in clean.items() if k != "id"}}
         data = _serialize(stored)
         async with self._lock:
-            created = await asyncio.to_thread(self._put_locked, path, data, create_only)
-        return _listed(stored, PERSONAL), created
+            created = await asyncio.to_thread(self._put_locked, path, data, create_only, if_match)
+        return _listed(stored, PERSONAL, data), created
 
-    def _put_locked(self, path: Path, data: bytes, create_only: bool) -> bool:
+    def _put_locked(self, path: Path, data: bytes, create_only: bool, if_match: frozenset[str] | None = None) -> bool:
         make_dirs(self.dir)
         with lock_root(self.dir):
             created = not path.exists()
             if create_only and not created:
                 raise CollectionExists(f"collection {path.stem!r} exists")
+            if if_match is not None:
+                # Compared under the lock, so no other writer lands between check and write.
+                try:
+                    current = path.read_bytes()
+                except FileNotFoundError:
+                    raise CollectionGone(path.stem) from None
+                if not _rev_matches(current, if_match):
+                    raise CollectionStale(path.stem)
             write_atomic(path, data)
         return created
 
-    async def delete(self, collection_id: str) -> None:
-        """Remove the collection and prune ``personal:<id>`` from ``ticked`` and ``unticked``."""
+    async def delete(self, collection_id: str, *, if_match: frozenset[str] | None = None) -> None:
+        """Remove the collection and prune ``personal:<id>`` from ``ticked`` and ``unticked``.
+
+        ``if_match`` (the parsed ``If-Match`` revs) removes only the stored rev it names
+        (:class:`CollectionStale` otherwise); a missing id is :class:`CollectionNotFound`
+        either way.
+        """
         path = self.path_for(collection_id)
         async with self._lock:
-            await asyncio.to_thread(self._delete_locked, collection_id, path)
+            await asyncio.to_thread(self._delete_locked, collection_id, path, if_match)
 
-    def _delete_locked(self, collection_id: str, path: Path) -> None:
+    def _delete_locked(self, collection_id: str, path: Path, if_match: frozenset[str] | None = None) -> None:
         try:
             with lock_root(self.dir):
+                if if_match is not None and not _rev_matches(path.read_bytes(), if_match):
+                    raise CollectionStale(collection_id)
                 remove_file(path)
                 state = self._read_state()
                 ref = f"{PERSONAL}:{collection_id}"
@@ -876,6 +952,9 @@ def _error(status_code: int, code: str, detail: str | None = None, headers: dict
     return _json(body, status_code, headers)
 
 
+_PRECONDITION_DETAIL = "send If-None-Match: * to create or If-Match: <rev> to replace"
+
+
 def _not_allowed(allow: str) -> Response:
     return _error(405, "method_not_allowed", f"allowed: {allow}", {"Allow": allow})
 
@@ -926,17 +1005,22 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         listed = await asyncio.to_thread(all_collections, facility, personal)
         return _json({"collections": listed})
 
-    async def put(request: Request, collection_id: str) -> Response:
+    async def put(
+        request: Request, collection_id: str, *, create_only: bool, if_match: frozenset[str] | None
+    ) -> Response:
         body, failed = await _json_body(request, MAX_PUT_BODY_BYTES)
         if failed is not None:
             return failed
-        create_only = request.headers.get("if-none-match", "").strip() == "*"
         try:
-            doc, created = await personal.put(collection_id, body, create_only=create_only)
+            doc, created = await personal.put(collection_id, body, create_only=create_only, if_match=if_match)
         except InvalidCollection as exc:
             return _error(400, "invalid_collection", str(exc))
         except CollectionExists:
             return _error(412, CollectionExists.code, f"collection {collection_id!r} exists")
+        except CollectionGone:
+            return _error(412, CollectionGone.code, f"collection {collection_id!r} is gone")
+        except CollectionStale:
+            return _error(412, CollectionStale.code, f"collection {collection_id!r} has changed")
         except ReadOnlyStore:
             return _read_only()
         return _json(doc, 201 if created else 200)
@@ -951,15 +1035,23 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
             collection_id = validate_collection_id(request.path_params["collection_id"])
         except InvalidCollectionId as exc:
             return _error(400, "invalid_id", str(exc))
+        header = request.headers.get("if-match")
+        if_match = None if header is None else _parse_if_match(header)
         if method == "PUT":
-            return await put(request, collection_id)
+            # A PUT says what it expects: create (If-None-Match: *) or replace the rev it saw (If-Match).
+            create_only = if_match is None and request.headers.get("if-none-match", "").strip() == "*"
+            if if_match is None and not create_only:
+                return _error(428, "precondition_required", _PRECONDITION_DETAIL)
+            return await put(request, collection_id, create_only=create_only, if_match=if_match)
         try:
             if method == "DELETE":
-                await personal.delete(collection_id)
+                await personal.delete(collection_id, if_match=if_match)
                 return Response(status_code=204, headers={"Cache-Control": COLLECTIONS_CACHE_CONTROL})
             return _json(await asyncio.to_thread(personal.get, collection_id))
         except CollectionNotFound:
             return _error(404, "not_found", f"no personal collection {collection_id!r}")
+        except CollectionStale:
+            return _error(412, CollectionStale.code, f"collection {collection_id!r} has changed")
         except ReadOnlyStore:
             return _read_only()
 
