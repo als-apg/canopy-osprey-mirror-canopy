@@ -27,6 +27,7 @@ import anyio
 from canopy.converter.config import ConverterConfig, get_converter_config
 from canopy.converter.errors import ConverterError
 from canopy.core.color_scheme import get_color_scheme
+from canopy.converter.adapters.edm_lists import resolve_edm_lists
 from canopy.converter.services.conversion_service import SUFFIX_KIND, ConversionService
 
 logger = logging.getLogger(__name__)
@@ -40,16 +41,28 @@ _service: ConversionService | None = None
 
 
 def _get_service() -> ConversionService:
-    """Build (once per worker process) the ConversionService used for batches."""
+    """Build, once per worker process, the ConversionService used for batches.
+
+    The first call resolves the ``colors.list`` and ``calc.list`` and builds
+    the widget registry from config; later calls return the memoized service.
+
+    Returns
+    -------
+    ConversionService
+        The worker's shared conversion service.
+    """
     global _service
     if _service is None:
         config = get_converter_config()
+        colors_list, calc_list = resolve_edm_lists(config)
         # Same cached scheme load as the API lifespan; the service passes it to
         # convert_bytes for every archive entry.
         _service = ConversionService(
             scheme=get_color_scheme(config.scheme_path),
-            color_list_path=config.colors_list_path,
+            colors_list_path=colors_list,
+            calc_list_path=calc_list,
             color_def_path=config.color_def_path,
+            search_paths=config.search_paths,
         )
     return _service
 
@@ -163,7 +176,7 @@ async def _convert_entry(
     if kind is None:
         return {"path": path, "status": "skipped", "warnings": ["not a .edl/.ui/.bob screen"]}
     try:
-        result = await anyio.to_thread.run_sync(lambda: service.convert(raw, kind=kind))
+        result = await anyio.to_thread.run_sync(lambda: service.convert(raw, kind=kind, filename=path))
     except ConverterError as exc:
         return {"path": path, "status": "failed", "warnings": [exc.detail]}
 

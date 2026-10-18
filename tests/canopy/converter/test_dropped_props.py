@@ -109,8 +109,16 @@ def test_dropped_props_do_not_leak_into_warnings_or_screen():
 
 
 def test_service_collects_drops_from_edl_fixture():
-    result = ConversionService().convert((FIXTURES / "min.edl").read_bytes(), kind="edl")
-    assert result.dropped_props, "min.edl is expected to drop at least one property"
+    # min.edl's text control marked editable converts to a pv-text-input, which
+    # cannot carry its precision/showUnits props; read-only it is a pv-label that can.
+    edl = (
+        (FIXTURES / "min.edl")
+        .read_text()
+        .replace('controlPv "$(PREFIX):SETPOINT"\n', 'controlPv "$(PREFIX):SETPOINT"\neditable\n', 1)
+    )
+    assert "editable" in edl
+    result = ConversionService().convert(edl.encode(), kind="edl")
+    assert result.dropped_props, "the editable min.edl is expected to drop at least one property"
     for item in result.dropped_props:
         assert isinstance(item, DroppedProps)
         assert item.props, "only nodes with drops are reported"

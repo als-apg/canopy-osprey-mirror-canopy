@@ -21,6 +21,17 @@ async def test_convert_screen_returns_validated_screen_dict():
     assert screen["root"]["type"] == "absolute-canvas"
 
 
+async def test_convert_screen_filename_names_the_screen():
+    gateway.bind(ConversionService())
+    try:
+        screen = await gateway.convert_screen(
+            (FIXTURES / "widgets.edl").read_bytes(), kind="edl", filename="widgets.edl"
+        )
+    finally:
+        gateway.bind(None)
+    assert screen["id"] == "widgets"
+
+
 async def test_convert_screen_before_bind_raises():
     gateway.bind(None)
     with pytest.raises(RuntimeError, match="before app startup"):

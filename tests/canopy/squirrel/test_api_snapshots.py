@@ -5,9 +5,10 @@ fixture, which records calls in ``enqueued``). Read/compare/delete run inline, s
 snapshots are seeded directly through the shared test session.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from httpx import AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from canopy.squirrel.data.models import Pv, Snapshot, SnapshotValue
@@ -80,11 +81,91 @@ async def test_list_snapshots(client: AsyncClient, db_session: AsyncSession):
     assert all("createdDate" in row and "pvCount" in row for row in r.json())
 
 
+async def test_list_reports_value_counts(client: AsyncClient, db_session: AsyncSession):
+    pv = await _seed_pv(db_session)
+    await _seed_snapshot(db_session, "with-value", pv=pv)
+    await _seed_snapshot(db_session, "empty")
+    r = await client.get("/v1/snapshots", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert {row["title"]: row["pvCount"] for row in r.json()} == {"with-value": 1, "empty": 0}
+
+
+async def test_list_does_not_load_snapshot_values(client: AsyncClient, db_session: AsyncSession, test_engine):
+    """Listing must count values in SQL, never fetch the rows — a full machine save holds ~16k."""
+    pv = await _seed_pv(db_session)
+    await _seed_snapshot(db_session, "with-value", pv=pv)
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+    try:
+        r = await client.get("/v1/snapshots", headers=READ_HEADERS)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+
+    assert r.status_code == 200, r.text
+    value_reads = [s for s in statements if "FROM squirrel.snapshot_value" in s and "count(" not in s]
+    assert value_reads == []
+
+
 async def test_list_filtered_by_title(client: AsyncClient, db_session: AsyncSession):
     await _seed_snapshot(db_session, "alpha")
     await _seed_snapshot(db_session, "beta")
     r = await client.get("/v1/snapshots?title=alph", headers=READ_HEADERS)
     assert {row["title"] for row in r.json()} == {"alpha"}
+
+
+async def test_list_default_page_is_100_newest(client: AsyncClient, db_session: AsyncSession):
+    for day in range(1, 106):
+        await _seed_snapshot(
+            db_session, f"snap-{day:03d}", created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day)
+        )
+    r = await client.get("/v1/snapshots", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    titles = [row["title"] for row in r.json()]
+    assert len(titles) == 100
+    assert titles[0] == "snap-105"
+    assert titles[-1] == "snap-006"
+
+
+async def test_list_offset_reaches_past_first_page(client: AsyncClient, db_session: AsyncSession):
+    for day in range(1, 106):
+        await _seed_snapshot(
+            db_session, f"snap-{day:03d}", created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day)
+        )
+    r = await client.get("/v1/snapshots?offset=100", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert [row["title"] for row in r.json()] == ["snap-005", "snap-004", "snap-003", "snap-002", "snap-001"]
+
+
+async def test_list_pages_are_disjoint_when_created_at_ties(client: AsyncClient, db_session: AsyncSession):
+    same_time = datetime(2026, 7, 20, 6, 17, 24, tzinfo=UTC)
+    seeded = {await _seed_snapshot(db_session, f"tie-{i}", created_at=same_time) for i in range(7)}
+    seen: list[str] = []
+    for offset in range(0, 7, 3):
+        r = await client.get(f"/v1/snapshots?limit=3&offset={offset}", headers=READ_HEADERS)
+        assert r.status_code == 200, r.text
+        seen.extend(row["id"] for row in r.json())
+    assert len(seen) == 7
+    assert set(seen) == seeded
+
+
+async def test_list_paging_composes_with_filters(client: AsyncClient, db_session: AsyncSession):
+    for i in range(4):
+        await _seed_snapshot(db_session, f"keep-{i}", created_at=datetime(2026, 2, 1 + i, tzinfo=UTC))
+        await _seed_snapshot(db_session, f"drop-{i}", created_at=datetime(2026, 3, 1 + i, tzinfo=UTC))
+    r = await client.get("/v1/snapshots?title=keep&limit=2&offset=1", headers=READ_HEADERS)
+    assert r.status_code == 200, r.text
+    assert [row["title"] for row in r.json()] == ["keep-2", "keep-1"]
+
+
+async def test_list_rejects_out_of_range_paging(client: AsyncClient):
+    for query in ("limit=0", "limit=1001", "offset=-1"):
+        r = await client.get(f"/v1/snapshots?{query}", headers=READ_HEADERS)
+        assert r.status_code == 422, query
 
 
 async def _seed_early_and_late(session: AsyncSession) -> None:

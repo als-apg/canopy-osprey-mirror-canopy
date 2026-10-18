@@ -12,7 +12,7 @@ import logging
 from typing import Any, Literal, get_args
 from pathlib import Path
 from dataclasses import field, replace, dataclass
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 from pydmconverter.react import convert_bytes
 from pydmconverter.ir.emit import to_wire_dict
@@ -66,7 +66,7 @@ class ConversionResult:
     """Domain result of a single screen conversion.
 
     ``screen`` is the validated camelCase Screen IR wire dict; the rest are
-    out-of-band diagnostics (the IR itself never carries screen-level notes).
+    diagnostics rolled up from its nodes (screen-level notes ride on the root canvas).
     ``scheme`` is the meta of the color scheme the screen was converted with
     (``None`` for a scheme-free service).
     """
@@ -90,14 +90,33 @@ SUFFIX_KIND: dict[str, ScreenKind] = {".edl": "edl", ".ui": "ui", ".bob": "bob"}
 
 
 class ConversionService:
-    """Converts ``.edl``/``.ui``/``.bob`` bytes to validated Screen IR + diagnostics."""
+    """Converts ``.edl``/``.ui``/``.bob`` bytes to validated Screen IR + diagnostics.
+
+    Parameters
+    ----------
+    scheme : ColorScheme, optional
+        The already-loaded ``get_color_scheme`` result named colors map onto;
+        ``None`` keeps the service scheme-free.
+    colors_list_path : Path, optional
+        EDM ``colors.list`` used to resolve palette-indexed colours.
+    calc_list_path : Path, optional
+        EDM ``calc.list`` used to resolve named ``CALC\\`` PVs.
+    color_def_path : Path, optional
+        Phoebus ``color.def`` the converter resolves named colors from; omitted
+        from ``convert_bytes`` when unset.
+    search_paths : sequence of str or Path, optional
+        ``EDMDATAFILES``-style directories searched for files an EDM screen
+        references, such as symbol files. Used for ``.edl`` conversions only.
+    """
 
     def __init__(
         self,
         *,
         scheme: ColorScheme | None = None,
-        color_list_path: str | Path | None = None,
+        colors_list_path: str | Path | None = None,
+        calc_list_path: str | Path | None = None,
         color_def_path: str | Path | None = None,
+        search_paths: Sequence[str | Path] = (),
     ) -> None:
         # One registry instance, reused across requests (the adapters would
         # otherwise rebuild a VendoredRegistry per call).
@@ -106,10 +125,11 @@ class ConversionService:
         # the app lifespan and the batch worker; the service never loads one itself.
         # ``None`` keeps the service scheme-free, converting exactly as before.
         self._scheme = scheme
-        # The EDM ``colors.list`` indexed colours resolve from (``.edl`` only); without
-        # one the converter searches its own locations.
-        self._color_list_path = color_list_path
+        self._colors_list_path = colors_list_path
+        self._calc_list_path = calc_list_path
         self._color_def_path = color_def_path
+        # EDMDATAFILES-style directories for symbol files (EDM screens only).
+        self._search_paths = [str(p) for p in search_paths]
         self._scheme_warning = _scheme_warning(scheme)
 
     @property
@@ -117,27 +137,32 @@ class ConversionService:
         """The injected scheme's meta (with ``flatHash``), or ``None`` when scheme-free."""
         return self._scheme.meta if self._scheme is not None else None
 
-    def _convert_kwargs(self) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {}
+    def _convert_kwargs(self, kind: ScreenKind, filename: str | None) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "color_list_path": self._colors_list_path,
+            "calc_list_path": self._calc_list_path,
+            "filename": filename,
+            "search_paths": self._search_paths if kind == "edl" and self._search_paths else None,
+        }
         # Pass the SchemeResult only when the loader produced one: with
         # pydmconverter.scheme unavailable an older convert_bytes has no ``scheme``
         # parameter, so the kwarg is omitted rather than sent as None.
         if self._scheme is not None and self._scheme.flat_json is not None:
             kwargs["scheme"] = self._scheme.result
-        if self._color_list_path is not None:
-            kwargs["color_list_path"] = self._color_list_path
         if self._color_def_path is not None:
             kwargs["color_def_path"] = self._color_def_path
         return kwargs
 
-    def convert(self, data: bytes, *, kind: ScreenKind) -> ConversionResult:
+    def convert(self, data: bytes, *, kind: ScreenKind, filename: str | None = None) -> ConversionResult:
+        """Convert one screen. ``filename`` is the upload's original name; the screen
+        id and title derive from it (without it both are ``"screen"``)."""
         # Reject an unsupported kind here rather than by catching convert_bytes'
         # ValueError: its parsers (e.g. the .bob XML reader) also raise ValueError for
         # malformed input on a *known* kind, which is a 422, not a 415.
         if kind not in SCREEN_KINDS:
             raise UnsupportedInput(f"Unsupported screen kind {kind!r}; expected one of {', '.join(SCREEN_KINDS)}")
         try:
-            screen = convert_bytes(data, kind=kind, registry=self._registry, **self._convert_kwargs())
+            screen = convert_bytes(data, kind=kind, registry=self._registry, **self._convert_kwargs(kind, filename))
         except Exception as exc:  # noqa: BLE001 - any parse/build failure on a known kind
             # The catch stays broad on purpose: pydmconverter raises bare ValueError
             # *and* KeyError for legitimately malformed input, the same types a server

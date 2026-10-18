@@ -1,0 +1,43 @@
+4 0 1
+beginScreenProperties
+major 4
+minor 0
+release 1
+x 0
+y 0
+w 100
+h 50
+endScreenProperties
+
+# (Group)
+object activeGroupClass
+beginObjectProperties
+major 4
+minor 0
+release 0
+x 0
+y 0
+w 100
+h 50
+
+beginGroup
+
+# (Rectangle)
+object activeRectangleClass
+beginObjectProperties
+major 4
+minor 0
+release 0
+x 0
+y 0
+w 100
+h 50
+lineColor index 14
+fill
+fillColor index 0
+lineWidth 1
+endObjectProperties
+
+endGroup
+
+endObjectProperties

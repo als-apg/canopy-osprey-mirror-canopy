@@ -612,7 +612,7 @@ class TestManager:
         frames, send = _collector()
         shared = _SharedEval(key="k", spec=FormulaSpec(**_table()), t0_ns=-1, interval_ms=0)
         shared.listeners.append(_Listener(client_id="c", sub_id="s", send_fn=send))
-        await manager._fan_out_error(shared, code.value, "msg")
+        await manager._fan_out(shared, {"type": "error", "code": code.value, "message": "msg"})
         assert frames == [{"type": "error", "code": code.value, "message": "msg", "retryable": retryable, "id": "s"}]
 
     @pytest.mark.parametrize(

@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import READ_HEADERS
+from tests.conftest import READ_HEADERS, wait_for
 from canopy.vole.config import VoleConfig
 from canopy.vole.services.grace_manager import GraceManager
 
@@ -140,8 +140,8 @@ class TestGraceManager:
         mgr = GraceManager(ingest, buffer, grace_config)
 
         await mgr.on_pv_deactivated(["PV:A"])
-        await asyncio.sleep(0.05)
 
+        assert await wait_for(lambda: buffer.dropped)
         assert ["PV:A"] in ingest.unsubscribed
         assert buffer.dropped == ["PV:A"]
         await mgr.shutdown()
@@ -190,18 +190,19 @@ class TestGraceManager:
         mgr = GraceManager(FailingIngest(subscribed={"PV:A"}), FakeBuffer(), grace_config)
 
         await mgr.on_pv_deactivated(["PV:A"])
-        await asyncio.sleep(0.05)
 
-        assert mgr._pending == {}
+        assert await wait_for(lambda: mgr._pending == {})
         await mgr.shutdown()
 
     async def test_reactivation_during_teardown_cancels_drop(self, grace_config: VoleConfig) -> None:
         """A client reconnecting while unsubscribe is in flight keeps its buffer."""
         grace_config.buffer_grace_seconds = 0
         release = asyncio.Event()
+        entered = asyncio.Event()
 
         class SlowIngest(FakeIngest):
             async def unsubscribe(self, pvs: list[str]) -> None:
+                entered.set()
                 await release.wait()
                 await super().unsubscribe(pvs)
 
@@ -209,7 +210,7 @@ class TestGraceManager:
         mgr = GraceManager(SlowIngest(subscribed={"PV:A"}), buffer, grace_config)
 
         await mgr.on_pv_deactivated(["PV:A"])
-        await asyncio.sleep(0.01)  # let the timer elapse and enter unsubscribe
+        await asyncio.wait_for(entered.wait(), timeout=5.0)  # timer elapsed, teardown in flight
 
         await mgr.on_pv_activated(["PV:A"])
         release.set()

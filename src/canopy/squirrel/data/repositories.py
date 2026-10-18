@@ -101,6 +101,7 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> list[Snapshot]:
         """Search snapshots by title, tags and/or creation time.
 
@@ -116,13 +117,18 @@ class SnapshotRepository(BaseRepository[Snapshot]):
             Upper bound on ``created_at``, inclusive.
         limit : int
             Maximum number of rows returned.
+        offset : int
+            Number of matching rows to skip before the first one returned.
 
         Returns
         -------
         list[Snapshot]
-            Matching snapshots ordered by ``created_at`` descending.
+            Matching snapshots ordered by ``created_at`` descending, then ``id`` descending.
         """
-        query = select(Snapshot)
+        # ``noload`` skips the relationship's selectin default: listing needs only snapshot
+        # rows, and loading every value for every listed snapshot (~16k each for a full
+        # machine save) dominated the response time.
+        query = select(Snapshot).options(noload(Snapshot.values))
 
         if title:
             query = query.where(Snapshot.title.ilike(f"%{title}%"))
@@ -142,7 +148,9 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         if end is not None:
             query = query.where(Snapshot.created_at <= end)
 
-        query = query.order_by(Snapshot.created_at.desc()).limit(limit)
+        # ``id`` breaks ties between equal ``created_at`` values so offset pages neither
+        # overlap nor skip rows (bulk imports can share a capture time).
+        query = query.order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).offset(offset).limit(limit)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 

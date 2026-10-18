@@ -41,7 +41,6 @@ y 50
 w 120
 h 18
 controlPv "$(PREFIX):SETPOINT"
-editable
 precision 3
 showUnits
 endObjectProperties

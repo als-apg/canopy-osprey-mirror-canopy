@@ -234,6 +234,8 @@ class SnapshotService:
         tag_ids: list[str] | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[SnapshotSummaryDTO]:
         """List snapshots, optionally filtered by title, tags and/or creation time.
 
@@ -248,6 +250,10 @@ class SnapshotService:
             ``created_at`` is a ``timestamptz`` and asyncpg refuses a naive bind parameter.
         end : datetime | None
             Upper bound on creation time, inclusive. Converted the same way as ``start``.
+        limit : int
+            Maximum number of summaries returned.
+        offset : int
+            Number of matching snapshots to skip, for paging past the first ``limit``.
 
         Returns
         -------
@@ -264,7 +270,9 @@ class SnapshotService:
         end = _utc_bound("end", end)
         if start is not None and end is not None and start > end:
             raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
-        snapshots = await self.snapshot_repo.search(title=title, tag_ids=tag_ids, start=start, end=end)
+        snapshots = await self.snapshot_repo.search(
+            title=title, tag_ids=tag_ids, start=start, end=end, limit=limit, offset=offset
+        )
 
         # One grouped query for all value counts (avoids N+1).
         snapshot_ids = [snap.id for snap in snapshots]
@@ -768,12 +776,27 @@ class SnapshotService:
             difference_count=len(differences),
         )
 
-    def _values_within_tolerance(self, v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
-        """Absolute tolerance first, then relative (vs. ``|v1|``); non-numeric → exact match."""
+    @staticmethod
+    def _values_within_tolerance(v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
+        """Absolute tolerance first, then relative (vs. ``|v1|``); non-numeric → exact match.
+
+        Waveform (list) values are compared element-wise under the same rule;
+        mismatched lengths are always "different" rather than raising.
+        """
         if v1 is None and v2 is None:
             return True
         if v1 is None or v2 is None:
             return False
+        if isinstance(v1, list) or isinstance(v2, list):
+            if not (isinstance(v1, list) and isinstance(v2, list)):
+                return False
+            if len(v1) != len(v2):
+                return False
+            return all(SnapshotService._scalar_within_tolerance(e1, e2, abs_tol, rel_tol) for e1, e2 in zip(v1, v2))
+        return SnapshotService._scalar_within_tolerance(v1, v2, abs_tol, rel_tol)
+
+    @staticmethod
+    def _scalar_within_tolerance(v1: Any, v2: Any, abs_tol: float, rel_tol: float) -> bool:
         try:
             f1, f2 = float(v1), float(v2)
             diff = abs(f1 - f2)

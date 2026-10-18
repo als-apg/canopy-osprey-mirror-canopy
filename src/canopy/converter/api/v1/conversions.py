@@ -110,7 +110,7 @@ async def create_conversion(
     """
     data = await _read_upload(file, config.max_upload_bytes)
     resolved = _resolve_kind(kind, file.filename)
-    result = await run_in_threadpool(lambda: service.convert(data, kind=resolved))
+    result = await run_in_threadpool(lambda: service.convert(data, kind=resolved, filename=file.filename))
     # Seam #2: validate hoisted calc:// formulas via Fox; failures become warnings.
     formula_warnings = await validate_formulas(result.formulas, validate=fox_validate)
     return _to_dto(result, result.warnings + formula_warnings)
@@ -136,7 +136,7 @@ async def validate_conversion(
     # error envelope, so it must fold into ok=False like a parse failure.
     try:
         resolved = _resolve_kind(kind, file.filename)
-        result = await run_in_threadpool(lambda: service.convert(data, kind=resolved))
+        result = await run_in_threadpool(lambda: service.convert(data, kind=resolved, filename=file.filename))
     except (UnsupportedInput, ConversionFailed) as exc:
         # No result to read the scheme from: report the service's own, so a failed
         # dry run still tells the Builder which scheme an import would use.

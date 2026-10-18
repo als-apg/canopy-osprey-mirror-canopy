@@ -48,6 +48,16 @@ class HareConfig(BaseSettings):
     # this long, so switching back to a screen is served from cache instead of
     # re-seeding. Mirrors Vole's buffer_grace_seconds. 0 releases at once.
     monitor_grace_seconds: float = 60.0
+    seed_retry_backoff_s: float = 30.0
+    """Seconds a subscribe waits before re-seeding a held PV whose last seed left its value or metadata missing.
+
+    Bounds how often an unreachable PV makes a subscribe block on connector
+    get/describe timeouts. The default is several times the 5.0 s CA and PVA
+    connector timeouts, so repeated subscribes of a dead PV pay that timeout at
+    most once per window rather than on nearly every subscribe. Until then the
+    subscriber is answered from cache (a disconnected value for a failed get).
+    ``negative_cache_ttl_s`` covers the same name after it is released.
+    """
 
 
 def get_hare_config() -> HareConfig:

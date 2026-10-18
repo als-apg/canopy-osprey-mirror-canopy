@@ -12,7 +12,9 @@ A PV without a cached value is seeded with a one-shot get and describe, run
 concurrently. Seeds are shared between clients, bounded by ``seed_concurrency``
 across the broker, and each PV's ``initial`` frame goes out as soon as its own
 seed lands, so an unreachable name delays only itself. A name whose seed came
-back disconnected is remembered for ``negative_cache_ttl_s``.
+back disconnected is remembered for ``negative_cache_ttl_s``, and a held PV
+whose seed left its value or metadata missing is re-seeded by the first
+subscribe after ``seed_retry_backoff_s``.
 """
 
 import time
@@ -79,6 +81,16 @@ class ClientChannel(Protocol):
 
 
 class PVBroker:
+    """Fan live PV updates from one connector out to subscribed WebSocket clients.
+
+    Parameters
+    ----------
+    connector : PVConnector
+        Backend used for monitors, one-shot reads, describes and writes.
+    config : HareConfig
+        Batching, heartbeat, resource-cap and seeding settings.
+    """
+
     def __init__(self, connector: PVConnector, config: HareConfig) -> None:
         self._connector = connector
         self._config = config
@@ -104,6 +116,8 @@ class PVBroker:
         self._seeding: dict[str, asyncio.Task] = {}
         self._deliveries: dict[str, set[asyncio.Task]] = {}
         self._negative: dict[str, _DeadName] = {}
+        # Held PVs whose last seed left a half missing: no re-seed before this time.
+        self._seed_retry_after: dict[str, float] = {}
         # PVs with no subscriber kept warm until their release task fires.
         self._grace: dict[str, asyncio.Task] = {}
         # Late-connect re-describes in flight, one per PV (b6:IA-1).
@@ -265,18 +279,41 @@ class PVBroker:
         return accepted
 
     async def subscribe(self, client_id: str, pvs: list[str], *, wait_seed: bool = True) -> list[str]:
-        """Subscribe a client to PVs; returns the names actually accepted.
+        """Subscribe a client to PVs and send it their cached values and metadata.
 
         Invalid names and names past the caps are dropped rather than raised, so
         callers must use the return value rather than assume the whole request
-        was honoured.
+        was honoured. Invalid names are reported to the client in an
+        ``invalid_pv_name`` error frame.
 
-        PVs with a cached value are answered in one ``initial`` frame before
-        this returns. The rest are seeded, and each one's ``initial`` frame is
-        sent as soon as its own seed lands. With ``wait_seed`` the call returns
-        once every seed has been delivered; without it, it returns right after
+        PVs answerable from cache are sent in one ``initial`` frame before this
+        returns. The rest are seeded, and each one's ``initial`` frame is sent as
+        soon as its own seed lands. With ``wait_seed`` the call returns once
+        every seed has been delivered; without it, it returns right after
         registration and the seeds are delivered in the background, which is
         what keeps a socket's read loop free while a dead name times out.
+
+        A PV whose last seed left its value disconnected or its metadata missing
+        is answered from cache until its ``seed_retry_backoff_s`` window has
+        elapsed; the next subscribe after that re-seeds whichever half is still
+        missing, so a quiet record that came up is picked up even though its
+        monitor never ticked. Concurrent subscribes of the same PV share one
+        seed attempt.
+
+        Parameters
+        ----------
+        client_id : str
+            Identifier of a client registered with `add_client`.
+        pvs : list[str]
+            Requested PV names; may contain duplicates and invalid names.
+        wait_seed : bool, optional
+            Return only once every seed has been delivered (default).
+
+        Returns
+        -------
+        list[str]
+            The PV names subscribed after validation, de-duplication and cap
+            enforcement.
         """
         pvs, rejected = self._accept_names(pvs)
         if rejected:
@@ -302,7 +339,7 @@ class PVBroker:
         if new_for_client:
             await self._fire_activation_hooks(new_for_client, client_id)
 
-        to_seed = [pv for pv in pvs if not self._has_seed(pv)]
+        to_seed = [pv for pv in pvs if self._needs_seed(pv)]
         if len(to_seed) < len(pvs):
             seeding = set(to_seed)
             await self._send_initial(client_id, [pv for pv in pvs if pv not in seeding])
@@ -316,20 +353,31 @@ class PVBroker:
 
     # --- seeding --------------------------------------------------------- #
 
-    def _has_seed(self, pv: str) -> bool:
-        """True when ``pv`` can be answered from cache (live or negative)."""
-        if pv in self._latest:
-            return True
-        entry = self._negative.get(pv)
-        if entry is None:
-            return False
-        if entry.expires <= time.monotonic():
-            del self._negative[pv]
-            return False
-        self._latest[pv] = entry.value
-        if entry.meta is not None:
-            self._meta.setdefault(pv, entry.meta)
-        return True
+    def _needs_seed(self, pv: str) -> bool:
+        """True when ``pv`` must be seeded before it can be answered.
+
+        A released name still in the negative cache is restored into the cache
+        first, with the entry's expiry as its retry deadline. A PV is then
+        answered from cache when its value and metadata are both held (a
+        disconnected value counts only when no failed seed left a deadline
+        behind), or while its retry deadline is pending.
+        """
+        if pv not in self._latest:
+            entry = self._negative.get(pv)
+            if entry is not None:
+                if entry.expires > time.monotonic():
+                    self._latest[pv] = entry.value
+                    if entry.meta is not None:
+                        self._meta.setdefault(pv, entry.meta)
+                    self._seed_retry_after[pv] = entry.expires
+                else:
+                    del self._negative[pv]
+        value = self._latest.get(pv)
+        if value is not None and not self._meta_is_missing(pv):
+            if value.connected or pv not in self._seed_retry_after:
+                return False
+        now = time.monotonic()
+        return now >= self._seed_retry_after.get(pv, now)
 
     def _ensure_seed(self, pv: str) -> asyncio.Task:
         """Return the in-flight seed for ``pv``, starting one if there is none."""
@@ -411,10 +459,17 @@ class PVBroker:
         Never raises: a failed read becomes a disconnected value (and a negative
         cache entry), so one bad PV can't sink anything else. A value a monitor
         delivered while the read was in flight is newer and is kept.
+
+        Only the missing halves are fetched: the value when none is cached or a
+        failed seed left a disconnected one, the metadata when it is absent or
+        bare. When either half is still missing afterwards the PV's retry
+        deadline is set ``seed_retry_backoff_s`` ahead; when both are held it is
+        cleared. `_stop_monitors` drops the deadline with the rest of the PV.
         """
         async with self._seed_sem:
-            need_get = pv not in self._latest
-            need_meta = pv not in self._meta
+            before = self._latest.get(pv)
+            need_get = before is None or (not before.connected and pv in self._seed_retry_after)
+            need_meta = self._meta_is_missing(pv)
             if not (need_get or need_meta):
                 return
             got, described = await asyncio.gather(
@@ -431,9 +486,18 @@ class PVBroker:
                 logger.debug("describe failed for %s: %s", pv, described)
             else:
                 meta = described
-                self._meta.setdefault(pv, meta)
-        if not need_get:
-            return
+                if self._meta_is_missing(pv):
+                    self._meta[pv] = meta
+        if need_get:
+            self._store_seed_value(pv, before, got, meta)
+        latest = self._latest.get(pv)
+        if latest is not None and latest.connected and not self._meta_is_missing(pv):
+            self._seed_retry_after.pop(pv, None)
+        else:
+            self._seed_retry_after[pv] = time.monotonic() + self._config.seed_retry_backoff_s
+
+    def _store_seed_value(self, pv: str, before: PVValue | None, got: object, meta: PVMeta | None) -> None:
+        """Cache a seed read unless a monitor tick replaced ``before`` meanwhile."""
         if isinstance(got, BaseException):
             logger.debug("initial get failed for %s: %s", pv, got)
             value = PVValue(
@@ -446,7 +510,8 @@ class PVBroker:
             )
         else:
             value = got
-        self._latest.setdefault(pv, value)
+        if self._latest.get(pv) is before:
+            self._latest[pv] = value
         if value.connected:
             self._negative.pop(pv, None)
         else:
@@ -516,11 +581,24 @@ class PVBroker:
                 task.cancel()
 
     async def _stop_monitors(self, pvs: Iterable[str]) -> None:
+        """Close the monitors of released PVs and discard their cached state.
+
+        A monitor that fails to close is logged and does not stop the rest of
+        the batch. The cached value, static metadata and seed retry deadline of
+        every given PV are dropped whether or not it had a monitor, so a later
+        subscribe seeds the PV afresh (or from the negative cache).
+
+        Parameters
+        ----------
+        pvs : Iterable[str]
+            PVs that have no subscribers left.
+        """
         for pv in pvs:
             # Drop the cache before awaiting the close, so a re-subscribe that
             # lands during it seeds afresh instead of having its value erased.
             self._latest.pop(pv, None)
             self._meta.pop(pv, None)
+            self._seed_retry_after.pop(pv, None)
             sub = self._monitors.pop(pv, None)
             if sub is not None:
                 try:

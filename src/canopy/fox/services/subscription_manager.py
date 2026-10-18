@@ -103,11 +103,33 @@ def _encode_head(head: dict) -> _EncodedFrame:
     return _EncodedFrame(head=head, rest=body[1:-1])
 
 
-@dataclass
+@dataclass(eq=False)
 class _Listener:
+    """One client subscription attached to a shared evaluation.
+
+    Listeners compare by identity, so a re-subscribe that reuses a client's
+    ``sub_id`` creates a listener distinct from the one it replaced.
+
+    Attributes
+    ----------
+    client_id : str
+        WebSocket client that owns the subscription.
+    sub_id : str
+        Client-chosen subscription id echoed in every message frame.
+    send_fn : SendFn
+        Coroutine that delivers a message frame to the client.
+    lock : asyncio.Lock
+        Held for every frame sent to this listener, so the attachment check
+        and the send happen as one step and frames never overtake each other.
+    pending, wake, sender
+        Table evals only: the newest frame not yet sent, the event that wakes
+        the listener's sender task, and that task.
+    """
+
     client_id: str
     sub_id: str
     send_fn: SendFn
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     # Table evals only: the newest frame not yet sent, drained by ``sender``.
     pending: _EncodedFrame | None = None
     wake: asyncio.Event | None = None
@@ -116,6 +138,42 @@ class _Listener:
 
 @dataclass
 class _SharedEval:
+    """One evaluation loop shared by every subscription with identical parameters.
+
+    Attributes
+    ----------
+    key : str
+        Deduplication key derived from ``spec``, ``t0_ns`` and ``interval_ms``.
+    spec : FormulaSpec
+        Formula to evaluate.
+    t0_ns : int
+        Window start passed to the formula service; ``0`` selects the latest
+        value and a negative value is relative to the evaluation time.
+    interval_ms : int
+        Poll interval in milliseconds; ``0`` selects push mode, driven by PV
+        change notifications.
+    dirty : asyncio.Event
+        Set when an input PV changes; wakes the push-mode eval loop.
+    task : asyncio.Task or None
+        The running eval or poll loop.
+    unsub_fns : list of Callable[[], None]
+        Unsubscribe callbacks for the PV change notifications.
+    listeners : list of _Listener
+        Subscriptions that receive every fanned-out frame.
+    last_frame : dict or None
+        Latest outcome fanned out (result, error or wait notice) minus its
+        per-listener ``id``, replayed to late joiners. `_fan_out` records it
+        before sending, so a joiner either is in that send's snapshot or is
+        replayed the frame. ``None`` until the first frame.
+    waiting_since : float or None
+        Monotonic time the current run of retryable failures began.
+    holder : str or None
+        Vole pin holder of a scalar/timeseries eval.
+    view, store, sent_version, ingest_ready
+        Table evals only: the resolved spec, the row store, the store
+        version last sent and the gate opened once live ingest is set up.
+    """
+
     key: str
     spec: FormulaSpec
     t0_ns: int
@@ -214,17 +272,46 @@ class SubscriptionManager:
     ) -> None:
         """Register a formula subscription.
 
-        If t1_ns is non-zero (fixed historical window), evaluates once and
-        sends the result without opening a live subscription.
+        If ``t1_ns`` is non-zero (fixed historical window), evaluates once and
+        sends the result without opening a live subscription. If
+        ``interval_ms > 0``, uses poll mode (timer-based) instead of push mode.
 
-        If interval_ms > 0, uses poll mode (timer-based) instead of push mode.
-
-        Multiple clients with identical parameters share one eval loop.
+        Multiple clients with identical parameters share one eval loop. A
+        subscription that joins an already-running loop (push, poll or table)
+        is replayed its latest outcome by `_replay_last`.
 
         A live table is validated (lookback, caps, bindings, every column)
         before anything is subscribed, so a rejected table never pins a PV or
         reaches Hare. A table with a fixed t1 goes the one-shot way and is
         answered ``table_live_only``.
+
+        Parameters
+        ----------
+        client_id : str
+            WebSocket client that owns the subscription.
+        sub_id : str
+            Client-chosen subscription id; re-using a live id replaces it.
+        spec : FormulaSpec
+            Formula to evaluate.
+        t0_ns : int
+            Window start; ``0`` selects the latest value and a negative value
+            is relative to the evaluation time.
+        t1_ns : int
+            Window end; non-zero requests a single historical evaluation.
+        send_fn : SendFn
+            Coroutine that delivers message frames to the client.
+        interval_ms : int, optional
+            Poll interval in milliseconds, floored to ``min_interval_ms``;
+            ``0`` (default) selects push mode.
+
+        Raises
+        ------
+        SubscriptionLimitExceeded
+            If the client already holds ``max_subscriptions_per_client`` live
+            subscriptions and ``sub_id`` is new.
+        Exception
+            Any error raised while starting a new shared eval, after the
+            partially started eval is torn down.
         """
         if spec.kind == "table" and t1_ns == 0:
             self.validate_table(spec, t0_ns)
@@ -239,8 +326,6 @@ class SubscriptionManager:
         if 0 < interval_ms < self._min_interval_ms:
             interval_ms = self._min_interval_ms
 
-        # Cap live subscriptions per client (a re-subscribe of an existing id
-        # replaces, so it doesn't count against the cap).
         existing = self._client_subs.get(client_id, {})
         if sub_id not in existing and len(existing) >= self._max_subscriptions_per_client:
             raise SubscriptionLimitExceeded(
@@ -267,15 +352,11 @@ class SubscriptionManager:
         joined: _SharedEval | None = self._shared_evals.get(key)
         if joined is not None:
             listener = self._new_listener(joined, client_id, sub_id, send_fn)
-            joined.listeners.append(listener)
+            self._join_shared(joined, listener)
         else:
             shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms)
             listener = self._new_listener(shared, client_id, sub_id, send_fn)
             shared.listeners.append(listener)
-            # Register only after a successful start: if _start_shared_eval
-            # raises partway through, tear down what it set up and propagate,
-            # leaving no orphaned (task-less) SharedEval that later subscribers
-            # would silently attach to.
             try:
                 await self._start_shared_eval(shared)
             except Exception:
@@ -304,6 +385,25 @@ class SubscriptionManager:
         if spec.index == "grid" and spec.grid_dt_ns:
             return max(spec.grid_dt_ns // 1_000_000, poll)
         return poll
+
+    def _join_shared(self, shared: _SharedEval, listener: _Listener) -> None:
+        """Attach a listener to an already-running shared evaluation.
+
+        Once a loop has fanned out, its output has gone to the earlier
+        listeners and a static input may never fire another change, so the
+        caller replays the eval's latest outcome to the joiner alone
+        (`_replay_last`) once the subscription is mapped; listeners that
+        already hold it receive no duplicate. A loop with no output yet needs
+        no replay: its first fan-out reaches every listener.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Running shared evaluation to join.
+        listener : _Listener
+            Listener to attach.
+        """
+        shared.listeners.append(listener)
 
     async def _start_shared_eval(self, shared: _SharedEval) -> None:
         pvs = list(shared.spec.bindings.values())
@@ -366,13 +466,42 @@ class SubscriptionManager:
     ) -> bool:
         """Update a subscription's parameters.
 
-        Detaches the listener from its current SharedEval and moves it to a new
-        one with the updated params. Other listeners on the old SharedEval are
-        unaffected. Returns False only if the subscription doesn't exist.
+        Detaches the listener from its current SharedEval and moves it to the
+        one matching the updated params, starting it if none is running or
+        joining it through `_join_shared` otherwise. Other listeners on the old
+        SharedEval are unaffected. An update that resolves to the current
+        SharedEval leaves the subscription as it is.
 
         A table is never updated in place, in either direction: the client
         subscribes the new table and unsubscribes the old one. That reject
         comes before any window or lookback handling.
+
+        Parameters
+        ----------
+        client_id : str
+            WebSocket client that owns the subscription.
+        sub_id : str
+            Subscription id to update.
+        send_fn : SendFn
+            Coroutine that delivers message frames to the client.
+        spec : FormulaSpec, optional
+            Replacement formula; ``None`` keeps the current one.
+        t0_ns : int, optional
+            Replacement window start; ``None`` keeps the current one.
+        interval_ms : int, optional
+            Replacement poll interval, floored to ``min_interval_ms``; ``None``
+            keeps the current one.
+
+        Returns
+        -------
+        bool
+            ``False`` if the subscription does not exist, otherwise ``True``.
+
+        Raises
+        ------
+        Exception
+            Any error raised while starting a new shared eval; the old eval
+            and the subscription's mapping are left intact.
         """
         if spec is not None and spec.kind == "table":
             raise TableUpdateUnsupported(TABLE_UPDATE_UNSUPPORTED_MESSAGE)
@@ -392,27 +521,17 @@ class SubscriptionManager:
         new_t0 = t0_ns if t0_ns is not None else shared.t0_ns
         new_interval = interval_ms if interval_ms is not None else shared.interval_ms
 
-        # Floor the poll interval, same as add_subscription: without this a client
-        # could subscribe legitimately then update to interval_ms=1 and spin up a
-        # ~1000 eval/sec poll loop that pins a CPU core.
         if 0 < new_interval < self._min_interval_ms:
             new_interval = self._min_interval_ms
 
         new_key = _compute_key(new_spec, new_t0, new_interval)
         if new_key == key:
-            # Params resolved to the same eval (e.g. an update that changed
-            # nothing). Detaching-then-reattaching here would needlessly tear
-            # down and restart a live eval, so leave it as is.
             return True
 
-        # Start (or join) the new SharedEval *before* touching the old one. If
-        # _start_shared_eval raises, the old eval and this listener's mapping
-        # are still intact, so the subscription keeps producing data instead of
-        # being orphaned on a deleted key.
         listener = _Listener(client_id=client_id, sub_id=sub_id, send_fn=send_fn)
         joined = self._shared_evals.get(new_key)
         if joined is not None:
-            joined.listeners.append(listener)
+            self._join_shared(joined, listener)
         else:
             new_shared = _SharedEval(key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval)
             new_shared.listeners.append(listener)
@@ -472,6 +591,18 @@ class SubscriptionManager:
             await asyncio.wait(pending, timeout=1.0)
 
     def _teardown_shared(self, shared: _SharedEval) -> None:
+        """Stop a shared evaluation's tasks and release its PV change notifications.
+
+        Cancels the eval, poll or table loop, calls each unsubscribe callback,
+        stops table senders, parks a table's row store and releases the Vole
+        pin. Removing ``shared`` from the deduplication map is left to the
+        caller.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Shared evaluation to stop.
+        """
         if shared.task is not None:
             shared.task.cancel()
         for unsub_fn in shared.unsub_fns:
@@ -534,7 +665,8 @@ class SubscriptionManager:
                     raise
                 except Exception:
                     logger.debug("table send to %s/%s failed", listener.client_id, listener.sub_id, exc_info=True)
-                    shared.listeners = [ls for ls in shared.listeners if ls is not listener]
+                    listener.sender = None  # this task: ending, not to be cancelled by the drop
+                    self._drop_listener(shared, listener)
                     return
         except asyncio.CancelledError:
             pass
@@ -717,9 +849,13 @@ class SubscriptionManager:
     async def _replay_last(self, shared: _SharedEval, listener: _Listener) -> None:
         """Send a joining listener the eval's latest outcome, if there is one.
 
-        Called right after the listener was appended, with no await in between,
-        so a fan-out that runs while this send is in flight queues behind it on
-        the client's send lock and the joiner never sees an older frame last.
+        Called right after the listener was attached and its subscription
+        mapped, with no await in between, so the replay takes the listener's
+        lock first: a fan-out that runs while it is in flight queues behind it
+        and the joiner never sees an older frame last. A fan-out already under
+        way when the listener joined has recorded its frame as ``last_frame``,
+        so the joiner is replayed that frame rather than an older one. A failed
+        send drops the joiner like any other delivery.
         """
         if shared.last_frame is None:
             return
@@ -728,35 +864,84 @@ class SubscriptionManager:
                 listener.pending = shared.last_frame
                 listener.wake.set()
             return
-        try:
-            await listener.send_fn({**shared.last_frame, "id": listener.sub_id})
-        except Exception:
-            # A dead socket is reaped by the next fan-out or by its disconnect.
-            logger.debug("replay to %s/%s failed", listener.client_id, listener.sub_id, exc_info=True)
+        await self._deliver(shared, listener, shared.last_frame)
 
-    async def _broadcast(self, shared: _SharedEval, frame: dict) -> None:
-        """Record ``frame`` as the latest outcome and send it to every listener."""
+    async def _fan_out(self, shared: _SharedEval, frame: dict, *, waiting: bool = False) -> None:
+        """Record a frame as the eval's latest outcome and send it to every attached listener.
+
+        An error frame without a ``retryable`` flag gets one per code: a
+        transient failure keeps the client "waiting" while the loop carries on,
+        a deterministic one (parse, type, ...) is final. Any frame but a wait
+        notice (``waiting``) ends the current wait.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Shared evaluation whose listeners receive the frame.
+        frame : dict
+            Result or error frame without an ``id``; `_deliver` adds each
+            listener's ``sub_id``.
+        waiting : bool, optional
+            The frame is `_note_input_wait`'s retryable notice.
+        """
+        if frame["type"] == "error" and "retryable" not in frame:
+            frame = {**frame, "retryable": is_retryable(frame["code"])}
+        if not waiting:
+            shared.waiting_since = None
         shared.last_frame = frame
-        dead: list[_Listener] = []
         for listener in list(shared.listeners):
+            await self._deliver(shared, listener, frame)
+
+    async def _deliver(self, shared: _SharedEval, listener: _Listener, frame: dict) -> None:
+        """Send a frame to one listener while it is attached, dropping it if the send fails.
+
+        The attachment check and the send run under ``listener.lock``, so a
+        listener detached while an earlier frame to it was in flight receives
+        nothing from this call, and frames to one listener never overtake each
+        other.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Shared evaluation the listener belongs to.
+        listener : _Listener
+            Recipient of the frame.
+        frame : dict
+            Result or error frame without an ``id``; the listener's ``sub_id``
+            is added.
+        """
+        async with listener.lock:
+            if listener not in shared.listeners:
+                return
             try:
                 await listener.send_fn({**frame, "id": listener.sub_id})
             except Exception:
-                dead.append(listener)
-        if dead:
-            shared.listeners = [ls for ls in shared.listeners if ls not in dead]
+                logger.debug("send to %s/%s failed; dropping it", listener.client_id, listener.sub_id, exc_info=True)
+                self._drop_listener(shared, listener)
 
-    async def _fan_out(self, shared: _SharedEval, result_data: dict) -> None:
-        shared.waiting_since = None
-        await self._broadcast(shared, {"type": "result", "data": result_data})
+    def _drop_listener(self, shared: _SharedEval, listener: _Listener) -> None:
+        """Remove a single listener and retire the shared eval if it was the last one left.
 
-    async def _fan_out_error(self, shared: _SharedEval, code: str, message: str) -> None:
-        shared.waiting_since = None
-        # Per code: a transient failure keeps the client "waiting" while the loop
-        # carries on; a deterministic one (parse, type, ...) is final.
-        await self._broadcast(
-            shared, {"type": "error", "code": code, "message": message, "retryable": is_retryable(code)}
-        )
+        The client's subscription mapping is cleared only while it still points
+        at ``shared``, so a subscription already moved elsewhere is kept.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Shared evaluation the listener belongs to.
+        listener : _Listener
+            Listener to remove, matched by identity.
+        """
+        self._stop_listener(listener)
+        shared.listeners = [ls for ls in shared.listeners if ls is not listener]
+        subs = self._client_subs.get(listener.client_id)
+        if subs and subs.get(listener.sub_id) == shared.key:
+            subs.pop(listener.sub_id, None)
+            if not subs:
+                self._client_subs.pop(listener.client_id, None)
+        if not shared.listeners and self._shared_evals.get(shared.key) is shared:
+            self._teardown_shared(shared)
+            del self._shared_evals[shared.key]
 
     async def _note_input_wait(self, shared: _SharedEval, exc: CanopyError) -> None:
         """Handle a retryable failure: the caller retries, the client hears once.
@@ -777,49 +962,78 @@ class SubscriptionManager:
         frame = {"type": "error", "code": exc.error_code.value, "message": exc.detail, "retryable": True}
         if shared.last_frame == frame:
             return
-        await self._broadcast(shared, frame)
+        await self._fan_out(shared, frame, waiting=True)
 
     async def _eval_loop(self, shared: _SharedEval) -> None:
+        """Evaluate whenever an input PV changes and fan out the outcome (push mode).
+
+        Each wake-up consumes ``shared.dirty``; bursts of changes that arrive
+        during an evaluation coalesce into one further evaluation. Retriable
+        input errors are reported through `_note_input_wait` and re-set
+        ``dirty`` after ``_INPUT_RETRY_DELAY_S``, other errors are fanned out as
+        error frames, and cancellation ends the loop quietly.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Shared evaluation to drive.
+        """
         try:
             while True:
                 await shared.dirty.wait()
                 shared.dirty.clear()
                 try:
                     result = await self._formula_service.evaluate(shared.spec, t0_ns=shared.t0_ns, t1_ns=0)
-                    await self._fan_out(shared, result.model_dump(by_alias=True))
+                    await self._fan_out(shared, {"type": "result", "data": result.model_dump(by_alias=True)})
                 except CanopyError as exc:
                     if exc.error_code in _RETRIABLE_CODES:
                         await self._note_input_wait(shared, exc)
                         await asyncio.sleep(_INPUT_RETRY_DELAY_S)
                         shared.dirty.set()
                         continue
-                    await self._fan_out_error(shared, exc.error_code.value, exc.detail)
+                    await self._fan_out(shared, {"type": "error", "code": exc.error_code.value, "message": exc.detail})
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
                     logger.warning("Eval loop error for shared %s: %s", shared.key[:8], exc, exc_info=True)
-                    await self._fan_out_error(shared, ErrorCode.UNHANDLED_EXCEPTION.value, str(exc))
+                    await self._fan_out(
+                        shared, {"type": "error", "code": ErrorCode.UNHANDLED_EXCEPTION.value, "message": str(exc)}
+                    )
         except asyncio.CancelledError:
             pass
 
     async def _poll_loop(self, shared: _SharedEval) -> None:
+        """Evaluate every ``interval_ms`` and fan out the outcome (poll mode).
+
+        Retriable input errors are skipped until the next tick, other errors
+        are fanned out as error frames, and cancellation ends the loop quietly.
+
+        Parameters
+        ----------
+        shared : _SharedEval
+            Shared evaluation to drive.
+        """
         interval_s = shared.interval_ms / 1000.0
 
         try:
             while True:
                 try:
                     result = await self._formula_service.evaluate(shared.spec, t0_ns=shared.t0_ns, t1_ns=0)
-                    await self._fan_out(shared, result.model_dump(by_alias=True))
+                    await self._fan_out(shared, {"type": "result", "data": result.model_dump(by_alias=True)})
                 except CanopyError as exc:
                     if exc.error_code in _RETRIABLE_CODES:
                         await self._note_input_wait(shared, exc)
                     else:
-                        await self._fan_out_error(shared, exc.error_code.value, exc.detail)
+                        await self._fan_out(
+                            shared, {"type": "error", "code": exc.error_code.value, "message": exc.detail}
+                        )
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
                     logger.warning("Poll loop error for shared %s: %s", shared.key[:8], exc, exc_info=True)
-                    await self._fan_out_error(shared, ErrorCode.UNHANDLED_EXCEPTION.value, str(exc))
+                    await self._fan_out(
+                        shared, {"type": "error", "code": ErrorCode.UNHANDLED_EXCEPTION.value, "message": str(exc)}
+                    )
                 await asyncio.sleep(interval_s)
         except asyncio.CancelledError:
             pass

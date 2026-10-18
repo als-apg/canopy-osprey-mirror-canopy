@@ -12,16 +12,16 @@ from starlette.testclient import TestClient
 from canopy_mcp.app import create_app
 from canopy_mcp.config import Settings
 from canopy_mcp.collections import (
-    STATE_OPS,
     MAX_REFS,
+    STATE_OPS,
     MAX_PINNED,
     MAX_RECENT,
     STATE_FILE,
     MAX_PUT_BODY_BYTES,
     MAX_STATE_OP_BYTES,
-    MAX_RECENT_MANY_OP_BYTES,
     MAX_POST_BODY_BYTES,
     MAX_COLLECTION_BYTES,
+    MAX_RECENT_MANY_OP_BYTES,
 )
 
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"

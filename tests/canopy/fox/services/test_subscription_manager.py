@@ -4,8 +4,14 @@ import asyncio
 
 import pytest
 
+from tests.conftest import wait_for
 from canopy.fox.config import FoxConfig
-from canopy.fox.errors import SubscriptionLimitExceeded
+from canopy.fox.errors import (
+    FormulaTypeError,
+    FormulaInputMissing,
+    SubscriptionLimitExceeded,
+)
+from canopy.core.errors import ErrorCode
 from canopy.contracts.formula import FormulaSpec
 from tests.canopy.fox.conftest import FakeDataSource
 from canopy.fox.services.parser import Parser
@@ -206,9 +212,8 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await asyncio.sleep(0.05)
 
-        assert len(messages) >= 1
+        assert await wait_for(lambda: len(messages) >= 1)
         assert messages[0]["type"] == "result"
         assert messages[0]["id"] == "sub-1"
         assert "data" in messages[0]
@@ -219,13 +224,12 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: len(messages) >= 1)
 
         initial_count = len(messages)
         notifier.notify("PV:A")
-        await asyncio.sleep(0.05)
 
-        assert len(messages) > initial_count
+        assert await wait_for(lambda: len(messages) > initial_count)
         assert messages[-1]["type"] == "result"
 
         await manager.shutdown()
@@ -234,16 +238,18 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _timeseries_spec(), 1000, 0, send_fn)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: len(messages) >= 1)
         initial_count = len(messages)
 
         for _ in range(10):
             notifier.notify("PV:A")
-        await asyncio.sleep(0.1)
 
-        new_results = [m for m in messages[initial_count:] if m["type"] == "result"]
-        assert len(new_results) >= 1
-        assert len(new_results) <= 3
+        def new_results() -> list[dict]:
+            return [m for m in messages[initial_count:] if m["type"] == "result"]
+
+        assert await wait_for(lambda: len(new_results()) >= 1)
+        await asyncio.sleep(0.1)  # settle; a slow runner only lowers the count, so this can't flake
+        assert len(new_results()) <= 3
 
         await manager.shutdown()
 
@@ -293,9 +299,8 @@ class TestSubscriptionManager:
         )
 
         await manager.add_subscription("client-1", "sub-1", spec, 0, 0, send_fn)
-        await asyncio.sleep(0.05)
 
-        assert len(messages) >= 1
+        assert await wait_for(lambda: len(messages) >= 1)
         assert messages[0]["type"] == "error"
         assert "code" in messages[0]
 
@@ -332,10 +337,8 @@ class TestSubscriptionManager:
         messages, send_fn = _make_collector()
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn, interval_ms=50)
-        await asyncio.sleep(0.18)
 
-        results = [m for m in messages if m["type"] == "result"]
-        assert len(results) >= 3
+        assert await wait_for(lambda: len([m for m in messages if m["type"] == "result"]) >= 3)
 
         await manager.shutdown()
 
@@ -368,7 +371,7 @@ class TestSubscriptionManager:
 
         await manager.add_subscription("client-1", "sub-1", _scalar_spec(), 0, 0, send_fn_1)
         await manager.add_subscription("client-2", "sub-2", _scalar_spec(), 0, 0, send_fn_2)
-        await asyncio.sleep(0.05)
+        assert await wait_for(lambda: messages_1 and messages_2)
 
         results_1 = [m for m in messages_1 if m["type"] == "result"]
         results_2 = [m for m in messages_2 if m["type"] == "result"]
@@ -441,3 +444,522 @@ class TestSubscriptionManager:
 
         ok = await manager.update_subscription("client-1", "no-such-sub", send_fn, t0_ns=-1000)
         assert ok is False
+
+
+async def test_late_joiner_of_existing_eval_receives_a_result(manager):
+    """A subscription joining a running push-mode eval gets a result without a PV change.
+
+    The shared eval's initial evaluation goes to the first listener and static
+    inputs may never fire another change, so the joiner's first result comes
+    from its own catch-up evaluation.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: any(m["type"] == "result" for m in first))
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    assert await wait_for(lambda: any(m["type"] == "result" for m in late)), "late joiner never got a result"
+
+    await manager.shutdown()
+
+
+async def test_late_join_does_not_duplicate_result_for_existing_listener(manager):
+    """A late joiner's catch-up sends nothing to listeners that already hold a result.
+
+    The catch-up evaluation targets only the joining listener, so the first
+    listener keeps exactly one result.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+    assert sum(1 for m in first if m["type"] == "result") == 1
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    assert await wait_for(lambda: late)
+
+    assert sum(1 for m in first if m["type"] == "result") == 1, (
+        "c1 received a duplicate result triggered by c2's late join"
+    )
+    await manager.shutdown()
+
+
+async def test_all_dead_listeners_retire_the_shared_eval(manager, notifier):
+    """A shared eval whose every result send fails is torn down and unregistered.
+
+    The retired eval is absent from the deduplication map, so a fresh
+    subscriber with the same parameters starts a working eval instead of
+    joining a loop whose clients are all gone.
+    """
+
+    async def dead_send(_msg: dict) -> None:
+        raise RuntimeError("socket closed")
+
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=dead_send)
+    assert await wait_for(lambda: manager._shared_evals == {})
+    assert manager._client_subs.get("c1", {}) == {}
+
+    fresh, fresh_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=fresh_send)
+    assert await wait_for(lambda: any(m["type"] == "result" for m in fresh))
+
+    await manager.shutdown()
+
+
+async def test_all_dead_listeners_retire_on_the_error_path_too(manager):
+    """A shared eval that only ever errors is retired once every error send fails.
+
+    Such an eval never reaches the result fan-out, so the error fan-out drops
+    failed listeners and retires the eval the same way.
+    """
+    bad_spec = FormulaSpec(kind="scalar", expression="{a} +", bindings={"a": "PV:A"})
+
+    async def dead_send(_msg: dict) -> None:
+        raise RuntimeError("socket closed")
+
+    await manager.add_subscription("c1", "s1", bad_spec, t0_ns=0, t1_ns=0, send_fn=dead_send)
+    assert await wait_for(lambda: manager._shared_evals == {})
+
+    assert manager._client_subs.get("c1", {}) == {}
+
+    await manager.shutdown()
+
+
+async def test_shutdown_cancels_an_in_flight_catch_up(manager):
+    """A late join starts no evaluation of its own, so nothing reaches the joiner after ``shutdown``.
+
+    Adapted in the upstream merge: upstream gave a joiner its own catch-up
+    evaluation, tracked so ``shutdown`` could cancel it. The joiner is now
+    replayed the eval's latest outcome during the join, so a slow evaluator is
+    never entered by the join and no late-join work outlives ``shutdown``.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    gate = asyncio.Event()
+    entered = asyncio.Event()
+    real_evaluate = manager._formula_service.evaluate
+
+    async def slow_evaluate(*args, **kwargs):
+        entered.set()
+        await gate.wait()
+        return await real_evaluate(*args, **kwargs)
+
+    manager._formula_service.evaluate = slow_evaluate
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    assert _scalar_values(late) == [8.0]
+    assert not entered.is_set(), "the join evaluated instead of replaying"
+
+    await manager.shutdown()
+    gate.set()
+    await asyncio.sleep(0.1)
+
+    assert _scalar_values(late) == [8.0], "a frame reached the joiner after shutdown()"
+
+
+async def test_shutdown_stops_retries_handed_over_by_a_catch_up(manager, notifier):
+    """``shutdown`` stops the shared eval's retrying on missing inputs while a joiner is attached.
+
+    Adapted in the upstream merge: a joiner no longer evaluates and hands its
+    retries to the shared eval, so a PV change sends the shared eval itself
+    into its retry loop. Shutdown leaves the listener list intact, so nothing
+    but cancelling the shared eval's loop ends the retries.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    calls = 0
+
+    async def always_retriable(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise FormulaInputMissing("input not ready")
+
+    manager._formula_service.evaluate = always_retriable
+
+    _, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    notifier.notify("PV:A")
+    assert await wait_for(lambda: calls >= 2)
+
+    await manager.shutdown()
+    settled = calls
+    await asyncio.sleep(0.6)
+
+    assert calls == settled, "evaluations continued after shutdown()"
+
+
+def _scalar_values(messages: list[dict]) -> list:
+    """Extract the scalar value of every result frame, in arrival order.
+
+    Parameters
+    ----------
+    messages : list of dict
+        Frames collected by a `_make_collector` send function.
+
+    Returns
+    -------
+    list
+        ``data.scalar.value`` of each ``result`` frame.
+    """
+    return [m["data"]["scalar"]["value"] for m in messages if m["type"] == "result"]
+
+
+async def test_catch_up_result_does_not_overwrite_a_newer_fan_out(manager, notifier, fake_data_source):
+    """A replay still in flight when a fresher fan-out arrives is sent first, never after it.
+
+    Adapted in the upstream merge (catch-up became replay): the joiner's send
+    stalls on its replayed result while a PV change fans the fresh value out.
+    The fan-out waits on the joiner's lock, so the joiner ends on the fresh
+    value instead of having it overwritten by the older one.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    late: list[dict] = []
+    replaying = asyncio.Event()
+    release = asyncio.Event()
+
+    async def late_send(msg: dict) -> None:
+        late.append(msg)
+        if len(late) == 1:
+            replaying.set()
+            await release.wait()
+
+    join = asyncio.create_task(
+        manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    )
+    await asyncio.wait_for(replaying.wait(), 1.0)
+
+    fake_data_source.latest["PV:A"] = fake_data_source.latest["PV:A"].model_copy(update={"ts_ns": 5000, "value": 10.0})
+    notifier.notify("PV:A")
+    assert await wait_for(lambda: _scalar_values(first) == [8.0, 13.0])
+
+    release.set()
+    await asyncio.wait_for(join, 1.0)
+    assert await wait_for(lambda: len(_scalar_values(late)) == 2)
+
+    assert _scalar_values(late) == [8.0, 13.0], "the replayed result arrived after the fresher fan-out"
+    await manager.shutdown()
+
+
+async def test_catch_up_does_not_send_behind_an_in_flight_fan_out(manager, notifier, fake_data_source):
+    """A joiner that arrives while a fresher fan-out is mid-send is replayed that fresh frame, not a stale one.
+
+    Adapted in the upstream merge (catch-up became replay): the first
+    listener's send stalls on the fanned-out fresh value. The fan-out recorded
+    that frame as the latest outcome before sending, so the joiner is replayed
+    it, and the in-flight fan-out, whose snapshot predates the join, does not
+    send it a second time.
+    """
+    first: list[dict] = []
+    gate_armed = False
+    first_blocked = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def first_send(msg: dict) -> None:
+        first.append(msg)
+        if gate_armed and msg["type"] == "result":
+            first_blocked.set()
+            await release_first.wait()
+
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    gate_armed = True
+    fake_data_source.latest["PV:A"] = fake_data_source.latest["PV:A"].model_copy(update={"ts_ns": 5000, "value": 10.0})
+    notifier.notify("PV:A")
+    await asyncio.wait_for(first_blocked.wait(), 1.0)
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    assert _scalar_values(late) == [13.0]
+
+    release_first.set()
+    await asyncio.sleep(0.05)
+
+    assert _scalar_values(late) == [13.0], "the joiner got a stale or duplicate frame around the in-flight fan-out"
+    await manager.shutdown()
+
+
+async def test_catch_up_hands_a_retriable_error_to_the_shared_eval(manager, notifier, monkeypatch):
+    """A joiner never evaluates: the shared eval's own loop is the only one retrying a missing input.
+
+    Adapted in the upstream merge (catch-up became replay): the join replays
+    the latest result without calling the evaluator, and once a PV change
+    hits the missing input every evaluation comes from the shared eval's task.
+    """
+    monkeypatch.setattr("canopy.fox.services.subscription_manager._INPUT_RETRY_DELAY_S", 0.01)
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+    shared = manager._shared_evals[manager._client_subs["c1"]["s1"]]
+
+    callers: list[asyncio.Task] = []
+
+    async def missing(*args, **kwargs):
+        callers.append(asyncio.current_task())
+        raise FormulaInputMissing("input not ready")
+
+    manager._formula_service.evaluate = missing
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    assert _scalar_values(late) == [8.0]
+    assert callers == []
+
+    notifier.notify("PV:A")
+    assert await wait_for(lambda: callers.count(shared.task) > 1), "the shared eval did not do the retries"
+    assert set(callers) == {shared.task}
+    await manager.shutdown()
+
+
+async def test_joiners_of_an_eval_without_output_share_its_first_result(manager, fake_data_source, monkeypatch):
+    """Joiners of an eval that has fanned out nothing get no replay and receive its first result.
+
+    While an input is missing the shared eval retries alone, so the evaluation
+    rate stays at that of a single loop however many listeners join. Once the
+    input arrives, the retrying loop picks it up and every listener receives
+    the same first result exactly once.
+    """
+    from canopy.contracts.sample import Sample, AlarmSeverity
+
+    monkeypatch.setattr("canopy.fox.services.subscription_manager._INPUT_RETRY_DELAY_S", 0.01)
+    spec = FormulaSpec(kind="scalar", expression="{a} + {c}", bindings={"a": "PV:A", "c": "PV:C"})
+    real_evaluate = manager._formula_service.evaluate
+    calls = 0
+
+    async def counting_evaluate(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await real_evaluate(*args, **kwargs)
+
+    manager._formula_service.evaluate = counting_evaluate
+    collected = []
+    for i in range(10):
+        messages, send_fn = _make_collector()
+        collected.append(messages)
+        await manager.add_subscription(f"c{i}", "s", spec, t0_ns=0, t1_ns=0, send_fn=send_fn)
+    shared = manager._shared_evals[manager._client_subs["c0"]["s"]]
+    # Nothing has been fanned out yet, so no joiner was replayed anything.
+    assert shared.last_frame is None
+    assert not any(collected)
+
+    calls = 0
+    await asyncio.sleep(0.1)
+    assert calls <= 20, f"{calls} evaluations in 0.1 s; expected one retry loop of about 10"
+
+    fake_data_source.latest["PV:C"] = Sample(ts_ns=3000, value=1.0, severity=AlarmSeverity.NO_ALARM, source="archive")
+    assert await wait_for(lambda: all(_scalar_values(messages) for messages in collected))
+
+    assert [_scalar_values(messages) for messages in collected] == [[6.0]] * 10
+    await manager.shutdown()
+
+
+async def test_resubscribe_during_a_catch_up_delivers_one_result(manager, notifier, fake_data_source):
+    """Re-subscribing an id leaves only the new listener attached, even with the same client, id and send.
+
+    Adapted in the upstream merge (catch-up became replay): each subscription
+    of the id is replayed the current result once, and a later fan-out
+    reaches the client once, not also through the replaced listener, because
+    listeners compare by identity.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c0", "s0", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+    assert _scalar_values(late) == [8.0, 8.0]
+
+    fake_data_source.latest["PV:A"] = fake_data_source.latest["PV:A"].model_copy(update={"ts_ns": 5000, "value": 10.0})
+    notifier.notify("PV:A")
+    assert await wait_for(lambda: len(_scalar_values(late)) == 3)
+    await asyncio.sleep(0.05)
+
+    assert _scalar_values(late) == [8.0, 8.0, 13.0], "the replaced listener still received the fan-out"
+    await manager.shutdown()
+
+
+async def test_fan_out_skips_a_listener_updated_away_mid_send(manager, notifier, fake_data_source):
+    """A fan-out already under way sends nothing to a listener updated to another formula meanwhile.
+
+    The first listener's send stalls mid fan-out while the second listener's
+    subscription is updated from the sum to the product, so its last frame
+    stays the product's value rather than the sum's.
+    """
+    product = FormulaSpec(kind="scalar", expression="{a} * {b}", bindings={"a": "PV:A", "b": "PV:B"})
+    gate_armed = False
+    first_blocked = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def first_send(msg: dict) -> None:
+        if gate_armed and msg["type"] == "result":
+            first_blocked.set()
+            await release_first.wait()
+
+    moving, moving_send = _make_collector()
+    await manager.add_subscription("c0", "s0", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=moving_send)
+    assert await wait_for(lambda: moving)
+    moving.clear()
+
+    gate_armed = True
+    fake_data_source.latest["PV:A"] = fake_data_source.latest["PV:A"].model_copy(update={"ts_ns": 5000, "value": 10.0})
+    notifier.notify("PV:A")
+    await asyncio.wait_for(first_blocked.wait(), 1.0)
+
+    await manager.update_subscription("c1", "s1", moving_send, spec=product)
+    assert await wait_for(lambda: moving)
+    release_first.set()
+    await asyncio.sleep(0.05)
+
+    assert _scalar_values(moving) == [30.0], "the sum's fan-out reached the subscription after it moved to the product"
+    await manager.shutdown()
+
+
+async def test_update_onto_a_running_eval_receives_a_result(manager):
+    """A subscription updated onto an already-running push-mode eval gets a result.
+
+    Two subscriptions share formula X; a third on formula Y is updated to X
+    and receives X's current value without any PV change, while the existing
+    listeners on X receive no duplicate.
+    """
+    first, first_send = _make_collector()
+    second, second_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=second_send)
+    product = FormulaSpec(kind="scalar", expression="{a} * {b}", bindings={"a": "PV:A", "b": "PV:B"})
+    moving, moving_send = _make_collector()
+    await manager.add_subscription("c3", "s3", product, t0_ns=0, t1_ns=0, send_fn=moving_send)
+    assert await wait_for(lambda: moving and first and second)
+    assert _scalar_values(moving) == [15.0]
+
+    ok = await manager.update_subscription("c3", "s3", moving_send, spec=_scalar_spec())
+    assert await wait_for(lambda: len(moving) >= 2)
+
+    assert ok is True
+    assert _scalar_values(moving) == [15.0, 8.0], "updated subscription never got a result from the joined eval"
+    assert _scalar_values(first) == [8.0]
+    assert _scalar_values(second) == [8.0]
+    await manager.shutdown()
+
+
+async def test_catch_up_non_retriable_error_goes_to_the_joiner_only(manager, notifier):
+    """A joiner of an eval whose latest outcome is a non-retriable error is replayed that error alone.
+
+    Adapted in the upstream merge (catch-up became replay): the error comes
+    from the shared eval, not from an evaluation of the joiner's own; the frame
+    carries the error's code and detail plus ``retryable: false``, and the
+    listener already on the shared eval receives nothing new from the join.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    async def type_error(*args, **kwargs):
+        raise FormulaTypeError("bad operand")
+
+    manager._formula_service.evaluate = type_error
+    notifier.notify("PV:A")
+    assert await wait_for(lambda: first[-1]["type"] == "error")
+    first_before = list(first)
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+
+    assert late == [
+        {
+            "type": "error",
+            "id": "s2",
+            "code": ErrorCode.FORMULA_TYPE_ERROR.value,
+            "message": "bad operand",
+            "retryable": False,
+        }
+    ]
+    assert first == first_before
+    await manager.shutdown()
+
+
+async def test_catch_up_unhandled_exception_sends_unhandled_error(manager, notifier):
+    """A joiner of an eval whose latest outcome is an unhandled exception is replayed that ``UNHANDLED_EXCEPTION`` frame.
+
+    Adapted in the upstream merge (catch-up became replay); the frame is
+    flagged ``retryable`` as every live unhandled-exception frame is.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+
+    async def explode(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    manager._formula_service.evaluate = explode
+    notifier.notify("PV:A")
+    assert await wait_for(lambda: first[-1]["type"] == "error")
+    first_before = list(first)
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send)
+
+    assert late == [
+        {
+            "type": "error",
+            "id": "s2",
+            "code": ErrorCode.UNHANDLED_EXCEPTION.value,
+            "message": "kaboom",
+            "retryable": True,
+        }
+    ]
+    assert first == first_before
+    await manager.shutdown()
+
+
+async def test_catch_up_send_failure_drops_only_the_joiner(manager):
+    """A failed catch-up send removes the joiner and keeps the shared eval for the others.
+
+    The joiner leaves both the shared eval's listeners and the client
+    subscription map; the eval stays registered because the first listener
+    remains.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send)
+    assert await wait_for(lambda: first)
+    key = manager._client_subs["c1"]["s1"]
+
+    async def dead_send(_msg: dict) -> None:
+        raise RuntimeError("socket closed")
+
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=dead_send)
+    assert await wait_for(lambda: "c2" not in manager._client_subs)
+
+    shared = manager._shared_evals[key]
+    assert [(ls.client_id, ls.sub_id) for ls in shared.listeners] == [("c1", "s1")]
+    assert "c2" not in manager._client_subs
+    await manager.shutdown()
+
+
+async def test_poll_mode_join_schedules_no_catch_up(manager):
+    """Joining a running poll-mode eval replays its latest result at once, before the next tick.
+
+    Adapted in the upstream merge: upstream sent a poll-mode joiner nothing
+    before the next tick; this line replays the latest outcome in poll mode
+    too (see the merge notes' owner questions). The join adds no second eval.
+    """
+    first, first_send = _make_collector()
+    await manager.add_subscription("c1", "s1", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=first_send, interval_ms=500)
+    assert await wait_for(lambda: first)
+
+    late, late_send = _make_collector()
+    await manager.add_subscription("c2", "s2", _scalar_spec(), t0_ns=0, t1_ns=0, send_fn=late_send, interval_ms=500)
+
+    assert len(manager._shared_evals) == 1
+    assert _scalar_values(late) == [8.0]
+    await manager.shutdown()
