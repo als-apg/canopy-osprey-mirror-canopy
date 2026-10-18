@@ -2,8 +2,8 @@
 
 import os
 import json
-import hashlib
 import asyncio
+import hashlib
 import logging
 
 import pytest
@@ -11,16 +11,16 @@ import pytest
 from canopy_mcp.config import Settings
 from canopy_mcp.member_key import member_key
 from canopy_mcp.collections import (
+    MAX_REFS,
     OP_FIELDS,
     STATE_OPS,
-    MAX_REFS,
     MAX_PINNED,
     MAX_RECENT,
     STATE_FILE,
     MAX_STATE_BYTES,
     MAX_STATE_OP_BYTES,
-    MAX_RECENT_MANY_OP_BYTES,
     MAX_COLLECTION_BYTES,
+    MAX_RECENT_MANY_OP_BYTES,
     PinnedFull,
     ReadOnlyStore,
     SelectionFull,
