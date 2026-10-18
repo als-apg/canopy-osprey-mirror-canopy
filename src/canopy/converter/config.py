@@ -32,6 +32,24 @@ class ConverterConfig(BaseSettings):
     # canonical copy bundled under ``converter/data/`` (provisioned in Phase 3).
     colors_list_path: Path = _DEFAULT_COLORS_LIST
 
+    calc_list_path: Path | None = None
+    """Path to the site's EDM ``calc.list`` of named-CALC PV definitions, e.g. ``CALC\\sum``.
+
+    Set via ``CANOPY_CONVERTER__CALC_LIST_PATH``; any filename works. ``None``,
+    or a path with no file behind it, falls back to a ``calc.list`` beside
+    ``colors_list_path`` and then to the parser's own search of the
+    environment (``$EDMFILES/calc.list``, beside ``$EDMCOLORFILE``).
+    Unresolvable named calcs degrade to convert-time warnings, never errors.
+    """
+
+    search_paths: list[Path] = []
+    """Extra directories searched for EDM symbol files (activeSymbolClass), and for
+    ``calc.list`` when none is configured, like EDM's ``EDMDATAFILES``. Uploads are staged in a private temp
+    dir, so without this a symbol file beside the original screen is never found and
+    the symbol is dropped (with a warning). Set as a JSON list, e.g.
+    ``CANOPY_CONVERTER__SEARCH_PATHS='["/usr/local/lcls/tools/edm/display/lcls"]'``.
+    """
+
     # Reject uploads larger than this (bytes) before parsing. 10 MiB default.
     max_upload_bytes: int = 10 * 1024 * 1024
 

@@ -1,10 +1,11 @@
-"""The bundled EDM colors.list is valid, and the service hands it to the converter."""
+"""The bundled EDM colors.list is valid, and conversions resolve palette indices through it."""
 
 import os
 
 from pydmconverter.edm.parser_helpers import parse_colors_list
 
 from canopy.converter.config import ConverterConfig
+from canopy.converter.adapters.edm_lists import resolve_edm_lists
 from canopy.converter.services.conversion_service import ConversionService
 
 # Minimal EDM screen whose only widget declares palette-indexed colours
@@ -62,7 +63,7 @@ def test_the_service_hands_the_palette_to_the_converter(monkeypatch):
     monkeypatch.delenv("EDMCOLORFILE", raising=False)
     monkeypatch.delenv("EDMFILES", raising=False)
     config = ConverterConfig()
-    result = ConversionService(color_list_path=config.colors_list_path).convert(_INDEXED_COLOR_EDL, kind="edl")
+    result = ConversionService(colors_list_path=config.colors_list_path).convert(_INDEXED_COLOR_EDL, kind="edl")
     assert result.stats.widget_count == 1
     label = result.screen["root"]["children"][0]
     assert label["type"] == "text-label"
@@ -74,12 +75,61 @@ def test_the_service_hands_the_palette_to_the_converter(monkeypatch):
 def test_a_missing_palette_degrades_to_the_converter_default(tmp_path, monkeypatch):
     monkeypatch.delenv("EDMCOLORFILE", raising=False)
     monkeypatch.delenv("EDMFILES", raising=False)
-    result = ConversionService(color_list_path=tmp_path / "absent.list").convert(_INDEXED_COLOR_EDL, kind="edl")
+    result = ConversionService(colors_list_path=tmp_path / "absent.list").convert(_INDEXED_COLOR_EDL, kind="edl")
     assert result.stats.widget_count == 1
     assert result.screen["root"]["children"][0]["props"]["text"] == "Indexed colours"
 
 
 def test_the_environment_is_not_written(monkeypatch):
     monkeypatch.delenv("EDMCOLORFILE", raising=False)
-    ConversionService(color_list_path=ConverterConfig().colors_list_path).convert(_INDEXED_COLOR_EDL, kind="edl")
+    ConversionService(colors_list_path=ConverterConfig().colors_list_path).convert(_INDEXED_COLOR_EDL, kind="edl")
     assert "EDMCOLORFILE" not in os.environ
+
+
+def test_resolve_edm_lists_returns_the_bundled_colors_list():
+    """The default config resolves the bundled ``colors.list``."""
+    config = ConverterConfig()
+    colors, _ = resolve_edm_lists(config)
+    assert colors == config.colors_list_path
+
+
+def test_resolve_edm_lists_drops_a_missing_colors_list(tmp_path):
+    """A configured ``colors.list`` with no file behind it resolves to ``None``."""
+    colors, _ = resolve_edm_lists(ConverterConfig(colors_list_path=tmp_path / "absent.list"))
+    assert colors is None
+
+
+def test_conversion_resolves_indexed_colors_from_the_explicit_palette(monkeypatch):
+    """A screen using ``fgColor index N`` carries the colour the bundled palette assigns that index.
+
+    The palette reaches the converter only as the explicit path; the parser's
+    own environment search is emptied.
+    """
+    monkeypatch.delenv("EDMCOLORFILE", raising=False)
+    monkeypatch.delenv("EDMFILES", raising=False)
+    colors, _ = resolve_edm_lists(ConverterConfig())
+
+    result = ConversionService(colors_list_path=colors).convert(_INDEXED_COLOR_EDL, kind="edl")
+
+    assert result.stats.widget_count == 1
+    label = result.screen["root"]["children"][0]
+    assert label["type"] == "text-label"
+    assert label["props"]["text"] == "Indexed colours"
+    assert parse_colors_list(str(colors))["static"][25] == {"name": "Controller", "rgb": [0, 0, 65535]}
+    assert label["props"]["foregroundColor"] == "#0000ff"
+
+
+def test_conversion_resolves_the_screen_background_from_the_explicit_palette(monkeypatch):
+    """A screen declaring ``bgColor index N`` carries the palette's colour on its root canvas.
+
+    The parser's own environment search is emptied, so the colour can only come
+    from the explicit palette.
+    """
+    monkeypatch.delenv("EDMCOLORFILE", raising=False)
+    monkeypatch.delenv("EDMFILES", raising=False)
+    colors, _ = resolve_edm_lists(ConverterConfig())
+    edl = _INDEXED_COLOR_EDL.replace(b"endScreenProperties", b"bgColor index 25\nendScreenProperties", 1)
+
+    result = ConversionService(colors_list_path=colors).convert(edl, kind="edl")
+
+    assert result.screen["root"]["props"]["backgroundColor"] == "#0000ff"

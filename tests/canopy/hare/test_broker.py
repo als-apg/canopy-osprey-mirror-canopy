@@ -9,6 +9,7 @@ import contextlib
 
 import pytest
 
+from tests.conftest import wait_for
 from canopy.epics.base import PVWriteFailed
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVValue
@@ -249,9 +250,8 @@ class TestLoopSupervision:
         broker._running = True
         task = asyncio.create_task(broker._flush_loop())
         try:
-            await asyncio.sleep(0.05)  # several 10ms intervals
+            assert await wait_for(lambda: calls["n"] >= 2)  # kept flushing after the error
             assert not task.done()  # survived the first-iteration error
-            assert calls["n"] >= 2  # and kept flushing afterwards
         finally:
             broker._running = False
             task.cancel()
@@ -314,3 +314,227 @@ async def test_status_counts_connected_monitors(broker, fake_connector):
     )
     await broker._drain_nowait()
     assert (broker.status()["active_monitors"], broker.status()["connected"]) == (2, 0)
+
+
+def _record_calls(connector, method: str, *, failures: int = 0) -> list[str]:
+    """Wrap a connector coroutine method so every call is recorded and the first few raise.
+
+    Parameters
+    ----------
+    connector : FakeConnector
+        Connector whose method is replaced on the instance.
+    method : str
+        Name of the coroutine method to wrap, such as ``"get"`` or ``"describe"``.
+    failures : int, optional
+        Number of leading calls that raise `TimeoutError`; later calls delegate
+        to the original method.
+
+    Returns
+    -------
+    list[str]
+        PV names passed to the wrapped method, one entry per call in call order.
+    """
+    original = getattr(connector, method)
+    calls: list[str] = []
+
+    async def wrapped(pv, **kwargs):
+        """Record the call, then raise or delegate to the original method.
+
+        Parameters
+        ----------
+        pv : str
+            PV name the broker passed.
+        **kwargs
+            Keyword arguments forwarded to the original method.
+
+        Returns
+        -------
+        object
+            The original method's result.
+
+        Raises
+        ------
+        TimeoutError
+            For each of the first ``failures`` calls.
+        """
+        calls.append(pv)
+        if len(calls) <= failures:
+            raise TimeoutError(f"{method} not ready")
+        return await original(pv, **kwargs)
+
+    setattr(connector, method, wrapped)
+    return calls
+
+
+def _initial_frames(ws: FakeWebSocket) -> list[dict]:
+    """Collect the ``initial`` frames a client received.
+
+    Parameters
+    ----------
+    ws : FakeWebSocket
+        Client channel whose sent frames are inspected.
+
+    Returns
+    -------
+    list[dict]
+        Every frame of type ``initial``, in send order.
+    """
+    return [m for m in ws.sent if m["type"] == "initial"]
+
+
+async def test_failed_seed_is_retried_for_late_subscribers(fake_connector):
+    """A later subscribe of an already-monitored PV retries a seed whose ``get`` failed.
+
+    With a zero backoff window, the late subscriber receives the PV's value in
+    its ``initial`` frame once the connector recovers, even though the monitor
+    never ticked. The first subscriber is answered with the disconnected value
+    the failed seed left behind.
+    """
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=0))
+    _record_calls(fake_connector, "get", failures=1)
+
+    first = FakeWebSocket()
+    broker.add_client("c1", first)
+    await broker.subscribe("c1", ["PV:SEED"])
+    initial_frames = _initial_frames(first)
+    assert initial_frames and initial_frames[0]["data"]["PV:SEED"]["connected"] is False
+
+    late = FakeWebSocket()
+    broker.add_client("c2", late)
+    await broker.subscribe("c2", ["PV:SEED"])
+    late_initials = _initial_frames(late)
+    assert late_initials and late_initials[0]["data"]["PV:SEED"]["connected"] is True
+
+
+async def test_failed_seed_is_not_retried_within_backoff(fake_connector):
+    """A subscribe inside the backoff window does not call ``get`` again for a PV whose seed failed.
+
+    The late subscriber still receives the metadata that did seed, and the
+    disconnected value the failed seed left behind rather than a live one.
+    """
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
+    gets = _record_calls(fake_connector, "get", failures=1)
+
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:SEED"])
+
+    late = FakeWebSocket()
+    broker.add_client("c2", late)
+    await broker.subscribe("c2", ["PV:SEED"])
+
+    assert gets == ["PV:SEED"]
+    late_initials = _initial_frames(late)
+    assert late_initials
+    assert late_initials[0]["data"]["PV:SEED"]["connected"] is False
+    assert "PV:SEED" in late_initials[0]["meta"]
+
+
+async def test_failed_seed_is_retried_after_backoff_and_success_clears_deadline(fake_connector):
+    """A failed seed sets a retry deadline; a retry after the window that succeeds clears it."""
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=0))
+    gets = _record_calls(fake_connector, "get", failures=1)
+
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:SEED"])
+    assert "PV:SEED" in broker._seed_retry_after
+
+    broker.add_client("c2", FakeWebSocket())
+    await broker.subscribe("c2", ["PV:SEED"])
+
+    assert gets == ["PV:SEED", "PV:SEED"]
+    assert "PV:SEED" in broker._latest
+    assert "PV:SEED" not in broker._seed_retry_after
+
+
+@pytest.mark.parametrize(
+    ("backoff_s", "expected_describes"),
+    [pytest.param(3600, 1, id="within-backoff"), pytest.param(0, 2, id="after-backoff")],
+)
+async def test_describe_failure_retries_only_describe_after_backoff(fake_connector, backoff_s, expected_describes):
+    """A PV whose value seeded but whose ``describe`` failed re-runs only ``describe``, and only after the window.
+
+    The cached value is never fetched again; ``describe`` is retried by a later
+    subscribe once the backoff has elapsed and skipped while it has not.
+    """
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=backoff_s))
+    gets = _record_calls(fake_connector, "get")
+    describes = _record_calls(fake_connector, "describe", failures=1)
+
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:META"])
+    broker.add_client("c2", FakeWebSocket())
+    await broker.subscribe("c2", ["PV:META"])
+
+    assert gets == ["PV:META"]
+    assert describes == ["PV:META"] * expected_describes
+
+
+async def test_stop_monitors_clears_seed_retry_deadline(fake_connector):
+    """Releasing a PV drops its seed retry deadline, so re-subscribing seeds it at once despite the window.
+
+    The grace period and the negative cache are off: either would keep the
+    failed seed answering a re-subscribe from cache.
+    """
+    broker = PVBroker(
+        fake_connector,
+        HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0, negative_cache_ttl_s=0),
+    )
+    gets = _record_calls(fake_connector, "get", failures=1)
+
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:SEED"])
+    assert "PV:SEED" in broker._seed_retry_after
+
+    await broker.unsubscribe("c1", ["PV:SEED"])
+    assert "PV:SEED" not in broker._seed_retry_after
+    assert "PV:SEED" not in broker._seeding
+
+    again = FakeWebSocket()
+    broker.add_client("c2", again)
+    await broker.subscribe("c2", ["PV:SEED"])
+
+    assert gets == ["PV:SEED", "PV:SEED"]
+    assert "PV:SEED" in _initial_frames(again)[0]["data"]
+
+
+@pytest.mark.parametrize("get_fails", [pytest.param(True, id="unreachable"), pytest.param(False, id="slow")])
+async def test_concurrent_subscribes_share_one_seed_attempt(fake_connector, get_fails):
+    """Concurrent subscribes of an unseeded PV make one ``get`` and one ``describe`` between them.
+
+    The first subscriber's ``get`` stalls until released, so the second
+    subscribe reaches the seed step while that attempt is still in flight. It
+    waits for the attempt instead of starting its own, then sees the value it
+    produced or, when it failed, the disconnected value it left behind.
+    """
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
+    original_get = fake_connector.get
+    release = asyncio.Event()
+    gets: list[str] = []
+
+    async def stalled_get(pv, **kwargs):
+        gets.append(pv)
+        await release.wait()
+        if get_fails:
+            raise TimeoutError("get timed out")
+        return await original_get(pv, **kwargs)
+
+    fake_connector.get = stalled_get
+    describes = _record_calls(fake_connector, "describe")
+
+    first, second = FakeWebSocket(), FakeWebSocket()
+    broker.add_client("c1", first)
+    broker.add_client("c2", second)
+    subscribes = [
+        asyncio.create_task(broker.subscribe("c1", ["PV:SEED"])),
+        asyncio.create_task(broker.subscribe("c2", ["PV:SEED"])),
+    ]
+    await asyncio.sleep(0.05)
+    release.set()
+    await asyncio.wait_for(asyncio.gather(*subscribes), 1.0)
+
+    assert gets == ["PV:SEED"]
+    assert describes == ["PV:SEED"]
+    for ws in (first, second):
+        (initial,) = _initial_frames(ws)
+        assert initial["data"]["PV:SEED"]["connected"] is not get_fails
+        assert "PV:SEED" in initial["meta"]

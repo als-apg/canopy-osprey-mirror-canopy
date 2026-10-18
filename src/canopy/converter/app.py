@@ -9,6 +9,7 @@ from canopy.converter.config import get_converter_config
 from canopy.converter.runtime import mark_started
 from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.api.v1.router import router as v1_router
+from canopy.converter.adapters.edm_lists import resolve_edm_lists
 from canopy.converter.services.conversion_service import ConversionService
 
 logger = logging.getLogger(__name__)
@@ -23,22 +24,33 @@ async def converter_lifespan():
 
     The converter is stateless (parse -> build -> emit), so the only startup
     state is the ConversionService singleton; its widget mappings come from the
-    registry bundled with ``pydmconverter``. The worker process builds its own
+    registry bundled with ``pydmconverter``. Startup resolves the ``colors.list``
+    and ``calc.list`` to hand the EDM parser, constructs the service and binds it
+    to the gateway; shutdown unbinds it. The worker process builds its own
     service instead (see :mod:`canopy.converter.tasks`).
+
+    Yields
+    ------
+    None
+        Control while the converter is running with its service bound.
     """
     config = get_converter_config()
+    colors_list, calc_list = resolve_edm_lists(config)
     # The color scheme is flattened once per process (get_color_scheme caches per
     # path); the service receives the loaded result and never loads one itself.
     service = ConversionService(
         scheme=get_color_scheme(config.scheme_path),
-        color_list_path=config.colors_list_path,
+        colors_list_path=colors_list,
+        calc_list_path=calc_list,
         color_def_path=config.color_def_path,
+        search_paths=config.search_paths,
     )
     gateway.bind(service)
     mark_started()
     logger.info(
-        "Converter started: colors_list=%s, scheme=%s, color_def=%s",
-        config.colors_list_path,
+        "Converter started: colors_list=%s, calc_list=%s, scheme=%s, color_def=%s",
+        colors_list,
+        calc_list,
         (service.scheme_meta or {}).get("served"),
         config.color_def_path,
     )
