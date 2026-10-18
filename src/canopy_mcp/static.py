@@ -115,7 +115,8 @@ canopy's own ``/health`` answers, and reads nothing from DATA or from the scheme
 so it is the same in hare and mock mode and with or without the access gate.
 ``/health/summary`` is the rollup
 (:class:`canopy.contracts.health.FrontHealthSummaryDTO`): the scheme fallback,
-DATA's verdict and its channel counts; status 200 on every branch.
+DATA's verdict, its channel counts and its ``reachable`` statement; status 200 on
+every branch. DATA's ``writes`` statement stays off it.
 """
 
 import re
@@ -339,21 +340,25 @@ def backend_identity(summary: HareHealthSummaryDTO | None) -> dict[str, Any]:
 
 
 def health_summary_body(settings: Settings, summary: HareHealthSummaryDTO | None) -> FrontHealthSummaryDTO:
-    """The rollup: this server's fallbacks, then DATA's own verdict and its channel counts.
+    """The rollup: this server's fallbacks, then DATA's own verdict, channel counts and ``reachable``.
 
     ``summary`` counts only in hare mode, where ``None`` means DATA's summary could not be
-    read. The verdict is DATA's ``status``, relayed: the counts are reported, never judged.
+    read. The verdict is DATA's ``status``, relayed: the counts and ``reachable`` are
+    reported, never judged.
     """
     causes = list(get_color_scheme().degraded)
-    channels = None
+    channels = reachable = None
     if settings.pv_mode == "hare":
         if summary is None:
             causes.append(DATA_UNAVAILABLE)
         else:
             channels = ChannelCountsDTO(connected=summary.connected, total=summary.active_monitors)
+            reachable = summary.reachable
             if summary.status == "degraded":
                 causes.append(DATA_DEGRADED)
-    return FrontHealthSummaryDTO(status="degraded" if causes else "ok", degraded=causes, channels=channels)
+    return FrontHealthSummaryDTO(
+        status="degraded" if causes else "ok", degraded=causes, channels=channels, reachable=reachable
+    )
 
 
 def _trace_page(settings: Settings, name: str) -> Path | None:

@@ -59,7 +59,7 @@ def test_bad_scheme_degrades_the_rollup_and_logs_once(settings, monkeypatch, cap
     assert health.status_code == 200
     assert health.json() == {"status": "healthy"}
     assert rollup.status_code == 200
-    assert rollup.json() == {"status": "degraded", "degraded": [DEGRADED_KEY], "channels": None}
+    assert rollup.json() == {"status": "degraded", "degraded": [DEGRADED_KEY], "channels": None, "reachable": None}
     meta = config.json()["colorScheme"]["meta"]
     assert meta["served"] == DEFAULT_ID
     assert meta["errors"]
