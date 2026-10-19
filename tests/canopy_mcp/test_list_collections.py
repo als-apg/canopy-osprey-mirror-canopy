@@ -113,7 +113,8 @@ async def test_open_url_is_panel_relative_inside_osprey(settings: Settings, monk
 async def test_screen_members_carry_key_title_and_url(settings: Settings) -> None:
     result = await tool_module.list_collections()
     overview = _by_ref(result)["facility:control-assistant"]["members"][0]
-    assert set(overview) == {"key", "available", "title", "url"}
+    assert set(overview) == {"key", "available", "title", "url", "ref"}
+    assert overview["ref"] == "library/sr/overview"
     assert overview["key"] == "screen:library/sr/overview"
     assert overview["available"] is True
     assert overview["title"] == "sr/overview"  # the fixture screen has no metadata title
@@ -129,10 +130,12 @@ async def test_a_draft_screen_member_is_available_when_the_draft_exists(settings
         "available": True,
         "title": "BTS draft",
         "url": "http://127.0.0.1:8765/embed/drafts/bts/view",
+        "ref": "drafts/bts/view",
     }
     with_macros = members[1]
     assert with_macros["key"] == "screen:library/sr/overview?S=SR01"
     assert with_macros["url"] == "http://127.0.0.1:8765/embed/library/sr/overview?S=SR01"
+    assert (with_macros["ref"], with_macros["macros"]) == ("library/sr/overview", {"S": "SR01"})
 
 
 async def test_a_missing_screen_is_unavailable(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,9 +161,11 @@ async def test_tool_members_carry_label_and_null_open_url(settings: Settings) ->
         "available": True,
         "label": "Gun high voltage and heater",
         "open_url": None,
+        "tool": "trace",
+        "query": "pv=EG______HV_____AM00&pv=EG______HTR____AM00&range=-1h",
     }
     unnamed = _by_ref(result)["personal:drafts"]["members"][2]
-    assert unnamed == {"key": "tool:trace", "available": True, "label": "Trace", "open_url": None}
+    assert unnamed == {"key": "tool:trace", "available": True, "label": "Trace", "open_url": None, "tool": "trace"}
 
 
 async def test_a_tool_this_host_does_not_serve_is_unavailable(settings: Settings) -> None:
@@ -171,7 +176,14 @@ async def test_a_tool_this_host_does_not_serve_is_unavailable(settings: Settings
     assert waveform["label"] == "Waveform"
     assert diagnostics["available_count"] == 2
     blank = _by_ref(result)["personal:undocked"]["members"][3]
-    assert blank == {"key": "tool:waveform?", "available": False, "label": "Waveform", "open_url": None}
+    assert blank == {
+        "key": "tool:waveform?",
+        "available": False,
+        "label": "Waveform",
+        "open_url": None,
+        "tool": "waveform",
+        "query": "",
+    }
 
 
 async def test_available_count_counts_available_members(settings: Settings) -> None:

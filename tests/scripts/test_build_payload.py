@@ -298,6 +298,7 @@ def test_staged_names_five_commits_and_both_versions(world):
         "spec": None,
         "spec-digest": None,
         "fixtures": "absent",
+        "workspace": "absent",
     }
 
 
@@ -874,3 +875,144 @@ def test_help_names_the_fixture_check(world):
     ok(proc)
     assert "fixtures" in proc.stdout
     assert FIX_RT in proc.stdout
+
+
+# --- the compared workspace fixture set ---------------------------------------------
+
+WS_CANOPY = "tests/canopy_mcp/fixtures/workspace"
+WS_RT = "apps/viewer/e2e/fixtures/workspace"
+WORKSPACE_SET = {
+    "commands/open.json": b'{"args": {"ref": "string"}}\n',
+    "rejections/tab_limit.json": b'{"cases": []}\n',
+    "routes/claim.json": b'{"route": "claim"}\n',
+    "scenarios/expiry.json": b'{"steps": []}\n',
+    "context.json": b'{"context": {}}\n',
+    "state.sample.json": b'{"tabs": []}\n',
+    "README.md": b"workspace\n",
+    "bytes.bin": NOT_UTF8,
+}
+
+
+def with_workspace(world: dict, canopy: dict | None = None, rt: dict | None = None) -> None:
+    """Commit the workspace set to both repos' HEAD; ``canopy``/``rt`` override single files."""
+    commit_bytes(world["canopy"], fixtures(WS_CANOPY, {**WORKSPACE_SET, **(canopy or {})}), "workspace")
+    commit_bytes(world["rt"], fixtures(WS_RT, {**WORKSPACE_SET, **(rt or {})}), "workspace")
+
+
+def workspace_refused(world: dict, proc, path: str) -> None:
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert f"workspace fixture {path} " in proc.stderr
+    assert not world["out"].exists() or not (world["out"] / "STAGED.json").exists()
+    assert calls(world) == []
+
+
+def test_build_payload_workspace_absent_when_neither_has_it(world):
+    proc = build(world)
+    ok(proc)
+    assert staged(world)["workspace"] == "absent"
+    assert "workspace absent" in proc.stderr
+
+
+def test_build_payload_workspace_equal_copies_record_compared(world):
+    with_workspace(world)
+    proc = build(world)
+    ok(proc)
+    assert staged(world)["workspace"] == "compared"
+    assert "workspace compared" in proc.stderr
+    # The collections check is independent of the workspace one.
+    assert staged(world)["fixtures"] == "absent"
+
+
+def test_build_payload_workspace_and_collections_both_compared(world):
+    with_fixtures(world)
+    with_workspace(world)
+    ok(build(world))
+    assert staged(world)["fixtures"] == "compared"
+    assert staged(world)["workspace"] == "compared"
+
+
+def test_build_payload_workspace_byte_difference_is_refused(world):
+    with_workspace(world, rt={"scenarios/expiry.json": b'{"steps": [1]}\n'})
+    proc = build(world)
+    workspace_refused(world, proc, "scenarios/expiry.json")
+    assert "differs between" in proc.stderr
+    assert f"({WS_CANOPY}/ vs {WS_RT}/)" in proc.stderr
+
+
+def test_build_payload_workspace_non_utf8_difference_is_refused(world):
+    with_workspace(world, canopy={"bytes.bin": NOT_UTF8.replace(b"\xfe", b"\xfd")})
+    workspace_refused(world, build(world), "bytes.bin")
+
+
+def test_build_payload_workspace_every_file_is_compared(world):
+    # Unlike the collections set, no path below the directory is exempt.
+    with_workspace(world, rt={"README.md": b"runtime\n"})
+    workspace_refused(world, build(world), "README.md")
+
+
+def test_build_payload_workspace_first_differing_path_is_named(world):
+    with_workspace(world, rt={"state.sample.json": b"{}\n", "context.json": b"{}\n", "routes/claim.json": b"{}\n"})
+    workspace_refused(world, build(world), "context.json")
+
+
+def test_build_payload_workspace_only_in_canopy_is_refused(world):
+    commit_bytes(world["canopy"], fixtures(WS_CANOPY, WORKSPACE_SET), "workspace")
+    proc = build(world)
+    workspace_refused(world, proc, "README.md")
+    assert "is in CANOPY_SHA=" in proc.stderr
+
+
+def test_build_payload_workspace_only_in_the_runtime_is_refused(world):
+    commit_bytes(world["rt"], fixtures(WS_RT, WORKSPACE_SET), "workspace")
+    proc = build(world)
+    workspace_refused(world, proc, "README.md")
+    assert "is in RT_SHA=" in proc.stderr
+
+
+def test_build_payload_workspace_extra_file_on_one_side_is_refused(world):
+    with_workspace(world, canopy={"commands/close.json": b"{}\n"})
+    proc = build(world)
+    workspace_refused(world, proc, "commands/close.json")
+    assert "is in CANOPY_SHA=" in proc.stderr
+
+
+def test_build_payload_workspace_file_deleted_on_one_side_is_refused(world):
+    with_workspace(world)
+    commit_bytes(world["rt"], fixtures(WS_RT, {"routes/claim.json": None}), "drop")
+    proc = build(world)
+    workspace_refused(world, proc, "routes/claim.json")
+    assert "is in CANOPY_SHA=" in proc.stderr
+
+
+def test_build_payload_workspace_recorded_commits_are_compared_not_head(world):
+    with_workspace(world)
+    matching = head(world["rt"])
+    commit_bytes(world["rt"], fixtures(WS_RT, {"context.json": b"{}\n"}), "drift")
+    ok(build(world, RT_SHA=matching))
+    assert staged(world)["workspace"] == "compared"
+    assert staged(world)["runtime"] == matching
+
+
+def test_build_payload_workspace_recorded_canopy_commit_without_it_is_refused(world):
+    # The runtime HEAD carries the copy; the recorded canopy commit predates it.
+    before = head(world["canopy"])
+    with_workspace(world)
+    proc = build(world, CANOPY_SHA=before, CANOPY_VERSION="1.2.2")
+    workspace_refused(world, proc, "README.md")
+    assert "is in RT_SHA=" in proc.stderr
+
+
+def test_build_payload_workspace_uncommitted_edits_are_not_compared(world):
+    with_workspace(world)
+    (world["rt"] / WS_RT / "context.json").write_bytes(b"edited\n")
+    (world["canopy"] / WS_CANOPY / "commands" / "new.json").write_bytes(b"{}\n")
+    ok(build(world))
+    assert staged(world)["workspace"] == "compared"
+
+
+def test_build_payload_help_names_the_workspace_check(world):
+    proc = build(world, "--help", out=False)
+    ok(proc)
+    assert "workspace" in proc.stdout
+    assert WS_CANOPY in proc.stdout
+    assert WS_RT in proc.stdout

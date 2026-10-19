@@ -1,0 +1,182 @@
+{
+  "about": [
+    "Command vectors for open.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "open",
+  "args": {
+    "ref": "string, required",
+    "macros": "object of string values, optional",
+    "mode": "polite (default) | append | replace",
+    "key": "string, required with mode replace, else absent"
+  },
+  "extras": [
+    "key",
+    "mode"
+  ],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "polite opens a screen that is not open, right of the active tile",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/s3-promo/promotion"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/s3-promo/promotion",
+        "mode": "polite"
+      },
+      "after": {
+        "tabs": [
+          "library/gtb/GTLView?SR=1",
+          "library/bts/BTSView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion"
+        ],
+        "active": "library/s3-promo/promotion"
+      }
+    },
+    {
+      "name": "polite focuses the tab already showing the ref and macros",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/bts/BTSView"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/bts/BTSView",
+        "mode": "polite"
+      },
+      "after": {
+        "tabs": [
+          "library/gtb/GTLView?SR=1",
+          "library/bts/BTSView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/bts/BTSView"
+      }
+    },
+    {
+      "name": "polite on the active tab is a no-op",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/gtb/GTLView",
+          "macros": {
+            "SR": "1"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": false,
+        "key": "library/gtb/GTLView?SR=1",
+        "mode": "polite"
+      },
+      "after": {
+        "tabs": [
+          "library/gtb/GTLView?SR=1",
+          "library/bts/BTSView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/gtb/GTLView?SR=1"
+      }
+    },
+    {
+      "name": "the key carries the macros sorted by name",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/gtb/GTLView",
+          "macros": {
+            "SR": "2",
+            "B": "1"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/gtb/GTLView?B=1&SR=2",
+        "mode": "polite"
+      },
+      "after": {
+        "tabs": [
+          "library/gtb/GTLView?SR=1",
+          "library/bts/BTSView",
+          "@trace",
+          "library/sr/overview",
+          "library/gtb/GTLView?B=1&SR=2"
+        ],
+        "active": "library/gtb/GTLView?B=1&SR=2"
+      }
+    },
+    {
+      "name": "append opens the screen in the focused tile",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/common/KnobPanel",
+          "mode": "append"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/common/KnobPanel",
+        "mode": "append"
+      },
+      "after": {
+        "tabs": [
+          "library/gtb/GTLView?SR=1",
+          "library/bts/BTSView",
+          "@trace",
+          "library/sr/overview",
+          "library/common/KnobPanel"
+        ],
+        "active": "library/common/KnobPanel"
+      }
+    },
+    {
+      "name": "replace swaps the named tab in place",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "drafts/beam-tune",
+          "mode": "replace",
+          "key": "library/bts/BTSView"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "drafts/beam-tune",
+        "mode": "replace"
+      },
+      "after": {
+        "tabs": [
+          "library/gtb/GTLView?SR=1",
+          "drafts/beam-tune",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "drafts/beam-tune"
+      }
+    }
+  ]
+}

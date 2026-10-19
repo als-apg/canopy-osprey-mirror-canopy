@@ -31,6 +31,7 @@ from canopy_mcp.store import (
     open_stores,
 )
 from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.workspace import Hub
 
 # One pair of stores per (drafts directory, library directory), so every tool
 # call shares the personal store's write lock.
@@ -59,6 +60,27 @@ def get_library_store(settings: Settings | None = None) -> DraftStore | None:
 def reset_stores() -> None:
     """Forget every cached store (tests switch directories)."""
     _stores.clear()
+
+
+# The one workspace hub of this process (in memory, ephemeral; see canopy_mcp.workspace).
+_hub: Hub | None = None
+
+
+def get_hub() -> Hub:
+    """The process-wide workspace :class:`Hub`, minted on first use."""
+    global _hub
+    if _hub is None:
+        _hub = Hub()
+    return _hub
+
+
+def reset_hub() -> None:
+    """Close the hub (its waiters return ``pending``, its streams end) and forget it; the next
+    :func:`get_hub` mints a fresh one with a new epoch. The served app's shutdown and tests call it."""
+    global _hub
+    hub, _hub = _hub, None
+    if hub is not None:
+        hub.close()
 
 
 def validate_id(draft_id: str) -> str:

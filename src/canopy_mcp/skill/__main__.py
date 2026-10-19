@@ -1,10 +1,10 @@
 """Entry point: ``python -m canopy_mcp.skill install <dir>``.
 
-Writes the ``canopy-panel-builder`` skill to
-``<dir>/.claude/skills/canopy-panel-builder/SKILL.md``, the place an agent
-working in project ``<dir>`` looks for it, and prints that path. The bytes are
-those of the packaged file. Running it again is safe: an up-to-date copy is left
-alone and an older one is replaced.
+Writes every Canopy skill (``canopy-panel-builder`` and ``canopy-operator``) to
+``<dir>/.claude/skills/<name>/SKILL.md``, the place an agent working in project
+``<dir>`` looks for it, and prints each path on a line of its own. The bytes are
+those of the packaged files. Running it again is safe: an up-to-date copy is
+left alone and an older one is replaced.
 """
 
 import sys
@@ -12,21 +12,22 @@ import argparse
 from pathlib import Path
 from collections.abc import Sequence
 
-from canopy_mcp.skill import SKILL_NAME, install, skill_path
+from canopy_mcp.skill import SKILLS, install, skill_path
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m canopy_mcp.skill",
-        description=f"Install the {SKILL_NAME} skill into a project.",
+        description=f"Install the {' and '.join(SKILLS)} skills into a project.",
     )
     commands = parser.add_subparsers(dest="command", required=True, metavar="install")
-    install_parser = commands.add_parser("install", help="write the skill into a project directory")
+    install_parser = commands.add_parser("install", help="write the skills into a project directory")
     install_parser.add_argument(
         "directory",
         type=Path,
         metavar="dir",
-        help=f"the project directory; the skill is written to {skill_path(Path('<dir>'))}",
+        help="the project directory; the skills are written to "
+        + ", ".join(str(skill_path(Path("<dir>"), name)) for name in SKILLS),
     )
     return parser.parse_args(argv)
 
@@ -39,10 +40,11 @@ def _fail(message: str) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        target = install(args.directory)
+        targets = install(args.directory)
     except OSError as exc:
-        return _fail(f"cannot write the skill into {args.directory}: {exc.strerror or type(exc).__name__}")
-    print(target)
+        return _fail(f"cannot write the skills into {args.directory}: {exc.strerror or type(exc).__name__}")
+    for target in targets:
+        print(target)
     return 0
 
 

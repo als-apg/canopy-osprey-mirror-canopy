@@ -76,6 +76,11 @@ unavailable. It describes only what this server sees, never the converter's
 scheme. The document holds no secret, so it is served with
 ``Access-Control-Allow-Origin: *`` for cross-origin fetches by the Builder.
 
+``config.json`` names the workspace hub (``{"workspace": {"path": "workspace",
+"protocol": 1}}``) only with ``CANOPY_WORKSPACE`` on; off (the default) the key is
+absent, the viewer makes no workspace request, and no route under ``/workspace``
+exists (:mod:`canopy_mcp.workspace_routes`).
+
 ``config.json`` always carries ``confirmWrites`` (``CANOPY_CONFIRM_WRITES``,
 false by default): whether the viewer asks for a confirmation before each
 write.
@@ -142,6 +147,7 @@ from canopy_mcp.store import (
     contained_file,
 )
 from canopy_mcp.config import Settings
+from canopy_mcp.workspace import PROTOCOL as WORKSPACE_PROTOCOL
 from canopy.contracts.health import (
     DATA_DEGRADED,
     DATA_UNAVAILABLE,
@@ -160,6 +166,8 @@ SCREENS_PATH = "drafts"
 VIEWS_PATH = "views"
 # The collections surface; its state lives at ``<path>-state`` (canopy_mcp.collections).
 COLLECTIONS_PATH = "collections"
+# The workspace hub's routes (canopy_mcp.workspace_routes), served with CANOPY_WORKSPACE on.
+WORKSPACE_PATH = "workspace"
 # Headers on every non-screen draft response (200 and 304).
 IMAGE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff"}
 
@@ -247,6 +255,8 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
         "collections": {"path": COLLECTIONS_PATH},
         "confirmWrites": settings.confirm_writes,
     }
+    if settings.workspace:
+        config["workspace"] = {"path": WORKSPACE_PATH, "protocol": WORKSPACE_PROTOCOL}
     for tool in configured_tools(settings):
         config[tool] = {"path": TOOL_PAGES[tool][1], "query": _default_query(settings, tool)}
     flat = get_color_scheme().flat_json

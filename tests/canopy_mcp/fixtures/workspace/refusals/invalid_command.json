@@ -1,0 +1,3049 @@
+{
+  "about": [
+    "Batch refusal vectors for invalid_command: the hub, at enqueue (set_workspace).",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Replay: a fresh hub minted with epoch e1 and an injectable clock at 0 ms; steps run in order. Window X's windowId is w-X.",
+    "Actors: window:A, window:B (a viewer window: its HTTP calls and its event stream), agent (the MCP tools, in process), clock.",
+    "window actions: claim {seq, shown, state, ifVacant?} (POST <ws>/claim; ifVacant = ?if_vacant=1); report {seq, shown, state} (PUT <ws>/active); goodbye (DELETE <ws>/active?window=w-X); connect (GET <ws>/events?window=w-X: status and the events delivered at once); receive (the events the open stream got since the last connect or receive, pings left out); disconnect (the stream ends); result {batch, seq, state, results} (POST <ws>/active/w-X/result).",
+    "agent actions: get_workspace; set_workspace {commands, base?, batch_id?, wait_s}. wait_s 0 returns at once. clock: advance {ms}.",
+    "state '$sample' is state.sample.json's state, '$empty' the empty state (tabs [], active null, layout null, zoom {}, instances {}, toolMru [], labels {}).",
+    "expect matches partially: an object matches when every key it names matches (recursively); a list matches element by element and has the same length; other values are equal. An absent expect asserts nothing.",
+    "Hub rules the steps pin: ids b-e1-<n> and c-e1-<n> count from 1 and only an accepted batch mints them; a refused batch has id null and results []; a pending batch reports results []; a window holds at most one delivered, unresolved batch and the next is delivered when it resolves; a delivered batch's deadline is delivery + 10 s, after which its unresolved commands are lost; an undelivered batch is delivered only before enqueue + 10 s and is expired from then on; window_gone 3 s after the stream ends without a new one, or at once when another window claims; a window's new stream replaces its old one, without window_gone and without delivering a delivered batch again; the hub checks base.window, never base.seq.",
+    "Each case runs on a fresh hub; its steps start with the setup they need (most: window A claims, shown, and connects).",
+    "A refused batch returns the current document beside batch {id: null, status: refused, reason, results: []}.",
+    "The hub owns every syntactic bound, one case or more per bound (bound names it): command-count (1..20), command-shape ({cmd, args?} only, args an object), verb-enum, edge-enum, mode-enum, step-enum, tool-enum, arg-type, arg-required, arg-unknown, arg-exclusive, macro-count (<= 16), macro-length (values <= 64), macro-charset (values printable ASCII 0x21-0x7E, names non-empty), query-bytes (<= 4096 UTF-8 bytes), zoom-percent (integer 10..400), base-shape ({window: string, seq: integer}), batch-id-type. A case whose expect is pending is the accepted side of its bound."
+  ],
+  "reason": "invalid_command",
+  "cases": [
+    {
+      "name": "no commands",
+      "bound": "command-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 commands",
+      "bound": "command-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 commands are accepted",
+      "bound": "command-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unknown verb",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "navigate",
+              "args": {
+                "url": "https://example.org/"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a command without cmd",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a command with a key beside cmd and args",
+      "bound": "command-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              },
+              "id": "c-x"
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "args that are not an object",
+      "bound": "command-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": [
+                "library/gtb/GTLView?SR=1"
+              ]
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an edge outside left/right/above/below",
+      "bound": "edge-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "place",
+              "args": {
+                "key": "library/sr/overview",
+                "edge": "center"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a mode outside polite/append/replace",
+      "bound": "mode-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "mode": "tab"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a zoom step outside in/out/fit/actual",
+      "bound": "step-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "step": "sideways"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a tool outside trace/correlation/waveform",
+      "bound": "tool-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_tool",
+              "args": {
+                "tool": "scope"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a key that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": 42
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ref that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": [
+                  "library/gtb/GTLView"
+                ]
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "macros that are not an object",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": [
+                  "SR=1"
+                ]
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": 1
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "layout that is not a boolean",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_collection",
+              "args": {
+                "ref": "facility:injector",
+                "layout": "true"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a query that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "set_query",
+              "args": {
+                "key": "@trace",
+                "query": {
+                  "pv": "A"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a reopen id that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "reopen",
+              "args": {
+                "id": 1
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a percent that is not an integer",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "percent": 12.5
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a percent that is a boolean",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "percent": true
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "focus without key",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {}
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open without ref",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "macros": {
+                  "SR": "1"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace without key",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "drafts/beam-tune",
+                "mode": "replace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "zoom without step or percent",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an argument the verb does not take",
+      "bound": "arg-unknown",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1",
+                "url": "https://example.org/"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "zoom with both step and percent",
+      "bound": "arg-exclusive",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "step": "in",
+                "percent": 150
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a key with a mode other than replace",
+      "bound": "arg-exclusive",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "key": "library/bts/BTSView"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 macros",
+      "bound": "macro-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "M00": "v",
+                  "M01": "v",
+                  "M02": "v",
+                  "M03": "v",
+                  "M04": "v",
+                  "M05": "v",
+                  "M06": "v",
+                  "M07": "v",
+                  "M08": "v",
+                  "M09": "v",
+                  "M10": "v",
+                  "M11": "v",
+                  "M12": "v",
+                  "M13": "v",
+                  "M14": "v",
+                  "M15": "v",
+                  "M16": "v"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 macros are accepted",
+      "bound": "macro-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "M00": "v",
+                  "M01": "v",
+                  "M02": "v",
+                  "M03": "v",
+                  "M04": "v",
+                  "M05": "v",
+                  "M06": "v",
+                  "M07": "v",
+                  "M08": "v",
+                  "M09": "v",
+                  "M10": "v",
+                  "M11": "v",
+                  "M12": "v",
+                  "M13": "v",
+                  "M14": "v",
+                  "M15": "v"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value of 65 characters",
+      "bound": "macro-length",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value of 64 characters is accepted",
+      "bound": "macro-length",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value with a space",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "1 2"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value with a control character",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "1\u0007"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value outside ASCII",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "\u00e9"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an empty macro name",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "": "1"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "printable punctuation in a macro value is accepted",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "PV": "SR01C:BPM1:X&y=1"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a query of 4097 bytes",
+      "bound": "query-bytes",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_tool",
+              "args": {
+                "tool": "trace",
+                "query": "pv=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a query of 4096 bytes is accepted",
+      "bound": "query-bytes",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_tool",
+              "args": {
+                "tool": "trace",
+                "query": "pv=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a multi-byte query over 4096 bytes",
+      "bound": "query-bytes",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "set_query",
+              "args": {
+                "key": "@trace",
+                "query": "pv=\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 9",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "percent": 9
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 401",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "percent": 401
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 10 is accepted",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "percent": 10
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 400 is accepted",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/bts/BTSView",
+                "percent": 400
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "base without seq",
+      "bound": "base-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A"
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "base with a seq that is not an integer",
+      "bound": "base-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": "41"
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a batch_id that is not a string",
+      "bound": "batch-id-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "batch_id": 7,
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

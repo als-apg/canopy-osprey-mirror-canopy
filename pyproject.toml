@@ -46,6 +46,8 @@ mcp = [
     "playwright>=1.61",
     # Kills a Playwright driver that will not stop, with its process tree.
     "psutil>=6",
+    # The workspace hub's event stream (EventSourceResponse, ends on the server's exit signal).
+    "sse-starlette>=3.4",
 ]
 # Postgres and the Redis job queue: needed by squirrel, magpie, jobs and the
 # canopy-worker. A deployment that selects none of them (CANOPY_MODULES) runs
