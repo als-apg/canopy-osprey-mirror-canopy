@@ -355,13 +355,15 @@ agent should use the tools is in the `canopy-operator` skill.
 
 A local server, a browser window and a bare Claude Code session, with no
 backend and two screens of the fixture library. From a canopy checkout, with
-the viewer built (`pnpm build` in the viewer's package gives its `dist/`):
+the viewer built (`pnpm build` in the viewer's package gives its `dist/`) and
+the built Trace pages at hand (a payload's `trace/` holds them):
 
 ```sh
 uv sync --extra mcp
 CANOPY_WORKSPACE=1 \
 CANOPY_PV_MODE=mock \
 CANOPY_VIEWER_DIST=/path/to/viewer/dist \
+CANOPY_TRACE_DIST=/path/to/payload/trace \
 CANOPY_LIBRARY_DIR=tests/canopy_mcp/fixtures/collections/library \
 CANOPY_DRAFTS_DIR="$(mktemp -d)" \
 uv run python -m canopy_mcp --http --host 127.0.0.1 --port 8765
