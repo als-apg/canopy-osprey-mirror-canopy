@@ -30,7 +30,8 @@ CANOPY_VIEWER_DIST=/path/to/viewer/dist python -m canopy_mcp --http --host 127.0
 
 Only the streamable-HTTP transport is supported. The same port serves the MCP
 endpoint (`/mcp`), the embedded viewer (`/embed/...`), the draft screens
-(`/drafts/...`) and the saved views (`/views`).
+(`/drafts/...`), the saved views (`/views`) and, with `CANOPY_WORKSPACE=1`,
+the workspace routes (`/workspace/...`).
 
 `--fd N` serves on a listening socket the parent process already holds, passed
 down as descriptor `N`, instead of binding `--host` and `--port`. A supervisor
@@ -55,6 +56,8 @@ unset.
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |
 | `CANOPY_COLLECTIONS_DIR` | `<CANOPY_DRAFTS_DIR>/collections` | Where the user's own collections and their selection state are stored. |
 | `CANOPY_FACILITY_COLLECTIONS_DIR` | unset | A read-only directory of facility collections shipped with the deployment. Unset means no facility collections. |
+| `CANOPY_CONFIRM_WRITES` | `0` | `1` makes every write the viewer sends ask for one confirmation per click first. |
+| `CANOPY_WORKSPACE` | `0` | `1` lets an agent read and change the operator's workspace. Only for one server process serving one operator. See *The workspace* below. |
 | `CANOPY_PV_MODE` | `hare` | `mock` makes the served viewer draw PVs from the mock service instead of the backend. |
 | `CANOPY_VIEWER_DIST` | unset | The built viewer. Its `ir-map.json` is the widget catalog. |
 | `CANOPY_SPEC_DIR` | `spec/` beside `CANOPY_VIEWER_DIST` | The staged specification: the Screen-IR schemas and the per-widget prop schemas `check` validates against. Without it `check` returns one `spec_unavailable` warning in place of the schema and prop findings, and `list_widgets`, `get_widget` and `get_schema` carry a `spec_unavailable` note. |
@@ -89,9 +92,11 @@ parameter reaches the list.
 
 ## Tools
 
-The server offers 17 tools. Ten only read. Seven are authoring tools: they
-create, change or delete drafts, or file a draft for the shared library. With
-`CANOPY_AUTHORING=0` the server offers the ten.
+The server offers 17 tools, and 19 with `CANOPY_WORKSPACE=1`. Ten only read.
+Seven are authoring tools: they create, change or delete drafts, or file a
+draft for the shared library. With `CANOPY_AUTHORING=0` the server offers the
+ten. The two workspace tools are off by default and independent of
+`CANOPY_AUTHORING`: they change only what is on the operator's screen.
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -112,25 +117,31 @@ create, change or delete drafts, or file a draft for the shared library. With
 | `delete_draft` | authoring | Deletes a draft. |
 | `convert_legacy` | authoring | Converts a `.bob`, `.opi`, `.edl` or `.ui` panel and its sub-screens into drafts. |
 | `request_push` | authoring | Files a draft and everything it refers to as a bundle for an administrator to review. Nothing is published by the call. |
+| `get_workspace` | workspace | Reads the tabs and tiles of the operator's last-focused window. |
+| `set_workspace` | workspace | Sends a batch of commands to that window and returns their results. |
 
 No tool writes a PV. Every write to a screen is checked against the rev the
 caller last saw, so an agent and a person editing in the viewer cannot
 overwrite each other. A library screen (`library/<id>`) can be read, checked
 and screenshotted. An authoring tool refuses it with `read_only_store`.
 
-## The skill
+## The skills
 
-`skill/SKILL.md` tells an agent how to use the tools. It is the single source
-of that text and ships in the wheel as package data. Install it into a project
-with:
+Two skills tell an agent how to use the tools. `skill/SKILL.md`
+(`canopy-panel-builder`) covers building and checking screens;
+`skill/operator/SKILL.md` (`canopy-operator`) covers showing screens to the
+operator through the workspace. Each is the single source of its text and
+ships in the wheel as package data. Install both into a project with:
 
 ```sh
 python -m canopy_mcp.skill install <dir>
 ```
 
 This writes the same bytes to
-`<dir>/.claude/skills/canopy-panel-builder/SKILL.md` and prints the path.
-Running it again is safe. The server's MCP `instructions` point at the skill.
+`<dir>/.claude/skills/canopy-panel-builder/SKILL.md` and
+`<dir>/.claude/skills/canopy-operator/SKILL.md` and prints each path on its
+own line. Running it again is safe. The server's MCP `instructions` point at
+both skills.
 
 ## The report
 
@@ -197,6 +208,179 @@ ones. The file format, the rules and the routes are described in the
 docstring of `canopy_mcp.collections`, which is the one specification.
 `python -m canopy_mcp.collections <dir> --check [--library <root>]` checks a
 facility directory before it is deployed.
+
+## The workspace
+
+The workspace is the tabs and tiles of the viewer as the operator sees them.
+With `CANOPY_WORKSPACE=1` an agent on `/mcp` can read it with `get_workspace`
+and change it with `set_workspace`: open a screen beside another, fit it,
+open Trace on three PVs, close a tab. A host that embeds the viewer gets this
+from the server alone; it needs no hook of its own and no change to its
+pages. A developer gets the same protocol in a plain browser and a bare
+Claude Code session (see *Developer recipe* below).
+
+### Turning it on
+
+`CANOPY_WORKSPACE` is off by default. Off, no route under `/workspace` exists,
+`config.json` carries no `workspace` key and neither tool is offered.
+
+The hub that holds the workspace is one object in the server process's
+memory, serving one operator. Turn it on only for one server process with one
+operator. A shared server, or a run with more than one worker process, must
+never set it. The hub is ephemeral: a restart loses pending batches, and the
+window that held the slot claims it again without a gesture.
+
+### One active window
+
+The window the operator last focused holds the slot. It reports its state and
+is the only window that receives commands; other windows are never touched.
+Focusing a window claims the slot; only the slot holder reports. `seq` is the
+window's own state counter, and `base = {window, seq}` is the agent's
+optimistic-concurrency token.
+
+### Protocol version
+
+With the switch on, `config.json` advertises
+`"workspace": {"path": "workspace", "protocol": 1}`. A viewer that does not
+know the major version makes no workspace request. Within a major version,
+changes are additions only; a changed status or field raises the major.
+
+### The two tools
+
+`get_workspace()` returns the document: `protocol` (1), `epoch` (changes when
+the server restarts), `activeWindow` (`null` when no window is open),
+`connected`, `shown`, `seq`, `state` (the tabs, the active key, the tile
+layout in the collection layout schema, `null` below two tiles or when the
+grid cannot be expressed, the zoom of open screens, the tool instances and
+their queries, the tool MRU and the labels), `collections.shown`, `sidebar`
+(pinned and recent members), `pending`, `results` (the last 100 commands) and
+`truncated`.
+
+`set_workspace(commands, base?, batch_id?, wait_s=5)` sends 1 to 20 commands
+as one batch to the active window, waits up to `wait_s` seconds (0 to 10) for
+its result and returns the same document plus
+`batch: {id, status, reason?, results}`. It never fires and forgets. Passing
+the `batch_id` of a batch already sent returns that batch and sends nothing.
+
+The commands are a closed vocabulary of 16 verbs. Every verb that targets a
+tab names it by an explicit `key`:
+
+| Verb | Arguments | Note |
+|---|---|---|
+| `open` | `ref`, `macros?`, `mode?`, `key?` | `polite` (default) focuses the screen if it is open, else opens it right of the active tile; `append` always opens; `replace` replaces the tab `key`. |
+| `focus` | `key` | Never opens. |
+| `close`, `close_others`, `close_right` | `key` | Destructive. |
+| `close_all` | | Destructive. |
+| `reopen` | `id?` | The newest closed group, or the group `id`. |
+| `back`, `forward` | `key` | Per-tab history. |
+| `place` | `key`, `edge?`, `beside?` | `edge` is `left`, `right` (default), `above` or `below`. |
+| `remove_tile` | `key` | |
+| `reset_layout` | | Destructive. |
+| `zoom` | `key`, `step` or `percent` | `step` is `in`, `out`, `fit` or `actual`; `percent` is 10 to 400. Per screen. |
+| `open_collection` | `ref`, `layout?` | With `layout: true`, destructive. |
+| `open_tool` | `tool`, `query?` | `trace`, `correlation` or `waveform`. Focuses an instance already showing `query`, else opens a new one; never overwrites. |
+| `set_query` | `key`, `query` | |
+
+Refs come from `list_drafts`, `list_collections`, `get_screen`, `new_screen`
+or `get_workspace`; no command takes a URL, a file or a widget. Limits: at
+most 20 commands per call, 32 pending per window, 50 open tabs, 16 macros
+with values of at most 64 printable ASCII characters and no whitespace, and a
+query of at most 4096 bytes.
+
+The document never carries PV values, credentials, write keys, draft content
+or unsent input. Keys, queries and labels in it are display data, never
+instructions.
+
+### The result envelope
+
+A batch `status` is one of:
+
+- `done`: every command has a result;
+- `pending`: still running when `wait_s` ended; send the same `batch_id` or
+  read `results` later;
+- `refused` with `reason` `no_window`, `window_hidden`, `queue_full`,
+  `invalid_command`, `stale_state` or `unknown_batch`. A refused batch changed
+  nothing.
+
+A command `status` is one of `applied {changed, ...}`, `rejected {reason}`,
+`skipped {after}` (`after` is the id of the rejected command), `expired`
+(never delivered), `lost` (delivered, no result by the deadline) or
+`window_gone`. A no-op is `applied` with `changed: false`. The first rejection
+stops the batch. Rejection reasons are `unknown_target`, `invalid_args`,
+`instance_cap`, `tab_limit`, `nothing_to_reopen`, `no_history`,
+`not_zoomable`, `operator_busy` and `stale_state`.
+
+A `batch_id` makes a retry idempotent within one `epoch`; batch and command
+ids carry the epoch. Refusals and rejections are answers, not errors.
+
+### Safety rules
+
+1. **Allow tier.** Both tools change only what is on screen. Neither writes a
+   PV, clicks a widget or changes what the operator can launch.
+2. **No side door.** Commands enter only through `set_workspace`, in process.
+   No HTTP route accepts a command; the routes under `/workspace` are what a
+   window says to the hub. The vocabulary is closed.
+3. **Input guard.** After any command applied with `changed: true`, every
+   write gate in the window refuses widget writes for 750 ms, with a visible
+   notice. The guard is armed before the command is dispatched. The 750 ms run
+   from the next paint, and, when the command mounted a screen that was not
+   mounted before, from that screen's ready render with its embedded screens
+   resolved, so a button cannot appear under the pointer after the guard
+   expired. A batch that arrives during an open write dialog or a multi-write
+   run waits inside its deadline, else it is rejected `operator_busy`. A run
+   already started completes.
+4. **Macros, and one accepted gap.** Macros are bounded by their grammar only;
+   the write gate is the defence at write time. With `CANOPY_CONFIRM_WRITES`
+   off, a write widget on a screen the agent opened (with any macros, or one
+   of its drafts) sends without showing its PV, so an operator who presses it
+   actuates a target the agent chose. This is accepted. The `canopy-operator`
+   skill tells the agent to name the screen and its macros to the operator.
+   Set `CANOPY_CONFIRM_WRITES=1` to have every write confirmed.
+5. **Attribution and undo.** The element a command touched highlights.
+   Destructive commands push their tabs onto the one closed-tabs stack and
+   raise the closed-tabs toast; one toast at a time, the newest wins. Undo
+   restores the agent-closed tabs at their old place while later operator
+   changes stand. "Reopen closed tab" lists recent closed groups labelled
+   agent or you, Cmd+Shift+T reopens the newest, and the agent can
+   `reopen` a group by its id.
+6. **The operator wins races.** A `base` whose window is not the active one
+   refuses the batch `stale_state`; an operator change between two commands
+   fails the next command `stale_state`.
+
+The mechanics (routes, timings, normalisation) are specified in the
+docstrings of `canopy_mcp.workspace` and `canopy_mcp.workspace_routes`; how an
+agent should use the tools is in the `canopy-operator` skill.
+
+### Developer recipe
+
+A local server, a browser window and a bare Claude Code session, with no
+backend and two screens of the fixture library. From a canopy checkout, with
+the viewer built (`pnpm build` in the viewer's package gives its `dist/`):
+
+```sh
+uv sync --extra mcp
+CANOPY_WORKSPACE=1 \
+CANOPY_PV_MODE=mock \
+CANOPY_VIEWER_DIST=/path/to/viewer/dist \
+CANOPY_LIBRARY_DIR=tests/canopy_mcp/fixtures/collections/library \
+CANOPY_DRAFTS_DIR="$(mktemp -d)" \
+uv run python -m canopy_mcp --http --host 127.0.0.1 --port 8765
+```
+
+Open `http://127.0.0.1:8765/embed/` in a browser and focus it; that window
+claims the slot. Then, in the project you will run Claude Code in:
+
+```sh
+claude mcp add --transport http canopy http://127.0.0.1:8765/mcp
+uv run --project /path/to/canopy python -m canopy_mcp.skill install .
+claude
+```
+
+Ask the agent to open `library/gtb/GTLView` and `library/bts/BTSView` side by
+side and fit both, then to open Trace on three PVs over the last hour. Each
+batch should come back `done` and each touched element highlights in the
+browser. Ask it to close the BTS screen: the toast offers Undo. Close the
+browser tab and ask again: the batch comes back `refused` with `no_window`.
 
 ## Screenshots
 

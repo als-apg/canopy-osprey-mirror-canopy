@@ -6,8 +6,12 @@ keeps ``import canopy_mcp.server`` cheap and free of side effects.
 
 ``mcp`` is one instance per process, so the set of tools it offers is too.
 :func:`set_authoring` takes the seven :data:`AUTHORING_TOOLS` off it or puts
-them back; the app calls it with ``CANOPY_AUTHORING``, and the last app built
-in a process decides.
+them back; the app calls it with ``CANOPY_AUTHORING``. :func:`set_workspace_tools`
+does the same for the two :data:`WORKSPACE_TOOLS`, which read and change the
+CANOPY workspace (not drafts, so they are not authoring tools); the app calls it
+with ``CANOPY_WORKSPACE``. Every tool registers at import, so the full set is
+known without building an app; the last app built in a process decides which of
+them it offers.
 """
 
 import asyncio
@@ -19,8 +23,9 @@ from fastmcp.tools import Tool
 
 mcp = FastMCP(
     "canopy",
-    instructions="Build Canopy screens by the canopy-panel-builder skill (.claude/skills/canopy-panel-builder/SKILL.md; "
-    "`python -m canopy_mcp.skill install <project dir>` writes it).",
+    instructions="Build Canopy screens by the canopy-panel-builder skill and operate the workspace by the "
+    "canopy-operator skill (.claude/skills/<name>/SKILL.md; `python -m canopy_mcp.skill install <project dir>` "
+    "writes both).",
 )
 
 _TOOLS_PACKAGE = "canopy_mcp.tools"
@@ -37,10 +42,18 @@ AUTHORING_TOOLS = (
     "request_push",
 )
 
+# The tools that read and change the CANOPY workspace through the in-process hub
+# (canopy_mcp.workspace). They neither read nor write drafts.
+WORKSPACE_TOOLS = (
+    "get_workspace",
+    "set_workspace",
+)
+
 # The authoring Tool objects as they were registered, kept from the first
 # removal on: the tool modules are imported once, so nothing else can put a
 # removed tool back.
 _authoring_snapshot: dict[str, Tool] = {}
+_workspace_snapshot: dict[str, Tool] = {}
 
 
 def register_all() -> FastMCP:
@@ -75,22 +88,45 @@ def authoring_snapshot() -> dict[str, Tool]:
     return dict(_authoring_snapshot)
 
 
+def workspace_snapshot() -> dict[str, Tool]:
+    """The workspace tools removed so far, by name (empty until they were first turned off)."""
+    return dict(_workspace_snapshot)
+
+
+def _offer(names: tuple[str, ...], snapshot: dict[str, Tool], enabled: bool) -> None:
+    """Put the tools ``names`` on :data:`mcp` (``True``) or take them off it (``False``).
+
+    Turning them off keeps each Tool object in ``snapshot`` before removing it;
+    turning them on adds back whichever of those is missing. Both are safe to repeat.
+    """
+    if enabled and not snapshot:
+        return  # nothing was ever removed
+    registered = registered_tools()
+    if enabled:
+        for name, tool in snapshot.items():
+            if name not in registered:
+                mcp.add_tool(tool)
+        return
+    for name in names:
+        tool = registered.get(name)
+        if tool is not None:
+            snapshot[name] = tool
+            mcp.local_provider.remove_tool(name)
+
+
 def set_authoring(enabled: bool) -> None:
     """Offer the authoring tools on :data:`mcp` (``True``) or take them off it (``False``).
 
     Turning them off keeps each Tool object before removing it; turning them
     on adds back whichever of those is missing. Both are safe to repeat.
     """
-    if enabled and not _authoring_snapshot:
-        return  # nothing was ever removed
-    registered = registered_tools()
-    if enabled:
-        for name, tool in _authoring_snapshot.items():
-            if name not in registered:
-                mcp.add_tool(tool)
-        return
-    for name in AUTHORING_TOOLS:
-        tool = registered.get(name)
-        if tool is not None:
-            _authoring_snapshot[name] = tool
-            mcp.local_provider.remove_tool(name)
+    _offer(AUTHORING_TOOLS, _authoring_snapshot, enabled)
+
+
+def set_workspace_tools(enabled: bool) -> None:
+    """Offer :data:`WORKSPACE_TOOLS` on :data:`mcp` (``True``) or take them off it (``False``).
+
+    The same rules as :func:`set_authoring`, over its own snapshot, so either
+    switch leaves the other's tools alone.
+    """
+    _offer(WORKSPACE_TOOLS, _workspace_snapshot, enabled)

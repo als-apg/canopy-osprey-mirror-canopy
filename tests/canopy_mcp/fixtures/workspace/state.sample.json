@@ -1,0 +1,88 @@
+{
+  "windowId": "w-A",
+  "seq": 41,
+  "shown": true,
+  "state": {
+    "tabs": [
+      {
+        "key": "library/gtb/GTLView?SR=1",
+        "kind": "screen",
+        "docked": true,
+        "canBack": true,
+        "canForward": false
+      },
+      {
+        "key": "library/bts/BTSView",
+        "kind": "screen",
+        "docked": true,
+        "canBack": false,
+        "canForward": false
+      },
+      {
+        "key": "@trace",
+        "kind": "tool",
+        "docked": true,
+        "canBack": false,
+        "canForward": false
+      },
+      {
+        "key": "library/sr/overview",
+        "kind": "screen",
+        "docked": false,
+        "canBack": false,
+        "canForward": false
+      }
+    ],
+    "active": "library/gtb/GTLView?SR=1",
+    "layout": {
+      "split": "row",
+      "items": [
+        {
+          "key": "library/gtb/GTLView?SR=1",
+          "size": 0.6
+        },
+        {
+          "items": [
+            {
+              "key": "library/bts/BTSView"
+            },
+            {
+              "key": "@trace"
+            }
+          ],
+          "size": 0.4
+        }
+      ],
+      "active": "library/gtb/GTLView?SR=1"
+    },
+    "zoom": {
+      "library/gtb/GTLView": {
+        "mode": "fit"
+      },
+      "library/bts/BTSView": {
+        "mode": "manual",
+        "percent": 75
+      },
+      "library/sr/overview": {
+        "mode": "fit"
+      }
+    },
+    "instances": {
+      "@trace": {
+        "tool": "trace",
+        "n": 1,
+        "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+        "view": null
+      }
+    },
+    "toolMru": [
+      "@trace"
+    ],
+    "labels": {
+      "library/gtb/GTLView?SR=1": "GTL View",
+      "library/bts/BTSView": "BTS View",
+      "@trace": "Data Browser",
+      "library/sr/overview": "Storage Ring"
+    }
+  }
+}

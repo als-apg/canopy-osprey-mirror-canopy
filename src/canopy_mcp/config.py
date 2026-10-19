@@ -25,6 +25,12 @@ served.
 ``config.json``'s ``confirmWrites``: on, every write the viewer makes asks
 for one confirmation per click first.
 
+``CANOPY_WORKSPACE=0|1`` (default 0) serves the workspace hub: the routes under
+``/workspace`` (:mod:`canopy_mcp.workspace_routes`) and the ``workspace`` key of
+``config.json``. Off, neither exists. It presumes one FRONT process serving one
+operator, since the hub lives in that process's memory: a shared FRONT, or one run
+with more than one worker, must never set it.
+
 ``CANOPY_HOST_STYLESHEETS`` (default empty) names the embedding host's
 stylesheets as whitespace-separated relative ``.css`` paths; the served pages
 link each one under the proxy prefix. Every entry must match
@@ -138,6 +144,9 @@ class Settings(BaseSettings):
     # Whether the viewer asks for a confirmation before each write (config.json
     # ``confirmWrites``); off by default.
     confirm_writes: bool = False
+    # Whether the workspace hub is served (the /workspace routes and config.json
+    # ``workspace``); off by default. Never on for a shared or multi-worker FRONT.
+    workspace: bool = False
     # The embedding host's stylesheets, as whitespace-separated relative
     # ``.css`` paths the served pages link under the proxy prefix; empty means
     # none. Read the split form from ``host_stylesheet_paths``.
@@ -175,6 +184,7 @@ class Settings(BaseSettings):
         "write_api_key_file",
         "put_relay_timeout_s",
         "confirm_writes",
+        "workspace",
         mode="before",
     )
     @classmethod

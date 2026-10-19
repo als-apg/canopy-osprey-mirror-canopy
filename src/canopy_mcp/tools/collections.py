@@ -7,11 +7,14 @@ from the same directories (``facility_collections_dir`` and
 
 - a screen member (``library/<id>`` or ``drafts/<id>``) is available when the
   merged library+drafts manifest lists it, and carries ``title`` (the manifest
-  title, else the member's screen reference) and ``url``, the embed URL with the
-  member's macros as query parameters;
+  title, else the member's screen reference), ``url``, the embed URL with the
+  member's macros as query parameters, and ``ref`` (plus ``macros`` when it has
+  any), the arguments the workspace ``open`` command takes;
 - a tool member is available when this host serves the tool
   (:func:`canopy_mcp.static.configured_tools`), and carries ``label`` (its
-  ``name``, else the tool's label) and ``open_url: null``.
+  ``name``, else the tool's label), ``open_url: null``, and ``tool`` (plus
+  ``query`` when it has one), the arguments the workspace ``open_tool`` command
+  takes.
 
 A collection's ``open_url`` is the viewer's embed root with ``_canopyOpen=<ref>``:
 opening it opens every member of the collection once.
@@ -31,6 +34,7 @@ from canopy_mcp.static import configured_tools
 from canopy_mcp.__main__ import DEFAULT_HOST, DEFAULT_PORT
 from canopy_mcp.member_key import InvalidMember, member_key
 from canopy_mcp.collections import CollectionStore, FacilityCollections, all_collections
+from canopy_mcp.tools.drafts import screen_ref
 from canopy_mcp.tools._common import get_store, get_library_store
 
 # What the viewer calls each tool; a tool member without a ``name`` is labelled by it.
@@ -90,17 +94,30 @@ def _screen_member(settings: Settings, member: dict[str, Any], screens: dict[str
     macros = member.get("macros") or {}
     if macros:
         url += "?" + urlencode(macros, quote_via=quote)
-    return {"key": _key(member), "available": ref in screens, "title": screens.get(ref, ref), "url": url}
+    entry = {
+        "key": _key(member),
+        "available": ref in screens,
+        "title": screens.get(ref, ref),
+        "url": url,
+        "ref": screen_ref(category or DRAFTS, local_id),
+    }
+    if macros:
+        entry["macros"] = dict(macros)
+    return entry
 
 
 def _tool_member(member: dict[str, Any], tools: tuple[str, ...]) -> dict[str, Any]:
     tool = member["tool"]
-    return {
+    entry = {
         "key": _key(member),
         "available": tool in tools,
         "label": member.get("name") or TOOL_LABELS.get(tool, tool),
         "open_url": None,
+        "tool": tool,
     }
+    if "query" in member:
+        entry["query"] = member["query"]
+    return entry
 
 
 @mcp.tool
@@ -112,9 +129,12 @@ async def list_collections() -> dict[str, Any]:
     ``personal``), ``name``, ``description``, ``default`` (shown to every user who
     has not unticked it), ``available_count`` and ``open_url`` (the viewer opens
     every member of the collection at once). Each member has ``key`` and
-    ``available`` (whether this host can open it); a screen member adds ``title``
-    and ``url`` (opens that one screen), a tool member (Trace, Correlation,
-    Waveform) adds ``label`` and ``open_url: null``.
+    ``available`` (whether this host can open it); a screen member adds ``title``,
+    ``url`` (opens that one screen) and ``ref`` with ``macros`` when it has any
+    (the workspace ``open`` arguments), a tool member (Trace, Correlation,
+    Waveform) adds ``label``, ``open_url: null`` and ``tool`` with ``query`` when
+    it has one (the workspace ``open_tool`` arguments). A collection's ``ref`` is
+    what the workspace ``open_collection`` command takes.
 
     Answer with collection names and member counts, render ``open_url`` as a link,
     and never quote field names to the operator.

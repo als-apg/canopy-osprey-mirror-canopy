@@ -169,7 +169,14 @@ No tool writes to a PV. `read_pv` and `search_pvs` only read.
    clipped text.
 6. Make small changes with `patch_node`, `add_node` and `remove_node`. Take a
    screenshot after each round of edits.
-7. Give the user the `url` from the result. It opens the screen in the viewer.
+7. Show the user the screen. With a `set_workspace` tool, send
+   `set_workspace` with `[{"cmd": "open", "args": {"ref": <ref>}}]`, the
+   `ref` from the result; the `canopy-operator` skill says how. On
+   `no_window` or `window_hidden`, open the host's Canopy panel without a
+   url and send it again, once; with no host, ask the user to open or focus
+   the Canopy viewer. Without a `set_workspace` tool, or when that did not
+   work, give the user the `url` from the result. It opens the screen in the
+   viewer.
 
 A finding has `nodeId`, `code`, `path` (a JSON pointer into the document),
 `severity` and `message`. A finding inside an embedded screen also has
@@ -271,8 +278,8 @@ viewer. The viewer then draws every PV from a mock service. In mock mode:
   tell the user that they are not verified.
 
 If `screenshot` answers that screenshots are unavailable, the server has no
-browser to render with. Say so, give the user the `url` to open instead, and
-go on with `check`.
+browser to render with. Say so, show the user the screen as step 7 of
+"Build a screen" says, and go on with `check`.
 
 ## Before you commit
 

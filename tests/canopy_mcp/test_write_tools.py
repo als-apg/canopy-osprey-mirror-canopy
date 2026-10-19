@@ -147,6 +147,7 @@ async def test_new_screen_title_is_listed_in_manifest_and_list_drafts(settings, 
             "path": "screens/x/y.screen.json",
             "rev": out["rev"],
             "url": "http://127.0.0.1:8765/embed/drafts/x/y",
+            "ref": "drafts/x/y",
         }
     ]
 

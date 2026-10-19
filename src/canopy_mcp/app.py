@@ -35,6 +35,17 @@ it fails. Building the app calls
 applies ``CANOPY_AUTHORING``: off takes the seven authoring tools off ``mcp``,
 leaving the ten that only read. ``mcp`` is process-wide, so the last app
 built decides which tools every app in the process offers.
+
+``CANOPY_WORKSPACE`` (off by default) adds the workspace hub's routes under
+``/workspace`` (:mod:`canopy_mcp.workspace_routes`), behind the same guard as
+every other route, and offers the two workspace tools ``get_workspace`` and
+``set_workspace`` on ``mcp`` (:func:`~canopy_mcp.server.set_workspace_tools`);
+off, none of the routes exists and neither tool is offered. It is for one FRONT process serving
+one operator and is never set on a shared or multi-worker FRONT. With it on, the
+lifespan closes the hub on the server's exit signal
+(:func:`~canopy_mcp.workspace_routes.exit_watch`); every shutdown then resets the
+process hub (:func:`~canopy_mcp.tools._common.reset_hub`), which wakes whatever is
+still waiting on it.
 """
 
 import logging
@@ -52,7 +63,7 @@ from canopy_mcp.views import ViewStore, build_view_routes
 from canopy_mcp.access import AccessGate, read_secret_file
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, RelayConfigError, get_settings
-from canopy_mcp.server import mcp, register_all, set_authoring
+from canopy_mcp.server import mcp, register_all, set_authoring, set_workspace_tools
 from canopy_mcp.static import build_routes
 from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
@@ -64,6 +75,8 @@ from canopy_mcp.collections import (
     build_collection_routes,
 )
 from canopy.core.color_scheme import get_color_scheme
+from canopy_mcp.tools._common import reset_hub
+from canopy_mcp.workspace_routes import exit_watch, build_workspace_routes
 
 MCP_PATH = "/mcp"
 PROXY_HEADERS = (b"x-forwarded-prefix", b"x-osprey-terminal-secret")
@@ -151,6 +164,7 @@ def create_app(
         guard = Middleware(McpProxyGuard)
     register_all()
     set_authoring(settings.authoring)
+    set_workspace_tools(settings.workspace)
     store, library = open_stores(settings.drafts_dir, settings.library_dir)
     views = ViewStore(settings.drafts_dir, views_dir=settings.views_dir)
     facility = (
@@ -169,7 +183,12 @@ def create_app(
             app.state.http = client
             for hook in list(hooks):
                 await stack.enter_async_context(hook(app))
-            yield
+            if settings.workspace:
+                await stack.enter_async_context(exit_watch())
+            try:
+                yield
+            finally:
+                reset_hub()
 
     app = Starlette(
         routes=[
@@ -178,6 +197,7 @@ def create_app(
             *build_routes(settings, store, library),
             *build_view_routes(views),
             *build_collection_routes(collections, facility),
+            *(build_workspace_routes() if settings.workspace else []),
         ],
         # FastMCP's own middleware (request context, host/origin guard) must
         # wrap its routes here too, since only the routes were lifted.

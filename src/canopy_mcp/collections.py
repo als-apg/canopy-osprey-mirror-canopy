@@ -186,7 +186,7 @@ import logging
 from typing import Any, Literal
 from pathlib import Path
 from datetime import UTC, datetime
-from collections.abc import Mapping
+from collections.abc import Mapping, Iterable
 
 from starlette.routing import Route
 from starlette.requests import Request
@@ -252,6 +252,7 @@ __all__ = [
     "build_collection_routes",
     "empty_state",
     "library_screens",
+    "shown_refs",
     "validate_collection",
     "validate_collection_id",
     "validate_ref",
@@ -1011,6 +1012,24 @@ def all_collections(facility: FacilityCollections | None, personal: CollectionSt
         if reader is not None:
             out.extend(reader.list())
     return out
+
+
+def shown_refs(collections: Iterable[Mapping[str, Any]], state: Mapping[str, Any]) -> list[str]:
+    """The sidebar's shown selection: (defaults union ticked) minus unticked, in list order.
+
+    ``collections`` is what :func:`all_collections` returns (or any ``[{ref, default?}]``
+    in list order); ``state`` is a collections state, of which only ``ticked`` and
+    ``unticked`` are read. Only ``default: true`` counts as a default, unticked wins over
+    ticked, and a ticked ref that is not listed adds nothing. This is the selection the
+    viewer's ``shownSelection`` computes; both replay ``collections-shown.json``.
+    """
+    ticked = set(state.get("ticked") or ())
+    unticked = set(state.get("unticked") or ())
+    return [
+        doc["ref"]
+        for doc in collections
+        if doc["ref"] not in unticked and (doc.get("default") is True or doc["ref"] in ticked)
+    ]
 
 
 # --- HTTP ----------------------------------------------------------------------

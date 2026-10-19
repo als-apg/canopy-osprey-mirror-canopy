@@ -1,0 +1,277 @@
+{
+  "about": [
+    "Route vectors for GET <ws>/events?window=<windowId> (the SSE stream: hello, batch, inactive, a ping every 15 s).",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Route vectors for the workspace's HTTP surface on FRONT. path is relative to the advertised workspace path (config.json workspace.path); there is no route that accepts commands.",
+    "Each case: setup steps (the scenarios' step grammar, on a fresh hub with epoch e1 and the clock at 0), one request {method, path, headers?, body?, padTo?}, expect {status, body?, events?}, then optional follow-up steps.",
+    "A body {'$file': <name>} is that fixture file's body (state.sample.json, state.oversize.json, state.reduced.json); state '$sample' / '$empty' as in the scenarios. padTo: once those are resolved, the body's compact JSON followed by spaces up to that many bytes.",
+    "A claim or report body is {windowId, seq, shown, state, truncated?}; truncated is true when the window reduced an oversize state. An error body is {error: <code>, detail?}; expect names the code only.",
+    "Every workspace route, the event stream included, refuses a Sec-Fetch-Site that is present and neither same-origin nor none with 403 cross_site, before it reads the body or the hub.",
+    "Bodies are at most 131072 bytes (413 too_large); a state that breaks the hub's normalisation is 422 invalid_state.",
+    "events: the events the stream delivers at once, pings left out."
+  ],
+  "route": "events",
+  "cases": [
+    {
+      "name": "the active window gets hello",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "events?window=w-A"
+      },
+      "expect": {
+        "status": 200,
+        "events": [
+          {
+            "event": "hello",
+            "data": {
+              "epoch": "e1",
+              "activeWindow": "w-A",
+              "seq": 41
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a window that does not hold the slot gets 204",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "events?window=w-B"
+      },
+      "expect": {
+        "status": 204
+      }
+    },
+    {
+      "name": "no window holds the slot",
+      "setup": [],
+      "request": {
+        "method": "GET",
+        "path": "events?window=w-A"
+      },
+      "expect": {
+        "status": 204
+      }
+    },
+    {
+      "name": "a second stream replaces the first without window_gone",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "receive",
+          "expect": {
+            "events": [
+              {
+                "event": "batch",
+                "data": {
+                  "batch": "b-e1-1",
+                  "window": "w-A",
+                  "commands": [
+                    {
+                      "id": "c-e1-1",
+                      "cmd": "focus",
+                      "args": {
+                        "key": "library/gtb/GTLView?SR=1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "events?window=w-A"
+      },
+      "expect": {
+        "status": 200,
+        "events": [
+          {
+            "event": "hello",
+            "data": {
+              "epoch": "e1",
+              "activeWindow": "w-A",
+              "seq": 41
+            }
+          }
+        ]
+      },
+      "then": [
+        {
+          "actor": "clock",
+          "do": "advance",
+          "ms": 5000
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/gtb/GTLView?SR=1"
+              }
+            }
+          ],
+          "batch_id": "b-e1-1",
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a cross-site stream",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "events?window=w-A",
+        "headers": {
+          "Sec-Fetch-Site": "cross-site"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "cross_site"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "connected": false
+          }
+        }
+      ]
+    }
+  ]
+}

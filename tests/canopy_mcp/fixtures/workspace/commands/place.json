@@ -1,0 +1,49 @@
+{
+  "about": [
+    "Command vectors for place.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "place",
+  "args": {
+    "key": "string, required",
+    "edge": "left | right (default) | above | below",
+    "beside": "string, optional (a docked key; default the active tile)"
+  },
+  "extras": [],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "place docks a tab right of the active tile by default",
+      "command": {
+        "cmd": "place",
+        "args": {
+          "key": "library/sr/overview"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true
+      }
+    },
+    {
+      "name": "place docks a tab on an edge of a named tile",
+      "command": {
+        "cmd": "place",
+        "args": {
+          "key": "library/sr/overview",
+          "edge": "below",
+          "beside": "@trace"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true
+      }
+    }
+  ]
+}

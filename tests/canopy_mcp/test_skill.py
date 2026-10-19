@@ -1,9 +1,11 @@
-"""The ``canopy-panel-builder`` skill: one source file, shipped with the package and installed byte for byte.
+"""The Canopy skills: one source file each, shipped with the package and installed byte for byte.
 
-``src/canopy_mcp/skill/SKILL.md`` is the only source. Deployments hold copies
-that are compared with it by bytes, so the file is read and written as bytes
-everywhere, and its whitespace is asserted here: the repository's whitespace
-hooks cover ``.py`` and ``.txt`` only.
+``canopy_mcp.skill.SKILLS`` names them and their sources under
+``src/canopy_mcp/skill/``. Deployments hold copies that are compared with them
+by bytes, so the files are read and written as bytes everywhere, and their
+whitespace is asserted here: the repository's whitespace hooks cover ``.py`` and
+``.txt`` only. The names and source paths are a contract: hosts iterate
+``SKILLS`` to check their copies.
 """
 
 from __future__ import annotations
@@ -27,8 +29,14 @@ from canopy_mcp.check.semantic import iter_nodes, check_semantic
 from tests.canopy_mcp.synthetic_spec import write_spec
 
 REPO = Path(__file__).resolve().parents[2]
-SOURCE = REPO / "src" / "canopy_mcp" / "skill" / "SKILL.md"
+PACKAGE = REPO / "src" / "canopy_mcp" / "skill"
+SOURCE = PACKAGE / "SKILL.md"
 INSTALLED = Path(".claude") / "skills" / "canopy-panel-builder" / "SKILL.md"
+
+# Every skill: its source file in the repository and where it lands in a project.
+SOURCES = {"canopy-panel-builder": SOURCE, "canopy-operator": PACKAGE / "operator" / "SKILL.md"}
+INSTALLED_AS = {name: Path(".claude") / "skills" / name / "SKILL.md" for name in SOURCES}
+NAMES = list(SOURCES)
 
 SOURCE_BYTES = SOURCE.read_bytes()
 TEXT = SOURCE_BYTES.decode("utf-8")
@@ -42,47 +50,78 @@ async def _tool_names() -> set[str]:
 # --- one source, the same bytes everywhere -------------------------------------------------
 
 
-def test_the_package_serves_the_bytes_of_the_source_file() -> None:
-    assert (files("canopy_mcp.skill") / "SKILL.md").read_bytes() == SOURCE_BYTES
-    assert skill.skill_bytes() == SOURCE_BYTES
+def test_the_registry_names_every_skill_and_its_source() -> None:
+    assert skill.SKILLS == {"canopy-panel-builder": "SKILL.md", "canopy-operator": "operator/SKILL.md"}
+    for name, relative in skill.SKILLS.items():
+        assert PACKAGE / relative == SOURCES[name]
 
 
-def test_the_skill_is_named_after_the_directory_it_installs_into() -> None:
+def test_the_builder_keeps_its_names_for_other_hosts() -> None:
     assert skill.SKILL_NAME == "canopy-panel-builder"
+    assert skill.SKILL_FILE == "SKILL.md"
+    assert skill.SKILLS[skill.SKILL_NAME] == skill.SKILL_FILE
+    assert skill.skill_bytes() == skill.skill_bytes(skill.SKILL_NAME) == SOURCE_BYTES
     assert skill.skill_path(Path("project")) == Path("project") / INSTALLED
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_the_package_serves_the_bytes_of_the_source_file(name: str) -> None:
+    source = SOURCES[name].read_bytes()
+    assert files("canopy_mcp.skill").joinpath(*skill.SKILLS[name].split("/")).read_bytes() == source
+    assert skill.skill_bytes(name) == source
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_the_skill_is_named_after_the_directory_it_installs_into(name: str) -> None:
+    assert skill.skill_path(Path("project"), name) == Path("project") / INSTALLED_AS[name]
+
+
+def test_an_unknown_skill_name_is_refused() -> None:
+    with pytest.raises(KeyError, match="canopy-operator"):
+        skill.skill_bytes("canopy-nothing")
+    with pytest.raises(KeyError, match="canopy-panel-builder"):
+        skill.skill_path(Path("project"), "canopy-nothing")
+
+
+def test_install_returns_every_installed_path_in_registry_order(tmp_path: Path) -> None:
+    assert skill.install(tmp_path) == [tmp_path / INSTALLED_AS[name] for name in skill.SKILLS]
 
 
 def test_install_writes_the_same_bytes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["install", str(tmp_path)]) == 0
 
-    target = tmp_path / INSTALLED
-    assert target.read_bytes() == SOURCE_BYTES
-    assert capsys.readouterr().out.strip() == str(target)
-    # Nothing but the skill: no temporary file is left beside it.
-    assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
+    targets = [tmp_path / INSTALLED_AS[name] for name in NAMES]
+    assert capsys.readouterr().out.splitlines() == [str(target) for target in targets]
+    for name, target in zip(NAMES, targets, strict=True):
+        assert target.read_bytes() == SOURCES[name].read_bytes()
+        # Nothing but the skill: no temporary file is left beside it.
+        assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
+    assert sorted(path.name for path in (tmp_path / ".claude" / "skills").iterdir()) == sorted(NAMES)
 
 
 def test_install_is_idempotent(tmp_path: Path) -> None:
     assert cli.main(["install", str(tmp_path)]) == 0
-    target = tmp_path / INSTALLED
-    first = target.stat()
+    targets = {name: tmp_path / INSTALLED_AS[name] for name in NAMES}
+    first = {name: target.stat() for name, target in targets.items()}
 
     assert cli.main(["install", str(tmp_path)]) == 0
 
-    assert target.read_bytes() == SOURCE_BYTES
-    # An up-to-date copy is left alone, not rewritten.
-    assert (target.stat().st_ino, target.stat().st_mtime_ns) == (first.st_ino, first.st_mtime_ns)
-    assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
+    for name, target in targets.items():
+        assert target.read_bytes() == SOURCES[name].read_bytes()
+        # An up-to-date copy is left alone, not rewritten.
+        assert (target.stat().st_ino, target.stat().st_mtime_ns) == (first[name].st_ino, first[name].st_mtime_ns)
+        assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
 
 
-def test_install_replaces_a_copy_that_differs(tmp_path: Path) -> None:
-    target = tmp_path / INSTALLED
+@pytest.mark.parametrize("name", NAMES)
+def test_install_replaces_a_copy_that_differs(tmp_path: Path, name: str) -> None:
+    target = tmp_path / INSTALLED_AS[name]
     target.parent.mkdir(parents=True)
     target.write_bytes(b"an older skill\n")
 
     assert cli.main(["install", str(tmp_path)]) == 0
 
-    assert target.read_bytes() == SOURCE_BYTES
+    assert target.read_bytes() == SOURCES[name].read_bytes()
     assert [path.name for path in target.parent.iterdir()] == ["SKILL.md"]
 
 
@@ -94,7 +133,8 @@ def test_install_keeps_what_else_the_project_holds(tmp_path: Path) -> None:
     assert cli.main(["install", str(tmp_path)]) == 0
 
     assert other.read_bytes() == b"mine\n"
-    assert (tmp_path / INSTALLED).read_bytes() == SOURCE_BYTES
+    for name in NAMES:
+        assert (tmp_path / INSTALLED_AS[name]).read_bytes() == SOURCES[name].read_bytes()
 
 
 def test_install_creates_a_project_directory_that_does_not_exist_yet(tmp_path: Path) -> None:
@@ -102,7 +142,8 @@ def test_install_creates_a_project_directory_that_does_not_exist_yet(tmp_path: P
 
     assert cli.main(["install", str(project)]) == 0
 
-    assert (project / INSTALLED).read_bytes() == SOURCE_BYTES
+    for name in NAMES:
+        assert (project / INSTALLED_AS[name]).read_bytes() == SOURCES[name].read_bytes()
 
 
 def test_install_refuses_a_target_that_is_not_a_directory(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -135,7 +176,8 @@ def test_install_runs_isolated_and_needs_no_server_dependency(tmp_path: Path) ->
         check=False,
     )
     assert done.returncode == 0, done.stderr
-    assert (tmp_path / INSTALLED).read_bytes() == SOURCE_BYTES
+    for name in NAMES:
+        assert (tmp_path / INSTALLED_AS[name]).read_bytes() == SOURCES[name].read_bytes()
 
     heavy = subprocess.run(
         [
@@ -156,27 +198,34 @@ def test_install_runs_isolated_and_needs_no_server_dependency(tmp_path: Path) ->
 # --- the file itself ----------------------------------------------------------------------
 
 
-def test_the_skill_has_no_trailing_whitespace_and_ends_in_exactly_one_newline() -> None:
-    assert b"\r" not in SOURCE_BYTES
-    assert b"\t" not in SOURCE_BYTES
-    assert SOURCE_BYTES.endswith(b"\n")
-    assert not SOURCE_BYTES.endswith(b"\n\n")
-    assert not SOURCE_BYTES.startswith((b"\n", b"\xef\xbb\xbf"))
-    trailing = [number for number, line in enumerate(TEXT.split("\n"), start=1) if line != line.rstrip()]
+@pytest.mark.parametrize("name", NAMES)
+def test_the_skill_has_no_trailing_whitespace_and_ends_in_exactly_one_newline(name: str) -> None:
+    data = SOURCES[name].read_bytes()
+    assert b"\r" not in data
+    assert b"\t" not in data
+    assert data.endswith(b"\n")
+    assert not data.endswith(b"\n\n")
+    assert not data.startswith((b"\n", b"\xef\xbb\xbf"))
+    text = data.decode("utf-8")
+    trailing = [number for number, line in enumerate(text.split("\n"), start=1) if line != line.rstrip()]
     assert trailing == []
 
 
-def test_the_skill_is_ascii() -> None:
+@pytest.mark.parametrize("name", NAMES)
+def test_the_skill_is_ascii(name: str) -> None:
     """Copies are compared by bytes, so no character may have two encodings or an invisible twin."""
-    assert [char for char in TEXT if ord(char) > 126 or (ord(char) < 32 and char != "\n")] == []
+    text = SOURCES[name].read_bytes().decode("utf-8")
+    assert [char for char in text if ord(char) > 126 or (ord(char) < 32 and char != "\n")] == []
 
 
-def test_the_frontmatter_names_the_skill() -> None:
-    match = re.match(r"---\n(.*?)\n---\n", TEXT, flags=re.DOTALL)
+@pytest.mark.parametrize("name", NAMES)
+def test_the_frontmatter_names_the_skill(name: str) -> None:
+    text = SOURCES[name].read_bytes().decode("utf-8")
+    match = re.match(r"---\n(.*?)\n---\n", text, flags=re.DOTALL)
     assert match is not None
     fields = dict(line.split(": ", 1) for line in match.group(1).split("\n"))
     assert set(fields) == {"name", "description"}
-    assert fields["name"] == skill.SKILL_NAME
+    assert fields["name"] == name
     assert 40 <= len(fields["description"]) <= 1024
 
 
@@ -279,10 +328,11 @@ def test_the_skill_is_generic() -> None:
 # --- the pointer on the server ------------------------------------------------------------
 
 
-def test_the_server_instructions_point_at_the_skill_in_one_line() -> None:
+def test_the_server_instructions_point_at_the_skills_in_one_line() -> None:
     assert isinstance(mcp.instructions, str)
     assert "\n" not in mcp.instructions
-    assert skill.SKILL_NAME in mcp.instructions
+    for name in skill.SKILLS:
+        assert name in mcp.instructions
     assert "python -m canopy_mcp.skill install" in mcp.instructions
 
 
@@ -295,7 +345,15 @@ def test_the_wheel_target_ships_the_package_directory_with_its_markdown() -> Non
     wheel = hatch["targets"]["wheel"]
     assert "src/canopy_mcp" in wheel["packages"]
 
-    shipped = ["src/canopy_mcp/skill/SKILL.md", "canopy_mcp/skill/SKILL.md", "skill/SKILL.md", "SKILL.md", "x.md"]
+    shipped = [
+        *(str(path.relative_to(REPO)) for path in SOURCES.values()),
+        "canopy_mcp/skill/SKILL.md",
+        "canopy_mcp/skill/operator/SKILL.md",
+        "skill/SKILL.md",
+        "operator/SKILL.md",
+        "SKILL.md",
+        "x.md",
+    ]
     excludes = [*hatch.get("exclude", []), *wheel.get("exclude", [])]
     hits = [
         pattern
@@ -308,10 +366,11 @@ def test_the_wheel_target_ships_the_package_directory_with_its_markdown() -> Non
     assert "only-include" not in hatch and "include" not in hatch
 
 
-def test_the_source_file_is_not_ignored_by_git() -> None:
+@pytest.mark.parametrize("name", NAMES)
+def test_the_source_file_is_not_ignored_by_git(name: str) -> None:
     """hatchling leaves out what git ignores, so an ignore rule would empty the wheel of the skill."""
     done = subprocess.run(
-        ["git", "check-ignore", "-q", str(SOURCE.relative_to(REPO))],
+        ["git", "check-ignore", "-q", str(SOURCES[name].relative_to(REPO))],
         cwd=REPO,
         capture_output=True,
         check=False,

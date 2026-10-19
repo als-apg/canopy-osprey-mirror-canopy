@@ -17,8 +17,13 @@ Every write is gated twice:
 Refusals are returned, not raised: ``{draftId, refused: true, reason,
 message, ...}`` with ``reason`` one of ``check_errors``, ``stale_rev``,
 ``exists`` or ``read_only_store``. Bad arguments (invalid id, unknown node,
-missing draft) raise :class:`ToolError`. Successful writes return ``{draftId, rev, url, errors,
-warnings}``.
+missing draft) raise :class:`ToolError`. Successful writes return ``{draftId, rev, url, ref,
+errors, warnings}``.
+
+Beside each ``url``, the tools that name a screen return its ``ref``
+(``drafts/<id>`` or ``library/<id>``): the reference the workspace ``open``
+command takes. :func:`screen_ref` is the one place that formats it, so every
+tool (and ``list_collections``) gives the same screen the same ref.
 
 With a library configured (``CANOPY_LIBRARY_DIR``) the id ``library/<id>`` names
 a screen of the read-only library: ``get_screen`` reads it, ``list_drafts``
@@ -36,7 +41,7 @@ from collections.abc import Callable, Iterable, Iterator
 
 from fastmcp.exceptions import ToolError
 
-from canopy_mcp.urls import draft_url
+from canopy_mcp.urls import split_id, draft_url
 from canopy_mcp.store import DraftStore, RevConflict, DraftNotFound, ReadOnlyStore
 from canopy_mcp.config import Settings, get_settings
 from canopy_mcp.server import mcp
@@ -56,10 +61,20 @@ from canopy_mcp.check.findings import Finding
 PATCHABLE_KEYS = frozenset({"props", "geometry", "rules", "warnings"})
 
 # The store cache lives in ``tools._common`` beside ``route``; these names stay importable from here.
-__all__ = ["get_library_store", "get_store", "reset_stores"]
+__all__ = ["draft_ref", "get_library_store", "get_store", "reset_stores", "screen_ref"]
 
 
 # --- helpers ------------------------------------------------------------------------
+
+
+def screen_ref(category: str, local_id: str) -> str:
+    """The workspace ref of screen ``local_id`` in manifest ``category``: ``<category>/<local id>``."""
+    return f"{category}/{local_id}"
+
+
+def draft_ref(settings: Settings, draft_id: str) -> str:
+    """The workspace ref of the screen a tool knows as ``draft_id`` (a bare draft id gains ``drafts/``)."""
+    return screen_ref(*split_id(settings, draft_id))
 
 
 def _read(store: DraftStore, draft_id: str, name: str | None = None) -> tuple[dict[str, Any], str]:
@@ -138,6 +153,7 @@ async def _gated_write(
         "draftId": draft_id,
         "rev": rev,
         "url": draft_url(settings, draft_id),
+        "ref": draft_ref(settings, draft_id),
         "errors": _dicts(preexisting),
         "warnings": _dicts(f for f in new_result.findings if f.severity == "warning"),
     }
@@ -242,8 +258,9 @@ async def new_screen(
     ``check``); the refusal lists each error with ``nodeId`` and ``path``.
     Replacing an existing draft needs ``overwrite=true`` and the draft's
     current ``base_rev``; then only errors not already in the stored draft
-    refuse. Returns ``{draftId, rev, url, errors, warnings}``: open ``url`` to
-    see the screen, and pass ``rev`` as ``base_rev`` to the next edit.
+    refuse. Returns ``{draftId, rev, url, ref, errors, warnings}``: open ``url``
+    to see the screen (or pass ``ref`` to the workspace ``open`` command), and
+    pass ``rev`` as ``base_rev`` to the next edit.
     """
     settings = get_settings()
     store, _ = route(id, settings)
@@ -278,14 +295,16 @@ async def new_screen(
 
 @mcp.tool
 async def get_screen(id: str) -> dict[str, Any]:
-    """Return draft ``id`` as ``{draftId, rev, url, screen}``; ``rev`` is the ``base_rev`` for edits.
+    """Return draft ``id`` as ``{draftId, rev, url, ref, screen}``; ``rev`` is the ``base_rev`` for edits.
+
+    ``ref`` is the reference the workspace ``open`` command takes for this screen.
 
     ``library/<id>`` reads a screen of the shared library, which no tool can change.
     """
     settings = get_settings()
     store, local_id = route(id, settings)
     doc, rev = _read(store, local_id, id)
-    return {"draftId": id, "rev": rev, "url": draft_url(settings, id), "screen": doc}
+    return {"draftId": id, "rev": rev, "url": draft_url(settings, id), "ref": draft_ref(settings, id), "screen": doc}
 
 
 @mcp.tool
@@ -375,7 +394,10 @@ async def delete_draft(id: str, base_rev: str) -> dict[str, Any]:
 
 @mcp.tool
 async def list_drafts() -> dict[str, Any]:
-    """List every draft as ``{draftId, title, path, rev, url}``.
+    """List every draft as ``{draftId, title, path, rev, url, ref}``.
+
+    ``ref`` (``drafts/<id>`` or ``library/<id>``) is what the workspace ``open``
+    command takes; ``draftId`` is what the other draft tools take.
 
     Screens of the shared library follow the drafts, with ``draftId``
     ``library/<id>``; they can be read, checked and screenshotted, not changed.
@@ -392,6 +414,7 @@ async def list_drafts() -> dict[str, Any]:
             "path": entry["path"],
             "rev": entry["rev"],
             "url": draft_url(settings, tool_id),
+            "ref": draft_ref(settings, tool_id),
         }
         for tool_id, entry in listed
     ]
