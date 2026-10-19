@@ -1,6 +1,6 @@
 {
   "contract": "WC6",
-  "about": "CANOPY write outcomes, one entry per WC6 row id. `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (rows 6-9: OSPREY's message, row 11: the observed value; a detail longer than `detail_max_chars` is cut at the last whitespace before that limit with … appended, so it never ends inside a word). `detail_cut_cases` are the cases that define that cut: `text` cut to `limit` characters is `expected`, a character being one Unicode code point. `default` is the detail used when a dynamic row has no message. `status`/`code` null: no response or no envelope. 16-coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
+  "about": "CANOPY write outcomes, one entry per WC6 row id. `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (rows 6-9: OSPREY's message, row 11: the observed value, row 16a: the frame's `label`; a detail longer than `detail_max_chars` is cut at the last whitespace before that limit with … appended, so it never ends inside a word). `detail_cut_cases` are the cases that define that cut: `text` cut to `limit` characters is `expected`, a character being one Unicode code point. `default` is the detail used when a dynamic row has no message (16a: a null label). Rows 1-off-disabled, 1-off-origin, 3a and 6-readonly-run carry the 403 text of their cause in the writes cause table (`heartbeat_vectors.json` `writes_cases`) verbatim; 6-readonly-run is row 6 when the whole deployment runs read-only. `status`/`code` null: no response or no envelope. 16-coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
   "detail_max_chars": 512,
   "detail_cut_cases": [
     {
@@ -80,10 +80,10 @@
         "decision": "refused",
         "reason": "writes_disabled"
       },
-      "detail": "writes are off here",
-      "toast": "writes are off here",
+      "detail": "writes from screens are not enabled in this deployment; nothing written",
+      "toast": "writes from screens are not enabled in this deployment; nothing written",
       "dynamic": false,
-      "default": "writes are off here"
+      "default": "writes from screens are not enabled in this deployment; nothing written"
     },
     "1-off-origin": {
       "source": "adapter",
@@ -94,10 +94,10 @@
         "decision": "refused",
         "reason": "own_origin_missing"
       },
-      "detail": "writes are off here until agent pages have their own origin",
-      "toast": "writes are off here until agent pages have their own origin",
+      "detail": "screens stay read-only until agent pages have their own origin; nothing written",
+      "toast": "screens stay read-only until agent pages have their own origin; nothing written",
       "dynamic": false,
-      "default": "writes are off here until agent pages have their own origin"
+      "default": "screens stay read-only until agent pages have their own origin; nothing written"
     },
     "2": {
       "source": "adapter",
@@ -136,10 +136,10 @@
         "decision": "refused",
         "reason": "posture_changed"
       },
-      "detail": "the write state of this target changed; the panel is reconnecting - retry",
-      "toast": "the write state of this target changed; the panel is reconnecting - retry",
+      "detail": "the write state of this target changed; nothing written",
+      "toast": "the write state of this target changed; nothing written",
       "dynamic": false,
-      "default": "the write state of this target changed; the panel is reconnecting - retry"
+      "default": "the write state of this target changed; nothing written"
     },
     "4": {
       "source": "session",
@@ -238,6 +238,20 @@
       "toast": "<error_message>",
       "dynamic": true,
       "default": "the write was refused; nothing written"
+    },
+    "6-readonly-run": {
+      "source": "connector",
+      "outcome": "refused",
+      "status": 403,
+      "code": "pv_write_refused",
+      "audit": {
+        "decision": "refused",
+        "reason": "channel_write_blocked"
+      },
+      "detail": "the whole deployment is running read-only; nothing written",
+      "toast": "the whole deployment is running read-only; nothing written",
+      "dynamic": false,
+      "default": "the whole deployment is running read-only; nothing written"
     },
     "7": {
       "source": "connector",
@@ -444,10 +458,24 @@
         "decision": null,
         "reason": null
       },
-      "detail": "the control target changed; nothing written",
-      "toast": "the control target changed; nothing written",
+      "detail": "the control target or its write state changed; nothing written",
+      "toast": "the control target or its write state changed; nothing written",
       "dynamic": false,
-      "default": "the control target changed; nothing written"
+      "default": "the control target or its write state changed; nothing written"
+    },
+    "16a": {
+      "source": "client",
+      "outcome": "target_changed",
+      "status": null,
+      "code": null,
+      "audit": {
+        "decision": null,
+        "reason": null
+      },
+      "detail": "the write state of <label> changed; nothing written",
+      "toast": "the write state of <label> changed; nothing written",
+      "dynamic": true,
+      "default": "the write state of this target changed; nothing written"
     },
     "16-coalesced": {
       "source": "client",

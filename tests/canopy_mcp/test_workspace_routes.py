@@ -15,15 +15,19 @@ from typing import Any
 from pathlib import Path
 
 import pytest
-from starlette.testclient import TestClient
 from sse_starlette.sse import AppStatus
+from starlette.testclient import TestClient
 
 import canopy_mcp.tools._common as common
 from canopy_mcp.app import create_app
 from canopy_mcp.config import Settings
 from canopy_mcp.static import WORKSPACE_PATH, viewer_config
 from canopy_mcp.workspace import Hub
-from canopy_mcp.workspace_routes import MAX_BODY_BYTES, exit_watch, build_workspace_routes
+from canopy_mcp.workspace_routes import (
+    MAX_BODY_BYTES,
+    exit_watch,
+    build_workspace_routes,
+)
 
 from .test_workspace_hub import ROUTES, Replay, _load, _state, matches
 

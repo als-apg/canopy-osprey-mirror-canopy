@@ -186,7 +186,7 @@ import logging
 from typing import Any, Literal
 from pathlib import Path
 from datetime import UTC, datetime
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping, Iterable
 
 from starlette.routing import Route
 from starlette.requests import Request

@@ -8,19 +8,25 @@ is ``<category>/<local id>`` for ``open``, a collection ref ``<source>:<id>`` fo
 
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
+import json
 from typing import Any
+from pathlib import Path
 
 import pytest
 
-from canopy_mcp.config import Settings
-from canopy_mcp.catalog import set_catalog, build_catalog
 from canopy_mcp.tools import drafts
 from canopy_mcp.tools import collections as collections_tool
+from canopy_mcp.config import Settings
+from canopy_mcp.catalog import set_catalog, build_catalog
+from canopy_mcp.tools.drafts import (
+    draft_ref,
+    get_screen,
+    new_screen,
+    screen_ref,
+    list_drafts,
+)
 from canopy_mcp.tools._common import reset_stores
-from canopy_mcp.tools.drafts import draft_ref, get_screen, new_screen, list_drafts, screen_ref
 from tests.canopy_mcp.synthetic_spec import write_spec
 
 FIXTURES = Path(__file__).parent / "fixtures"

@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from canopy.core import errors
-from canopy.contracts import WC6_VECTORS_FILE, load_wc6_vectors
+from canopy.contracts import WC6_VECTORS_FILE, load_wc6_vectors, load_heartbeat_vectors
 from canopy.hare.config import HareConfig
 from canopy.hare.schemas.pv import PVWriteDTO, PVWriteOrigin
 from canopy.hare.services.broker import PVBroker
@@ -37,6 +37,7 @@ ROW_IDS = {
     "5b",
     "5c",
     "6",
+    "6-readonly-run",
     "7",
     "8",
     "9",
@@ -52,6 +53,7 @@ ROW_IDS = {
     "14b-413",
     "15",
     "16",
+    "16a",
     "16-coalesced",
 }
 
@@ -73,6 +75,15 @@ WRITE_CLASSES = {
 GENERIC_REFUSAL = "the write was refused; nothing written"
 UNKNOWN_TEXT = "outcome unknown — check the readback"
 FRONT_TEXT = "the panel server refused this write; nothing written"
+TARGET_CHANGED_TEXT = "the control target changed; nothing written"
+ROW_16_TEXT = "the control target or its write state changed; nothing written"
+ROW_16A_TEXT = "the write state of <label> changed; nothing written"
+WRITE_STATE_CHANGED_TEXT = "the write state of this target changed; nothing written"
+
+# The writes cause table (heartbeat_vectors.json `writes_cases`): the 403 text of
+# each cause, which the WC6 rows that refuse for that cause carry verbatim.
+CAUSE_403 = {row["id"]: row["text_403"] for row in load_heartbeat_vectors()["writes_cases"]["rows"]}
+NULL_LABEL = load_heartbeat_vectors()["writes_cases"]["null_label"]
 
 CUT_CASES = load_wc6_vectors()["detail_cut_cases"]
 
@@ -150,8 +161,8 @@ def test_server_rows_detail_is_the_toast(rows):
         assert row["detail"], row_id
 
 
-def test_only_rows_6_to_9_and_11_are_dynamic(rows):
-    assert {row_id for row_id, row in rows.items() if row["dynamic"]} == {"6", "7", "8", "9", "11"}
+def test_only_rows_6_to_9_11_and_16a_are_dynamic(rows):
+    assert {row_id for row_id, row in rows.items() if row["dynamic"]} == {"6", "7", "8", "9", "11", "16a"}
 
 
 def test_dynamic_rows_carry_a_placeholder_and_a_default(rows):
@@ -160,6 +171,8 @@ def test_dynamic_rows_carry_a_placeholder_and_a_default(rows):
         assert rows[row_id]["default"] == GENERIC_REFUSAL
     assert rows["11"]["detail"] == "written; the channel holds <observed>"
     assert rows["11"]["default"].startswith("written; the channel holds ")
+    assert rows["16a"]["detail"] == ROW_16A_TEXT
+    assert rows["16a"]["default"] == ROW_16A_TEXT.replace("<label>", NULL_LABEL)
 
 
 def test_static_rows_default_is_their_detail(rows):
@@ -171,7 +184,15 @@ def test_static_rows_default_is_their_detail(rows):
 @pytest.mark.parametrize(
     ("row_id", "status", "code", "outcome", "decision", "reason", "text"),
     [
-        ("1-off-disabled", 403, "pv_write_refused", "refused", "refused", "writes_disabled", "writes are off here"),
+        (
+            "1-off-disabled",
+            403,
+            "pv_write_refused",
+            "refused",
+            "refused",
+            "writes_disabled",
+            "writes from screens are not enabled in this deployment; nothing written",
+        ),
         (
             "1-off-origin",
             403,
@@ -179,7 +200,7 @@ def test_static_rows_default_is_their_detail(rows):
             "refused",
             "refused",
             "own_origin_missing",
-            "writes are off here until agent pages have their own origin",
+            "screens stay read-only until agent pages have their own origin; nothing written",
         ),
         (
             "2",
@@ -206,7 +227,7 @@ def test_static_rows_default_is_their_detail(rows):
             "refused",
             "refused",
             "posture_changed",
-            "the write state of this target changed; the panel is reconnecting - retry",
+            WRITE_STATE_CHANGED_TEXT,
         ),
         (
             "4",
@@ -263,6 +284,15 @@ def test_static_rows_default_is_their_detail(rows):
             "the switch state could not be checked; nothing written",
         ),
         ("6", 403, "pv_write_refused", "refused", "refused", "channel_write_blocked", "<error_message>"),
+        (
+            "6-readonly-run",
+            403,
+            "pv_write_refused",
+            "refused",
+            "refused",
+            "channel_write_blocked",
+            "the whole deployment is running read-only; nothing written",
+        ),
         ("7", 403, "pv_write_refused", "refused", "refused", "channel_limits_violation", "<violation_reason>"),
         ("8", 403, "pv_write_refused", "refused", "refused", "channel_write_blocked", "<error_message>"),
         ("9", 403, "pv_write_refused", "refused", "refused", "channel_write_blocked", "<error_message>"),
@@ -285,7 +315,8 @@ def test_static_rows_default_is_their_detail(rows):
         ("14b-404", 404, "pv_write_refused", "refused", None, None, FRONT_TEXT),
         ("14b-413", 413, "pv_write_refused", "refused", None, None, FRONT_TEXT),
         ("15", None, None, "unknown", None, None, UNKNOWN_TEXT),
-        ("16", None, None, "target_changed", None, None, "the control target changed; nothing written"),
+        ("16", None, None, "target_changed", None, None, ROW_16_TEXT),
+        ("16a", None, None, "target_changed", None, None, ROW_16A_TEXT),
     ],
 )
 def test_row_matches_wc6(rows, row_id, status, code, outcome, decision, reason, text):
@@ -297,6 +328,49 @@ def test_row_matches_wc6(rows, row_id, status, code, outcome, decision, reason, 
     assert row["audit"] == {"decision": decision, "reason": reason}
     assert row["detail"] == text
     assert row["toast"] == text
+
+
+@pytest.mark.parametrize(
+    ("row_id", "cause"),
+    [("1-off-disabled", "writes_disabled"), ("1-off-origin", "own_origin_missing"), ("6-readonly-run", "readonly_run")],
+)
+def test_cause_rows_carry_the_cause_table_403_text(rows, row_id, cause):
+    # One closed cause table: the row's detail, toast and default are the cause's
+    # 403 text byte for byte, never a derived or concatenated sentence.
+    row = rows[row_id]
+    assert row["detail"] == row["toast"] == row["default"] == CAUSE_403[cause]
+    assert row["dynamic"] is False
+
+
+def test_each_row_1_cause_has_exactly_one_row(rows):
+    for reason in ("writes_disabled", "own_origin_missing"):
+        assert [row_id for row_id, row in rows.items() if row["audit"]["reason"] == reason] == [
+            {"writes_disabled": "1-off-disabled", "own_origin_missing": "1-off-origin"}[reason]
+        ]
+
+
+def test_row_3a_is_the_applying_cause_text_and_asks_for_nothing(rows):
+    row = rows["3a"]
+    assert row["detail"] == row["toast"] == row["default"] == CAUSE_403["applying"]
+    for word in ("reconnecting", "retry"):
+        assert word not in row["detail"]
+
+
+def test_rows_16_and_16a_are_distinct_from_rows_2_and_3(rows):
+    server = {rows["2"]["detail"], rows["3"]["detail"], rows["2"]["default"], rows["3"]["default"]}
+    assert server == {TARGET_CHANGED_TEXT}
+    for row_id in ("16", "16a"):
+        assert rows[row_id]["detail"] not in server, row_id
+        assert rows[row_id]["default"] not in server, row_id
+    assert rows["16"]["detail"] != rows["16a"]["detail"]
+
+
+def test_row_16a_is_a_client_row_with_the_label_token(rows):
+    row = rows["16a"]
+    assert row["source"] == "client"
+    assert row["status"] is None and row["code"] is None
+    assert row["audit"] == {"decision": None, "reason": None}
+    assert row["detail"].count("<label>") == 1
 
 
 def test_coalesced_row(rows):

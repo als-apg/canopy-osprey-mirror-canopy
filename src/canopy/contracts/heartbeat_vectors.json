@@ -1,0 +1,1984 @@
+{
+  "contract": "machine statement",
+  "about": "The machine statement a CANOPY heartbeat carries beside the connector's identity, and what the viewer shows for it. `reachable` is {state: yes|no|unknown, since: epoch s|null, reason: sentence|null}; `writes` is {state: on|off|locked|applying, reason: sentence|null, cause: writes_cases row id|null}; each is absent or null (no claim; the viewer behaves as today) or a complete object. Only `on` accepts writes. `legacy_frame` is a heartbeat with neither key. `reachable_frames` and `writes_frames` are single live frames; `summaries` are `/hare/v1/health/summary` bodies and the statement fields read from them. Every `expected` view gives the badge text and tone, whether write widgets are inert, their hover sentence (a null reason reads as the `Writes are off/locked for <label>` / `Applying the new write state for <label>` default) and the badge title's `since_text` while `reachable` is `no`. `writes_cases` is the writes cause table, one row per cause in the order `writes_statement()` checks them; `<label>` is its one token. `since_text_cases`: the phrase for `since` and the frame's `timestamp`, the time of `since` in time zone `tz` as HH:MM (24-hour, seconds dropped) and the duration `timestamp - since` in whole minutes, rounded down. `sequences` are frame lists replayed in order on one page; `close` is a socket gap. Each step's `expected` holds the view after it and the toasts it raises (texts, in order); steps are further apart than the 10-s reachability toast limiter. `since_text` in frame cases and sequences is computed in UTC.",
+  "legacy_frame": {
+    "case": "legacy",
+    "frame": {
+      "type": "heartbeat",
+      "timestamp": 1760700000.0,
+      "backend": "osprey",
+      "label": "Simulator",
+      "notice": null,
+      "binding": "sim@3"
+    },
+    "expected": {
+      "reachable": null,
+      "writes": null,
+      "badge": "Simulator",
+      "tone": "normal",
+      "inert": false,
+      "hover": null,
+      "since_text": null
+    }
+  },
+  "reachable_frames": [
+    {
+      "case": "yes",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": null
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": null,
+        "badge": "Simulator",
+        "tone": "normal",
+        "inert": false,
+        "hover": null,
+        "since_text": null,
+        "title_reason": null
+      }
+    },
+    {
+      "case": "yes-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": "a channel answered"
+        },
+        "writes": null
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": "a channel answered"
+        },
+        "writes": null,
+        "badge": "Simulator",
+        "tone": "normal",
+        "inert": false,
+        "hover": null,
+        "since_text": null,
+        "title_reason": null
+      }
+    },
+    {
+      "case": "no",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "no",
+          "since": 1760699400.0,
+          "reason": null
+        },
+        "writes": null
+      },
+      "expected": {
+        "reachable": {
+          "state": "no",
+          "since": 1760699400.0,
+          "reason": null
+        },
+        "writes": null,
+        "badge": "Simulator · not answering",
+        "tone": "error",
+        "inert": false,
+        "hover": null,
+        "since_text": "not answering since 11:10 (10 min)",
+        "title_reason": null
+      }
+    },
+    {
+      "case": "no-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "no",
+          "since": 1760699400.0,
+          "reason": "no channel has answered since the open"
+        },
+        "writes": null
+      },
+      "expected": {
+        "reachable": {
+          "state": "no",
+          "since": 1760699400.0,
+          "reason": "no channel has answered since the open"
+        },
+        "writes": null,
+        "badge": "Simulator · not answering",
+        "tone": "error",
+        "inert": false,
+        "hover": null,
+        "since_text": "not answering since 11:10 (10 min)",
+        "title_reason": null
+      }
+    },
+    {
+      "case": "unknown",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "unknown",
+          "since": null,
+          "reason": null
+        },
+        "writes": null
+      },
+      "expected": {
+        "reachable": {
+          "state": "unknown",
+          "since": null,
+          "reason": null
+        },
+        "writes": null,
+        "badge": "Simulator",
+        "tone": "normal",
+        "inert": false,
+        "hover": null,
+        "since_text": null,
+        "title_reason": null
+      }
+    },
+    {
+      "case": "unknown-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "unknown",
+          "since": null,
+          "reason": "this connector has no name server to ask"
+        },
+        "writes": null
+      },
+      "expected": {
+        "reachable": {
+          "state": "unknown",
+          "since": null,
+          "reason": "this connector has no name server to ask"
+        },
+        "writes": null,
+        "badge": "Simulator",
+        "tone": "normal",
+        "inert": false,
+        "hover": null,
+        "since_text": null,
+        "title_reason": "this connector has no name server to ask"
+      }
+    }
+  ],
+  "writes_frames": [
+    {
+      "case": "on",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "on",
+          "reason": null,
+          "cause": null
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "on",
+          "reason": null,
+          "cause": null
+        },
+        "badge": "Simulator",
+        "tone": "normal",
+        "inert": false,
+        "hover": null,
+        "since_text": null
+      }
+    },
+    {
+      "case": "off-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "off",
+          "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+          "cause": "narrowing"
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "off",
+          "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+          "cause": "narrowing"
+        },
+        "badge": "Simulator · writes off",
+        "tone": "warning",
+        "inert": true,
+        "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+        "since_text": null
+      }
+    },
+    {
+      "case": "off-without-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "off",
+          "reason": null,
+          "cause": null
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "off",
+          "reason": null,
+          "cause": null
+        },
+        "badge": "Simulator · writes off",
+        "tone": "warning",
+        "inert": true,
+        "hover": "Writes are off for Simulator",
+        "since_text": null
+      }
+    },
+    {
+      "case": "locked-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "locked",
+          "reason": "Simulator is kept read-only for this login",
+          "cause": "ceiling"
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "locked",
+          "reason": "Simulator is kept read-only for this login",
+          "cause": "ceiling"
+        },
+        "badge": "Simulator · writes locked",
+        "tone": "muted",
+        "inert": true,
+        "hover": "Simulator is kept read-only for this login",
+        "since_text": null
+      }
+    },
+    {
+      "case": "locked-without-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "locked",
+          "reason": null,
+          "cause": null
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "locked",
+          "reason": null,
+          "cause": null
+        },
+        "badge": "Simulator · writes locked",
+        "tone": "muted",
+        "inert": true,
+        "hover": "Writes are locked for Simulator",
+        "since_text": null
+      }
+    },
+    {
+      "case": "locked-data-only-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "locked",
+          "reason": "writes from screens are not enabled in this deployment",
+          "cause": "writes_disabled"
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "locked",
+          "reason": "writes from screens are not enabled in this deployment",
+          "cause": "writes_disabled"
+        },
+        "badge": "Simulator · writes locked",
+        "tone": "muted",
+        "inert": true,
+        "hover": "writes from screens are not enabled in this deployment",
+        "since_text": null
+      }
+    },
+    {
+      "case": "applying-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "applying",
+          "reason": "applying the new write state",
+          "cause": "applying"
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "applying",
+          "reason": "applying the new write state",
+          "cause": "applying"
+        },
+        "badge": "Simulator · writes on · applying…",
+        "tone": "muted",
+        "inert": true,
+        "hover": "applying the new write state",
+        "since_text": null
+      }
+    },
+    {
+      "case": "applying-without-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "applying",
+          "reason": null,
+          "cause": null
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "applying",
+          "reason": null,
+          "cause": null
+        },
+        "badge": "Simulator · writes on · applying…",
+        "tone": "muted",
+        "inert": true,
+        "hover": "Applying the new write state for Simulator",
+        "since_text": null
+      }
+    },
+    {
+      "case": "switching-with-reason",
+      "frame": {
+        "type": "heartbeat",
+        "timestamp": 1760700000.0,
+        "backend": "osprey",
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "applying",
+          "reason": "the control target is changing",
+          "cause": "switching"
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "yes",
+          "since": null,
+          "reason": null
+        },
+        "writes": {
+          "state": "applying",
+          "reason": "the control target is changing",
+          "cause": "switching"
+        },
+        "badge": "Simulator · switching target…",
+        "tone": "muted",
+        "inert": true,
+        "hover": "the control target is changing",
+        "since_text": null
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "case": "absent",
+      "summary": {
+        "status": "ok",
+        "backend": "osprey",
+        "connector_ok": true,
+        "clients": 1,
+        "active_monitors": 4,
+        "connected": 4,
+        "warm_monitors": 0,
+        "subscriptions": 4,
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3"
+      },
+      "expected": {
+        "reachable": null,
+        "writes": null
+      }
+    },
+    {
+      "case": "null",
+      "summary": {
+        "status": "ok",
+        "backend": "osprey",
+        "connector_ok": true,
+        "clients": 1,
+        "active_monitors": 4,
+        "connected": 4,
+        "warm_monitors": 0,
+        "subscriptions": 4,
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": null,
+        "writes": null
+      },
+      "expected": {
+        "reachable": null,
+        "writes": null
+      }
+    },
+    {
+      "case": "older-server",
+      "summary": {
+        "status": "ok",
+        "backend": "osprey",
+        "connector_ok": true,
+        "clients": 1,
+        "active_monitors": 4,
+        "connected": 4,
+        "warm_monitors": 0,
+        "subscriptions": 4
+      },
+      "expected": {
+        "reachable": null,
+        "writes": null,
+        "label": null,
+        "notice": null,
+        "binding": null
+      }
+    },
+    {
+      "case": "present",
+      "summary": {
+        "status": "degraded",
+        "backend": "osprey",
+        "connector_ok": true,
+        "clients": 1,
+        "active_monitors": 4,
+        "connected": 4,
+        "warm_monitors": 0,
+        "subscriptions": 4,
+        "label": "Simulator",
+        "notice": null,
+        "binding": "sim@3",
+        "reachable": {
+          "state": "no",
+          "since": 1760699400.0,
+          "reason": null
+        },
+        "writes": {
+          "state": "on",
+          "reason": null,
+          "cause": null
+        }
+      },
+      "expected": {
+        "reachable": {
+          "state": "no",
+          "since": 1760699400.0,
+          "reason": null
+        },
+        "writes": {
+          "state": "on",
+          "reason": null,
+          "cause": null
+        }
+      }
+    }
+  ],
+  "writes_cases": {
+    "token": "<label>",
+    "null_label": "this target",
+    "templating": "`<label>` is the one token. It stands for the binding's display name: `display_name` in OSPREY, the frame's `label` in the viewer. A null label fills as `this target`. Nothing else is substituted, and no cell is derived from another.",
+    "rows": [
+      {
+        "id": "writes_disabled",
+        "state": "locked",
+        "reason": "writes from screens are not enabled in this deployment",
+        "text_403": "writes from screens are not enabled in this deployment; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": true
+      },
+      {
+        "id": "own_origin_missing",
+        "state": "locked",
+        "reason": "screens stay read-only until agent pages have their own origin",
+        "text_403": "screens stay read-only until agent pages have their own origin; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": true
+      },
+      {
+        "id": "fallback",
+        "state": "locked",
+        "reason": "no control target is recorded, so <label> is shown read-only",
+        "text_403": "no control target record; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": true
+      },
+      {
+        "id": "unservable",
+        "state": "locked",
+        "reason": "<label> cannot be served here, so its screens are read-only",
+        "text_403": "this control target cannot be served here; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": true
+      },
+      {
+        "id": "ceiling",
+        "state": "locked",
+        "reason": "<label> is kept read-only for this login",
+        "text_403": "<label> is kept read-only for this login; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": false
+      },
+      {
+        "id": "readonly_run",
+        "state": "locked",
+        "reason": "the whole deployment is running read-only",
+        "text_403": "the whole deployment is running read-only; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": false
+      },
+      {
+        "id": "unreadable",
+        "state": "locked",
+        "reason": "the write state for <label> cannot be read",
+        "text_403": "the write state for <label> could not be read; nothing written",
+        "badge_suffix": "· writes locked",
+        "data_only": false
+      },
+      {
+        "id": "narrowing",
+        "state": "off",
+        "reason": "writes are off for <label>; turn them back on from the control-target chip",
+        "text_403": "writes are off for <label>; turn them back on from the control-target chip",
+        "badge_suffix": "· writes off",
+        "data_only": false
+      },
+      {
+        "id": "switching",
+        "state": "applying",
+        "reason": "the control target is changing",
+        "text_403": "the control target changed; nothing written",
+        "badge_suffix": "· switching target…",
+        "data_only": false
+      },
+      {
+        "id": "applying",
+        "state": "applying",
+        "reason": "applying the new write state",
+        "text_403": "the write state of this target changed; nothing written",
+        "badge_suffix": "· writes on · applying…",
+        "data_only": false
+      }
+    ]
+  },
+  "since_text_cases": [
+    {
+      "case": "zero",
+      "since": 1760700000.0,
+      "timestamp": 1760700000.0,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (0 min)"
+    },
+    {
+      "case": "under-a-minute-is-0-min",
+      "since": 1760700000.0,
+      "timestamp": 1760700059.0,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (0 min)"
+    },
+    {
+      "case": "fractional-seconds",
+      "since": 1760700000.0,
+      "timestamp": 1760700022.2,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (0 min)"
+    },
+    {
+      "case": "one-minute",
+      "since": 1760700000.0,
+      "timestamp": 1760700060.0,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (1 min)"
+    },
+    {
+      "case": "whole-minutes-round-down",
+      "since": 1760700000.0,
+      "timestamp": 1760700179.9,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (2 min)"
+    },
+    {
+      "case": "seconds-of-since-dropped",
+      "since": 1760700059.7,
+      "timestamp": 1760700359.7,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (5 min)"
+    },
+    {
+      "case": "over-an-hour-stays-in-minutes",
+      "since": 1760700000.0,
+      "timestamp": 1760707500.0,
+      "tz": "UTC",
+      "expected": "not answering since 11:20 (125 min)"
+    },
+    {
+      "case": "local-time",
+      "since": 1760700000.0,
+      "timestamp": 1760700600.0,
+      "tz": "America/Los_Angeles",
+      "expected": "not answering since 04:20 (10 min)"
+    },
+    {
+      "case": "across-midnight",
+      "since": 1760745300.0,
+      "timestamp": 1760747100.0,
+      "tz": "UTC",
+      "expected": "not answering since 23:55 (30 min)"
+    }
+  ],
+  "sequences": [
+    {
+      "id": "same-binding-restart-during-outage",
+      "description": "The machine stops answering; DATA restarts on the same binding (exit 76) and the successor carries the drop's `since`. No second outage toast.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700120.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Simulator stopped answering"
+            ]
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700200.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (2 min)",
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700400.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (5 min)",
+            "toasts": []
+          }
+        }
+      ],
+      "toast_count": 1
+    },
+    {
+      "id": "recovery-through-unknown",
+      "description": "An outage, a socket gap and an `unknown` frame, then `yes`: `unknown` and the gap neither toast nor reset the last definite state, so exactly one recovery toast.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700120.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Simulator stopped answering"
+            ]
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700200.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "unknown",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700260.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": [
+              "Simulator is answering again"
+            ]
+          }
+        }
+      ],
+      "toast_count": 2
+    },
+    {
+      "id": "recovery-through-exit-76",
+      "description": "An outage, DATA restarts on the same binding with the carried `since`, then the machine answers: one recovery toast.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700120.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Simulator stopped answering"
+            ]
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700200.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (2 min)",
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700260.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": [
+              "Simulator is answering again"
+            ]
+          }
+        }
+      ],
+      "toast_count": 2
+    },
+    {
+      "id": "flip-off",
+      "description": "Writes turned off: the outgoing DATA's live frame says `off`, it exits 75 and the successor says `off` again. One writes toast, on the live frame.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700030.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · writes off",
+            "tone": "warning",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": null,
+            "toasts": [
+              "Writes are off for Simulator; turn them back on from the control-target chip"
+            ]
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700040.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · writes off",
+            "tone": "warning",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": null,
+            "toasts": []
+          }
+        }
+      ],
+      "toast_count": 1
+    },
+    {
+      "id": "flip-on-through-applying-and-exit-75",
+      "description": "Writes turned on: the outgoing DATA says `applying`, exits 75, and the successor says `on`. `applying` never toasts and is never stored, so one toast, on the successor's `on`.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · writes off",
+            "tone": "warning",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700030.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "applying",
+              "reason": "applying the new write state",
+              "cause": "applying"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · writes on · applying…",
+            "tone": "muted",
+            "inert": true,
+            "hover": "applying the new write state",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700040.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": [
+              "Writes are on for Simulator"
+            ]
+          }
+        }
+      ],
+      "toast_count": 1
+    },
+    {
+      "id": "target-switch-through-switching-and-exit-75",
+      "description": "A target switch: the outgoing DATA says `applying` with cause `switching`, exits 75, and the successor serves another binding. The binding change resets page memory silently: no toast.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700030.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "applying",
+              "reason": "the control target is changing",
+              "cause": "switching"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · switching target…",
+            "tone": "muted",
+            "inert": true,
+            "hover": "the control target is changing",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700040.0,
+            "backend": "osprey",
+            "label": "BTS",
+            "notice": null,
+            "binding": "bts@4",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "BTS",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        }
+      ],
+      "toast_count": 0
+    },
+    {
+      "id": "flip-off-during-an-outage",
+      "description": "Writes turned off while the machine is not answering: one writes toast, no second outage toast, `since` unchanged across the exit 75.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700120.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Simulator stopped answering"
+            ]
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700150.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering · writes off",
+            "tone": "error",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Writes are off for Simulator; turn them back on from the control-target chip"
+            ]
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700160.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering · writes off",
+            "tone": "error",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": []
+          }
+        }
+      ],
+      "toast_count": 2
+    },
+    {
+      "id": "flip-on-during-an-outage",
+      "description": "Writes turned on while the machine is not answering: the live `applying` frame keeps the outage row with its suffix, the successor carries `since` and says `on`. One writes toast, no second outage toast.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · writes off",
+            "tone": "warning",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700120.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "off",
+              "reason": "writes are off for Simulator; turn them back on from the control-target chip",
+              "cause": "narrowing"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering · writes off",
+            "tone": "error",
+            "inert": true,
+            "hover": "writes are off for Simulator; turn them back on from the control-target chip",
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Simulator stopped answering"
+            ]
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700150.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "applying",
+              "reason": "applying the new write state",
+              "cause": "applying"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering · writes on · applying…",
+            "tone": "error",
+            "inert": true,
+            "hover": "applying the new write state",
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": []
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700160.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Writes are on for Simulator"
+            ]
+          }
+        }
+      ],
+      "toast_count": 2
+    },
+    {
+      "id": "switch-during-an-outage",
+      "description": "A target switch while the machine is not answering: the live `switching` frame keeps the outage row with its suffix; the successor serves another binding, which starts with no claim and says `no` from its own evidence, `since` at its open. The binding change resets page memory silently: no toast after the first outage toast.",
+      "steps": [
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700000.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "yes",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700120.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": [
+              "Simulator stopped answering"
+            ]
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700150.0,
+            "backend": "osprey",
+            "label": "Simulator",
+            "notice": null,
+            "binding": "sim@3",
+            "reachable": {
+              "state": "no",
+              "since": 1760700060.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "applying",
+              "reason": "the control target is changing",
+              "cause": "switching"
+            }
+          },
+          "expected": {
+            "badge": "Simulator · not answering · switching target…",
+            "tone": "error",
+            "inert": true,
+            "hover": "the control target is changing",
+            "since_text": "not answering since 11:21 (1 min)",
+            "toasts": []
+          }
+        },
+        {
+          "event": "close",
+          "expected": {
+            "badge": "Disconnected",
+            "tone": "error",
+            "inert": true,
+            "hover": "Reconnecting to Simulator",
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700160.0,
+            "backend": "osprey",
+            "label": "BTS",
+            "notice": null,
+            "binding": "bts@4",
+            "reachable": {
+              "state": "unknown",
+              "since": null,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "BTS",
+            "tone": "normal",
+            "inert": false,
+            "hover": null,
+            "since_text": null,
+            "toasts": []
+          }
+        },
+        {
+          "event": "frame",
+          "frame": {
+            "type": "heartbeat",
+            "timestamp": 1760700166.0,
+            "backend": "osprey",
+            "label": "BTS",
+            "notice": null,
+            "binding": "bts@4",
+            "reachable": {
+              "state": "no",
+              "since": 1760700159.0,
+              "reason": null
+            },
+            "writes": {
+              "state": "on",
+              "reason": null,
+              "cause": null
+            }
+          },
+          "expected": {
+            "badge": "BTS · not answering",
+            "tone": "error",
+            "inert": false,
+            "hover": null,
+            "since_text": "not answering since 11:22 (0 min)",
+            "toasts": []
+          }
+        }
+      ],
+      "toast_count": 1
+    }
+  ]
+}

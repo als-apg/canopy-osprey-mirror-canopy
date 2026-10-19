@@ -36,6 +36,13 @@
 # commit must be byte-equal, so a copy on one side only is refused; STAGED.json
 # records "workspace" as "compared", or "absent" when neither commit has one.
 #
+# The write-outcome and heartbeat vector files are held twice as well: canopy's
+# src/canopy/contracts/{wc6,heartbeat}_vectors.json and the SDK's byte copies
+# in packages/client/test-vectors/. Each file present at either recorded commit
+# must be present and byte-equal at the other, or the build is refused;
+# STAGED.json records "vectors" as "compared", or "absent" when neither commit
+# holds either file.
+#
 # STAGED.json is written last: a directory without it is not a payload.
 #
 # Needs git, tar, uv/uvx, pnpm, python3 and sha256sum or shasum. Run with
@@ -90,6 +97,11 @@ Checks (before anything is built):
               for byte, every file, and a copy on one side only is refused;
               STAGED.json records "workspace" as "compared", or "absent" when
               CANOPY_SHA has no such directory (and RT_SHA has none either)
+  vectors     src/canopy/contracts/wc6_vectors.json and heartbeat_vectors.json
+              at CANOPY_SHA must equal packages/client/test-vectors/ at SDK_SHA
+              byte for byte; a file at only one of the two commits is refused;
+              STAGED.json records "vectors" as "compared", or "absent" when
+              neither commit holds either file
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -242,6 +254,34 @@ else
     WORKSPACE=absent
 fi
 
+# The write-outcome and heartbeat vectors are one contract held twice: canopy's
+# copy and the SDK's byte copy, compared at the recorded commits by object id.
+VEC_CANOPY="src/canopy/contracts"
+VEC_SDK="packages/client/test-vectors"
+VECTOR_FILES="heartbeat_vectors.json wc6_vectors.json" # C-sorted: the first refused is the first differing
+blob_at() { # <checkout> <sha> <path>: the blob's object id there, empty when there is none
+    git -C "$1" -c core.quotePath=false ls-tree --full-tree "$2" -- "$3" \
+        | awk -F'\t' '{ split($1, m, " "); if (m[2] == "blob") print m[3] }'
+}
+VECTORS=absent
+for vector in $VECTOR_FILES; do
+    canopy_blob="$(blob_at "$ROOT" "$CANOPY_SHA" "$VEC_CANOPY/$vector")"
+    sdk_blob="$(blob_at "$SDK" "$SDK_SHA" "$VEC_SDK/$vector")"
+    if [ -z "$canopy_blob" ] && [ -z "$sdk_blob" ]; then
+        continue
+    elif [ -z "$sdk_blob" ]; then
+        how="is in CANOPY_SHA=$CANOPY_SHA but not in SDK_SHA=$SDK_SHA"
+    elif [ -z "$canopy_blob" ]; then
+        how="is in SDK_SHA=$SDK_SHA but not in CANOPY_SHA=$CANOPY_SHA"
+    elif [ "$canopy_blob" != "$sdk_blob" ]; then
+        how="differs between CANOPY_SHA=$CANOPY_SHA and SDK_SHA=$SDK_SHA"
+    else
+        VECTORS=compared
+        continue
+    fi
+    die "vector file $vector $how ($VEC_CANOPY/ vs $VEC_SDK/); the SDK's copy must be a byte copy of canopy's"
+done
+
 # A checkout's directory name: the repository's, also when the checkout is a
 # linked worktree somewhere below it.
 repo_name() {
@@ -285,6 +325,11 @@ if [ "$WORKSPACE" = compared ]; then
     echo "$PROG: workspace compared ($WS_CANOPY/ at canopy = $WS_RT/ at runtime)" >&2
 else
     echo "$PROG: workspace absent (neither commit has $WS_CANOPY/ or $WS_RT/)" >&2
+fi
+if [ "$VECTORS" = compared ]; then
+    echo "$PROG: vectors compared ($VEC_CANOPY/ at canopy = $VEC_SDK/ at sdk)" >&2
+else
+    echo "$PROG: vectors absent (neither commit holds $VECTOR_FILES)" >&2
 fi
 
 # PEP 440 versions from the source checkouts (an export has no .git).
@@ -424,7 +469,8 @@ cat > "$OUT/STAGED.json.tmp" <<EOF
   "spec": $(json_str "$SPEC_SHA"),
   "spec-digest": $(json_str "$SPEC_DIGEST"),
   "fixtures": $(json_str "$FIXTURES"),
-  "workspace": $(json_str "$WORKSPACE")
+  "workspace": $(json_str "$WORKSPACE"),
+  "vectors": $(json_str "$VECTORS")
 }
 EOF
 mv "$OUT/STAGED.json.tmp" "$OUT/STAGED.json"

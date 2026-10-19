@@ -18,6 +18,31 @@ class HeartbeatDTO(CanopyModel):
     now_ts_ns: int
 
 
+class ReachableDTO(CanopyModel):
+    """The connector's statement of whether the machine answers, as in the heartbeat frame.
+
+    ``state`` is ``yes``, ``no`` or ``unknown``; a reader treats a word it does not
+    know as ``unknown``. ``since`` is the epoch second of the last definite transition.
+    """
+
+    state: str
+    since: float | None = None
+    reason: str | None = None
+
+
+class WritesDTO(CanopyModel):
+    """The connector's statement of whether the panel may write, as in the heartbeat frame.
+
+    ``state`` is ``on``, ``off``, ``locked`` or ``applying``; only ``on`` accepts
+    writes, and a reader treats a word it does not know as inert. ``cause`` is the
+    id of the ``writes_cases`` row that decided it.
+    """
+
+    state: str
+    reason: str | None = None
+    cause: str | None = None
+
+
 class HareHealthSummaryDTO(CanopyModel):
     """Hare's broker rollup, returned by ``/hare/v1/health/summary`` and read by canopy_mcp."""
 
@@ -35,6 +60,9 @@ class HareHealthSummaryDTO(CanopyModel):
     label: str | None = None
     notice: str | None = None
     binding: str | None = None
+    # The connector's machine statement, as in the heartbeat frame; null when it makes no claim.
+    reachable: ReachableDTO | None = None
+    writes: WritesDTO | None = None
 
 
 class HealthDTO(CanopyModel):
@@ -68,12 +96,15 @@ class FrontHealthSummaryDTO(CanopyModel):
 
     ``degraded`` names every cause, and ``status`` is ``degraded`` exactly
     when it is non-empty. ``channels`` is null when there are no live
-    channels (mock mode) or DATA's summary could not be read.
+    channels (mock mode) or DATA's summary could not be read. ``reachable``
+    is DATA's ``reachable`` statement, relayed; null whenever ``channels`` is
+    null or DATA makes no claim. DATA's ``writes`` never reaches this body.
     """
 
     status: Literal["ok", "degraded"]
     degraded: list[str] = []
     channels: ChannelCountsDTO | None = None
+    reachable: ReachableDTO | None = None
 
 
 class ConverterHealthSummaryDTO(CanopyModel):

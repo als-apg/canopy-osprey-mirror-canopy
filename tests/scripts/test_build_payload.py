@@ -299,6 +299,7 @@ def test_staged_names_five_commits_and_both_versions(world):
         "spec-digest": None,
         "fixtures": "absent",
         "workspace": "absent",
+        "vectors": "absent",
     }
 
 
@@ -1016,3 +1017,127 @@ def test_build_payload_help_names_the_workspace_check(world):
     assert "workspace" in proc.stdout
     assert WS_CANOPY in proc.stdout
     assert WS_RT in proc.stdout
+
+
+# --- the compared write-outcome and heartbeat vector files ------------------------
+
+VEC_CANOPY = "src/canopy/contracts"
+VEC_SDK = "packages/client/test-vectors"
+VECTORS = {
+    "wc6_vectors.json": b'{"vectors": [{"outcome": "written"}]}\n',
+    "heartbeat_vectors.json": b'{"vectors": [{"state": "fresh", "note": "\xff"}]}\n',
+}
+
+
+def with_vectors(world: dict, canopy: dict | None = None, sdk: dict | None = None) -> None:
+    """Commit the vector files to canopy's HEAD and the SDK's, then pin the runtime at the new SDK head.
+
+    ``canopy``/``sdk`` override single files (None leaves the file out of that side).
+    """
+    for repo, prefix, override in ((world["canopy"], VEC_CANOPY, canopy), (world["sdk"], VEC_SDK, sdk)):
+        files = {k: v for k, v in {**VECTORS, **(override or {})}.items() if v is not None}
+        commit_bytes(repo, fixtures(prefix, files), "vectors")
+    commit_pinning(world["rt"], {}, head(world["sdk"]), "pin the sdk with vectors")
+    commit_pinning(world["trace"], {}, head(world["sdk"]), "pin the sdk with vectors")
+
+
+def vector_refused(world: dict, proc, name: str) -> None:
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert f"vector file {name} " in proc.stderr
+    assert not world["out"].exists() or not (world["out"] / "STAGED.json").exists()
+    # The comparison runs before any tool: a refusal builds nothing.
+    assert calls(world) == []
+
+
+def test_without_vector_files_on_either_side_records_absent(world):
+    proc = build(world)
+    ok(proc)
+    assert staged(world)["vectors"] == "absent"
+    assert "vectors absent" in proc.stderr
+
+
+def test_identical_vector_files_record_compared(world):
+    with_vectors(world)
+    proc = build(world)
+    ok(proc)
+    assert staged(world)["vectors"] == "compared"
+    assert "vectors compared" in proc.stderr
+
+
+def test_one_byte_changed_in_the_sdk_wc6_copy_is_refused_naming_the_file(world):
+    with_vectors(world, sdk={"wc6_vectors.json": VECTORS["wc6_vectors.json"].replace(b"written", b"writtem")})
+    proc = build(world)
+    vector_refused(world, proc, "wc6_vectors.json")
+    assert "differs between CANOPY_SHA=" in proc.stderr
+    assert f"SDK_SHA={head(world['sdk'])}" in proc.stderr
+
+
+def test_one_byte_changed_in_the_sdk_heartbeat_copy_is_refused_naming_the_file(world):
+    with_vectors(world, sdk={"heartbeat_vectors.json": VECTORS["heartbeat_vectors.json"].replace(b"\xff", b"\xfe")})
+    vector_refused(world, build(world), "heartbeat_vectors.json")
+
+
+def test_the_first_differing_vector_file_is_named(world):
+    with_vectors(world, sdk={"wc6_vectors.json": b"{}\n", "heartbeat_vectors.json": b"{}\n"})
+    vector_refused(world, build(world), "heartbeat_vectors.json")
+
+
+def test_a_vector_file_missing_from_the_sdk_is_refused(world):
+    with_vectors(world, sdk={"heartbeat_vectors.json": None})
+    proc = build(world)
+    vector_refused(world, proc, "heartbeat_vectors.json")
+    assert "is in CANOPY_SHA=" in proc.stderr
+    assert "but not in SDK_SHA=" in proc.stderr
+
+
+def test_a_vector_file_missing_from_canopy_is_refused(world):
+    with_vectors(world, canopy={"wc6_vectors.json": None})
+    proc = build(world)
+    vector_refused(world, proc, "wc6_vectors.json")
+    assert "is in SDK_SHA=" in proc.stderr
+
+
+def test_canopy_vectors_against_an_sdk_commit_without_them_are_refused(world):
+    # Canopy carries the vectors; the SDK commit the runtime pins predates them.
+    commit_bytes(world["canopy"], fixtures(VEC_CANOPY, VECTORS), "vectors")
+    vector_refused(world, build(world), "heartbeat_vectors.json")
+
+
+def test_the_pinned_sdk_commit_is_compared_not_sdk_head(world):
+    with_vectors(world)
+    # The SDK's HEAD drifts past the commit the runtime pins; the pin is what is built.
+    commit_bytes(world["sdk"], fixtures(VEC_SDK, {"wc6_vectors.json": b"{}\n"}), "drift")
+    ok(build(world))
+    assert staged(world)["vectors"] == "compared"
+
+
+def test_the_recorded_canopy_commit_is_compared_not_head(world):
+    with_vectors(world)
+    matching = head(world["canopy"])
+    commit_bytes(world["canopy"], fixtures(VEC_CANOPY, {"wc6_vectors.json": b"{}\n"}), "drift")
+    ok(build(world, CANOPY_SHA=matching, CANOPY_VERSION="1.2.2"))
+    assert staged(world)["vectors"] == "compared"
+
+
+def test_uncommitted_vector_edits_are_not_compared(world):
+    with_vectors(world)
+    (world["sdk"] / VEC_SDK / "wc6_vectors.json").write_bytes(b"edited\n")
+    (world["canopy"] / VEC_CANOPY / "heartbeat_vectors.json").write_bytes(b"edited\n")
+    ok(build(world))
+    assert staged(world)["vectors"] == "compared"
+
+
+def test_help_names_the_vector_check(world):
+    proc = build(world, "--help", out=False)
+    ok(proc)
+    assert "vectors" in proc.stdout
+    assert VEC_SDK in proc.stdout
+    assert "wc6_vectors.json" in proc.stdout
+
+
+def test_workspace_and_vector_checks_are_recorded_side_by_side(world):
+    with_workspace(world)
+    with_vectors(world)
+    ok(build(world))
+    assert staged(world)["workspace"] == "compared"
+    assert staged(world)["vectors"] == "compared"

@@ -196,7 +196,12 @@ async def test_a_body_that_is_not_the_summary_is_unavailable_on_both_routes(
     async with _front(settings, data) as front:
         rollup = await front.get("/health/summary")
         config = await front.get("/config.json")
-    assert rollup.json() == {"status": "degraded", "degraded": ["data-unavailable"], "channels": None}
+    assert rollup.json() == {
+        "status": "degraded",
+        "degraded": ["data-unavailable"],
+        "channels": None,
+        "reachable": None,
+    }
     assert config.json()["backend"] is None
     assert config.json()["binding"] is None
     assert _lines(caplog, logging.WARNING) == [

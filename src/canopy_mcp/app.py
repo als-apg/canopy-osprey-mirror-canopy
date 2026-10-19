@@ -74,9 +74,9 @@ from canopy_mcp.collections import (
     FacilityCollections,
     build_collection_routes,
 )
+from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp.tools._common import reset_hub
 from canopy_mcp.workspace_routes import exit_watch, build_workspace_routes
-from canopy.core.color_scheme import get_color_scheme
 
 MCP_PATH = "/mcp"
 PROXY_HEADERS = (b"x-forwarded-prefix", b"x-osprey-terminal-secret")

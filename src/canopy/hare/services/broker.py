@@ -17,6 +17,7 @@ whose seed left its value or metadata missing is re-seeded by the first
 subscribe after ``seed_retry_backoff_s``.
 """
 
+import copy
 import time
 import asyncio
 import inspect
@@ -122,6 +123,11 @@ class PVBroker:
         self._grace: dict[str, asyncio.Task] = {}
         # Late-connect re-describes in flight, one per PV (b6:IA-1).
         self._redescribing: dict[str, asyncio.Task] = {}
+        # The background loops' clock; tests replace it to step the loops.
+        self._sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+        # The statement of the last heartbeat the flush loop pushed; unset until
+        # the first compare, which takes the connector's statement as given.
+        self._last_statement: tuple | None = None
 
     @property
     def registry(self) -> SubscriptionRegistry:
@@ -133,6 +139,7 @@ class PVBroker:
         if self._running:
             return
         await self._connector.start()
+        self._last_statement = self._statement(self.heartbeat_frame())
         self._running = True
         self._tasks = [self._spawn_loop(name) for name in ("consume", "flush", "heartbeat")]
         logger.info(
@@ -694,13 +701,51 @@ class PVBroker:
     async def _flush_loop(self) -> None:
         interval = self._config.ws_batch_interval_ms / 1000.0
         while self._running:
-            await asyncio.sleep(interval)
+            await self._sleep(interval)
             try:
                 await self._flush()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("broker flush loop iteration failed")
+            try:
+                await self._push_statement()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("broker statement push failed")
+
+    @staticmethod
+    def _statement(frame: dict) -> tuple:
+        """The part of a heartbeat frame a change of which is pushed at once.
+
+        A copy, so a connector that updates its ``reachable``/``writes`` mapping
+        in place still differs from the recorded statement.
+        """
+        return copy.deepcopy((frame["label"], frame["notice"], frame["binding"], frame["reachable"], frame["writes"]))
+
+    async def _push_statement(self) -> None:
+        """Send the heartbeat at once when the connector's statement changed.
+
+        Runs on every flush tick whether or not any channel is connected. When
+        (label, notice, binding, reachable, writes) differs from the last pushed
+        statement, the frame goes to every channel (to no one when there are
+        none), then the connector's optional ``statement_sent()`` is called once.
+        The keep-alive loop neither records a statement nor calls it.
+        """
+        frame = self.heartbeat_frame()
+        statement = self._statement(frame)
+        if self._last_statement is None:
+            self._last_statement = statement
+            return
+        if statement == self._last_statement:
+            return
+        self._last_statement = statement
+        for client_id in list(self._channels):
+            await self._send(client_id, frame)
+        statement_sent = getattr(self._connector, "statement_sent", None)
+        if callable(statement_sent):
+            statement_sent()
 
     async def _flush(self) -> None:
         """Send the buffered diffs, then a ``flush`` marker to the channels that ask for one.
@@ -727,11 +772,13 @@ class PVBroker:
                 await self._send(client_id, marker)
 
     def heartbeat_frame(self) -> dict:
-        """The heartbeat frame: backend plus the connector's identity.
+        """The heartbeat frame: backend plus the connector's identity and statement.
 
         ``label``, ``notice`` and ``binding`` come from the connector's ``label``,
-        ``notice`` and ``binding_id`` attributes, read on every call (``None`` when
-        the connector has none), so a change of target shows on the next frame.
+        ``notice`` and ``binding_id`` attributes, ``reachable`` and ``writes`` from
+        its ``reachable`` and ``writes`` attributes, all read on every call
+        (``None`` when the connector has none: no claim), so a change shows on the
+        next frame.
         One builder for the heartbeat loop, the first frame of every ``ws_pvs``
         socket and ``GET /health/summary``.
         """
@@ -743,11 +790,13 @@ class PVBroker:
             "label": getattr(connector, "label", None),
             "notice": getattr(connector, "notice", None),
             "binding": getattr(connector, "binding_id", None),
+            "reachable": getattr(connector, "reachable", None),
+            "writes": getattr(connector, "writes", None),
         }
 
     async def _heartbeat_loop(self) -> None:
         while self._running:
-            await asyncio.sleep(self._config.heartbeat_interval_s)
+            await self._sleep(self._config.heartbeat_interval_s)
             try:
                 message = self.heartbeat_frame()
                 for client_id in list(self._channels):

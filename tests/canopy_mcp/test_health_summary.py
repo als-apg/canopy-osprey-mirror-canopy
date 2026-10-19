@@ -7,6 +7,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
+from canopy.contracts import load_heartbeat_vectors
 from canopy_mcp.access import ACCESS_HEADER
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings
@@ -61,7 +62,12 @@ def test_the_rollup_carries_the_counts(tmp_path):
     data = Data(summary(connected=53, active_monitors=53))
     resp = _get(_settings(tmp_path), data, "/health/summary")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "degraded": [], "channels": {"connected": 53, "total": 53}}
+    assert resp.json() == {
+        "status": "ok",
+        "degraded": [],
+        "channels": {"connected": 53, "total": 53},
+        "reachable": None,
+    }
     assert resp.headers["cache-control"] == "no-cache"
 
 
@@ -72,6 +78,7 @@ def test_the_rollup_relays_datas_verdict(tmp_path):
         "status": "degraded",
         "degraded": [DATA_DEGRADED],
         "channels": {"connected": 0, "total": 53},
+        "reachable": None,
     }
 
 
@@ -94,7 +101,7 @@ def test_the_rollup_does_not_rederive_the_verdict_from_the_counts(tmp_path, over
 def test_the_rollup_without_data_is_degraded_and_still_200(tmp_path):
     resp = _get(_settings(tmp_path), Data({"detail": "down"}, 503), "/health/summary")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "degraded", "degraded": [DATA_UNAVAILABLE], "channels": None}
+    assert resp.json() == {"status": "degraded", "degraded": [DATA_UNAVAILABLE], "channels": None, "reachable": None}
 
 
 @pytest.mark.real_data_summary
@@ -111,17 +118,84 @@ def test_mock_mode_rollup_never_asks_data(tmp_path):
     data = Data(summary())
     resp = _get(_settings(tmp_path, mode="mock"), data, "/health/summary")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "degraded": [], "channels": None}
+    assert resp.json() == {"status": "ok", "degraded": [], "channels": None, "reachable": None}
     assert data.requests == []
 
 
 @pytest.mark.real_data_summary
 def test_the_rollup_carries_nothing_else_of_the_summary(tmp_path):
-    data = Data(summary(label="Simulator", notice="not the machine", binding="va@3"))
+    data = Data(
+        summary(
+            label="Simulator",
+            notice="not the machine",
+            binding="va@3",
+            writes={"state": "locked", "reason": "writes held by the persona", "cause": "ceiling"},
+        )
+    )
     resp = _get(_settings(tmp_path), data, "/health/summary")
-    assert set(resp.json()) == {"status", "degraded", "channels"}
-    for leaked in ("Simulator", "not the machine", "va@3"):
+    assert set(resp.json()) == {"status", "degraded", "channels", "reachable"}
+    for leaked in ("Simulator", "not the machine", "va@3", "writes", "locked", "persona", "ceiling"):
         assert leaked not in resp.text
+
+
+REACHABLE_NO = {"state": "no", "since": 1760699400.0, "reason": None}
+
+
+@pytest.mark.real_data_summary
+@pytest.mark.parametrize(
+    "reachable",
+    [
+        REACHABLE_NO,
+        {"state": "yes", "since": 1760699400.5, "reason": None},
+        {"state": "unknown", "since": None, "reason": "no name server"},
+    ],
+    ids=["no", "yes", "unknown"],
+)
+def test_the_rollup_relays_reachable_beside_the_channels(tmp_path, reachable):
+    data = Data(summary(connected=4, active_monitors=4, reachable=reachable))
+    body = _get(_settings(tmp_path), data, "/health/summary").json()
+    assert body["channels"] == {"connected": 4, "total": 4}
+    assert body["reachable"] == reachable
+
+
+@pytest.mark.real_data_summary
+def test_an_unreachable_machine_is_data_degraded_once(tmp_path):
+    data = Data(summary(status="degraded", connected=4, active_monitors=4, reachable=REACHABLE_NO))
+    assert _get(_settings(tmp_path), data, "/health/summary").json() == {
+        "status": "degraded",
+        "degraded": [DATA_DEGRADED],
+        "channels": {"connected": 4, "total": 4},
+        "reachable": REACHABLE_NO,
+    }
+
+
+@pytest.mark.real_data_summary
+def test_a_malformed_reachable_makes_datas_summary_unavailable(tmp_path):
+    """DATA's summary is read strictly: a malformed nested ``reachable`` is not the summary."""
+    data = Data({**summary(connected=4, active_monitors=4), "reachable": {"since": 1}})
+    assert _get(_settings(tmp_path), data, "/health/summary").json() == {
+        "status": "degraded",
+        "degraded": [DATA_UNAVAILABLE],
+        "channels": None,
+        "reachable": None,
+    }
+
+
+@pytest.mark.real_data_summary
+def test_mock_mode_rollup_carries_no_reachable(tmp_path):
+    data = Data(summary(reachable=REACHABLE_NO))
+    assert _get(_settings(tmp_path, mode="mock"), data, "/health/summary").json()["reachable"] is None
+
+
+@pytest.mark.real_data_summary
+@pytest.mark.parametrize("case", load_heartbeat_vectors()["summaries"], ids=lambda c: c["case"])
+def test_the_rollup_reads_every_vector_summary(tmp_path, case):
+    body = _get(_settings(tmp_path), Data(case["summary"]), "/health/summary").json()
+    summary_in = case["summary"]
+    assert body["channels"] == {"connected": summary_in["connected"], "total": summary_in["active_monitors"]}
+    assert body["reachable"] == case["expected"]["reachable"]
+    assert body["degraded"] == ([DATA_DEGRADED] if summary_in["status"] == "degraded" else [])
+    assert "writes" not in body
 
 
 @pytest.mark.real_data_summary
@@ -133,14 +207,19 @@ def test_the_rollup_needs_the_credential(tmp_path):
     assert data.requests == []
     admitted = _get(settings, data, "/health/summary", ACCESS)
     assert admitted.status_code == 200
-    assert admitted.json() == {"status": "ok", "degraded": [], "channels": {"connected": 2, "total": 3}}
+    assert admitted.json() == {
+        "status": "ok",
+        "degraded": [],
+        "channels": {"connected": 2, "total": 3},
+        "reachable": None,
+    }
 
 
 @pytest.mark.real_data_summary
 def test_the_rollup_is_open_where_no_credential_is_configured(tmp_path):
     resp = _get(_settings(tmp_path), Data(summary(connected=2, active_monitors=3)), "/health/summary")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "degraded": [], "channels": {"connected": 2, "total": 3}}
+    assert resp.json() == {"status": "ok", "degraded": [], "channels": {"connected": 2, "total": 3}, "reachable": None}
 
 
 @pytest.mark.real_data_summary
