@@ -37,6 +37,12 @@ link each one under the proxy prefix. Every entry must match
 :data:`HOST_STYLESHEET_RE` (plain path segments, no leading slash, no dot
 segment, no quote), and an entry that does not stops the server at startup
 with the entry named.
+
+``CANOPY_HOME_SCREEN`` (default unset) names the library screen the viewer opens
+on, as its id under ``CANOPY_LIBRARY_DIR`` (``sr/overview``), and is handed to the
+viewer as ``config.json``'s ``home``. The id must be a relative path of plain
+segments (no leading slash, no ``.`` or ``..`` segment, no empty segment, no
+backslash); one that is not stops the server at startup with the value named.
 """
 
 import re
@@ -151,6 +157,9 @@ class Settings(BaseSettings):
     # ``.css`` paths the served pages link under the proxy prefix; empty means
     # none. Read the split form from ``host_stylesheet_paths``.
     host_stylesheets: str = ""
+    # Library screen id the viewer opens on (config.json ``home``); unset means
+    # the viewer's own default. A relative path inside the library only.
+    home_screen: str | None = None
 
     _write_api_key: str = PrivateAttr(default="")
 
@@ -165,6 +174,21 @@ class Settings(BaseSettings):
                     f"CANOPY_HOST_STYLESHEETS entry {entry!r} is not a relative .css path "
                     f"(each entry must match {HOST_STYLESHEET_RE.pattern})"
                 )
+        return value
+
+    @field_validator("home_screen")
+    @classmethod
+    def _refuse_a_home_screen_outside_the_library(cls, value: str | None) -> str | None:
+        # The id is resolved under the library by the viewer, so one that could
+        # leave it (or name nothing) stops the server here.
+        if value is None:
+            return value
+        segments = value.split("/")
+        if "\\" in value or any(segment in ("", ".", "..") for segment in segments):
+            raise ValueError(
+                f"CANOPY_HOME_SCREEN {value!r} is not a library screen id "
+                "(a relative path without a leading slash or a '.', '..' or empty segment)"
+            )
         return value
 
     @field_validator(
@@ -185,6 +209,7 @@ class Settings(BaseSettings):
         "put_relay_timeout_s",
         "confirm_writes",
         "workspace",
+        "home_screen",
         mode="before",
     )
     @classmethod

@@ -51,6 +51,7 @@ unset.
 | `CANOPY_SELF_URL` | loopback on the served port | The address the screenshot browser reaches this server at. |
 | `CANOPY_DRAFTS_DIR` | `drafts` | The store the tools write to. Screens are `<dir>/screens/<id>.screen.json`. |
 | `CANOPY_LIBRARY_DIR` | unset | A read-only screen library served beside the drafts. Its screens are `library/<id>` to the tools and `/embed/library/<id>` to the viewer. Only its `screens/` subtree is served. |
+| `CANOPY_HOME_SCREEN` | unset | The library screen the viewer opens on, as its id under `CANOPY_LIBRARY_DIR` (`sr/overview`). Handed to the viewer as `config.json`'s `home`. A value that is not a relative path of plain segments (a leading slash, a `.`, `..` or empty segment, a backslash) stops the server at startup. |
 | `CANOPY_AUTHORING` | `1` | `0` takes the seven authoring tools off the server. |
 | `CANOPY_PUSH_DIR` | unset | Where `request_push` writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |

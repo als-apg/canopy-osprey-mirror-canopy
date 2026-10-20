@@ -258,6 +258,8 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     }
     if settings.workspace:
         config["workspace"] = {"path": WORKSPACE_PATH, "protocol": WORKSPACE_PROTOCOL}
+    if settings.home_screen is not None:
+        config["home"] = {"screen": settings.home_screen}
     for tool in configured_tools(settings):
         config[tool] = {"path": TOOL_PAGES[tool][1], "query": _default_query(settings, tool)}
     flat = get_color_scheme().flat_json
