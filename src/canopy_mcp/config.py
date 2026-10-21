@@ -39,7 +39,7 @@ segment, no quote), and an entry that does not stops the server at startup
 with the entry named.
 
 ``CANOPY_HOME_SCREEN`` (default unset) names the library screen the viewer opens
-on, as its id under ``CANOPY_LIBRARY_DIR`` (``sr/overview``), and is handed to the
+on, as its id under ``CANOPY_LIBRARY_DIR`` (``facility/overview``), and is handed to the
 viewer as ``config.json``'s ``home``. The id must be a relative path of plain
 segments (no leading slash, no ``.`` or ``..`` segment, no empty segment, no
 backslash); one that is not stops the server at startup with the value named.
