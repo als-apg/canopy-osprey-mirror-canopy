@@ -93,7 +93,7 @@ happened: `key` and `mode` for `open`, `key` for `open_tool`, `keys` for
 Send related commands in one batch, at most 20, applied in order:
 
 ```json
-{"commands": [{"cmd": "open", "args": {"ref": "library/sr/overview"}}, {"cmd": "zoom", "args": {"key": "library/sr/overview", "step": "fit"}}, {"cmd": "open_tool", "args": {"tool": "trace", "query": "pv=A&range=-30m"}}], "base": {"window": "w-A", "seq": 41}}
+{"commands": [{"cmd": "open", "args": {"ref": "library/facility/overview"}}, {"cmd": "zoom", "args": {"key": "library/facility/overview", "step": "fit"}}, {"cmd": "open_tool", "args": {"tool": "trace", "query": "pv=A&range=-30m"}}], "base": {"window": "w-A", "seq": 41}}
 ```
 
 - Pass `base: {window, seq}` with `window` set to `activeWindow` and the
