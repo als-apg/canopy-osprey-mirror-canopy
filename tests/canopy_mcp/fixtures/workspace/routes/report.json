@@ -391,28 +391,24 @@
               {
                 "key": "library/gtb/GTLView?SR=1",
                 "kind": "screen",
-                "docked": true,
                 "canBack": true,
                 "canForward": false
               },
               {
                 "key": "library/bts/BTSView",
                 "kind": "screen",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "@trace",
                 "kind": "tool",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "library/sr/overview",
                 "kind": "screen",
-                "docked": false,
                 "canBack": false,
                 "canForward": false
               }
@@ -422,22 +418,35 @@
               "split": "row",
               "items": [
                 {
-                  "key": "library/gtb/GTLView?SR=1",
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
                   "size": 0.6
                 },
                 {
+                  "split": "column",
                   "items": [
                     {
-                      "key": "library/bts/BTSView"
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
                     },
                     {
-                      "key": "@trace"
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
                     }
                   ],
                   "size": 0.4
                 }
-              ],
-              "active": "library/gtb/GTLView?SR=1"
+              ]
             },
             "zoom": {
               "library/gtb/GTLView": {
@@ -526,28 +535,24 @@
               {
                 "key": "library/gtb/GTLView?SR=1",
                 "kind": "screen",
-                "docked": true,
                 "canBack": true,
                 "canForward": false
               },
               {
                 "key": "library/bts/BTSView",
                 "kind": "screen",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "@trace",
                 "kind": "tool",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "library/sr/overview",
                 "kind": "screen",
-                "docked": false,
                 "canBack": false,
                 "canForward": false
               }
@@ -557,22 +562,35 @@
               "split": "row",
               "items": [
                 {
-                  "key": "library/gtb/GTLView?SR=1",
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
                   "size": 0.6
                 },
                 {
+                  "split": "column",
                   "items": [
                     {
-                      "key": "library/bts/BTSView"
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
                     },
                     {
-                      "key": "@trace"
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
                     }
                   ],
                   "size": 0.4
                 }
-              ],
-              "active": "library/gtb/GTLView?SR=1"
+              ]
             },
             "zoom": {
               "library/gtb/GTLView": {
@@ -658,28 +676,24 @@
               {
                 "key": "library/gtb/GTLView?SR=1",
                 "kind": "screen",
-                "docked": true,
                 "canBack": true,
                 "canForward": false
               },
               {
                 "key": "library/bts/BTSView",
                 "kind": "screen",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "@trace",
                 "kind": "tool",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "library/sr/overview",
                 "kind": "screen",
-                "docked": false,
                 "canBack": false,
                 "canForward": false
               }
@@ -689,22 +703,35 @@
               "split": "row",
               "items": [
                 {
-                  "key": "library/gtb/GTLView?SR=1",
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
                   "size": 0.6
                 },
                 {
+                  "split": "column",
                   "items": [
                     {
-                      "key": "library/bts/BTSView"
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
                     },
                     {
-                      "key": "@trace"
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
                     }
                   ],
                   "size": 0.4
                 }
-              ],
-              "active": "library/gtb/GTLView?SR=1"
+              ]
             },
             "zoom": {
               "library/gtb/GTLView": {
@@ -737,6 +764,421 @@
             },
             "pvValues": {
               "SR:DIAG:DCCT:01:CURRENT:RB": 500.1
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a tab with the retired docked flag",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false,
+                "docked": true
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a layout that leaves an open tab out",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a layout in the retired key-leaf shape",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "key": "library/gtb/GTLView?SR=1"
+                },
+                {
+                  "key": "library/bts/BTSView"
+                },
+                {
+                  "key": "@trace"
+                },
+                {
+                  "key": "library/sr/overview"
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
             }
           }
         }
@@ -796,28 +1238,24 @@
               {
                 "key": "library/gtb/GTLView?SR=1",
                 "kind": "screen",
-                "docked": true,
                 "canBack": true,
                 "canForward": false
               },
               {
                 "key": "library/bts/BTSView",
                 "kind": "screen",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "@trace",
                 "kind": "tool",
-                "docked": true,
                 "canBack": false,
                 "canForward": false
               },
               {
                 "key": "library/sr/overview",
                 "kind": "screen",
-                "docked": false,
                 "canBack": false,
                 "canForward": false
               }
@@ -827,22 +1265,35 @@
               "split": "row",
               "items": [
                 {
-                  "key": "library/gtb/GTLView?SR=1",
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
                   "size": 0.6
                 },
                 {
+                  "split": "column",
                   "items": [
                     {
-                      "key": "library/bts/BTSView"
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
                     },
                     {
-                      "key": "@trace"
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
                     }
                   ],
                   "size": 0.4
                 }
-              ],
-              "active": "library/gtb/GTLView?SR=1"
+              ]
             },
             "zoom": {
               "library/gtb/GTLView": {

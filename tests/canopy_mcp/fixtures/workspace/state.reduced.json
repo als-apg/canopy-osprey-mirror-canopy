@@ -7,350 +7,300 @@
       {
         "key": "library/common/KnobPanel?N=1",
         "kind": "screen",
-        "docked": true,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=2",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=3",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=4",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=5",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=6",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=7",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=8",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=9",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=10",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=11",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=12",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=13",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=14",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=15",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=16",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=17",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=18",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=19",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/common/KnobPanel?N=20",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace",
         "kind": "tool",
-        "docked": true,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/2",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/3",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/4",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/5",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/6",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/7",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/8",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/9",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace/10",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation",
         "kind": "tool",
-        "docked": true,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/2",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/3",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/4",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/5",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/6",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/7",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/8",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/9",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@correlation/10",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform",
         "kind": "tool",
-        "docked": true,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/2",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/3",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/4",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/5",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/6",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/7",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/8",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/9",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@waveform/10",
         "kind": "tool",
-        "docked": false,
         "canBack": false,
         "canForward": false
       }
@@ -360,25 +310,87 @@
       "split": "row",
       "items": [
         {
-          "key": "library/common/KnobPanel?N=1",
-          "size": 3
+          "tile": "t1",
+          "tabs": [
+            "library/common/KnobPanel?N=1",
+            "library/common/KnobPanel?N=2",
+            "library/common/KnobPanel?N=3",
+            "library/common/KnobPanel?N=4",
+            "library/common/KnobPanel?N=5",
+            "library/common/KnobPanel?N=6",
+            "library/common/KnobPanel?N=7",
+            "library/common/KnobPanel?N=8",
+            "library/common/KnobPanel?N=9",
+            "library/common/KnobPanel?N=10",
+            "library/common/KnobPanel?N=11",
+            "library/common/KnobPanel?N=12",
+            "library/common/KnobPanel?N=13",
+            "library/common/KnobPanel?N=14",
+            "library/common/KnobPanel?N=15",
+            "library/common/KnobPanel?N=16",
+            "library/common/KnobPanel?N=17",
+            "library/common/KnobPanel?N=18",
+            "library/common/KnobPanel?N=19",
+            "library/common/KnobPanel?N=20",
+            "@trace/2",
+            "@trace/3",
+            "@trace/4",
+            "@trace/5",
+            "@trace/6",
+            "@trace/7",
+            "@trace/8",
+            "@trace/9",
+            "@trace/10",
+            "@correlation/2",
+            "@correlation/3",
+            "@correlation/4",
+            "@correlation/5",
+            "@correlation/6",
+            "@correlation/7",
+            "@correlation/8",
+            "@correlation/9",
+            "@correlation/10",
+            "@waveform/2",
+            "@waveform/3",
+            "@waveform/4",
+            "@waveform/5",
+            "@waveform/6",
+            "@waveform/7",
+            "@waveform/8",
+            "@waveform/9",
+            "@waveform/10"
+          ],
+          "showing": "library/common/KnobPanel?N=1",
+          "size": 0.6
         },
         {
+          "split": "column",
           "items": [
             {
-              "key": "@trace"
+              "tile": "t2",
+              "tabs": [
+                "@trace"
+              ],
+              "showing": "@trace"
             },
             {
-              "key": "@correlation"
+              "tile": "t3",
+              "tabs": [
+                "@correlation"
+              ],
+              "showing": "@correlation"
             },
             {
-              "key": "@waveform"
+              "tile": "t4",
+              "tabs": [
+                "@waveform"
+              ],
+              "showing": "@waveform"
             }
           ],
-          "size": 2
+          "size": 0.4
         }
-      ],
-      "active": "library/common/KnobPanel?N=1"
+      ]
     },
     "zoom": {
       "library/common/KnobPanel": {

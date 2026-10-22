@@ -6,7 +6,8 @@
     "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
     "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
     "after, when present: the open tab keys in strip order and the active key once the command is applied.",
-    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra.",
+    "close_right acts within the named tab's tile."
   ],
   "verb": "close_right",
   "args": {
@@ -18,11 +19,11 @@
   "destructive": true,
   "cases": [
     {
-      "name": "close_right closes every tab after the named one",
+      "name": "close_right closes the tabs after the named one in its tile",
       "command": {
         "cmd": "close_right",
         "args": {
-          "key": "library/bts/BTSView"
+          "key": "library/gtb/GTLView?SR=1"
         }
       },
       "result": {
@@ -33,13 +34,14 @@
       "after": {
         "tabs": [
           "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView"
+          "library/bts/BTSView",
+          "@trace"
         ],
         "active": "library/gtb/GTLView?SR=1"
       }
     },
     {
-      "name": "close_right on the last tab is a no-op without a group",
+      "name": "close_right on the last tab of its tile is a no-op without a group",
       "command": {
         "cmd": "close_right",
         "args": {

@@ -60,7 +60,7 @@
       ]
     },
     {
-      "name": "replace names a tab that is not open",
+      "name": "close_tile names a tile the layout does not hold",
       "batch": {
         "base": {
           "window": "w-A",
@@ -69,11 +69,9 @@
         "commands": [
           {
             "id": "c-e1-1",
-            "cmd": "open",
+            "cmd": "close_tile",
             "args": {
-              "ref": "drafts/beam-tune",
-              "mode": "replace",
-              "key": "library/gtb/Missing"
+              "tile": "t9"
             }
           }
         ]
@@ -112,7 +110,33 @@
       ]
     },
     {
-      "name": "place beside a tab that is not docked",
+      "name": "drop names a tab that is not open",
+      "batch": {
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "drop",
+            "args": {
+              "source": {
+                "tab": "@waveform"
+              },
+              "target": {
+                "outer": "right"
+              }
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "drop onto a tile the layout does not hold",
       "batch": {
         "base": {
           "window": "w-A",
@@ -121,11 +145,15 @@
         "commands": [
           {
             "id": "c-e1-1",
-            "cmd": "place",
+            "cmd": "drop",
             "args": {
-              "key": "library/bts/BTSView",
-              "edge": "left",
-              "beside": "library/sr/overview"
+              "source": {
+                "tab": "@trace"
+              },
+              "target": {
+                "tile": "t9",
+                "zone": "centre"
+              }
             }
           }
         ]
@@ -237,7 +265,7 @@
           },
           {
             "id": "c-e1-2",
-            "cmd": "close",
+            "cmd": "close_tab",
             "args": {
               "key": "library/gtb/Missing"
             }
