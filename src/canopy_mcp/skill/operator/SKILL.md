@@ -157,7 +157,7 @@ set too large to fit even as a grid is rejected: open it `as: "tabs"`.
 Send related commands in one batch, at most 20, applied in order:
 
 ```json
-{"commands": [{"cmd": "open", "args": {"ref": "library/linac/rf-status"}}, {"cmd": "drop", "args": {"source": {"new": {"tool": "trace", "query": "pv=A&range=-30m"}}, "target": {"tile": "t7", "edge": "bottom"}}}, {"cmd": "zoom", "args": {"key": "library/linac/rf-status", "step": "fit"}}], "base": {"window": "w-3", "seq": 12}}
+{"commands": [{"cmd": "open", "args": {"ref": "library/facility/overview"}}, {"cmd": "drop", "args": {"source": {"new": {"tool": "trace", "query": "pv=A&range=-30m"}}, "target": {"tile": "t7", "edge": "bottom"}}}, {"cmd": "zoom", "args": {"key": "library/facility/overview", "step": "fit"}}], "base": {"window": "w-3", "seq": 12}}
 ```
 
 - Pass `base: {window, seq}` with `window` set to `activeWindow` and the

@@ -1,6 +1,6 @@
 ---
 name: canopy-panel-builder
-description: Build, edit, port and share Canopy control-system screens (panels) with the canopy MCP tools. Use it whenever the user asks for a new panel or screen, a change to one, a conversion of a legacy .bob, .opi, .edl or .ui display, a screenshot of a screen, or a push of a screen to the shared library.
+description: Build, edit, port and share Canopy control-system screens (panels) with the canopy MCP tools. Use it to create a new panel or screen, change one, convert a legacy .bob, .opi, .edl or .ui display, screenshot a screen, or push a screen to the shared library.
 ---
 
 # Canopy panel builder

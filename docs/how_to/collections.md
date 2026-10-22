@@ -30,7 +30,7 @@ Run [`--check`](#4-check-the-directory) before you deploy.
 A member is either a screen or a tool:
 
 ```json
-{"screen": "library/sr/overview", "macros": {"SECTOR": "3"}}
+{"screen": "library/facility/overview", "macros": {"SECTOR": "3"}}
 {"tool": "trace", "name": "Beam current", "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h"}
 ```
 
@@ -76,8 +76,8 @@ each tile shows, and how big the tiles are. Members are named by their
 {
   "name": "Ring grid",
   "members": [
-    {"screen": "library/sr/overview"},
-    {"screen": "library/sr/overview", "macros": {"SECTOR": "3"}},
+    {"screen": "library/facility/overview"},
+    {"screen": "library/facility/overview", "macros": {"SECTOR": "3"}},
     {"tool": "trace", "name": "Beam current", "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h"},
     {"tool": "correlation", "name": "Correlation"}
   ],
