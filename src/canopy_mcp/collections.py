@@ -31,8 +31,8 @@ No other key is allowed, here or in a member or a layout node.
 
 A member is one of two kinds (identity and key grammar: :mod:`canopy_mcp.member_key`)::
 
-    {"screen": "<category>/<id>", "macros"?: {"<name>": "<value>", ...}, "slot"?: "<slot>"}
-    {"tool": "<tool id>", "query"?: "<opaque>", "name"?: "<label>", "slot"?: "<slot>"}
+    {"screen": "<category>/<id>", "macros"?: {"<name>": "<value>", ...}}
+    {"tool": "<tool id>", "query"?: "<opaque>", "name"?: "<label>"}
 
 - ``<category>`` is ``library`` or ``drafts``; ``<id>`` matches
   ``[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*``. A facility collection names ``library/*``
@@ -46,18 +46,39 @@ A member is one of two kinds (identity and key grammar: :mod:`canopy_mcp.member_
 - ``name`` follows the collection ``name`` rule. Every tool member of a facility
   collection carries one.
 - No two members share a ``member_key``.
-- ``slot`` matches ``VIEW_ID_PATTERN``; no two members share one.
+- The member field ``slot`` is retired (see *The old shape* below).
 
-A layout places slotted members in a dock grid::
+A layout arranges the members in the dock. It is the collection form of the C-LAYOUT
+tree the viewer's dock, both agents and the OSPREY presets share::
 
-    {"split": "row" | "column", "items": [<item>, ...], "active"?: "<slot>"}
-    <item> = {"slot": "<slot>", "size"?: <weight>} | {"items": [<item>, ...], "size"?: <weight>}
+    <layout> = <tile> | <split>
+    <tile>   = {"tabs": [<member index>, ...], "showing"?: <member index>, "size"?: <weight>}
+    <split>  = {"split": "row" | "column", "items": [<layout>, <layout>, ...], "size"?: <weight>}
 
-Only the root names ``split`` (and ``active``); nested splits alternate direction
-implicitly. Every split holds at least two items, ``size`` is a positive finite relative
-weight, a split nests at most ``MAX_LAYOUT_DEPTH`` (6) deep counting the root, and every
-leaf names the slot of a member, each slot at most once. ``active`` names a member's
-slot. A member without a leaf is legal: it opens undocked.
+- a tile lists its tabs as 0-based indexes into ``members``, at least one; ``showing``
+  is one of them and defaults to ``tabs[0]``;
+- a split holds at least two items and may nest a split of either direction;
+- ``size`` is a positive finite weight among its siblings (a missing weight counts 1);
+  the viewer normalises weights to fractions when it opens the collection;
+- the root may be a single tile;
+- every member is placed in exactly one tile, exactly once;
+- a tile has no ``tile`` id and no ``from``: ids are minted when the collection opens.
+
+There is no depth cap: only ``MAX_LAYOUT_BYTES`` bounds the tree. A collection without
+a ``layout`` is legal and opens as tabs. A broken layout raises :class:`InvalidLayout`,
+whose message is ``<where>: <reason>: <text>``; ``reason`` is one of
+:data:`LAYOUT_REASONS`, the same strings the viewer's ``validateLayout`` returns, and
+:func:`layout_refusal` replays the C-CASES ``validate`` cases copied into
+``tests/canopy_mcp/fixtures/dock-cases``.
+
+The old shape. Before tiles with tabs, members carried a ``slot`` and the layout placed
+``{"slot": ...}`` leaves. Such a document raises :class:`OldShapeLayout` (reason
+``old_slot_shape``), an :class:`InvalidLayout`: ``PUT`` and ``--check`` refuse it like any
+other broken rule, but a reader lists the stored file as *refused* instead of skipping it,
+so its owner can see it and delete or re-save it (``{source, ref, rev, id, name, members,
+refused: <the refusal>}``, the members without their slots). A refused collection is never
+opened (``GET /collections/{id}`` answers 404), never ticked (``invalid_op``) and never
+shown; the personal store deletes it like any other.
 
 Limits: at most ``MAX_MEMBERS`` (50) members, the layout at most ``MAX_LAYOUT_BYTES``
 (32 KiB) and the whole document at most ``MAX_COLLECTION_BYTES`` (256 KiB), each
@@ -74,10 +95,11 @@ Stores
 The facility store (:class:`FacilityCollections`) is a read-only directory of
 ``<id>.json`` files: the id is the file stem, a missing ``updated`` reads as the file's
 mtime, and a file that is unreadable or breaks a rule is logged once (until it
-changes) and skipped. The personal store (:class:`CollectionStore`) keeps
-``<personal dir>/<id>.json`` with the rules of :mod:`canopy_mcp.views`: every write
-is one section under an exclusive ``flock`` on the personal directory, each file is
-replaced atomically, an unwritable directory raises
+changes) and skipped, except an old-shape file, which is listed as refused. The
+personal store (:class:`CollectionStore`) keeps ``<personal dir>/<id>.json`` with
+the rules of :mod:`canopy_mcp.views`: every write is one section under an exclusive
+``flock`` on the personal directory, each file is replaced atomically, an unwritable
+directory raises
 :class:`~canopy_mcp.store.ReadOnlyStore` (``read_only_store``). A listed collection
 carries ``source``, ``ref`` (``<source>:<id>``) and ``rev``.
 
@@ -131,8 +153,8 @@ exactly those keys:
 with its keys; ``recent`` and ``recent-many`` keep the first ``MAX_RECENT`` (10). All
 are idempotent, and an op that changes nothing writes nothing. An unknown op is
 400 ``invalid_op`` "op must be one of tick, untick, pin, unpin, recent, recent-remove,
-recent-clear, recent-many". A member here follows the personal member rules without
-``slot``. Bounds: an op is at most ``MAX_STATE_OP_BYTES`` (8 KiB), a ``recent-many``
+recent-clear, recent-many", as is a ``tick`` of a refused collection's ref. A member here
+follows the personal member rules. Bounds: an op is at most ``MAX_STATE_OP_BYTES`` (8 KiB), a ``recent-many``
 op at most ``MAX_RECENT_MANY_OP_BYTES`` (48 KiB), the stored state at most
 ``MAX_STATE_BYTES`` (512 KiB), all as compact UTF-8 JSON; ``MAX_PINNED`` (50)
 pinned members, at most ``MAX_REFS`` (100) refs per list. A full list first evicts the refs naming no current
@@ -147,11 +169,12 @@ HTTP surface
 
 * ``GET /collections`` -> 200 ``{"collections": [...]}``: facility first, then personal,
   each sorted by case-folded name, then id, each carrying ``source``, ``ref`` and
-  ``rev``. It answers an ``ETag`` (the quoted sha256 hex of the body) and 304 with no
-  body, keeping ``ETag`` and ``Cache-Control``, on a matching ``If-None-Match`` (weak
-  and list forms match); ``HEAD`` mirrors ``GET``
+  ``rev``; an old-shape collection is listed as refused (above). It answers an
+  ``ETag`` (the quoted sha256 hex of the body) and 304 with no body, keeping ``ETag``
+  and ``Cache-Control``, on a matching ``If-None-Match`` (weak and list forms match);
+  ``HEAD`` mirrors ``GET``
 * ``GET /collections/{id}`` -> 200 the listed personal collection (with ``rev``), 404
-  ``not_found``
+  ``not_found`` (also for a refused one, which is never opened)
 * ``PUT /collections/{id}`` with a JSON collection body and ``If-None-Match: *`` or
   ``If-Match: <rev>`` -> 201 created, 200 replaced (body: the listed collection, its
   new ``rev``); 428 ``precondition_required`` without either, 412 ``exists`` /
@@ -179,7 +202,6 @@ own: they sit behind the app's proxy guard.
 from __future__ import annotations
 
 import json
-import math
 import asyncio
 import hashlib
 import logging
@@ -215,13 +237,21 @@ from canopy_mcp.views import (
 from canopy_mcp.static import TOOL_IDS, _etag, _not_modified
 from canopy_mcp.listing import Judged, scan, judge
 from canopy_mcp.member_key import InvalidMember, member_key
+from canopy_mcp.layout import (
+    LAYOUT_REASONS,
+    SPLITS,
+    LayoutForm,
+    LayoutRefused,
+    check_layout,
+    find_old_shape,
+    normalize_layout,
+)
 
 __all__ = [
     "FACILITY",
     "PERSONAL",
     "SOURCES",
     "MAX_MEMBERS",
-    "MAX_LAYOUT_DEPTH",
     "MAX_LAYOUT_BYTES",
     "MAX_COLLECTION_BYTES",
     "MAX_QUERY_BYTES",
@@ -237,6 +267,11 @@ __all__ = [
     "STATE_FILE",
     "STATE_OPS",
     "InvalidCollection",
+    "InvalidLayout",
+    "OldShapeLayout",
+    "LAYOUT_REASONS",
+    "layout_refusal",
+    "normalize_layout",
     "InvalidCollectionId",
     "InvalidStateOp",
     "CollectionNotFound",
@@ -263,10 +298,8 @@ FACILITY = "facility"
 PERSONAL = "personal"
 SOURCES = (FACILITY, PERSONAL)
 MAX_MEMBERS = 50
-MAX_LAYOUT_DEPTH = 6
 MAX_LAYOUT_BYTES = 32 * 1024
 MAX_COLLECTION_BYTES = 256 * 1024
-SPLITS = ("row", "column")
 MAX_STATE_OP_BYTES = 8 * 1024
 MAX_STATE_BYTES = 512 * 1024
 MAX_PINNED = 50
@@ -298,16 +331,32 @@ MAX_RECENT_MANY_OP_BYTES = 48 * 1024
 log = logging.getLogger(__name__)
 
 _COLLECTION_KEYS = frozenset({"id", "name", "description", "members", "layout", "default", "updated"})
-_SCREEN_KEYS = frozenset({"screen", "macros", "slot"})
-_TOOL_KEYS = frozenset({"tool", "query", "name", "slot"})
-_ROOT_KEYS = frozenset({"split", "items", "active"})
-_NODE_KEYS = frozenset({"items", "size"})
-_LEAF_KEYS = frozenset({"slot", "size"})
+_SCREEN_KEYS = frozenset({"screen", "macros"})
+_TOOL_KEYS = frozenset({"tool", "query", "name"})
 _SCREENS_PREFIX = "screens/"
 
 
 class InvalidCollection(ValueError):
     """The document breaks a collection rule; the message names the field and the rule."""
+
+
+class InvalidLayout(InvalidCollection):
+    """The layout breaks a C-LAYOUT rule: ``reason`` (one of :data:`LAYOUT_REASONS`) at ``where``."""
+
+    def __init__(self, reason: str, where: str):
+        super().__init__(f"{where}: {reason}: {_REASON_TEXT[reason]}")
+        self.reason = reason
+        self.where = where
+
+
+class OldShapeLayout(InvalidLayout):
+    """The document has the retired slot shape (slotted members, ``{"slot"}`` leaves).
+
+    Refused like any broken rule, but a reader lists the stored file as refused.
+    """
+
+    def __init__(self, where: str):
+        super().__init__("old_slot_shape", where)
 
 
 def _size(value: Any) -> int:
@@ -331,7 +380,7 @@ def _name(value: Any, where: str) -> str:
         raise InvalidCollection(f"{where}: {exc}") from None
 
 
-def _slot(value: Any, where: str) -> str:
+def _id_value(value: Any, where: str) -> str:
     if not isinstance(value, str) or not VIEW_ID_PATTERN.fullmatch(value):
         raise InvalidCollection(f"{where} must match ^[A-Za-z0-9_-]{{1,64}}$")
     return value
@@ -409,7 +458,6 @@ def _members(raw: Any, source: str, listed: frozenset[str] | None) -> list[dict]
         raise InvalidCollection(f"members holds {len(raw)} entries, at most {MAX_MEMBERS} (MAX_MEMBERS)")
     out: list[dict] = []
     keys: set[str] = set()
-    slots: set[str] = set()
     for index, member in enumerate(raw):
         where = f"members[{index}]"
         if not isinstance(member, Mapping):
@@ -426,66 +474,76 @@ def _members(raw: Any, source: str, listed: frozenset[str] | None) -> list[dict]
         if key in keys:
             raise InvalidCollection(f"{where} duplicates member_key {key!r}")
         keys.add(key)
-        if "slot" in member:
-            slot = _slot(member["slot"], f"{where}.slot")
-            if slot in slots:
-                raise InvalidCollection(f"{where}.slot {slot!r} is not unique")
-            slots.add(slot)
-            clean["slot"] = slot
         out.append(clean)
     return out
 
 
-def _weight(node: Mapping[str, Any], where: str) -> None:
-    if "size" not in node:
-        return
-    size = node["size"]
-    finite = isinstance(size, int) or (isinstance(size, float) and math.isfinite(size))
-    if isinstance(size, bool) or not finite or size <= 0:
-        raise InvalidCollection(f"{where}.size must be a positive number")
+# --- layout (C-LAYOUT) -----------------------------------------------------------
+
+_REASON_TEXT = {
+    "not_layout": "a layout node is a tile (tabs) or a split (split, items)",
+    "unknown_field": "unknown field",
+    "bad_split": "split must be 'row' or 'column'",
+    "bad_tile_id": "tile must be a non-empty string",
+    "duplicate_tile": "a tile id is used twice",
+    "bad_key": "a tab must name a member by its 0-based index",
+    "empty_tabs": "tabs must list at least one tab",
+    "duplicate_key": "a tab is placed twice",
+    "showing_not_in_tabs": "showing must be one of the tile's tabs",
+    "split_too_few_items": "a split holds at least two items",
+    "bad_size": "size must be a positive number",
+    "unknown_from": "from must name another tile of the layout",
+    "old_slot_shape": "the slot shape is retired; a tile lists its members in tabs",
+    "old_key_shape": "the key-leaf shape is retired; a tile lists its keys in tabs",
+    "member_missing": "every member is placed in a tile",
+}
 
 
-def _items(node: Mapping[str, Any], where: str, depth: int, slots: set[str], placed: set[str]) -> None:
-    if depth > MAX_LAYOUT_DEPTH:
-        raise InvalidCollection(f"{where}: layout nests deeper than {MAX_LAYOUT_DEPTH}")
-    items = node.get("items")
-    if not isinstance(items, list) or len(items) < 2:
-        raise InvalidCollection(f"{where}.items must be an array of at least two items")
-    for index, item in enumerate(items):
-        at = f"{where}.items[{index}]"
-        if not isinstance(item, Mapping):
-            raise InvalidCollection(f"{at} must be an object")
-        if "split" in item or "active" in item:
-            raise InvalidCollection(f"{at}: only the layout root names split and active")
-        if "slot" in item:
-            if "items" in item:
-                raise InvalidCollection(f"{at} is either a leaf (slot) or a split (items), not both")
-            _unknown(item, _LEAF_KEYS, at)
-            slot = item["slot"]
-            if not isinstance(slot, str) or slot not in slots:
-                raise InvalidCollection(f"{at}.slot must name the slot of a member")
-            if slot in placed:
-                raise InvalidCollection(f"{at}.slot {slot!r} is placed twice")
-            placed.add(slot)
-        elif "items" in item:
-            _unknown(item, _NODE_KEYS, at)
-            _items(item, at, depth + 1, slots, placed)
-        else:
-            raise InvalidCollection(f"{at} must carry slot or items")
-        _weight(item, at)
+def layout_refusal(layout: Any, *, form: LayoutForm = "dock", members: int | None = None) -> tuple[str, str] | None:
+    """``(reason, where)`` of the first C-LAYOUT rule ``layout`` breaks, in tree order; ``None`` when valid.
+
+    ``form`` is ``dock`` (tile ids, string keys, fractions) or ``collection`` (no ids,
+    weights, ``showing`` optional). With ``members`` (collection form), every key must be a
+    member index below it and every member placed once. The viewer's ``validateLayout``,
+    rule for rule: both replay the C-CASES ``validate`` cases.
+    """
+    try:
+        check_layout(layout, form, members)
+    except LayoutRefused as refused:
+        return refused.reason, refused.where
+    except RecursionError:
+        return "not_layout", "layout"
+    return None
 
 
-def _layout(layout: Any, slots: set[str]) -> None:
-    if not isinstance(layout, Mapping):
-        raise InvalidCollection("layout must be an object")
-    _unknown(layout, _ROOT_KEYS, "layout")
-    if layout.get("split") not in SPLITS:
-        raise InvalidCollection("layout.split must be 'row' or 'column'")
-    if _size(layout) > MAX_LAYOUT_BYTES:
+def _old_slot_shape(doc: Mapping[str, Any]) -> None:
+    """Raise :class:`OldShapeLayout` when ``doc`` has the retired slot shape."""
+    if "layout" in doc:
+        try:
+            find_old_shape(doc["layout"], "layout")
+        except LayoutRefused as refused:
+            if refused.reason == "old_slot_shape":
+                raise OldShapeLayout(refused.where) from None
+        except RecursionError:
+            pass
+    members = doc.get("members")
+    if isinstance(members, list):
+        for index, member in enumerate(members):
+            if isinstance(member, Mapping) and "slot" in member:
+                raise OldShapeLayout(f"members[{index}].slot")
+
+
+def _layout(layout: Any, members: int) -> Any:
+    try:
+        size = _size(layout)
+    except (TypeError, ValueError, RecursionError):
+        raise InvalidLayout("not_layout", "layout") from None
+    if size > MAX_LAYOUT_BYTES:
         raise InvalidCollection(f"layout exceeds {MAX_LAYOUT_BYTES} bytes (MAX_LAYOUT_BYTES)")
-    _items(layout, "layout", 1, slots, set())
-    if "active" in layout and (not isinstance(layout["active"], str) or layout["active"] not in slots):
-        raise InvalidCollection("layout.active must name the slot of a member")
+    refusal = layout_refusal(layout, form="collection", members=members)
+    if refusal is not None:
+        raise InvalidLayout(*refusal)
+    return layout
 
 
 def validate_collection(
@@ -501,7 +559,8 @@ def validate_collection(
     library root (or its judgement) that ``library/*`` screen members must be listed in.
     ``file_id`` is the id the store expects (a facility file's stem, a personal PUT's
     URL id): a present ``id`` field must equal it, and it fills a missing one.
-    Raises :class:`InvalidCollection` naming the first broken rule.
+    Raises :class:`InvalidCollection` naming the first broken rule: :class:`InvalidLayout`
+    for a broken layout, :class:`OldShapeLayout` for the retired slot shape.
     """
     if source not in SOURCES:
         raise ValueError(f"source must be one of {SOURCES}")
@@ -518,11 +577,11 @@ def validate_collection(
     _unknown(doc, _COLLECTION_KEYS, "the collection")
     out: dict[str, Any] = {}
     if "id" in doc:
-        out["id"] = _slot(doc["id"], "id")
+        out["id"] = _id_value(doc["id"], "id")
         if file_id is not None and out["id"] != file_id:
             raise InvalidCollection(f"id {out['id']!r} must equal the file id {file_id!r}")
     elif file_id is not None:
-        out["id"] = _slot(file_id, "the file id")
+        out["id"] = _id_value(file_id, "the file id")
     if "name" not in doc:
         raise InvalidCollection("name is required")
     out["name"] = _name(doc["name"], "name")
@@ -530,11 +589,11 @@ def validate_collection(
         out["description"] = _text(doc["description"], "description")
     if "members" not in doc:
         raise InvalidCollection("members is required")
+    _old_slot_shape(doc)
     listed = library_screens(library) if library is not None else None
     out["members"] = _members(doc["members"], source, listed)
     if "layout" in doc:
-        _layout(doc["layout"], {member["slot"] for member in out["members"] if "slot" in member})
-        out["layout"] = doc["layout"]
+        out["layout"] = _layout(doc["layout"], len(out["members"]))
     if "default" in doc:
         if source != FACILITY:
             raise InvalidCollection("default is legal only in a facility collection")
@@ -676,7 +735,7 @@ class _Reader:
         self.dir = Path(directory)
         self._logged: set[tuple[str, int, int]] = set()
 
-    def _skip(self, path: Path, reason: str) -> None:
+    def _skip(self, path: Path, reason: str, verb: str = "skipping") -> None:
         try:
             st = path.stat()
             mark = (str(path), st.st_mtime_ns, st.st_size)
@@ -684,7 +743,28 @@ class _Reader:
             mark = (str(path), 0, 0)
         if mark not in self._logged:
             self._logged.add(mark)
-            log.warning("skipping %s collection %s: %s", self.source, path, reason)
+            log.warning("%s %s collection %s: %s", verb, self.source, path, reason)
+
+    def _refused(
+        self, path: Path, doc: Mapping[str, Any], data: bytes, collection_id: str, refusal: OldShapeLayout
+    ) -> dict[str, Any] | None:
+        """An old-shape file listed as refused: ``{id, name, members, refused}`` plus the
+        listing keys, the members without their slots. ``None`` (skipped) when the file
+        breaks another rule once the old shape is set aside."""
+        lenient = {key: value for key, value in doc.items() if key != "layout"}
+        if isinstance(lenient.get("members"), list):
+            lenient["members"] = [
+                {k: v for k, v in member.items() if k != "slot"} if isinstance(member, Mapping) else member
+                for member in lenient["members"]
+            ]
+        try:
+            clean = validate_collection(lenient, source=self.source, file_id=collection_id)  # type: ignore[arg-type]
+        except InvalidCollection as exc:
+            self._skip(path, str(exc))
+            return None
+        self._skip(path, str(refusal), "listing as refused")
+        entry = {"id": clean["id"], "name": clean["name"], "members": clean["members"], "refused": str(refusal)}
+        return _listed(entry, self.source, data)
 
     def _load(self, path: Path, collection_id: str) -> dict[str, Any] | None:
         try:
@@ -695,6 +775,8 @@ class _Reader:
             return None
         try:
             clean = validate_collection(doc, source=self.source, file_id=collection_id)  # type: ignore[arg-type]
+        except OldShapeLayout as exc:
+            return self._refused(path, doc, data, collection_id, exc)
         except InvalidCollection as exc:
             self._skip(path, str(exc))
             return None
@@ -706,7 +788,8 @@ class _Reader:
         return _listed(clean, self.source, data)
 
     def list(self) -> list[dict[str, Any]]:
-        """Every readable, valid collection, sorted by case-folded name, then id."""
+        """Every readable, valid collection and every refused old-shape one, sorted by
+        case-folded name, then id."""
         if not self.dir.is_dir():
             return []
         docs = []
@@ -723,7 +806,12 @@ class _Reader:
         return _sorted(docs)
 
     def refs(self) -> set[str]:
-        return {doc["ref"] for doc in self.list()}
+        """The refs of the valid collections (a refused one is not current)."""
+        return {doc["ref"] for doc in self.list() if "refused" not in doc}
+
+    def refused_refs(self) -> set[str]:
+        """The refs of the collections listed as refused."""
+        return {doc["ref"] for doc in self.list() if "refused" in doc}
 
 
 class FacilityCollections(_Reader):
@@ -773,7 +861,7 @@ class CollectionStore(_Reader):
     def get(self, collection_id: str) -> dict[str, Any]:
         path = self.path_for(collection_id)
         doc = self._load(path, collection_id) if path.is_file() else None
-        if doc is None:
+        if doc is None or "refused" in doc:
             raise CollectionNotFound(collection_id)
         return doc
 
@@ -904,6 +992,12 @@ class CollectionStore(_Reader):
             refs |= self.facility.refs()
         return refs
 
+    def _refused_refs(self) -> set[str]:
+        refs = self.refused_refs()
+        if self.facility is not None:
+            refs |= self.facility.refused_refs()
+        return refs
+
     async def apply_op(self, op: Any) -> dict[str, list]:
         """Apply one state op (module text) and return the new state document.
 
@@ -919,6 +1013,8 @@ class CollectionStore(_Reader):
         with lock_root(self.dir):
             state = self._read_state()
             before = json.dumps(state, sort_keys=True)
+            if name == "tick" and value in self._refused_refs():
+                raise InvalidStateOp(f"collection {value!r} is refused (the old slot shape) and cannot be ticked")
             if name in ("tick", "untick"):
                 into, out = ("ticked", "unticked") if name == "tick" else ("unticked", "ticked")
                 state[out] = [ref for ref in state[out] if ref != value]
@@ -1020,15 +1116,15 @@ def shown_refs(collections: Iterable[Mapping[str, Any]], state: Mapping[str, Any
     ``collections`` is what :func:`all_collections` returns (or any ``[{ref, default?}]``
     in list order); ``state`` is a collections state, of which only ``ticked`` and
     ``unticked`` are read. Only ``default: true`` counts as a default, unticked wins over
-    ticked, and a ticked ref that is not listed adds nothing. This is the selection the
-    viewer's ``shownSelection`` computes; both replay ``collections-shown.json``.
+    ticked, and a ticked ref that is not listed, or is listed as refused, adds nothing.
+    This is the selection the viewer's ``shownSelection`` computes; both replay ``collections-shown.json``.
     """
     ticked = set(state.get("ticked") or ())
     unticked = set(state.get("unticked") or ())
     return [
         doc["ref"]
         for doc in collections
-        if doc["ref"] not in unticked and (doc.get("default") is True or doc["ref"] in ticked)
+        if "refused" not in doc and doc["ref"] not in unticked and (doc.get("default") is True or doc["ref"] in ticked)
     ]
 
 

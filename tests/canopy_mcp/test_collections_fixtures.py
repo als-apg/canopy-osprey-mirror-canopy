@@ -4,10 +4,17 @@ Other suites copy these files byte for byte (the viewer's e2e fixtures, the OSPR
 template, the control-assistant deploy), so this test pins what each one means:
 every valid file passes the validator and ``--check``, every invalid file is refused
 by ``--check`` for exactly the rule its name says, the fixture library lists every
-screen the valid set names, and ``valid/list-body.json`` is the ``GET /collections``
-body the real route serves for ``valid/``.
+screen the valid set names, ``valid/list-body.json`` is the ``GET /collections``
+body the real route serves for ``valid/``, and ``responses/list-refused.json`` is
+that body with the ``old-shape/`` collections added to the personal store: each listed
+as refused.
 
-Run with ``CANOPY_REGENERATE_FIXTURES=1`` to rewrite ``valid/list-body.json``.
+The personal valid set holds one collection per rule of the layout's collection form:
+``grid`` (weights, nested splits), ``tabbed`` (several tabs per tile, ``showing``),
+``root-tile`` (a root tile, ``showing`` left to default), ``deep`` (deeper than the
+retired depth cap) and ``drafts`` (no layout). Every one places each member once.
+
+Run with ``CANOPY_REGENERATE_FIXTURES=1`` to rewrite both list bodies.
 """
 
 import os
@@ -24,6 +31,7 @@ from canopy_mcp.listing import scan, judge
 from canopy_mcp.collections import (
     FACILITY,
     PERSONAL,
+    OldShapeLayout,
     InvalidCollection,
     library_screens,
     validate_collection,
@@ -37,6 +45,8 @@ PERSONAL_DIR = VALID / "personal"
 INVALID = FIXTURES / "invalid"
 LIBRARY = FIXTURES / "library"
 LIST_BODY = VALID / "list-body.json"
+OLD_SHAPE = FIXTURES / "old-shape"
+LIST_REFUSED = FIXTURES / "responses" / "list-refused.json"
 FIXTURE_DIST = Path(__file__).parent / "fixtures" / "dist"
 
 # Each invalid file and a phrase of the one refusal --check gives it.
@@ -75,22 +85,21 @@ REFUSALS = {
     "tool-query-too-long.json": "MAX_QUERY_BYTES",
     "tool-name-empty.json": "members[0].name",
     "member-duplicate-key.json": "duplicates member_key",
-    "slot-bad.json": "slot must match",
-    "slot-duplicate.json": "is not unique",
-    "layout-not-object.json": "layout must be an object",
-    "layout-unknown-key.json": "layout has unknown key(s): gap",
-    "layout-bad-split.json": "layout.split must be 'row' or 'column'",
-    "layout-one-item.json": "at least two items",
-    "layout-nested-split.json": "only the layout root names split and active",
-    "layout-nested-active.json": "only the layout root names split and active",
-    "layout-leaf-and-split.json": "is either a leaf (slot) or a split (items)",
-    "layout-item-empty.json": "must carry slot or items",
-    "layout-leaf-unknown-key.json": "has unknown key(s): title",
-    "layout-leaf-unknown-slot.json": "slot must name the slot of a member",
-    "layout-slot-twice.json": "is placed twice",
-    "layout-bad-size.json": "size must be a positive number",
-    "layout-active-unknown.json": "layout.active must name the slot of a member",
-    "layout-too-deep.json": "layout nests deeper than 6",
+    "member-slot.json": "members[0].slot: old_slot_shape",
+    "layout-old-slot-shape.json": "layout.items[0]: old_slot_shape",
+    "layout-old-key-shape.json": "layout.items[0]: old_key_shape",
+    "layout-not-object.json": "layout: not_layout",
+    "layout-unknown-field.json": "layout.gap: unknown_field",
+    "layout-tile-id.json": "layout.items[0].tile: unknown_field",
+    "layout-from.json": "layout.items[1].from: unknown_field",
+    "layout-bad-split.json": "layout.split: bad_split",
+    "layout-one-item.json": "layout.items: split_too_few_items",
+    "layout-empty-tabs.json": "layout.items[0].tabs: empty_tabs",
+    "layout-bad-key.json": "layout.items[1].tabs[0]: bad_key",
+    "layout-duplicate-key.json": "layout.items[1].tabs[0]: duplicate_key",
+    "layout-showing-not-in-tabs.json": "layout.items[0].showing: showing_not_in_tabs",
+    "layout-bad-size.json": "layout.items[0].size: bad_size",
+    "layout-member-missing.json": "layout: member_missing",
 }
 # Refused before the validator sees a document (file name, file kind, decoding).
 NOT_DOCUMENTS = {"bad.stem.json", "not-a-file.json", "not-utf8.json", "not-json.json"}
@@ -118,12 +127,13 @@ def test_the_set_has_the_files_the_plan_names():
         "storage-ring.json",
         "diagnostics.json",
     }
-    assert set(_docs(PERSONAL_DIR)) == {"grid.json", "undocked.json", "drafts.json"}
+    assert set(_docs(PERSONAL_DIR)) == {"grid.json", "tabbed.json", "root-tile.json", "deep.json", "drafts.json"}
+    assert set(_docs(OLD_SHAPE)) == {"old-grid.json", "old-undocked.json"}
     assert {p.name for p in INVALID.iterdir()} == set(REFUSALS)
 
 
 def test_every_valid_file_carries_updated_so_the_list_body_is_stable():
-    for directory in (FACILITY_DIR, PERSONAL_DIR):
+    for directory in (FACILITY_DIR, PERSONAL_DIR, OLD_SHAPE):
         for name, doc in _docs(directory).items():
             assert isinstance(doc.get("updated"), str), name
 
@@ -162,14 +172,41 @@ def test_the_deploy_trio_is_d14b():
     assert "query" not in docs["diagnostics.json"]["members"][2]
 
 
-def test_the_personal_set_covers_a_grid_undocked_members_and_a_draft():
+def _tiles(node: dict) -> list[dict]:
+    return [tile for item in node["items"] for tile in _tiles(item)] if "split" in node else [node]
+
+
+def _depth(node: dict) -> int:
+    return 1 + max(_depth(item) for item in node["items"]) if "split" in node else 0
+
+
+def test_the_personal_set_has_one_collection_per_layout_rule():
     docs = _docs(PERSONAL_DIR)
+    for name, doc in docs.items():
+        if "layout" in doc:
+            placed = [key for tile in _tiles(doc["layout"]) for key in tile["tabs"]]
+            assert sorted(placed) == list(range(len(doc["members"]))), name
+        assert all("slot" not in member for member in doc["members"]), name
+    # Weights: two columns weighing 2 and 1, each a nested split.
     grid = docs["grid.json"]["layout"]
-    assert len(grid["items"]) == 2 and all(len(item["items"]) == 2 for item in grid["items"])
-    undocked = docs["undocked.json"]
-    placed = {item["slot"] for item in undocked["layout"]["items"]}
-    assert [m for m in undocked["members"] if m.get("slot") not in placed]
+    assert [item["size"] for item in grid["items"]] == [2, 1]
+    assert all(item["split"] == "column" and len(item["items"]) == 2 for item in grid["items"])
+    # Several tabs in a tile, showing a tab other than the first.
+    tabbed = _tiles(docs["tabbed.json"]["layout"])
+    assert tabbed[0]["tabs"] == [0, 1] and tabbed[0]["showing"] == 1
+    # A root tile, showing left to default.
+    assert docs["root-tile.json"]["layout"] == {"tabs": [0, 1, 2]}
+    # Deeper than the retired depth-6 cap.
+    assert _depth(docs["deep.json"]["layout"]) > 6
+    # No layout at all, and a draft member.
+    assert "layout" not in docs["drafts.json"]
     assert any(m.get("screen", "").startswith("drafts/") for m in docs["drafts.json"]["members"])
+
+
+def test_the_old_shape_set_is_refused_as_the_old_shape():
+    for name, doc in _docs(OLD_SHAPE).items():
+        with pytest.raises(OldShapeLayout):
+            validate_collection(doc, source=PERSONAL, library=LIBRARY, file_id=name[: -len(".json")])
 
 
 # --- library ----------------------------------------------------------------------
@@ -181,7 +218,7 @@ def test_the_library_lists_every_screen_the_valid_set_names_and_nothing_is_refus
     listed = library_screens(judged)
     named = {
         member["screen"].split("/", 1)[1]
-        for directory in (FACILITY_DIR, PERSONAL_DIR)
+        for directory in (FACILITY_DIR, PERSONAL_DIR, OLD_SHAPE)
         for doc in _docs(directory).values()
         for member in doc["members"]
         if member.get("screen", "").startswith("library/")
@@ -248,9 +285,12 @@ def test_without_a_library_only_the_unlisted_screen_passes(capsys):
 # --- GET /collections ------------------------------------------------------------
 
 
-def _list_body(tmp_path: Path) -> dict:
+def _list_body(tmp_path: Path, *extra: Path) -> dict:
     personal = tmp_path / "personal"
     shutil.copytree(PERSONAL_DIR, personal)
+    for directory in extra:
+        for path in directory.glob("*.json"):
+            shutil.copy(path, personal / path.name)
     drafts = tmp_path / "drafts"
     (drafts / "screens").mkdir(parents=True)
     settings = Settings(
@@ -277,7 +317,27 @@ def test_the_list_body_is_what_the_route_serves_for_valid(tmp_path):
         "facility:diagnostics",
         "facility:injector",
         "facility:storage-ring",
+        "personal:deep",
         "personal:drafts",
-        "personal:undocked",
+        "personal:root-tile",
         "personal:grid",
+        "personal:tabbed",
     ]
+    assert all("refused" not in doc for doc in body["collections"])
+
+
+def test_the_refused_list_body_lists_the_old_shape_as_refused(tmp_path):
+    body = _list_body(tmp_path, OLD_SHAPE)
+    if os.environ.get("CANOPY_REGENERATE_FIXTURES"):
+        LIST_REFUSED.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    assert json.loads(LIST_REFUSED.read_text(encoding="utf-8")) == body
+    refused = {doc["ref"]: doc for doc in body["collections"] if "refused" in doc}
+    assert set(refused) == {"personal:old-grid", "personal:old-undocked"}
+    for doc in refused.values():
+        assert set(doc) == {"source", "ref", "rev", "id", "name", "members", "refused"}
+        assert "old_slot_shape" in doc["refused"]
+        assert all("slot" not in member for member in doc["members"])
+    assert refused["personal:old-grid"]["members"][0] == {"screen": "library/sr/overview"}
+    # The valid collections are listed exactly as without the old ones.
+    valid = [doc for doc in body["collections"] if "refused" not in doc]
+    assert valid == _list_body(tmp_path / "again")["collections"]
