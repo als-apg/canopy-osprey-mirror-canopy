@@ -2,25 +2,24 @@
   "name": "Broken",
   "members": [
     {
-      "screen": "library/sr/overview",
-      "slot": "a"
+      "screen": "library/sr/overview"
     },
     {
       "tool": "trace",
-      "name": "Trace",
-      "slot": "b"
+      "name": "Trace"
     }
   ],
   "layout": {
     "split": "row",
     "items": [
       {
-        "slot": "a"
+        "key": 0
       },
       {
-        "slot": "b"
+        "tabs": [
+          1
+        ]
       }
-    ],
-    "active": "z"
+    ]
   }
 }

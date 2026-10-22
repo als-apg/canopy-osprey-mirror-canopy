@@ -8,7 +8,18 @@
     {
       "tool": "trace",
       "name": "Trace",
-      "slot": "a"
+      "slot": "b"
     }
-  ]
+  ],
+  "layout": {
+    "split": "row",
+    "items": [
+      {
+        "slot": "a"
+      },
+      {
+        "slot": "b"
+      }
+    ]
+  }
 }

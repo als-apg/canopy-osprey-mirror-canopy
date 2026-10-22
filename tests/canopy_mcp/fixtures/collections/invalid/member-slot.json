@@ -3,7 +3,11 @@
   "members": [
     {
       "screen": "library/sr/overview",
-      "slot": "a b"
+      "slot": "a"
+    },
+    {
+      "tool": "trace",
+      "name": "Trace"
     }
   ]
 }
