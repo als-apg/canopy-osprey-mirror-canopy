@@ -17,12 +17,16 @@ The slot (protocol 1):
   ``<category>/<id>`` plus canonical macros, at most 16, values at most 64 printable ASCII
   characters without whitespace; tools ``@<tool>`` / ``@<tool>/<n>``), queries of at most 4096
   bytes of printable ASCII, labels of at most 120 characters with control and bidi characters
-  stripped. Anything else is :class:`WorkspaceError` ``invalid_state``.
+  stripped. The layout is C-LAYOUT's dock form (tiles with tabs; a root Tile is allowed, there
+  is no depth cap, at most 32 KiB) holding every open tab exactly once, and ``null`` exactly
+  when no tab is open. Anything else is :class:`WorkspaceError` ``invalid_state``.
 
 Batches:
 
-- :meth:`Hub.enqueue` checks shape only (verb enum, argument names, types and enums, 1 to 20
-  commands, macro and query bounds) and refuses ``invalid_command``; a ``batch_id`` this epoch
+- :meth:`Hub.enqueue` checks shape only (verb enum, argument names, types and enums, the
+  structured ``source``, ``target``, ``members`` and ``layout`` arguments, 1 to 20 commands,
+  macro and query bounds, ``base`` on every batch with a command that names a tile id) and
+  refuses ``invalid_command``; a ``batch_id`` this epoch
   minted returns that batch and enqueues nothing, any other is ``unknown_batch``; then
   ``no_window`` (no active window, or its stream gone for 3 s), ``stale_state`` (``base.window``
   is not the active window; ``base.seq`` is the viewer's to check), ``window_hidden`` and
@@ -48,7 +52,6 @@ from __future__ import annotations
 import re
 import copy
 import json
-import math
 import time
 import asyncio
 import secrets
@@ -60,6 +63,13 @@ from collections.abc import Mapping, Callable
 
 from canopy_mcp.store import ID_PATTERN
 from canopy_mcp.member_key import canonical_macros
+from canopy_mcp.layout import (  # noqa: F401 - LAYOUT_REASONS, normalize_layout re-exported
+    LAYOUT_REASONS,
+    LayoutForm,
+    LayoutRefused,
+    check_layout,
+    normalize_layout,
+)
 
 PROTOCOL = 1
 
@@ -72,7 +82,6 @@ MAX_MACROS = 16
 MAX_MACRO_VALUE = 64
 MAX_QUERY_BYTES = 4096
 MAX_LABEL = 120
-MAX_LAYOUT_DEPTH = 6
 MAX_LAYOUT_BYTES = 32 * 1024
 MAX_VIEW_BYTES = 4096
 MAX_WINDOW_ID = 128
@@ -86,40 +95,41 @@ MAX_WAIT_S = 10.0
 
 TOOLS = ("trace", "correlation", "waveform")
 SCREEN_CATEGORIES = ("library", "drafts")
-EDGES = ("left", "right", "above", "below")
-MODES = ("polite", "append", "replace")
+SIDES = ("left", "right", "top", "bottom")
+AS = ("tabs", "side", "layout")
 STEPS = ("in", "out", "fit", "actual")
 
 # verb -> (required argument names, optional argument names)
 VERBS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "open": (frozenset({"ref"}), frozenset({"macros", "mode", "key"})),
+    "open": (frozenset({"ref"}), frozenset({"macros"})),
+    "open_tool": (frozenset({"tool"}), frozenset({"query"})),
     "focus": (frozenset({"key"}), frozenset()),
-    "close": (frozenset({"key"}), frozenset()),
+    "close_tab": (frozenset({"key"}), frozenset()),
+    "close_tile": (frozenset({"tile"}), frozenset()),
     "close_others": (frozenset({"key"}), frozenset()),
     "close_right": (frozenset({"key"}), frozenset()),
     "close_all": (frozenset(), frozenset()),
     "reopen": (frozenset(), frozenset({"id"})),
     "back": (frozenset({"key"}), frozenset()),
     "forward": (frozenset({"key"}), frozenset()),
-    "place": (frozenset({"key"}), frozenset({"edge", "beside"})),
-    "remove_tile": (frozenset({"key"}), frozenset()),
-    "reset_layout": (frozenset(), frozenset()),
-    "zoom": (frozenset({"key"}), frozenset({"step", "percent"})),
-    "open_collection": (frozenset({"ref"}), frozenset({"layout"})),
-    "open_tool": (frozenset({"tool"}), frozenset({"query"})),
+    "drop": (frozenset({"source", "target"}), frozenset()),
+    "open_set": (frozenset({"members", "as"}), frozenset({"layout"})),
+    "open_collection": (frozenset({"ref"}), frozenset({"as"})),
     "set_query": (frozenset({"key", "query"}), frozenset()),
+    "zoom": (frozenset({"key"}), frozenset({"step", "percent"})),
+    "reset_layout": (frozenset(), frozenset()),
 }
-_ENUMS = {"mode": MODES, "edge": EDGES, "step": STEPS, "tool": TOOLS}
+_ENUMS = {"as": AS, "step": STEPS, "tool": TOOLS}
 
 REFUSAL_REASONS = ("no_window", "window_hidden", "queue_full", "invalid_command", "stale_state", "unknown_batch")
 POSTED_STATUSES = ("applied", "rejected", "skipped")
 # What a posted command result may carry besides id and status, and the types it may have.
+# The layout a command leaves is the document's state.layout, never a result extra.
 _RESULT_EXTRAS: dict[str, tuple[type, ...]] = {
     "changed": (bool,),
     "reason": (str,),
     "after": (str,),
     "key": (str,),
-    "mode": (str,),
     "group": (str,),
     "keys": (list,),
     "percent": (int, float),
@@ -127,11 +137,8 @@ _RESULT_EXTRAS: dict[str, tuple[type, ...]] = {
 }
 
 STATE_KEYS = frozenset({"tabs", "active", "layout", "zoom", "instances", "toolMru", "labels"})
-TAB_KEYS = frozenset({"key", "kind", "docked", "canBack", "canForward"})
+TAB_KEYS = frozenset({"key", "kind", "canBack", "canForward"})
 INSTANCE_KEYS = frozenset({"tool", "n", "query", "view"})
-_ROOT_KEYS = frozenset({"split", "items", "active"})
-_NODE_KEYS = frozenset({"items", "size"})
-_LEAF_KEYS = frozenset({"key", "size"})
 
 _MACRO_VALUE = re.compile(rf"[\x21-\x7e]{{0,{MAX_MACRO_VALUE}}}")
 _PRINTABLE = re.compile(r"[\x20-\x7e]*")
@@ -172,7 +179,122 @@ def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+# --- C-LAYOUT -----------------------------------------------------------------------------
+#
+# The validator and normaliser live in :mod:`canopy_mcp.layout` (shared with collections).
+
+
+def validate_layout(layout: Any, form: LayoutForm = "dock", members: int | None = None) -> str | None:
+    """The reason ``layout`` breaks C-LAYOUT (one of :data:`LAYOUT_REASONS`), or ``None``."""
+    try:
+        check_layout(layout, form, members)
+    except LayoutRefused as refused:
+        return refused.reason
+    return None
+
+
 # --- command shape ------------------------------------------------------------------------
+
+
+def _check_macros(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return "macros must be an object"
+    if len(value) > MAX_MACROS:
+        return f"at most {MAX_MACROS} macros"
+    for macro, text in value.items():
+        if not isinstance(macro, str) or macro == "":
+            return "a macro name must be a non-empty string"
+        if not isinstance(text, str) or not _MACRO_VALUE.fullmatch(text):
+            return f"macro {macro!r}: a value is at most {MAX_MACRO_VALUE} printable ASCII characters, no whitespace"
+    return None
+
+
+def _check_query(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return "query must be a string"
+    try:
+        size = len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        return "query must be valid Unicode text"
+    return None if size <= MAX_QUERY_BYTES else f"query must be at most {MAX_QUERY_BYTES} UTF-8 bytes"
+
+
+def _name(value: Any) -> bool:
+    return isinstance(value, str) and value != ""
+
+
+def _check_member(value: Any, where: str) -> str | None:
+    """A member to open: ``{ref, macros?}`` (a screen) or ``{tool, query?}`` (a tool)."""
+    if isinstance(value, dict) and "ref" in value and set(value) <= {"ref", "macros"}:
+        if not _name(value["ref"]):
+            return f"{where}.ref must be a non-empty string"
+        problem = _check_macros(value["macros"]) if "macros" in value else None
+        return f"{where}: {problem}" if problem else None
+    if isinstance(value, dict) and "tool" in value and set(value) <= {"tool", "query"}:
+        if value["tool"] not in TOOLS:
+            return f"{where}.tool must be one of {', '.join(TOOLS)}"
+        problem = _check_query(value["query"]) if "query" in value else None
+        return f"{where}: {problem}" if problem else None
+    return f"{where} must be {{ref, macros?}} or {{tool, query?}}"
+
+
+def _check_source(value: Any) -> str | None:
+    """``{new: member}``, ``{tab: key}`` or ``{tile: id}``."""
+    if not isinstance(value, dict) or len(value) != 1 or next(iter(value)) not in ("new", "tab", "tile"):
+        return "source must be one of {new}, {tab}, {tile}"
+    kind, item = next(iter(value.items()))
+    if kind == "new":
+        return _check_member(item, "source.new")
+    return None if _name(item) else f"source.{kind} must be a non-empty string"
+
+
+def _check_target(value: Any) -> str | None:
+    """``{tile, zone: centre}``, ``{tile, zone: tab, index}``, ``{tile, edge}``, ``{border: {tile, side}}``, ``{outer}``."""
+    forms = "{tile, zone}, {tile, zone, index}, {tile, edge}, {border}, {outer}"
+    if not isinstance(value, dict):
+        return f"target must be one of {forms}"
+    fields = set(value)
+    sides = ", ".join(SIDES)
+    if fields == {"outer"}:
+        return None if value["outer"] in SIDES else f"target.outer must be one of {sides}"
+    if fields == {"border"}:
+        border = value["border"]
+        if not isinstance(border, dict) or set(border) != {"tile", "side"} or not _name(border["tile"]):
+            return "target.border must be {tile, side}"
+        return None if border["side"] in SIDES else f"target.border.side must be one of {sides}"
+    if fields not in ({"tile", "zone"}, {"tile", "zone", "index"}, {"tile", "edge"}):
+        return f"target must be one of {forms}"
+    if not _name(value["tile"]):
+        return "target.tile must be a non-empty string"
+    if "edge" in value:
+        return None if value["edge"] in SIDES else f"target.edge must be one of {sides}"
+    if fields == {"tile", "zone"}:
+        return None if value["zone"] == "centre" else "target.zone without index must be centre"
+    if value["zone"] != "tab":
+        return "target.zone with index must be tab"
+    return None if _is_int(value["index"]) and value["index"] >= 0 else "target.index must be an integer >= 0"
+
+
+def _check_members(value: Any) -> str | None:
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_TABS:
+        return f"members must be a list of 1 to {MAX_TABS} members"
+    for index, member in enumerate(value):
+        problem = _check_member(member, f"members[{index}]")
+        if problem:
+            return problem
+    return None
+
+
+def _check_collection_layout(value: Any, members: int | None = None) -> str | None:
+    if not isinstance(value, dict):
+        return "layout must be a C-LAYOUT object"
+    if _size(value) > MAX_LAYOUT_BYTES:
+        return f"layout exceeds {MAX_LAYOUT_BYTES} bytes"
+    try:
+        check_layout(value, "collection", members)
+    except LayoutRefused as refused:
+        return f"layout breaks C-LAYOUT ({refused.reason} at {refused.where})"
+    return None
 
 
 def _check_arg(name: str, value: Any) -> str | None:
@@ -182,33 +304,34 @@ def _check_arg(name: str, value: Any) -> str | None:
             return f"{name} must be one of {', '.join(_ENUMS[name])}"
         return None
     if name == "macros":
-        if not isinstance(value, dict):
-            return "macros must be an object"
-        if len(value) > MAX_MACROS:
-            return f"at most {MAX_MACROS} macros"
-        for macro, text in value.items():
-            if not isinstance(macro, str) or macro == "":
-                return "a macro name must be a non-empty string"
-            if not isinstance(text, str) or not _MACRO_VALUE.fullmatch(text):
-                return (
-                    f"macro {macro!r}: a value is at most {MAX_MACRO_VALUE} printable ASCII characters, no whitespace"
-                )
-        return None
-    if name == "layout":
-        return None if isinstance(value, bool) else "layout must be a boolean"
+        return _check_macros(value)
+    if name == "query":
+        return _check_query(value)
     if name == "percent":
         if not _is_int(value) or not MIN_PERCENT <= value <= MAX_PERCENT:
             return f"percent must be an integer from {MIN_PERCENT} to {MAX_PERCENT}"
         return None
-    if name == "query":
-        if not isinstance(value, str):
-            return "query must be a string"
-        try:
-            size = len(value.encode("utf-8"))
-        except UnicodeEncodeError:
-            return "query must be valid Unicode text"
-        return None if size <= MAX_QUERY_BYTES else f"query must be at most {MAX_QUERY_BYTES} UTF-8 bytes"
+    if name == "source":
+        return _check_source(value)
+    if name == "target":
+        return _check_target(value)
+    if name == "members":
+        return _check_members(value)
+    if name == "layout":
+        return _check_collection_layout(value)
+    if name == "tile":
+        return None if _name(value) else "tile must be a non-empty string"
     return None if isinstance(value, str) else f"{name} must be a string"
+
+
+def names_tile(command: Mapping[str, Any]) -> bool:
+    """Whether a well-formed command names a tile id (``close_tile``; ``drop`` from a tile or onto one)."""
+    args = command.get("args", {})
+    if command["cmd"] == "close_tile":
+        return True
+    if command["cmd"] == "drop":
+        return "tile" in args["source"] or "tile" in args["target"] or "border" in args["target"]
+    return False
 
 
 def check_command(command: Any) -> str | None:
@@ -237,13 +360,22 @@ def check_command(command: Any) -> str | None:
             return f"{verb}: {problem}"
     if verb == "zoom" and len({"step", "percent"} & set(args)) != 1:
         return "zoom takes exactly one of step and percent"
-    if verb == "open" and ("key" in args) != (args.get("mode") == "replace"):
-        return "open takes key exactly when mode is replace"
+    if verb == "open_set":
+        if ("layout" in args) != (args["as"] == "layout"):
+            return "open_set takes layout exactly when as is layout"
+        if "layout" in args:
+            problem = _check_collection_layout(args["layout"], len(args["members"]))
+            if problem:
+                return f"open_set: {problem}"
     return None
 
 
 def check_batch(commands: Any, base: Any = None, batch_id: Any = None) -> str | None:
-    """Why the enqueue arguments break the shape rules, or ``None``."""
+    """Why the enqueue arguments break the shape rules, or ``None``.
+
+    A command that names a tile id needs ``base``: tile ids are reused after a close, so the
+    viewer must be able to tell that the agent read the layout it is changing.
+    """
     if not isinstance(commands, list) or not 1 <= len(commands) <= MAX_COMMANDS:
         return f"commands must be a list of 1 to {MAX_COMMANDS} commands"
     if base is not None:
@@ -257,6 +389,8 @@ def check_batch(commands: Any, base: Any = None, batch_id: Any = None) -> str | 
         problem = check_command(command)
         if problem:
             return f"commands[{index}]: {problem}"
+        if base is None and names_tile(command):
+            return f"commands[{index}]: {command['cmd']} names a tile id, so the batch needs base"
     return None
 
 
@@ -342,57 +476,24 @@ def _size(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8", "surrogatepass"))
 
 
-def _layout_items(node: Mapping[str, Any], where: str, depth: int, keys: set[str], placed: set[str]) -> list:
-    if depth > MAX_LAYOUT_DEPTH:
-        raise _invalid(f"{where}: layout nests deeper than {MAX_LAYOUT_DEPTH}")
-    items = node.get("items")
-    if not isinstance(items, list) or len(items) < 2:
-        raise _invalid(f"{where}.items must be an array of at least two items")
-    out = []
-    for index, item in enumerate(items):
-        at = f"{where}.items[{index}]"
-        if not isinstance(item, dict):
-            raise _invalid(f"{at} must be an object")
-        if "key" in item:
-            _closed(item, _LEAF_KEYS, at, exact=False)
-            key = item["key"]
-            if not isinstance(key, str) or key not in keys:
-                raise _invalid(f"{at}.key must name an open tab")
-            if key in placed:
-                raise _invalid(f"{at}.key {key!r} is placed twice")
-            placed.add(key)
-            leaf: dict[str, Any] = {"key": key}
-        elif "items" in item:
-            _closed(item, _NODE_KEYS, at, exact=False)
-            leaf = {"items": _layout_items(item, at, depth + 1, keys, placed)}
-        else:
-            raise _invalid(f"{at} must carry key or items")
-        if "size" in item:
-            size = item["size"]
-            finite = _is_int(size) or (isinstance(size, float) and math.isfinite(size))
-            if not finite or size <= 0:
-                raise _invalid(f"{at}.size must be a positive number")
-            leaf["size"] = size
-        out.append(leaf)
-    return out
-
-
-def validate_window_layout(layout: Any, open_keys: set[str]) -> dict[str, Any] | None:
-    """A window's layout (``None``, or the collection layout schema with ``{key, size?}`` leaves)."""
-    if layout is None:
+def validate_window_layout(layout: Any, open_keys: list[str]) -> dict[str, Any] | None:
+    """A window's layout: ``None`` exactly when no tab is open, else C-LAYOUT's dock form
+    (a root Tile allowed, no depth cap, at most 32 KiB) holding every open tab once."""
+    if not open_keys:
+        if layout is not None:
+            raise _invalid("layout must be null while no tab is open")
         return None
-    root = _closed(layout, _ROOT_KEYS, "layout", exact=False)
-    if root.get("split") not in ("row", "column"):
-        raise _invalid("layout.split must be 'row' or 'column'")
+    if layout is None:
+        raise _invalid("layout must hold every open tab")
     if _size(layout) > MAX_LAYOUT_BYTES:
         raise _invalid(f"layout exceeds {MAX_LAYOUT_BYTES} bytes")
-    placed: set[str] = set()
-    out: dict[str, Any] = {"split": root["split"], "items": _layout_items(root, "layout", 1, open_keys, placed)}
-    if "active" in root:
-        if root["active"] not in placed:
-            raise _invalid("layout.active must name a placed tab")
-        out["active"] = root["active"]
-    return out
+    try:
+        placed = check_layout(layout)
+    except LayoutRefused as refused:
+        raise _invalid(f"{refused.where}: {refused.reason}") from None
+    if set(placed) != set(open_keys):
+        raise _invalid("layout must hold exactly the open tabs")
+    return copy.deepcopy(layout)
 
 
 def normalise_state(state: Any) -> dict[str, Any]:
@@ -419,18 +520,18 @@ def normalise_state(state: Any) -> dict[str, Any]:
             raise _invalid(f"{at}.key is not a canonical tab key")
         if tab["kind"] != kind:
             raise _invalid(f"{at}.kind must be {kind!r}")
-        for flag in ("docked", "canBack", "canForward"):
+        for flag in ("canBack", "canForward"):
             if not isinstance(tab[flag], bool):
                 raise _invalid(f"{at}.{flag} must be a boolean")
         keys.append(key)
-        out_tabs.append({name: tab[name] for name in ("key", "kind", "docked", "canBack", "canForward")})
+        out_tabs.append({name: tab[name] for name in ("key", "kind", "canBack", "canForward")})
     open_keys = set(keys)
 
     active = state["active"]
     if active is not None and active not in open_keys:
         raise _invalid("state.active must be null or an open tab")
 
-    layout = validate_window_layout(state["layout"], {t["key"] for t in out_tabs if t["docked"]})
+    layout = validate_window_layout(state["layout"], keys)
 
     zoom = state["zoom"]
     if not isinstance(zoom, dict):

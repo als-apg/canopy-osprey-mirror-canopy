@@ -25,24 +25,27 @@ WORKSPACE = Path(__file__).parent / "fixtures" / "workspace"
 
 # CONTRACT section 3: verb -> applied extras.
 VERBS = {
-    "open": {"key", "mode"},
+    "open": {"key"},
+    "open_tool": {"key"},
     "focus": set(),
-    "close": {"group"},
+    "close_tab": {"group"},
+    "close_tile": {"group"},
     "close_others": {"group"},
     "close_right": {"group"},
     "close_all": {"group"},
     "reopen": {"keys"},
     "back": set(),
     "forward": set(),
-    "place": set(),
-    "remove_tile": set(),
-    "reset_layout": {"group"},
-    "zoom": {"percent"},
+    "drop": {"key"},
+    "open_set": {"keys", "group"},
     "open_collection": {"keys", "group"},
-    "open_tool": {"key"},
     "set_query": {"previous_query"},
+    "zoom": {"percent"},
+    "reset_layout": {"group"},
 }
-DESTRUCTIVE = {"close", "close_others", "close_right", "close_all", "reset_layout"}
+DESTRUCTIVE = {"close_tab", "close_tile", "close_others", "close_right", "close_all", "reset_layout"}
+# Destructive only when they replace the layout (they then push a layout group).
+DESTRUCTIVE_WITH_LAYOUT = {"open_set", "open_collection"}
 # CONTRACT section 4.
 REJECTION_REASONS = {
     "unknown_target",
@@ -63,24 +66,38 @@ HUB_BOUNDS = {
     "command-count",
     "command-shape",
     "verb-enum",
-    "edge-enum",
-    "mode-enum",
+    "as-enum",
     "step-enum",
     "tool-enum",
     "arg-type",
     "arg-required",
     "arg-unknown",
     "arg-exclusive",
+    "source-shape",
+    "target-shape",
+    "members-shape",
+    "layout-shape",
     "macro-count",
     "macro-length",
     "macro-charset",
     "query-bytes",
     "zoom-percent",
     "base-shape",
+    "base-required",
     "batch-id-type",
 }
 # Bounds with an accepted side the vectors pin as well.
-HUB_BOUNDS_WITH_LIMIT = {"command-count", "macro-count", "macro-length", "macro-charset", "query-bytes", "zoom-percent"}
+HUB_BOUNDS_WITH_LIMIT = {
+    "command-count",
+    "target-shape",
+    "layout-shape",
+    "macro-count",
+    "macro-length",
+    "macro-charset",
+    "query-bytes",
+    "zoom-percent",
+    "base-required",
+}
 VIEWER_BOUNDS = {
     "trace-range",
     "trace-grammar",
@@ -89,9 +106,9 @@ VIEWER_BOUNDS = {
     "correlation-grammar",
     "waveform-pvs",
     "waveform-grammar",
-    "place-beside-self",
+    "drop-tab-index",
 }
-TAB_OPENING_VERBS = {"open", "open_tool", "open_collection", "reopen"}
+TAB_OPENING_VERBS = {"open", "open_tool", "open_collection", "open_set", "drop", "reopen"}
 SCENARIOS = {
     "active-switch",
     "reconnect-reclaim",
@@ -113,14 +130,15 @@ ACTIONS = {
 STATE_TOKENS = {"$sample", "$empty"}
 STATE_KEYS = {"tabs", "active", "layout", "zoom", "instances", "toolMru", "labels"}
 BODY_KEYS = {"windowId", "seq", "shown", "state", "truncated"}
-TAB_KEYS = {"key", "kind", "docked", "canBack", "canForward"}
+TAB_KEYS = {"key", "kind", "canBack", "canForward"}
 TOOLS = {"trace": "pv", "correlation": "y", "waveform": "pv"}
 MAX_PVS = {"trace": 12, "correlation": 8, "waveform": 8}
 MAX_BODY_BYTES = 131072
 MAX_QUERY_BYTES = 4096
 MAX_COMMANDS = 20
 MAX_TABS = 50
-MAX_LAYOUT_DEPTH = 6
+MAX_LAYOUT_BYTES = 32 * 1024
+SIDES = {"left", "right", "top", "bottom"}
 
 
 def _load(rel: str):
@@ -157,49 +175,143 @@ def _context(case: dict) -> dict:
 # --- a reference shape check: the hub's syntactic bounds as the vectors state them --------
 
 _ENUMS = {
-    "mode": {"polite", "append", "replace"},
-    "edge": {"left", "right", "above", "below"},
+    "as": {"tabs", "side", "layout"},
     "step": {"in", "out", "fit", "actual"},
     "tool": set(TOOLS),
 }
 _ARGS = {
-    "open": ({"ref"}, {"macros", "mode", "key"}),
+    "open": ({"ref"}, {"macros"}),
+    "open_tool": ({"tool"}, {"query"}),
     "focus": ({"key"}, set()),
-    "close": ({"key"}, set()),
+    "close_tab": ({"key"}, set()),
+    "close_tile": ({"tile"}, set()),
     "close_others": ({"key"}, set()),
     "close_right": ({"key"}, set()),
     "close_all": (set(), set()),
     "reopen": (set(), {"id"}),
     "back": ({"key"}, set()),
     "forward": ({"key"}, set()),
-    "place": ({"key"}, {"edge", "beside"}),
-    "remove_tile": ({"key"}, set()),
-    "reset_layout": (set(), set()),
-    "zoom": ({"key"}, {"step", "percent"}),
-    "open_collection": ({"ref"}, {"layout"}),
-    "open_tool": ({"tool"}, {"query"}),
+    "drop": ({"source", "target"}, set()),
+    "open_set": ({"members", "as"}, {"layout"}),
+    "open_collection": ({"ref"}, {"as"}),
     "set_query": ({"key", "query"}, set()),
+    "zoom": ({"key"}, {"step", "percent"}),
+    "reset_layout": (set(), set()),
 }
 _MACRO_VALUE = re.compile(r"^[\x21-\x7e]{0,64}$")
+
+
+def _name_ok(value) -> bool:
+    return isinstance(value, str) and value != ""
+
+
+def _macros_ok(value) -> bool:
+    return (
+        isinstance(value, dict)
+        and len(value) <= 16
+        and all(isinstance(k, str) and k != "" for k in value)
+        and all(isinstance(v, str) and _MACRO_VALUE.match(v) for v in value.values())
+    )
+
+
+def _query_ok(value) -> bool:
+    return isinstance(value, str) and len(value.encode("utf-8")) <= MAX_QUERY_BYTES
+
+
+def _member_ok(value) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if set(value) in ({"ref"}, {"ref", "macros"}):
+        return _name_ok(value["ref"]) and _macros_ok(value.get("macros", {}))
+    if set(value) in ({"tool"}, {"tool", "query"}):
+        return value["tool"] in TOOLS and _query_ok(value.get("query", ""))
+    return False
+
+
+def _source_ok(value) -> bool:
+    if not isinstance(value, dict) or len(value) != 1:
+        return False
+    if "new" in value:
+        return _member_ok(value["new"])
+    return ("tab" in value or "tile" in value) and _name_ok(next(iter(value.values())))
+
+
+def _target_ok(value) -> bool:
+    if not isinstance(value, dict):
+        return False
+    keys = set(value)
+    if keys == {"outer"}:
+        return value["outer"] in SIDES
+    if keys == {"border"}:
+        border = value["border"]
+        return (
+            isinstance(border, dict)
+            and set(border) == {"tile", "side"}
+            and _name_ok(border["tile"])
+            and (border["side"] in SIDES)
+        )
+    if not _name_ok(value.get("tile")):
+        return False
+    if keys == {"tile", "edge"}:
+        return value["edge"] in SIDES
+    if keys == {"tile", "zone"}:
+        return value["zone"] == "centre"
+    if keys == {"tile", "zone", "index"}:
+        index = value["index"]
+        return value["zone"] == "tab" and isinstance(index, int) and not isinstance(index, bool) and index >= 0
+    return False
+
+
+def _collection_layout_ok(node, members: int | None = None) -> bool:
+    """C-LAYOUT's collection form over member indexes (every member placed once when ``members`` is given)."""
+    if not isinstance(node, dict) or _compact_bytes(node) > MAX_LAYOUT_BYTES:
+        return False
+    placed: list[int] = []
+
+    def ok(n) -> bool:
+        if not isinstance(n, dict):
+            return False
+        if "split" in n or "items" in n:
+            return (
+                set(n) <= {"split", "items", "size"}
+                and n.get("split") in ("row", "column")
+                and isinstance(n.get("items"), list)
+                and len(n["items"]) >= 2
+                and _weight_ok(n)
+                and all(ok(item) for item in n["items"])
+            )
+        if not set(n) <= {"tabs", "showing", "size"} or not isinstance(n.get("tabs"), list) or not n["tabs"]:
+            return False
+        for key in n["tabs"]:
+            if not (isinstance(key, int) and not isinstance(key, bool) and key >= 0) or key in placed:
+                return False
+            placed.append(key)
+        return ("showing" not in n or n["showing"] in n["tabs"]) and _weight_ok(n)
+
+    if not ok(node):
+        return False
+    return members is None or sorted(placed) == list(range(members))
+
+
+def _weight_ok(node: dict) -> bool:
+    size = node.get("size", 1)
+    return isinstance(size, (int, float)) and not isinstance(size, bool) and size > 0
 
 
 def _arg_ok(name: str, value) -> bool:
     if name in _ENUMS:
         return isinstance(value, str) and value in _ENUMS[name]
-    if name == "macros":
-        return (
-            isinstance(value, dict)
-            and len(value) <= 16
-            and all(isinstance(k, str) and k != "" for k in value)
-            and all(isinstance(v, str) and _MACRO_VALUE.match(v) for v in value.values())
-        )
-    if name == "layout":
-        return isinstance(value, bool)
-    if name == "percent":
-        return isinstance(value, int) and not isinstance(value, bool) and 10 <= value <= 400
-    if name == "query":
-        return isinstance(value, str) and len(value.encode("utf-8")) <= MAX_QUERY_BYTES
-    return isinstance(value, str)
+    checks = {
+        "macros": _macros_ok,
+        "query": _query_ok,
+        "source": _source_ok,
+        "target": _target_ok,
+        "layout": _collection_layout_ok,
+        "tile": _name_ok,
+        "members": lambda v: isinstance(v, list) and 1 <= len(v) <= MAX_TABS and all(map(_member_ok, v)),
+        "percent": lambda v: isinstance(v, int) and not isinstance(v, bool) and 10 <= v <= 400,
+    }
+    return checks[name](value) if name in checks else isinstance(value, str)
 
 
 def _command_ok(command) -> bool:
@@ -217,9 +329,28 @@ def _command_ok(command) -> bool:
         return False
     if command["cmd"] == "zoom" and len({"step", "percent"} & set(args)) != 1:
         return False
-    if command["cmd"] == "open" and ("key" in args) != (args.get("mode") == "replace"):
-        return False
+    if command["cmd"] == "open_set":
+        if ("layout" in args) != (args["as"] == "layout"):
+            return False
+        if "layout" in args and not _collection_layout_ok(args["layout"], len(args["members"])):
+            return False
     return True
+
+
+def _tile_ids(command: dict) -> list[str]:
+    """The tile ids a well-formed command names."""
+    args = command.get("args", {})
+    if command["cmd"] == "close_tile":
+        return [args["tile"]]
+    if command["cmd"] != "drop":
+        return []
+    source, target = args["source"], args["target"]
+    ids = [source["tile"]] if "tile" in source else []
+    if "tile" in target:
+        ids.append(target["tile"])
+    if "border" in target:
+        ids.append(target["border"]["tile"])
+    return ids
 
 
 def _hub_accepts(step: dict) -> bool:
@@ -234,7 +365,9 @@ def _hub_accepts(step: dict) -> bool:
             return False
     if "batch_id" in step and not isinstance(step["batch_id"], str):
         return False
-    return all(_command_ok(c) for c in commands)
+    if not all(_command_ok(c) for c in commands):
+        return False
+    return "base" in step or not any(_tile_ids(c) for c in commands)
 
 
 def _all_steps():
@@ -289,21 +422,27 @@ def test_workspace_fixtures_vector_files_carry_about_and_unique_case_names(rel: 
 # --- states -------------------------------------------------------------------------------
 
 
-def _check_layout(node: dict, keys: set[str], placed: set[str], depth: int, root: bool) -> None:
-    assert depth <= MAX_LAYOUT_DEPTH
-    allowed = {"split", "items", "active"} if root else ({"items", "size"} if "items" in node else {"key", "size"})
-    assert set(node) <= allowed, node
-    if "size" in node:
-        assert isinstance(node["size"], (int, float)) and not isinstance(node["size"], bool) and node["size"] > 0
-    if "key" in node:
-        assert node["key"] in keys and node["key"] not in placed
-        placed.add(node["key"])
+def _check_layout(node: dict, keys: list[str], tiles: set[str]) -> None:
+    """C-LAYOUT's dock form: tiles with tabs, a root Tile allowed, sibling fractions summing to 1."""
+    assert isinstance(node, dict)
+    if "split" in node:
+        assert set(node) <= {"split", "items", "size"} and node["split"] in ("row", "column"), node
+        assert len(node["items"]) >= 2
+        sizes = [item["size"] for item in node["items"] if "size" in item]
+        if len(sizes) == len(node["items"]):
+            assert abs(sum(sizes) - 1) <= 0.001, node
+        else:
+            assert sum(sizes) < 1 - 0.001, node
+        for item in node["items"]:
+            _check_layout(item, keys, tiles)
         return
-    if root:
-        assert node["split"] in ("row", "column")
-    assert len(node["items"]) >= 2
-    for item in node["items"]:
-        _check_layout(item, keys, placed, depth + 1, False)
+    assert set(node) <= {"tile", "tabs", "showing", "size", "from"} and {"tile", "tabs", "showing"} <= set(node), node
+    assert isinstance(node["tile"], str) and node["tile"] and node["tile"] not in tiles
+    tiles.add(node["tile"])
+    assert node["tabs"] and node["showing"] in node["tabs"]
+    keys.extend(node["tabs"])
+    if "size" in node:
+        assert isinstance(node["size"], (int, float)) and not isinstance(node["size"], bool) and 0 < node["size"] <= 1
 
 
 def _check_state(state: dict) -> None:
@@ -315,13 +454,12 @@ def _check_state(state: dict) -> None:
         assert set(t) == TAB_KEYS and t["kind"] in ("screen", "tool")
         assert t["kind"] == ("tool" if t["key"].startswith("@") else "screen")
     assert state["active"] is None or state["active"] in keys
-    docked = {t["key"] for t in state["tabs"] if t["docked"]}
-    if state["layout"] is not None:
-        placed: set[str] = set()
-        _check_layout(state["layout"], docked, placed, 1, True)
-        assert placed == docked
-        if "active" in state["layout"]:
-            assert state["layout"]["active"] in docked
+    if keys:
+        placed: list[str] = []
+        _check_layout(state["layout"], placed, set())
+        assert sorted(placed) == sorted(keys), "the layout holds every open tab once"
+    else:
+        assert state["layout"] is None
     tools = {k for k in keys if k.startswith("@")}
     assert set(state["instances"]) == tools
     for key, inst in state["instances"].items():
@@ -388,7 +526,7 @@ def test_workspace_fixtures_command_vector_per_verb(verb: str):
     assert doc["verb"] == verb
     assert set(doc["extras"]) == VERBS[verb]
     assert doc["destructive"] == (
-        True if verb in DESTRUCTIVE else ("with layout" if verb == "open_collection" else False)
+        True if verb in DESTRUCTIVE else ("with layout" if verb in DESTRUCTIVE_WITH_LAYOUT else False)
     )
     seen: set[str] = set()
     for case in doc["cases"]:
@@ -406,6 +544,31 @@ def test_workspace_fixtures_command_vector_per_verb(verb: str):
                 assert case["after"]["active"] in case["after"]["tabs"]
         assert set(_context(case)) == set(CONTEXT)
     assert seen == VERBS[verb], "every extra appears in a case"
+
+
+def _layout_tiles(node) -> set[str]:
+    if node is None:
+        return set()
+    if "split" in node:
+        return set().union(*(_layout_tiles(item) for item in node["items"]))
+    return {node["tile"]}
+
+
+def test_workspace_fixtures_command_vectors_name_tiles_of_their_context():
+    named = 0
+    for doc in COMMANDS.values():
+        for case in doc["cases"]:
+            ids = _tile_ids(case["command"])
+            named += len(ids)
+            assert set(ids) <= _layout_tiles(_context(case)["state"]["layout"]), case["name"]
+    assert named, "the tile commands have vectors"
+
+
+def test_workspace_fixtures_context_collections_take_the_collection_form():
+    for collection in CONTEXT["collections"]:
+        assert all("slot" not in member for member in collection["members"])
+        if collection["layout"] is not None:
+            assert _collection_layout_ok(collection["layout"], len(collection["members"])), collection["ref"]
 
 
 # --- rejections ---------------------------------------------------------------------------

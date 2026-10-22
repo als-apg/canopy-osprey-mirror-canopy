@@ -20,18 +20,24 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from canopy_mcp.workspace import (
+    VERBS,
     MAX_RESULTS,
+    LAYOUT_REASONS,
     MAX_BATCH_IDS,
     Hub,
     Stream,
     StreamEnded,
     WorkspaceError,
     check_batch,
+    check_command,
     normalise_state,
+    validate_layout,
+    normalize_layout,
 )
 from canopy_mcp.tools._common import get_hub, reset_hub
 
 WORKSPACE = Path(__file__).parent / "fixtures" / "workspace"
+DOCK_CASES = Path(__file__).parent / "fixtures" / "dock-cases"
 MAX_BODY_BYTES = 131072
 
 
@@ -271,8 +277,20 @@ def test_workspace_hub_keeps_the_sample_state_unchanged():
         (lambda s: s["instances"].pop("@trace"), "tool tab without instance"),
         (lambda s: s.update(toolMru=["@waveform"]), "mru names a closed tool"),
         (lambda s: s["labels"].update({"library/nope": "x"}), "label for a closed tab"),
-        (lambda s: s["layout"]["items"][0].update(key="library/sr/overview"), "undocked tab in the layout"),
+        (lambda s: s["layout"]["items"][0]["tabs"].remove("library/sr/overview"), "an open tab the layout leaves out"),
+        (lambda s: s["layout"]["items"][0]["tabs"].append("library/nope"), "a layout key that is not open"),
         (lambda s: s["layout"]["items"][0].update(size=0), "zero size"),
+        (lambda s: s["layout"]["items"][0].update(size=0.7), "sibling sizes that do not sum to 1"),
+        (lambda s: s["layout"]["items"][0].update(showing="@trace"), "showing outside its tile's tabs"),
+        (lambda s: s["layout"]["items"][1]["items"][1].update(tile="t1"), "a tile id twice"),
+        (lambda s: s["layout"]["items"][0].update(docked=True), "an unknown tile field"),
+        (lambda s: s["layout"]["items"][1]["items"][0].update(**{"from": "t9"}), "from naming no tile"),
+        (lambda s: s.update(layout=None), "no layout while tabs are open"),
+        (
+            lambda s: s.update(layout={"split": "row", "items": [{"key": k} for k in ("a", "b")]}),
+            "the old key-leaf layout",
+        ),
+        (lambda s: s["tabs"][0].update(docked=True), "the retired docked flag"),
         (lambda s: s["tabs"][0].update(extra=True), "unknown tab key"),
         (lambda s: s["tabs"].extend([copy.deepcopy(s["tabs"][1])]), "duplicate key"),
     ],
@@ -288,21 +306,242 @@ def test_workspace_hub_refuses_a_state_that_breaks_a_rule(change, why):
 def test_workspace_hub_accepts_a_numbered_tool_and_a_drafts_screen():
     state = copy.deepcopy(EMPTY)
     state["tabs"] = [
-        {"key": "@trace/2", "kind": "tool", "docked": False, "canBack": False, "canForward": False},
-        {
-            "key": "drafts/beam-tune?A=1&B=x%26y",
-            "kind": "screen",
-            "docked": False,
-            "canBack": False,
-            "canForward": False,
-        },
+        {"key": "@trace/2", "kind": "tool", "canBack": False, "canForward": False},
+        {"key": "drafts/beam-tune?A=1&B=x%26y", "kind": "screen", "canBack": False, "canForward": False},
     ]
+    state["layout"] = {"tile": "t1", "tabs": ["@trace/2", "drafts/beam-tune?A=1&B=x%26y"], "showing": "@trace/2"}
     state["instances"] = {"@trace/2": {"tool": "trace", "n": 2, "query": "", "view": None}}
     assert normalise_state(state)["tabs"][1]["key"] == "drafts/beam-tune?A=1&B=x%26y"
     state["tabs"][0]["key"] = "@trace/1"
+    state["layout"]["tabs"][0] = state["layout"]["showing"] = "@trace/1"
     state["instances"] = {"@trace/1": {"tool": "trace", "n": 1, "query": "", "view": None}}
     with pytest.raises(WorkspaceError):
         normalise_state(state)
+
+
+def _one_screen_state() -> dict[str, Any]:
+    state = copy.deepcopy(EMPTY)
+    state["tabs"] = [{"key": "library/bts/BTSView", "kind": "screen", "canBack": False, "canForward": False}]
+    state["active"] = "library/bts/BTSView"
+    return state
+
+
+def test_workspace_hub_takes_a_root_tile_and_keeps_the_layout_as_reported():
+    state = _one_screen_state()
+    state["layout"] = {"tile": "t4", "tabs": ["library/bts/BTSView"], "showing": "library/bts/BTSView"}
+    assert normalise_state(state)["layout"] == state["layout"]
+    state["layout"] = None
+    with pytest.raises(WorkspaceError):
+        normalise_state(state)
+
+
+def test_workspace_hub_refuses_a_layout_while_no_tab_is_open():
+    state = copy.deepcopy(EMPTY)
+    state["layout"] = {"tile": "t1", "tabs": ["library/bts/BTSView"], "showing": "library/bts/BTSView"}
+    with pytest.raises(WorkspaceError):
+        normalise_state(state)
+
+
+def _deep_dock(keys: list[str]) -> dict[str, Any]:
+    """Alternating splits, each a tile beside the rest: as deep as there are keys."""
+    tile = {"tile": f"t{len(keys)}", "tabs": [keys[0]], "showing": keys[0]}
+    if len(keys) == 1:
+        return tile
+    rest = _deep_dock(keys[1:])
+    return {"split": "row" if len(keys) % 2 else "column", "items": [tile, rest]}
+
+
+def test_workspace_hub_has_no_layout_depth_cap_but_keeps_the_byte_cap():
+    state = copy.deepcopy(EMPTY)
+    keys = [f"library/common/KnobPanel?N={n}" for n in range(1, 13)]
+    state["tabs"] = [{"key": k, "kind": "screen", "canBack": False, "canForward": False} for k in keys]
+    state["layout"] = _deep_dock(keys)
+    assert normalise_state(state)["layout"] == state["layout"]
+    state["layout"]["items"][0]["tile"] = "t" * (33 * 1024)
+    with pytest.raises(WorkspaceError, match="bytes"):
+        normalise_state(state)
+
+
+# --- C-LAYOUT: the shared validate / normalize cases ----------------------------------------
+
+
+def _cases(kind: str) -> list[tuple[str, dict[str, Any]]]:
+    return [(p.name, json.loads(p.read_text())) for p in sorted((DOCK_CASES / kind).glob("*.json"))]
+
+
+def _approx(actual: Any, expected: Any, path: str = "$") -> list[str]:
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict) or set(actual) != set(expected):
+            return [f"{path}: {actual!r} != {expected!r}"]
+        return [d for k in expected for d in _approx(actual[k], expected[k], f"{path}.{k}")]
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return [f"{path}: {actual!r} != {expected!r}"]
+        return [d for i, pair in enumerate(zip(actual, expected, strict=True)) for d in _approx(*pair, f"{path}[{i}]")]
+    if isinstance(expected, float) or (isinstance(actual, float) and not isinstance(expected, bool)):
+        return [] if abs(actual - expected) <= 0.005 else [f"{path}: {actual} != {expected}"]
+    return [] if actual == expected and type(actual) is type(expected) else [f"{path}: {actual!r} != {expected!r}"]
+
+
+VALIDATE_CASES = _cases("validate")
+NORMALIZE_CASES = _cases("normalize")
+
+
+def test_workspace_hub_has_the_shared_layout_cases():
+    assert len(VALIDATE_CASES) >= 30 and len(NORMALIZE_CASES) >= 10
+    assert {c["reason"] for _, c in VALIDATE_CASES if "reason" in c} <= set(LAYOUT_REASONS)
+
+
+@pytest.mark.parametrize(("name", "case"), VALIDATE_CASES, ids=[n for n, _ in VALIDATE_CASES])
+def test_workspace_hub_layout_validator_replays_the_validate_cases(name: str, case: dict[str, Any]):
+    options = case.get("options", {})
+    reason = validate_layout(case["input"], options.get("form", "dock"), options.get("members"))
+    assert (reason or "valid") == ("valid" if "valid" in case else case["reason"]), name
+
+
+@pytest.mark.parametrize(("name", "case"), NORMALIZE_CASES, ids=[n for n, _ in NORMALIZE_CASES])
+def test_workspace_hub_layout_normaliser_replays_the_normalize_cases(name: str, case: dict[str, Any]):
+    original = copy.deepcopy(case["input"])
+    assert _approx(normalize_layout(case["input"], case.get("form", "dock")), case["output"]) == [], name
+    assert case["input"] == original, "normalising returns a fresh tree"
+
+
+# --- the command table ---------------------------------------------------------------------
+
+
+def test_workspace_hub_verbs_are_the_final_table():
+    assert set(VERBS) == {
+        "open",
+        "open_tool",
+        "focus",
+        "close_tab",
+        "close_tile",
+        "close_others",
+        "close_right",
+        "close_all",
+        "reopen",
+        "back",
+        "forward",
+        "drop",
+        "open_set",
+        "open_collection",
+        "set_query",
+        "zoom",
+        "reset_layout",
+    }
+
+
+BASE = {"window": "w-A", "seq": 41}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        {"cmd": "close_tile", "args": {"tile": "t1"}},
+        {"cmd": "drop", "args": {"source": {"tile": "t1"}, "target": {"outer": "left"}}},
+        {"cmd": "drop", "args": {"source": {"tab": "@trace"}, "target": {"tile": "t1", "zone": "centre"}}},
+        {"cmd": "drop", "args": {"source": {"tab": "@trace"}, "target": {"tile": "t1", "zone": "tab", "index": 0}}},
+        {"cmd": "drop", "args": {"source": {"tab": "@trace"}, "target": {"tile": "t1", "edge": "top"}}},
+        {"cmd": "drop", "args": {"source": {"tab": "@trace"}, "target": {"border": {"tile": "t1", "side": "right"}}}},
+    ],
+)
+def test_workspace_hub_a_command_naming_a_tile_needs_base(command):
+    assert check_command(command) is None
+    assert "needs base" in check_batch([command])
+    assert check_batch([command], BASE) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        {"cmd": "drop", "args": {"source": {"tab": "@trace"}, "target": {"outer": "bottom"}}},
+        {
+            "cmd": "drop",
+            "args": {"source": {"new": {"ref": "library/x/y", "macros": {"A": "1"}}}, "target": {"outer": "top"}},
+        },
+        {"cmd": "drop", "args": {"source": {"new": {"tool": "trace", "query": "pv=A"}}, "target": {"outer": "left"}}},
+        {"cmd": "open_set", "args": {"members": [{"ref": "library/x/y"}], "as": "side"}},
+        {
+            "cmd": "open_set",
+            "args": {
+                "members": [{"ref": "a/b"}, {"tool": "waveform"}],
+                "as": "layout",
+                "layout": {"tabs": [1, 0], "showing": 0},
+            },
+        },
+        {"cmd": "open_collection", "args": {"ref": "personal:grid", "as": "layout"}},
+    ],
+)
+def test_workspace_hub_member_commands_need_no_base(command):
+    assert check_batch([command]) is None
+
+
+@pytest.mark.parametrize(
+    ("command", "why"),
+    [
+        ({"cmd": "open", "args": {"ref": "a/b", "mode": "polite"}}, "mode is retired"),
+        ({"cmd": "open", "args": {"ref": "a/b", "key": "c/d"}}, "key is retired"),
+        ({"cmd": "open_collection", "args": {"ref": "personal:grid", "layout": True}}, "boolean layout is retired"),
+        ({"cmd": "place", "args": {"key": "a/b"}}, "place is retired"),
+        ({"cmd": "remove_tile", "args": {"key": "a/b"}}, "remove_tile is retired"),
+        ({"cmd": "close", "args": {"key": "a/b"}}, "close is close_tab"),
+        ({"cmd": "drop", "args": {"source": {"tab": "a/b"}, "target": {"outer": "middle"}}}, "outer side"),
+        ({"cmd": "drop", "args": {"source": {}, "target": {"outer": "top"}}}, "empty source"),
+        ({"cmd": "drop", "args": {"source": {"new": {"tool": "scope"}}, "target": {"outer": "top"}}}, "unknown tool"),
+        (
+            {
+                "cmd": "drop",
+                "args": {"source": {"new": {"ref": "a/b", "macros": {"A": "x y"}}}, "target": {"outer": "top"}},
+            },
+            "macro",
+        ),
+        (
+            {"cmd": "drop", "args": {"source": {"tab": "a/b"}, "target": {"tile": "t1", "zone": "tab", "index": -1}}},
+            "index",
+        ),
+        (
+            {"cmd": "drop", "args": {"source": {"tab": "a/b"}, "target": {"tile": "t1", "zone": "tab", "index": True}}},
+            "bool index",
+        ),
+        ({"cmd": "drop", "args": {"source": {"tab": "a/b"}, "target": {"tile": "", "zone": "centre"}}}, "empty tile"),
+        ({"cmd": "close_tile", "args": {"tile": ""}}, "empty tile id"),
+        ({"cmd": "open_set", "args": {"members": [{"ref": "a/b"}] * 51, "as": "tabs"}}, "over 50 members"),
+        (
+            {"cmd": "open_set", "args": {"members": [{"ref": "a/b"}], "as": "side", "layout": {"tabs": [0]}}},
+            "layout without as layout",
+        ),
+        (
+            {
+                "cmd": "open_set",
+                "args": {"members": [{"ref": "a/b"}, {"ref": "c/d"}], "as": "layout", "layout": {"tabs": [0]}},
+            },
+            "member missing",
+        ),
+        (
+            {"cmd": "open_set", "args": {"members": [{"ref": "a/b"}], "as": "layout", "layout": {"tabs": ["a/b"]}}},
+            "a key, not an index",
+        ),
+        (
+            {
+                "cmd": "open_set",
+                "args": {"members": [{"ref": "a/b"}], "as": "layout", "layout": {"tabs": [0], "pad": "x" * 33000}},
+            },
+            "byte cap",
+        ),
+    ],
+)
+def test_workspace_hub_refuses_a_malformed_command(command, why):
+    assert check_batch([command], BASE) is not None, why
+
+
+def test_workspace_hub_drops_a_layout_a_viewer_posts_as_a_result_extra():
+    hub, _ = _ready()
+    batch = hub.enqueue(FOCUS)
+    layout = copy.deepcopy(SAMPLE["state"]["layout"])
+    posted = {"id": "c-e1-1", "status": "applied", "changed": True, "layout": layout, "mode": "polite"}
+    hub.post_result("w-A", batch["id"], 42, SAMPLE["state"], [posted])
+    assert hub.batch(batch["id"])["results"] == [{"id": "c-e1-1", "status": "applied", "changed": True}]
+    assert hub.document()["state"]["layout"] == layout
 
 
 # --- the hub beyond the vectors ------------------------------------------------------------
