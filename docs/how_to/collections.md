@@ -1,7 +1,7 @@
 # Write a collection
 
 A collection is a named, ordered set of screens and tools that the viewer opens
-together, optionally arranged in a dock layout. Users keep their own; a
+together, optionally arranged in a dock layout of tiles with tabs. Users keep their own; a
 deployment can also ship **facility collections** that every user sees. This
 page is for whoever writes the facility ones.
 
@@ -21,7 +21,9 @@ and that text differ, the text is right.
 The server never writes the facility directory. The id of a facility collection
 is its file stem. A file that cannot be read or breaks a rule is logged once
 and left out of the list, so a mistake there does not show up in the viewer:
-it simply disappears. Run [`--check`](#4-check-the-directory) before you deploy.
+it simply disappears. The one exception is a file with a layout in the old
+slot shape (see [the layout](#3-the-layout)), which is listed as refused.
+Run [`--check`](#4-check-the-directory) before you deploy.
 
 ## 2. Members
 
@@ -63,41 +65,66 @@ Here is a complete facility collection, `injector.json`:
 `id` may be left out (the stem is the id); if present it must equal the stem.
 `updated` may be left out too, and the file's modification time stands in.
 
-## 3. Slots and the layout
+## 3. The layout
 
-A `layout` places members in a dock grid when the collection is opened. A
-member takes part by carrying a `slot`, a short id
-unique within the collection, and the layout places slots:
+A `layout` arranges the members in the dock when the collection is opened:
+which tiles there are, which members sit in each tile as tabs, which tab
+each tile shows, and how big the tiles are. Members are named by their
+0-based index in `members`:
 
 ```json
 {
   "name": "Ring grid",
   "members": [
-    {"screen": "library/sr/overview", "slot": "a"},
-    {"screen": "library/s3-promo/promotion", "slot": "b"},
-    {"tool": "trace", "name": "Beam current", "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h", "slot": "c"},
-    {"tool": "correlation", "name": "Correlation", "slot": "d"}
+    {"screen": "library/sr/overview"},
+    {"screen": "library/sr/overview", "macros": {"SECTOR": "3"}},
+    {"tool": "trace", "name": "Beam current", "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h"},
+    {"tool": "correlation", "name": "Correlation"}
   ],
   "layout": {
     "split": "row",
     "items": [
-      {"items": [{"slot": "a"}, {"slot": "c"}], "size": 2},
-      {"items": [{"slot": "b"}, {"slot": "d"}], "size": 1}
-    ],
-    "active": "a"
+      {"tabs": [0, 1], "showing": 1, "size": 2},
+      {
+        "split": "column",
+        "items": [{"tabs": [2]}, {"tabs": [3]}]
+      }
+    ]
   }
 }
 ```
 
-- Only the root names `split` (`row` or `column`). Each nested level turns the
-  other way, so the example is two columns side by side, the left one twice as
-  wide, each split top and bottom.
-- Every split holds at least two items, and splits nest at most 6 deep counting
-  the root.
-- `size` is a relative weight, any positive finite number.
-- Each leaf names a member's slot, each slot at most once. `active` names the
-  slot that has focus after opening.
-- A member with no leaf, slotted or not, is still opened, undocked.
+This opens two tiles side by side, the left one twice as wide. The left tile
+holds both overview screens as tabs and shows the sector 3 one; the right
+side is split top and bottom into the Trace and the Correlation.
+
+- A tile is `{"tabs": [...], "showing"?: ..., "size"?: ...}`. `tabs` lists
+  at least one member index, in the order of the tile's tab bar; `showing`
+  is one of them and defaults to the first.
+- A split is `{"split": "row" | "column", "items": [...], "size"?: ...}`
+  with at least two items. A split may hold splits of either direction,
+  nested as deep as you need; only the size of the layout (32 KiB) is
+  bounded.
+- `size` is a relative weight among siblings, any positive finite number; a
+  missing weight counts 1.
+- The whole layout may be a single tile: `{"tabs": [0, 1, 2]}` opens every
+  member as a tab of one tile.
+- Every member is placed in exactly one tile, exactly once.
+- A tile carries no id: the viewer mints tile ids when it opens the
+  collection.
+
+A collection without a `layout` is a plain set of members: a click in the
+sidebar opens them side by side, one tile each (a near-square grid when
+they do not fit in one row, or tabs of one tile with a notice when even
+that does not fit), and an agent chooses at open time whether they open as
+tabs, side by side or in a layout it gives.
+
+Before tiles with tabs, members carried a `slot` and the layout placed
+`{"slot": ...}` leaves. A file still in that shape is refused with reason
+`old_slot_shape`. Unlike other broken files it stays in the list, marked
+refused, so its owner can see it; it never opens. Re-save it from the
+viewer, or rewrite its layout in the form above and drop the `slot`
+fields.
 
 Writing a layout by hand is rarely needed: arrange the screens in the viewer,
 save the open tabs as a personal collection with the layout included, and
