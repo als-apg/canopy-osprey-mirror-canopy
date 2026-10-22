@@ -16,7 +16,7 @@
   "destructive": true,
   "cases": [
     {
-      "name": "close_all empties the strip and pushes one group",
+      "name": "close_all empties the dock and pushes one group",
       "command": {
         "cmd": "close_all",
         "args": {}

@@ -178,6 +178,12 @@ No tool writes to a PV. `read_pv` and `search_pvs` only read.
    work, give the user the `url` from the result. It opens the screen in the
    viewer.
 
+When the user wants several screens shown together in a given arrangement
+(two screens side by side, one screen as tabs with several macro sets, a
+Trace below a screen), open them with one `open_set` command with
+`as: "layout"` instead of one `open` each; "Load an arrangement in one call"
+in the `canopy-operator` skill gives the form.
+
 A finding has `nodeId`, `code`, `path` (a JSON pointer into the document),
 `severity` and `message`. A finding inside an embedded screen also has
 `docId`. The `skipped` list in a `check` result names checks that could not

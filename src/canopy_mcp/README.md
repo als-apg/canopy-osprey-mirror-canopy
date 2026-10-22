@@ -215,7 +215,7 @@ facility directory before it is deployed.
 The workspace is the tabs and tiles of the viewer as the operator sees them.
 With `CANOPY_WORKSPACE=1` an agent on `/mcp` can read it with `get_workspace`
 and change it with `set_workspace`: open a screen beside another, fit it,
-open Trace on three PVs, close a tab. A host that embeds the viewer gets this
+open Trace on three PVs, close a tab or a tile. A host that embeds the viewer gets this
 from the server alone; it needs no hook of its own and no change to its
 pages. A developer gets the same protocol in a plain browser and a bare
 Claude Code session (see *Developer recipe* below).
@@ -251,11 +251,16 @@ changes are additions only; a changed status or field raises the major.
 `get_workspace()` returns the document: `protocol` (1), `epoch` (changes when
 the server restarts), `activeWindow` (`null` when no window is open),
 `connected`, `shown`, `seq`, `state` (the tabs, the active key, the tile
-layout in the collection layout schema, `null` below two tiles or when the
-grid cannot be expressed, the zoom of open screens, the tool instances and
-their queries, the tool MRU and the labels), `collections.shown`, `sidebar`
-(pinned and recent members), `pending`, `results` (the last 100 commands) and
-`truncated`.
+layout, the zoom of open screens, the tool instances and their queries, the
+tool MRU and the labels), `collections.shown`, `sidebar` (pinned and recent
+members), `pending`, `results` (the last 100 commands) and `truncated`.
+
+`state.layout` is the dock as tiles with tabs, and `null` only while no tab
+is open. A tile is `{tile, tabs, showing, size?}`: `tile` is its tile id,
+`tabs` its tab keys in bar order and `showing` the one on view. A split is
+`{split: "row" | "column", items, size?}`, and a single tile may be the whole
+layout. Every open tab is in exactly one tile. Tile ids are the window's and
+may be reused after a tile closes, so a command that names one needs `base`.
 
 `set_workspace(commands, base?, batch_id?, wait_s=5)` sends 1 to 20 commands
 as one batch to the active window, waits up to `wait_s` seconds (0 to 10) for
@@ -263,24 +268,53 @@ its result and returns the same document plus
 `batch: {id, status, reason?, results}`. It never fires and forgets. Passing
 the `batch_id` of a batch already sent returns that batch and sends nothing.
 
-The commands are a closed vocabulary of 16 verbs. Every verb that targets a
-tab names it by an explicit `key`:
+The commands are a closed vocabulary of 17 verbs. A verb that targets a tab
+names it by an explicit `key`, one that targets a tile by its tile id. A
+member is `{ref, macros?}` (a screen) or `{tool, query?}` (a tool). A plain
+open follows rule 7: the item opens as a new tab in the focused tile, and an
+item already open is shown where it is.
 
 | Verb | Arguments | Note |
 |---|---|---|
-| `open` | `ref`, `macros?`, `mode?`, `key?` | `polite` (default) focuses the screen if it is open, else opens it right of the active tile; `append` always opens; `replace` replaces the tab `key`. |
+| `open` | `ref`, `macros?` | Rule 7. |
+| `open_tool` | `tool`, `query?` | `trace`, `correlation` or `waveform`. Rule 7; focuses an instance already showing `query`, else opens a new one; never overwrites. |
 | `focus` | `key` | Never opens. |
-| `close`, `close_others`, `close_right` | `key` | Destructive. |
-| `close_all` | | Destructive. |
+| `close_tab` | `key` | Destructive. A tile whose last tab closes disappears; the tile it was split from takes its space. |
+| `close_tile` | `tile` | Destructive. Needs `base`. |
+| `close_others`, `close_right` | `key` | Destructive, within the tab's tile. |
+| `close_all` | | Destructive. The whole dock. |
 | `reopen` | `id?` | The newest closed group, or the group `id`. |
 | `back`, `forward` | `key` | Per-tab history. |
-| `place` | `key`, `edge?`, `beside?` | `edge` is `left`, `right` (default), `above` or `below`. |
-| `remove_tile` | `key` | |
-| `reset_layout` | | Destructive. |
-| `zoom` | `key`, `step` or `percent` | `step` is `in`, `out`, `fit` or `actual`; `percent` is 10 to 400. Per screen. |
-| `open_collection` | `ref`, `layout?` | With `layout: true`, destructive. |
-| `open_tool` | `tool`, `query?` | `trace`, `correlation` or `waveform`. Focuses an instance already showing `query`, else opens a new one; never overwrites. |
+| `drop` | `source`, `target` | What a person's drag does. Needs `base` when the source is a tile or the target a tile or border. |
+| `open_set` | `members`, `as`, `layout?` | Opens 1 to 50 members at once. With `as: "layout"`, destructive. |
+| `open_collection` | `ref`, `as?` | Default: the collection's saved layout, else `side`. With a layout, destructive. |
 | `set_query` | `key`, `query` | |
+| `zoom` | `key`, `step` or `percent` | `step` is `in`, `out`, `fit` or `actual`; `percent` is 10 to 400. Per screen. |
+| `reset_layout` | | Destructive. |
+
+A `drop` is the agent's form of a person's drag, with the same result:
+
+- `source` is `{new: member}` (opens it; a member already open moves as its
+  tab), `{tab: key}` or `{tile: id}`;
+- `target` is `{tile, zone: "centre"}` (add as a tab of that tile),
+  `{tile, zone: "tab", index}` (a tab at that position in the tile's bar),
+  `{tile, edge}` (split that tile in half on that edge),
+  `{border: {tile, side}}` (insert between that tile and its neighbour on
+  that side) or `{outer}` (a third of the whole dock along that side). A
+  side or edge is `left`, `right`, `top` or `bottom`. Every tile keeps at
+  least 40 px.
+
+`open_set` and `open_collection` take `as`: `tabs` opens the members as the
+tabs of one new tile beside the focused tile; `side` gives each member its own
+tile, a row after the focused tile sharing its span, or a near-square grid
+when a row cannot give each 40 px (refused when even that does not fit);
+`layout` replaces the dock's layout with the given one, whose tiles list
+member indexes as `tabs` (`showing` defaults to the first). Members that
+cannot open are left out of it, and the rest of it is kept.
+
+Whatever a batch does, the layout it leaves comes back as the returned
+document's `state.layout`; a result's `key` or `keys` name the tabs it opened,
+whose keys the window mints.
 
 Refs come from `list_drafts`, `list_collections`, `get_screen`, `new_screen`
 or `get_workspace`; no command takes a URL, a file or a widget. Limits: at
@@ -340,7 +374,7 @@ ids carry the epoch. Refusals and rejections are answers, not errors.
 5. **Attribution and undo.** The element a command touched highlights.
    Destructive commands push their tabs onto the one closed-tabs stack and
    raise the closed-tabs toast; one toast at a time, the newest wins. Undo
-   restores the agent-closed tabs at their old place while later operator
+   restores the agent-closed tabs at their old position while later operator
    changes stand. "Reopen closed tab" lists recent closed groups labelled
    agent or you, Cmd+Shift+T reopens the newest, and the agent can
    `reopen` a group by its id.

@@ -5,8 +5,7 @@
       "screen": "library/sr/overview"
     },
     {
-      "screen": "library/sr/overview",
-      "slot": "a"
+      "screen": "library/sr/overview"
     }
   ]
 }

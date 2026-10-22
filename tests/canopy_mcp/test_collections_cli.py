@@ -17,11 +17,20 @@ from canopy_mcp.collections_cli import EXIT_OK, EXIT_ERROR, EXIT_REFUSED, main
 GOOD = {
     "name": "Storage ring",
     "members": [
+        {"screen": "library/sr/overview"},
+        {"tool": "trace", "query": "pv=SR:DCCT", "name": "Beam current"},
+    ],
+    "layout": {"split": "row", "items": [{"tabs": [0], "size": 2}, {"tabs": [1]}]},
+    "default": True,
+}
+# The retired slot shape: --check refuses it (only a reader lists it, as refused).
+OLD = {
+    "name": "Old storage ring",
+    "members": [
         {"screen": "library/sr/overview", "slot": "a"},
         {"tool": "trace", "query": "pv=SR:DCCT", "name": "Beam current", "slot": "b"},
     ],
     "layout": {"split": "row", "items": [{"slot": "a"}, {"slot": "b"}]},
-    "default": True,
 }
 PLAIN = {"name": "Tools only", "members": [{"tool": "waveform", "name": "Septum pulse"}]}
 
@@ -85,6 +94,26 @@ def test_one_line_per_refusal_and_a_non_zero_exit(tmp_path: Path, capsys) -> Non
     assert "drafts.json" in joined and "library/* screens only" in joined
     assert "wrong-id.json" in joined and "must equal the file id" in joined
     assert "good.json" not in joined
+
+
+def test_the_old_slot_shape_is_refused_by_name(tmp_path: Path, capsys) -> None:
+    c = tmp_path / "c"
+    write(c, "good.json", GOOD)
+    write(c, "old.json", OLD)
+    write(c, "tiles.json", {**PLAIN, "layout": {"tabs": [0]}})
+    code, out, err = run(capsys, str(c), "--check")
+    assert code == EXIT_REFUSED
+    assert out == ["collections: 3 checked, 1 refused"]
+    assert len(err) == 1
+    assert err[0].startswith("canopy_mcp.collections: refused: old.json: layout.items[0]: old_slot_shape: ")
+
+
+def test_a_broken_layout_names_its_reason(tmp_path: Path, capsys) -> None:
+    c = tmp_path / "c"
+    write(c, "missing.json", {**GOOD, "layout": {"tabs": [0]}})
+    code, out, err = run(capsys, str(c), "--check")
+    assert code == EXIT_REFUSED
+    assert len(err) == 1 and "missing.json: layout: member_missing" in err[0]
 
 
 def test_the_files_are_reported_in_name_order(tmp_path: Path, capsys) -> None:

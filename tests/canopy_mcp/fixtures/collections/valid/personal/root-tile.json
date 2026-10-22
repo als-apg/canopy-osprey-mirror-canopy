@@ -1,0 +1,24 @@
+{
+  "id": "root-tile",
+  "name": "One tile",
+  "description": "A single tile holding every member as a tab, showing the first.",
+  "members": [
+    {
+      "screen": "library/common/KnobPanel"
+    },
+    {
+      "screen": "library/dev/b1-dev"
+    },
+    {
+      "tool": "trace"
+    }
+  ],
+  "layout": {
+    "tabs": [
+      0,
+      1,
+      2
+    ]
+  },
+  "updated": "2026-10-16T00:00:00+00:00"
+}

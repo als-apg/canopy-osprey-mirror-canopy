@@ -17,7 +17,14 @@ from the same directories (``facility_collections_dir`` and
   takes.
 
 A collection's ``open_url`` is the viewer's embed root with ``_canopyOpen=<ref>``:
-opening it opens every member of the collection once.
+opening it opens every member of the collection once, arranged by its ``layout``
+when it has one. ``layout`` is the stored C-LAYOUT collection form (tiles list
+0-based member indexes in ``tabs``, sizes are weights), or ``null``.
+
+A collection stored in the retired slot shape is listed with ``refused`` (the
+refusal text), ``layout: null``, ``open_url: null`` and ``default: false``: it is
+never opened, only shown so its owner can re-save or delete it. Every other
+collection has ``refused: null``.
 """
 
 from __future__ import annotations
@@ -127,8 +134,12 @@ async def list_collections() -> dict[str, Any]:
     Returns ``{collections: [...]}``, facility collections first, then the user's
     own. Each has ``ref`` (``<source>:<id>``), ``source`` (``facility`` or
     ``personal``), ``name``, ``description``, ``default`` (shown to every user who
-    has not unticked it), ``available_count`` and ``open_url`` (the viewer opens
-    every member of the collection at once). Each member has ``key`` and
+    has not unticked it), ``available_count``, ``open_url`` (the viewer opens
+    every member of the collection at once), ``layout`` (how the members are
+    arranged: tiles whose ``tabs`` are 0-based member indexes, sizes as weights;
+    ``null`` opens them as tabs) and ``refused`` (``null``, or why a collection in
+    an old format cannot be opened: its ``open_url`` and ``layout`` are then
+    ``null``; offer to re-save or delete it, never to open it). Each member has ``key`` and
     ``available`` (whether this host can open it); a screen member adds ``title``,
     ``url`` (opens that one screen) and ``ref`` with ``macros`` when it has any
     (the workspace ``open`` arguments), a tool member (Trace, Correlation,
@@ -149,16 +160,23 @@ async def list_collections() -> dict[str, Any]:
             _screen_member(settings, member, screens) if "screen" in member else _tool_member(member, tools)
             for member in doc["members"]
         ]
+        refused = doc.get("refused")
         collections.append(
             {
                 "ref": doc["ref"],
                 "source": doc["source"],
                 "name": doc["name"],
                 "description": doc.get("description", ""),
-                "default": doc.get("default", False) is True,
-                "open_url": _absolute(settings, "/embed/?" + urlencode({"_canopyOpen": doc["ref"]})),
+                "default": refused is None and doc.get("default", False) is True,
+                "open_url": (
+                    None
+                    if refused is not None
+                    else _absolute(settings, "/embed/?" + urlencode({"_canopyOpen": doc["ref"]}))
+                ),
                 "available_count": sum(1 for member in members if member["available"]),
                 "members": members,
+                "layout": doc.get("layout") if refused is None else None,
+                "refused": refused,
             }
         )
     return {"collections": collections}

@@ -1,10 +1,14 @@
 """``validate_collection``: the one collection rule set, and ``configured_tools``.
 
 Every rule of :mod:`canopy_mcp.collections`'s module text has a passing and a refused
-case here; the store, ``PUT`` and ``--check`` all call this function.
+case here; the store, ``PUT`` and ``--check`` all call this function. The layout rules
+are C-LAYOUT's collection form, and the C-CASES ``validate``/``normalize`` cases copied
+into ``fixtures/dock-cases`` replay against :func:`layout_refusal` and
+:func:`normalize_layout` (their pins: ``test_dock_cases_pin.py``).
 """
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -15,12 +19,16 @@ from canopy_mcp.static import TOOL_IDS, viewer_config, configured_tools
 from canopy_mcp.listing import Judged, scan, judge
 from canopy_mcp.collections import (
     MAX_MEMBERS,
+    LAYOUT_REASONS,
     MAX_QUERY_BYTES,
     MAX_LAYOUT_BYTES,
-    MAX_LAYOUT_DEPTH,
     MAX_COLLECTION_BYTES,
+    InvalidLayout,
+    OldShapeLayout,
     InvalidCollection,
+    layout_refusal,
     library_screens,
+    normalize_layout,
     validate_collection,
 )
 
@@ -29,15 +37,17 @@ FACILITY_DOC = {
     "name": "  Storage ring  ",
     "description": "Everything for the ring.",
     "members": [
-        {"screen": "library/sr/overview", "slot": "a"},
-        {"screen": "library/sr/rf", "macros": {"SECTOR": "3"}, "slot": "b"},
-        {"tool": "trace", "query": "pv=SR:DCCT", "name": "Beam current", "slot": "c"},
+        {"screen": "library/sr/overview"},
+        {"screen": "library/sr/rf", "macros": {"SECTOR": "3"}},
+        {"tool": "trace", "query": "pv=SR:DCCT", "name": "Beam current"},
         {"tool": "waveform", "name": "Septum pulse"},
     ],
     "layout": {
         "split": "row",
-        "items": [{"slot": "a", "size": 2}, {"items": [{"slot": "b"}, {"slot": "c", "size": 0.5}]}],
-        "active": "b",
+        "items": [
+            {"tabs": [0], "size": 2},
+            {"split": "column", "items": [{"tabs": [1, 2], "showing": 2}, {"tabs": [3], "size": 0.5}]},
+        ],
     },
     "default": True,
     "updated": "2026-10-16T00:00:00.000Z",
@@ -70,15 +80,15 @@ def refused(doc, match: str, **kwargs) -> None:
 
 
 def nest(depth: int) -> dict:
-    """A layout ``depth`` splits deep, with slots s0..s<depth>."""
-    node: dict = {"items": [{"slot": f"s{depth - 1}"}, {"slot": f"s{depth}"}]}
+    """A layout ``depth`` splits deep, alternating direction, placing members 0..depth."""
+    node: dict = {"split": "row" if depth % 2 else "column", "items": [{"tabs": [depth - 1]}, {"tabs": [depth]}]}
     for level in range(depth - 2, -1, -1):
-        node = {"items": [{"slot": f"s{level}"}, node]}
-    return {"split": "column", **node}
+        node = {"split": "row" if level % 2 else "column", "items": [{"tabs": [level]}, node]}
+    return node
 
 
-def slotted(count: int) -> list[dict]:
-    return [{"screen": f"drafts/p{index}", "slot": f"s{index}"} for index in range(count)]
+def screens(count: int) -> list[dict]:
+    return [{"screen": f"drafts/p{index}"} for index in range(count)]
 
 
 # --- valid documents ---------------------------------------------------------------------
@@ -114,9 +124,10 @@ def test_an_empty_member_list_is_legal() -> None:
     assert validate_collection(personal(members=[]), source="personal")["members"] == []
 
 
-def test_members_without_a_leaf_are_legal() -> None:
-    doc = personal(members=slotted(3), layout={"split": "row", "items": [{"slot": "s0"}, {"slot": "s1"}]})
-    assert validate_collection(doc, source="personal")["members"][2]["slot"] == "s2"
+def test_a_collection_without_a_layout_is_legal() -> None:
+    doc = personal(members=screens(3))
+    assert "layout" not in doc
+    assert "layout" not in validate_collection(doc, source="personal")
 
 
 def test_the_input_is_not_mutated() -> None:
@@ -304,121 +315,247 @@ def test_at_most_max_members() -> None:
     refused(personal(members=[*members, {"screen": "drafts/one-more"}]), "MAX_MEMBERS")
 
 
-# --- slots -------------------------------------------------------------------------------
+# --- the old slot shape ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bad", ["", "a b", "x" * 65, 3], ids=["empty", "space", "long", "int"])
-def test_the_slot_grammar(bad) -> None:
-    refused(personal(members=[{"screen": "drafts/a", "slot": bad}]), "slot must match")
+OLD_GRID = {
+    "split": "row",
+    "items": [{"items": [{"slot": "a"}, {"slot": "c"}], "size": 2}, {"items": [{"slot": "b"}, {"slot": "d"}]}],
+    "active": "a",
+}
 
 
-def test_slots_are_unique() -> None:
-    refused(personal(members=[{"screen": "drafts/a", "slot": "x"}, {"tool": "trace", "slot": "x"}]), "not unique")
+def old_members(count: int = 4) -> list[dict]:
+    return [{"screen": f"drafts/p{index}", "slot": "abcd"[index]} for index in range(count)]
+
+
+def test_the_old_slot_layout_is_its_own_refusal() -> None:
+    with pytest.raises(OldShapeLayout) as exc:
+        validate_collection(personal(members=old_members(), layout=OLD_GRID), source="personal")
+    assert exc.value.reason == "old_slot_shape"
+    assert exc.value.where == "layout.items[0].items[0]"
+    assert isinstance(exc.value, InvalidLayout) and isinstance(exc.value, InvalidCollection)
+
+
+def test_the_old_shape_is_named_before_the_member_rules() -> None:
+    # A bad member after slotted ones: the old shape is still what is named.
+    members = [*old_members(), {"tool": "nope"}]
+    with pytest.raises(OldShapeLayout):
+        validate_collection(personal(members=members, layout=OLD_GRID), source="personal")
+
+
+@pytest.mark.parametrize("slot", ["a", "", 3], ids=["text", "empty", "int"])
+def test_the_member_slot_is_retired_as_an_unknown_key(slot) -> None:
+    doc = personal(members=[{"screen": "drafts/a", "slot": slot}])
+    with pytest.raises(OldShapeLayout, match=r"members\[0\]\.slot: old_slot_shape"):
+        validate_collection(doc, source="personal")
+
+
+def test_an_old_key_leaf_is_not_the_old_collection_shape() -> None:
+    layout = {"split": "row", "items": [{"key": 0}, {"tabs": [1]}]}
+    with pytest.raises(InvalidLayout) as exc:
+        validate_collection(personal(members=screens(2), layout=layout), source="personal")
+    assert exc.value.reason == "old_key_shape"
+    assert not isinstance(exc.value, OldShapeLayout)
 
 
 # --- layout ------------------------------------------------------------------------------
 
 
 def layout_doc(layout, count: int = 4):
-    return personal(members=slotted(count), layout=layout)
+    return personal(members=screens(count), layout=layout)
 
 
-def test_the_root_split_is_row_or_column() -> None:
-    for split in ("row", "column"):
-        assert validate_collection(
-            layout_doc({"split": split, "items": [{"slot": "s0"}, {"slot": "s1"}]}), source="personal"
-        )
-    refused(layout_doc({"split": "grid", "items": [{"slot": "s0"}, {"slot": "s1"}]}), "row' or 'column")
-    refused(layout_doc({"items": [{"slot": "s0"}, {"slot": "s1"}]}), "row' or 'column")
+def reason_of(layout, count: int = 4) -> str:
+    with pytest.raises(InvalidLayout) as exc:
+        validate_collection(layout_doc(layout, count), source="personal")
+    assert exc.value.reason in LAYOUT_REASONS
+    assert str(exc.value).startswith(f"{exc.value.where}: {exc.value.reason}: ")
+    return exc.value.reason
 
 
-def test_the_layout_must_be_an_object() -> None:
-    refused(layout_doc([]), "layout must be an object")
+def test_a_full_facility_layout_passes_unchanged() -> None:
+    out = validate_collection(FACILITY_DOC, source="facility")
+    assert out["layout"] == FACILITY_DOC["layout"]
 
 
-def test_only_the_root_names_split() -> None:
-    layout = {"split": "row", "items": [{"slot": "s0"}, {"split": "column", "items": [{"slot": "s1"}, {"slot": "s2"}]}]}
-    refused(layout_doc(layout), "only the layout root")
-
-
-def test_only_the_root_names_active() -> None:
-    layout = {"split": "row", "items": [{"slot": "s0"}, {"active": "s1", "items": [{"slot": "s1"}, {"slot": "s2"}]}]}
-    refused(layout_doc(layout), "only the layout root")
-
-
-@pytest.mark.parametrize(
-    "layout",
-    [
-        {"split": "row", "items": [{"slot": "s0"}]},
-        {"split": "row", "items": []},
-        {"split": "row", "items": "s0"},
-        {"split": "row", "items": [{"slot": "s0"}, {"items": [{"slot": "s1"}]}]},
-    ],
-    ids=["root-one", "root-empty", "root-not-array", "nested-one"],
-)
-def test_every_split_holds_two_items(layout) -> None:
-    refused(layout_doc(layout), "at least two items")
-
-
-@pytest.mark.parametrize(
-    "size",
-    [0, -1, True, "1", float("inf"), float("nan"), None],
-    ids=["zero", "negative", "bool", "string", "inf", "nan", "null"],
-)
-def test_size_is_a_positive_number(size) -> None:
-    refused(layout_doc({"split": "row", "items": [{"slot": "s0", "size": size}, {"slot": "s1"}]}), "positive number")
-
-
-def test_a_nested_split_may_carry_a_size() -> None:
-    layout = {"split": "row", "items": [{"slot": "s0"}, {"size": 3, "items": [{"slot": "s1"}, {"slot": "s2"}]}]}
-    assert validate_collection(layout_doc(layout), source="personal")
-    layout["items"][1]["size"] = 0
-    refused(layout_doc(layout), "positive number")
-
-
-def test_depth_is_at_most_six() -> None:
-    assert validate_collection(layout_doc(nest(MAX_LAYOUT_DEPTH), MAX_LAYOUT_DEPTH + 1), source="personal")
-    refused(layout_doc(nest(MAX_LAYOUT_DEPTH + 1), MAX_LAYOUT_DEPTH + 2), "deeper than 6")
-
-
-@pytest.mark.parametrize(
-    "item, match",
-    [
-        ({"slot": "nope"}, "name the slot of a member"),
-        ({"slot": 3}, "name the slot of a member"),
-        ({"slot": "s1", "items": [{"slot": "s2"}, {"slot": "s3"}]}, "not both"),
-        ({"size": 1}, "slot or items"),
-        ("s1", "must be an object"),
-        ({"slot": "s1", "weight": 1}, "unknown key"),
-        ({"items": [{"slot": "s1"}, {"slot": "s2"}], "slot2": 1}, "unknown key"),
-    ],
-)
-def test_a_malformed_layout_item_is_refused(item, match) -> None:
-    refused(layout_doc({"split": "row", "items": [{"slot": "s0"}, item]}), match)
-
-
-def test_a_leaf_cannot_name_an_unslotted_member() -> None:
-    doc = personal(
-        members=[{"screen": "drafts/a", "slot": "a"}, {"screen": "drafts/b"}],
-        layout={"split": "row", "items": [{"slot": "a"}, {"slot": "b"}]},
+@pytest.mark.parametrize("split", ["row", "column"])
+def test_a_split_is_row_or_column(split) -> None:
+    assert validate_collection(
+        layout_doc({"split": split, "items": [{"tabs": [0, 1]}, {"tabs": [2, 3]}]}), source="personal"
     )
-    refused(doc, "name the slot of a member")
 
 
-def test_a_slot_is_placed_once() -> None:
-    refused(layout_doc({"split": "row", "items": [{"slot": "s0"}, {"slot": "s0"}]}), "placed twice")
+def test_a_bad_split_is_refused() -> None:
+    assert reason_of({"split": "grid", "items": [{"tabs": [0, 1]}, {"tabs": [2, 3]}]}) == "bad_split"
+    assert reason_of({"items": [{"tabs": [0, 1]}, {"tabs": [2, 3]}]}) == "bad_split"
 
 
-def test_unknown_root_keys_are_refused() -> None:
-    refused(layout_doc({"split": "row", "items": [{"slot": "s0"}, {"slot": "s1"}], "size": 1}), "unknown key")
+def test_the_root_may_be_a_tile() -> None:
+    assert validate_collection(layout_doc({"tabs": [0, 1, 2, 3]}), source="personal")
 
 
-def test_active_names_a_member_slot() -> None:
-    base = {"split": "row", "items": [{"slot": "s0"}, {"slot": "s1"}]}
-    # A slotted member without a leaf (s3, undocked) may be active.
-    assert validate_collection(layout_doc({**base, "active": "s3"}), source="personal")
-    refused(layout_doc({**base, "active": "zz"}), "layout.active")
-    refused(layout_doc({**base, "active": 1}), "layout.active")
+def test_a_nested_split_may_run_either_way() -> None:
+    same = {"split": "row", "items": [{"tabs": [0]}, {"split": "row", "items": [{"tabs": [1]}, {"tabs": [2, 3]}]}]}
+    assert validate_collection(layout_doc(same), source="personal")
+
+
+def test_showing_defaults_to_the_first_tab_and_names_a_tab() -> None:
+    assert validate_collection(layout_doc({"tabs": [2, 0, 1, 3]}), source="personal")
+    assert validate_collection(layout_doc({"tabs": [2, 0, 1, 3], "showing": 3}), source="personal")
+    assert reason_of({"tabs": [0, 1, 2, 3], "showing": 9}) == "showing_not_in_tabs"
+    assert reason_of({"tabs": [0, 1, 2, 3], "showing": "0"}) == "showing_not_in_tabs"
+    assert reason_of({"tabs": [0, 1, 2, 3], "showing": True}) == "showing_not_in_tabs"
+
+
+@pytest.mark.parametrize(
+    "layout, reason",
+    [
+        ({"split": "row", "items": [{"tabs": [0, 1, 2, 3]}]}, "split_too_few_items"),
+        ({"split": "row", "items": "x"}, "split_too_few_items"),
+        (
+            {"split": "row", "items": [{"tabs": [0, 1, 2]}, {"split": "column", "items": [{"tabs": [3]}]}]},
+            "split_too_few_items",
+        ),
+    ],
+    ids=["root", "not-a-list", "nested"],
+)
+def test_every_split_holds_two_items(layout, reason) -> None:
+    assert reason_of(layout) == reason
+
+
+@pytest.mark.parametrize(
+    "key",
+    [4, -1, 1.5, "0", True, None],
+    ids=["out-of-range", "negative", "fraction", "text", "bool", "null"],
+)
+def test_a_tab_is_a_member_index(key) -> None:
+    assert reason_of({"tabs": [0, 1, 2, key]}) == "bad_key"
+
+
+def test_an_integral_float_index_counts_as_the_index() -> None:
+    assert validate_collection(layout_doc({"tabs": [0, 1, 2, 3.0]}), source="personal")
+
+
+def test_a_tile_lists_at_least_one_tab() -> None:
+    assert reason_of({"split": "row", "items": [{"tabs": []}, {"tabs": [0, 1, 2, 3]}]}) == "empty_tabs"
+    assert reason_of({"split": "row", "items": [{"tabs": 0}, {"tabs": [1, 2, 3]}]}) == "empty_tabs"
+
+
+def test_every_member_is_placed_exactly_once() -> None:
+    assert reason_of({"split": "row", "items": [{"tabs": [0, 1]}, {"tabs": [1, 2, 3]}]}) == "duplicate_key"
+    assert reason_of({"split": "row", "items": [{"tabs": [0, 1]}, {"tabs": [2]}]}) == "member_missing"
+
+
+def test_a_layout_with_no_members_places_nothing() -> None:
+    assert reason_of({"tabs": [0]}, 0) == "bad_key"
+
+
+@pytest.mark.parametrize("size", [0, -1, "1", True, None, float("inf"), float("nan")])
+def test_size_is_a_positive_weight(size) -> None:
+    assert reason_of({"split": "row", "items": [{"tabs": [0, 1], "size": size}, {"tabs": [2, 3]}]}) == "bad_size"
+
+
+def test_weights_need_not_sum_to_one() -> None:
+    layout = {"split": "row", "items": [{"tabs": [0, 1], "size": 7}, {"tabs": [2, 3], "size": 3}], "size": 2}
+    assert validate_collection(layout_doc(layout), source="personal")
+
+
+@pytest.mark.parametrize(
+    "item",
+    [{"tabs": [3], "title": "x"}, {"tabs": [3], "tile": "t1"}, {"tabs": [3], "from": "t1"}],
+    ids=["title", "tile-id", "from"],
+)
+def test_a_tile_carries_only_tabs_showing_and_size(item) -> None:
+    assert reason_of({"split": "row", "items": [{"tabs": [0, 1, 2]}, item]}) == "unknown_field"
+
+
+def test_a_split_carries_only_split_items_and_size() -> None:
+    assert reason_of({"split": "row", "items": [{"tabs": [0, 1]}, {"tabs": [2, 3]}], "active": 0}) == "unknown_field"
+
+
+@pytest.mark.parametrize("layout", [[], "row", 3, None, {"size": 1}], ids=["list", "text", "number", "null", "no-tabs"])
+def test_a_layout_node_is_a_tile_or_a_split(layout) -> None:
+    assert reason_of(layout) == "not_layout"
+
+
+def test_the_first_broken_rule_in_tree_order_wins() -> None:
+    layout = {"split": "row", "items": [{"tabs": [0], "showing": 1}, {"tabs": [1, 9]}]}
+    assert reason_of(layout) == "showing_not_in_tabs"
+
+
+def test_there_is_no_depth_cap() -> None:
+    depth = 30
+    assert validate_collection(personal(members=screens(depth + 1), layout=nest(depth)), source="personal")
+
+
+# --- the C-CASES validate and normalize cases --------------------------------------------
+
+DOCK_CASES = Path(__file__).parent / "fixtures" / "dock-cases"
+SIZE_EPSILON = 0.005
+
+
+def _cases(kind: str) -> list[tuple[str, dict]]:
+    return [
+        (path.stem, json.loads(path.read_text(encoding="ascii"))) for path in sorted((DOCK_CASES / kind).glob("*.json"))
+    ]
+
+
+def _approx(actual, expected, path: str = "$") -> list[str]:
+    """The runtime runner's ``diffApprox``: numbers within ``SIZE_EPSILON``, all else exact."""
+    number = (int, float)
+    if isinstance(expected, number) and not isinstance(expected, bool):
+        ok = isinstance(actual, number) and not isinstance(actual, bool) and abs(actual - expected) <= SIZE_EPSILON
+        return [] if ok else [f"{path}: {actual!r} != {expected!r}"]
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return [f"{path}: {actual!r} != {expected!r}"]
+        return [line for i, item in enumerate(expected) for line in _approx(actual[i], item, f"{path}[{i}]")]
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict) or set(actual) != set(expected):
+            return [f"{path}: keys {sorted(actual) if isinstance(actual, dict) else actual!r} != {sorted(expected)}"]
+        return [line for key in sorted(expected) for line in _approx(actual[key], expected[key], f"{path}.{key}")]
+    return [] if type(actual) is type(expected) and actual == expected else [f"{path}: {actual!r} != {expected!r}"]
+
+
+def test_the_cases_cover_both_forms_and_every_reason_the_collection_form_can_give() -> None:
+    validate = [case for _, case in _cases("validate")]
+    forms = {case.get("options", {}).get("form", "dock") for case in validate}
+    assert forms == {"dock", "collection"}
+    collection = {
+        case["reason"] for case in validate if case.get("options", {}).get("form") == "collection" and "reason" in case
+    }
+    assert {"old_slot_shape", "member_missing", "duplicate_key", "bad_key", "unknown_field", "bad_size"} <= collection
+    assert {case.get("form", "dock") for _, case in _cases("normalize")} == {"dock", "collection"}
+
+
+@pytest.mark.parametrize("name, case", _cases("validate"), ids=lambda value: value if isinstance(value, str) else "")
+def test_each_validate_case_replays(name, case) -> None:
+    options = case.get("options", {})
+    refusal = layout_refusal(case["input"], form=options.get("form", "dock"), members=options.get("members"))
+    got = "valid" if refusal is None else refusal[0]
+    assert got == ("valid" if "valid" in case else case["reason"]), name
+
+
+@pytest.mark.parametrize("name, case", _cases("normalize"), ids=lambda value: value if isinstance(value, str) else "")
+def test_each_normalize_case_replays(name, case) -> None:
+    before = copy.deepcopy(case["input"])
+    assert _approx(normalize_layout(case["input"], form=case.get("form", "dock")), case["output"]) == [], name
+    assert case["input"] == before
+
+
+def test_the_collection_validator_agrees_with_every_collection_case_that_has_members() -> None:
+    for name, case in _cases("validate"):
+        options = case.get("options", {})
+        if options.get("form") != "collection" or "members" not in options:
+            continue
+        doc = personal(members=screens(options["members"]), layout=case["input"])
+        if "valid" in case:
+            assert validate_collection(doc, source="personal")["layout"] == case["input"], name
+        else:
+            with pytest.raises(InvalidLayout) as exc:
+                validate_collection(doc, source="personal")
+            assert exc.value.reason == case["reason"], name
 
 
 # --- aggregate limits --------------------------------------------------------------------
@@ -426,14 +563,19 @@ def test_active_names_a_member_slot() -> None:
 
 def test_the_layout_is_at_most_32_kib() -> None:
     assert MAX_LAYOUT_BYTES == 32 * 1024
-    members = slotted(2)
+    members = screens(2)
     # A 4000-digit weight is a legal positive number; nine of them pass 32 KiB of JSON.
     heavy = int("9" * 4000)
-    near = {"split": "row", "items": [{"slot": "s0", "size": heavy}] * 7 + [{"slot": "s1"}]}
-    over = {"split": "row", "items": [{"slot": "s0", "size": heavy}] * 9 + [{"slot": "s1"}]}
-    # The near layout fails only on the repeated leaf, i.e. after the size bound passed.
-    refused(personal(members=members, layout=near), "placed twice")
+    near = {"split": "row", "items": [{"tabs": [0], "size": heavy}] * 7 + [{"tabs": [1]}]}
+    over = {"split": "row", "items": [{"tabs": [0], "size": heavy}] * 9 + [{"tabs": [1]}]}
+    # The near layout fails only on the repeated tab, i.e. after the size bound passed.
+    refused(personal(members=members, layout=near), "duplicate_key")
     refused(personal(members=members, layout=over), "MAX_LAYOUT_BYTES")
+
+
+def test_a_heavy_weight_is_legal() -> None:
+    layout = {"split": "row", "items": [{"tabs": [0], "size": int("9" * 400)}, {"tabs": [1]}]}
+    assert validate_collection(personal(members=screens(2), layout=layout), source="personal")
 
 
 def test_the_whole_collection_is_at_most_256_kib() -> None:

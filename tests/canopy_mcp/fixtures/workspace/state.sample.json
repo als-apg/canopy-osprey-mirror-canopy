@@ -7,28 +7,24 @@
       {
         "key": "library/gtb/GTLView?SR=1",
         "kind": "screen",
-        "docked": true,
         "canBack": true,
         "canForward": false
       },
       {
         "key": "library/bts/BTSView",
         "kind": "screen",
-        "docked": true,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "@trace",
         "kind": "tool",
-        "docked": true,
         "canBack": false,
         "canForward": false
       },
       {
         "key": "library/sr/overview",
         "kind": "screen",
-        "docked": false,
         "canBack": false,
         "canForward": false
       }
@@ -38,22 +34,35 @@
       "split": "row",
       "items": [
         {
-          "key": "library/gtb/GTLView?SR=1",
+          "tile": "t1",
+          "tabs": [
+            "library/gtb/GTLView?SR=1",
+            "library/sr/overview"
+          ],
+          "showing": "library/gtb/GTLView?SR=1",
           "size": 0.6
         },
         {
+          "split": "column",
           "items": [
             {
-              "key": "library/bts/BTSView"
+              "tile": "t2",
+              "tabs": [
+                "library/bts/BTSView"
+              ],
+              "showing": "library/bts/BTSView"
             },
             {
-              "key": "@trace"
+              "tile": "t3",
+              "tabs": [
+                "@trace"
+              ],
+              "showing": "@trace"
             }
           ],
           "size": 0.4
         }
-      ],
-      "active": "library/gtb/GTLView?SR=1"
+      ]
     },
     "zoom": {
       "library/gtb/GTLView": {

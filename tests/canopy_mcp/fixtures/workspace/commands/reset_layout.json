@@ -44,20 +44,25 @@
             {
               "key": "library/gtb/GTLView?SR=1",
               "kind": "screen",
-              "docked": true,
               "canBack": true,
               "canForward": false
             },
             {
               "key": "library/bts/BTSView",
               "kind": "screen",
-              "docked": false,
               "canBack": false,
               "canForward": false
             }
           ],
           "active": "library/gtb/GTLView?SR=1",
-          "layout": null,
+          "layout": {
+            "tile": "t1",
+            "tabs": [
+              "library/gtb/GTLView?SR=1",
+              "library/bts/BTSView"
+            ],
+            "showing": "library/gtb/GTLView?SR=1"
+          },
           "zoom": {
             "library/gtb/GTLView": {
               "mode": "fit"

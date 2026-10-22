@@ -1,9 +1,0 @@
-{
-  "name": "Broken",
-  "members": [
-    {
-      "screen": "library/sr/overview",
-      "slot": "a b"
-    }
-  ]
-}

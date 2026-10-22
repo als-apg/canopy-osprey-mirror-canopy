@@ -9,6 +9,7 @@ and the opt-in that decides whether the two tools are offered at all.
 
 from __future__ import annotations
 
+import re
 import json
 import time
 import shutil
@@ -36,7 +37,7 @@ from canopy_mcp.server import (
     workspace_snapshot,
     set_workspace_tools,
 )
-from canopy_mcp.workspace import PROTOCOL, REFUSAL_REASONS, Hub
+from canopy_mcp.workspace import AS, VERBS, PROTOCOL, REFUSAL_REASONS, Hub
 
 from .test_workspace_hub import SAMPLE, REFUSALS, SCENARIOS, Replay, matches
 
@@ -389,3 +390,76 @@ def test_workspace_tools_parameters():
     assert set(schema["properties"]) == {"commands", "base", "batch_id", "wait_s"}
     assert schema["properties"]["wait_s"]["default"] == 5.0
     assert registered_tools()["get_workspace"].parameters.get("properties", {}) == {}
+
+
+# --- the text the agent reads ------------------------------------------------------------------
+
+README = Path(__file__).parents[2] / "src" / "canopy_mcp" / "README.md"
+RETIRED = ("place", "remove_tile", "polite", "append", "mode", "beside", "docked")
+
+
+def _texts() -> tuple[str, str, str]:
+    """The ``get_workspace`` description, the ``set_workspace`` description and its ``commands`` text."""
+    set_workspace_tools(True)
+    tools = registered_tools()
+    commands = tools["set_workspace"].parameters["properties"]["commands"]["description"]
+    return tools["get_workspace"].description, tools["set_workspace"].description, commands
+
+
+def _readme_verbs() -> list[str]:
+    """The verbs the README's verb table lists, in row order."""
+    text = README.read_text(encoding="utf-8")
+    table = text.split("| Verb | Arguments | Note |", 1)[1].split("\n\n", 1)[0]
+    verbs: list[str] = []
+    for row in table.splitlines()[2:]:
+        cell = row.split("|")[1]
+        verbs += [part.strip().strip("`") for part in cell.split(",")]
+    return verbs
+
+
+def test_workspace_tools_commands_text_names_every_verb_and_its_arguments():
+    _, _, commands = _texts()
+    for verb, (required, optional) in VERBS.items():
+        assert re.search(rf"\b{verb}\b", commands), verb
+        for name in required | optional:
+            assert re.search(rf"\b{name}\b", commands), f"{verb}.{name}"
+    for form in ("new", "tab", "tile", "centre", "edge", "border", "outer", "index"):
+        assert re.search(rf"\b{form}\b", commands), form
+    for value in AS:
+        assert value in commands
+
+
+def test_workspace_tools_text_names_no_retired_verb_or_argument():
+    read, write, commands = _texts()
+    readme = README.read_text(encoding="utf-8").split("## The workspace", 1)[1].split("### Developer recipe", 1)[0]
+    for text in (read, write, commands):
+        for word in RETIRED:
+            assert not re.search(rf"\b{word}\b", text), word
+    for word in (*RETIRED, "close"):  # the README's prose may say "beside"; a retired name is in backticks
+        assert f"`{word}`" not in readme and f"`{word}?`" not in readme, word
+    for text in (read, write, commands, readme):
+        assert "layout: true" not in text  # open_collection's boolean layout is retired for as
+    # The verb close is retired in favour of close_tab.
+    assert not re.search(r"\bclose\b", commands.replace("close_", "")), "close"
+    assert "open_collection {ref, as?" in commands
+
+
+def test_workspace_tools_text_states_the_tile_rules():
+    read, write, commands = _texts()
+    joined = " ".join((read, write, commands))
+    assert "rule 7" in commands and "focused tile" in commands
+    assert re.search(r"close_others / close_right \{key\}[^.]*within the tab's tile", commands)
+    assert "base" in commands and "tile id" in commands
+    for text in (read, write):
+        assert "state.layout" in text
+    assert "tile id" in read and "showing" in read
+    assert "null" in read and "below two" not in joined
+
+
+def test_workspace_tools_readme_lists_exactly_the_hub_verbs():
+    verbs = _readme_verbs()
+    assert sorted(verbs) == sorted(VERBS)
+    text = README.read_text(encoding="utf-8")
+    assert f"closed vocabulary of {len(VERBS)} verbs" in text
+    section = text.split("## The workspace", 1)[1].split("### Developer recipe", 1)[0]
+    assert "state.layout" in section and "rule 7" in section and "within the tab's tile" in section

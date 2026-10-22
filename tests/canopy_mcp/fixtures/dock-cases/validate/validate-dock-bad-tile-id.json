@@ -1,0 +1,10 @@
+{
+  "name": "validate-dock-bad-tile-id",
+  "rule": "C-LAYOUT",
+  "input": {
+    "tile": "",
+    "tabs": ["a"],
+    "showing": "a"
+  },
+  "reason": "bad_tile_id"
+}

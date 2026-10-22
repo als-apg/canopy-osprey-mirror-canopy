@@ -17,28 +17,24 @@
         {
           "key": "library/gtb/GTLView?SR=1",
           "kind": "screen",
-          "docked": true,
           "canBack": true,
           "canForward": false
         },
         {
           "key": "library/bts/BTSView",
           "kind": "screen",
-          "docked": true,
           "canBack": false,
           "canForward": false
         },
         {
           "key": "@trace",
           "kind": "tool",
-          "docked": true,
           "canBack": false,
           "canForward": false
         },
         {
           "key": "library/sr/overview",
           "kind": "screen",
-          "docked": false,
           "canBack": false,
           "canForward": false
         }
@@ -48,22 +44,35 @@
         "split": "row",
         "items": [
           {
-            "key": "library/gtb/GTLView?SR=1",
+            "tile": "t1",
+            "tabs": [
+              "library/gtb/GTLView?SR=1",
+              "library/sr/overview"
+            ],
+            "showing": "library/gtb/GTLView?SR=1",
             "size": 0.6
           },
           {
+            "split": "column",
             "items": [
               {
-                "key": "library/bts/BTSView"
+                "tile": "t2",
+                "tabs": [
+                  "library/bts/BTSView"
+                ],
+                "showing": "library/bts/BTSView"
               },
               {
-                "key": "@trace"
+                "tile": "t3",
+                "tabs": [
+                  "@trace"
+                ],
+                "showing": "@trace"
               }
             ],
             "size": 0.4
           }
-        ],
-        "active": "library/gtb/GTLView?SR=1"
+        ]
       },
       "zoom": {
         "library/gtb/GTLView": {
@@ -132,51 +141,56 @@
         "default": false,
         "members": [
           {
-            "screen": "library/sr/overview",
-            "slot": "a"
+            "screen": "library/sr/overview"
           },
           {
-            "screen": "library/s3-promo/promotion",
-            "slot": "b"
+            "screen": "library/s3-promo/promotion"
           },
           {
             "tool": "trace",
             "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
-            "name": "Beam current",
-            "slot": "c"
+            "name": "Beam current"
           },
           {
-            "tool": "correlation",
-            "slot": "d"
+            "tool": "correlation"
           }
         ],
         "layout": {
           "split": "row",
           "items": [
             {
+              "split": "column",
               "items": [
                 {
-                  "slot": "a"
+                  "tabs": [
+                    0
+                  ]
                 },
                 {
-                  "slot": "c"
+                  "tabs": [
+                    2
+                  ]
                 }
               ],
               "size": 2
             },
             {
+              "split": "column",
               "items": [
                 {
-                  "slot": "b"
+                  "tabs": [
+                    1
+                  ]
                 },
                 {
-                  "slot": "d"
+                  "tabs": [
+                    3
+                  ]
                 }
               ],
               "size": 1
             }
-          ],
-          "active": "a"
+          ]
         }
       }
     ],

@@ -27,7 +27,7 @@
           },
           {
             "id": "c-e1-2",
-            "cmd": "close",
+            "cmd": "close_tab",
             "args": {
               "key": "library/bts/BTSView"
             }
@@ -64,7 +64,7 @@
           },
           {
             "id": "c-e1-2",
-            "cmd": "close",
+            "cmd": "close_tab",
             "args": {
               "key": "library/bts/BTSView"
             }

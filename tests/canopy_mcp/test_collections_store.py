@@ -26,6 +26,7 @@ from canopy_mcp.collections import (
     SelectionFull,
     StateTooLarge,
     InvalidStateOp,
+    OldShapeLayout,
     CollectionStore,
     CollectionExists,
     InvalidCollection,
@@ -33,6 +34,7 @@ from canopy_mcp.collections import (
     FacilityCollections,
     InvalidCollectionId,
     _size,
+    shown_refs,
     empty_state,
     all_collections,
 )
@@ -550,3 +552,103 @@ async def test_the_maximal_legal_state_fits(store, personal_dir):
     size = (personal_dir / STATE_FILE).stat().st_size
     assert size <= MAX_STATE_BYTES
     assert size > MAX_STATE_BYTES * 0.9
+
+
+# --- the old slot shape -----------------------------------------------------------
+
+OLD = {
+    "name": "Old grid",
+    "members": [{**SCREEN, "slot": "a"}, {**TOOL, "slot": "b"}],
+    "layout": {"split": "row", "items": [{"slot": "a"}, {"slot": "b"}], "active": "a"},
+    "updated": "2026-10-16T00:00:00.000Z",
+}
+
+
+def test_an_old_shape_file_is_listed_as_refused(store, personal_dir, caplog):
+    path = _write(personal_dir, "old.json", OLD)
+    _write(personal_dir, "new.json", _collection("New", [SCREEN, TOOL], layout={"tabs": [1, 0]}))
+    with caplog.at_level(logging.WARNING, logger="canopy_mcp.collections"):
+        listed = {doc["id"]: doc for doc in store.list()}
+        store.list()
+    old = listed["old"]
+    assert old == {
+        "source": "personal",
+        "ref": "personal:old",
+        "rev": hashlib.sha256(path.read_bytes()).hexdigest()[:16],
+        "id": "old",
+        "name": "Old grid",
+        "members": [SCREEN, TOOL],
+        "refused": old["refused"],
+    }
+    assert old["refused"].startswith("layout.items[0]: old_slot_shape")
+    assert "refused" not in listed["new"] and listed["new"]["layout"] == {"tabs": [1, 0]}
+    # Logged once, while the file is unchanged.
+    assert len([r for r in caplog.records if "listing as refused" in r.getMessage()]) == 1
+
+
+def test_slotted_members_without_a_layout_are_the_old_shape_too(store, personal_dir):
+    _write(personal_dir, "old.json", {"name": "Old", "members": [{**SCREEN, "slot": "a"}, TOOL]})
+    (old,) = store.list()
+    assert old["refused"].startswith("members[0].slot: old_slot_shape")
+    assert old["members"] == [SCREEN, TOOL]
+
+
+def test_an_old_shape_file_that_breaks_another_rule_is_skipped(store, personal_dir):
+    _write(personal_dir, "old.json", {**OLD, "name": ""})
+    assert store.list() == []
+
+
+def test_a_facility_old_shape_file_is_listed_as_refused_and_never_a_default(facility_dir):
+    _write(facility_dir, "old.json", {**OLD, "default": True})
+    (old,) = FacilityCollections(facility_dir).list()
+    assert old["ref"] == "facility:old" and "refused" in old and "default" not in old
+    assert shown_refs([old], {"ticked": ["facility:old"], "unticked": []}) == []
+
+
+def test_a_refused_collection_is_not_current_and_not_openable(store, personal_dir):
+    _write(personal_dir, "old.json", OLD)
+    assert store.refs() == set()
+    assert store.refused_refs() == {"personal:old"}
+    with pytest.raises(CollectionNotFound):
+        store.get("old")
+
+
+async def test_a_refused_collection_cannot_be_ticked_but_can_be_unticked(store, personal_dir, facility_dir):
+    _write(personal_dir, "old.json", OLD)
+    _write(facility_dir, "fold.json", OLD)
+    for ref in ("personal:old", "facility:fold"):
+        with pytest.raises(InvalidStateOp, match="refused"):
+            await store.apply_op({"op": "tick", "ref": ref})
+        assert (await store.apply_op({"op": "untick", "ref": ref}))["unticked"][-1] == ref
+
+
+async def test_a_refused_collection_is_deleted_like_any_other(store, personal_dir):
+    path = _write(personal_dir, "old.json", OLD)
+    rev = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    await store.delete("old", if_match=frozenset({rev}))
+    assert not path.exists()
+    assert store.list() == []
+
+
+async def test_a_refused_collection_is_replaced_in_the_new_shape(store, personal_dir):
+    path = _write(personal_dir, "old.json", OLD)
+    rev = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    doc, created = await store.put(
+        "old", _collection("Old grid", [SCREEN, TOOL], layout={"tabs": [0, 1]}), if_match=frozenset({rev})
+    )
+    assert created is False and "refused" not in doc
+    assert store.get("old")["layout"] == {"tabs": [0, 1]}
+
+
+async def test_a_put_in_the_old_shape_is_refused(store):
+    with pytest.raises(OldShapeLayout):
+        await store.put("old", OLD, create_only=True)
+
+
+def test_all_collections_lists_refused_ones_in_name_order(store, personal_dir, facility_dir):
+    _write(personal_dir, "old.json", OLD)
+    _write(personal_dir, "a.json", _collection("A grid"))
+    assert [doc["ref"] for doc in all_collections(FacilityCollections(facility_dir), store)] == [
+        "personal:a",
+        "personal:old",
+    ]

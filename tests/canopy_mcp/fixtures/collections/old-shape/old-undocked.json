@@ -1,0 +1,15 @@
+{
+  "id": "old-undocked",
+  "name": "Old partly docked",
+  "members": [
+    {
+      "screen": "library/gtb/GTLView",
+      "slot": "left"
+    },
+    {
+      "tool": "waveform",
+      "query": ""
+    }
+  ],
+  "updated": "2026-10-16T00:00:00+00:00"
+}

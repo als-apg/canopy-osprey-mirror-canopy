@@ -685,6 +685,8 @@ def test_every_response_fixture_is_an_error_body_or_a_state_document() -> None:
         body = _fixture(name)
         if name.startswith("state"):
             assert set(body) == {"ticked", "unticked", "pinned", "recent"}
+        elif name.startswith("list"):
+            assert set(body) == {"collections"}
         else:
             assert name.startswith("error-")
             assert set(body) <= {"error", "detail"} and body["error"] == name[len("error-") : -5].replace("-", "_")
@@ -759,3 +761,73 @@ def test_mismatched_etag_is_200_with_the_body(client: TestClient) -> None:
     assert r.status_code == 200
     assert r.headers["etag"] == _sha_etag(r.content)
     assert r.json() == {"collections": []}
+
+
+# --- the old slot shape: listed as refused, never opened ------------------------
+
+OLD = {
+    "name": "Old grid",
+    "members": [{**SCREEN, "slot": "a"}, {**TOOL, "slot": "b"}],
+    "layout": {"split": "row", "items": [{"slot": "a"}, {"slot": "b"}], "active": "a"},
+    "updated": "2026-10-16T00:00:00.000Z",
+}
+
+
+def test_get_collections_lists_an_old_shape_collection_as_refused(client: TestClient, personal: Path) -> None:
+    _write(personal, "old.json", OLD)
+    _write(personal, "tiles.json", _collection("Tiles", [SCREEN, TOOL], layout={"tabs": [1, 0], "showing": 0}))
+    listed = {doc["id"]: doc for doc in client.get("/collections").json()["collections"]}
+    assert set(listed["old"]) == {"source", "ref", "rev", "id", "name", "members", "refused"}
+    assert listed["old"]["members"] == [SCREEN, TOOL]
+    assert "old_slot_shape" in listed["old"]["refused"]
+    assert listed["tiles"]["layout"] == {"tabs": [1, 0], "showing": 0}
+    assert "refused" not in listed["tiles"]
+
+
+def test_get_one_refused_collection_is_404(client: TestClient, personal: Path) -> None:
+    _write(personal, "old.json", OLD)
+    r = client.get("/collections/old")
+    assert r.status_code == 404 and r.json()["error"] == "not_found"
+
+
+def test_a_refused_collection_cannot_be_ticked(client: TestClient, personal: Path) -> None:
+    _write(personal, "old.json", OLD)
+    r = _op(client, {"op": "tick", "ref": "personal:old"})
+    assert r.status_code == 400 and r.json()["error"] == "invalid_op"
+    assert "refused" in r.json()["detail"]
+    assert client.get("/collections-state").json()["ticked"] == []
+
+
+def test_a_refused_collection_is_deleted_with_its_listed_rev(client: TestClient, personal: Path) -> None:
+    path = _write(personal, "old.json", OLD)
+    (old,) = client.get("/collections").json()["collections"]
+    r = client.delete("/collections/old", headers=_match(old["rev"]))
+    assert r.status_code == 204
+    assert not path.exists()
+
+
+def test_a_refused_collection_is_resaved_in_the_new_shape(client: TestClient, personal: Path) -> None:
+    _write(personal, "old.json", OLD)
+    (old,) = client.get("/collections").json()["collections"]
+    r = _put(client, "old", _collection("Old grid", [SCREEN, TOOL], layout={"tabs": [0, 1]}), _match(old["rev"]))
+    assert r.status_code == 200, r.text
+    assert client.get("/collections/old").json()["layout"] == {"tabs": [0, 1]}
+
+
+def test_a_put_in_the_old_shape_is_400_naming_the_old_shape(client: TestClient) -> None:
+    r = _create(client, "old", OLD)
+    assert r.status_code == 400 and r.json()["error"] == "invalid_collection"
+    assert r.json()["detail"].startswith("layout.items[0]: old_slot_shape")
+
+
+@pytest.mark.parametrize(
+    "layout, reason",
+    [
+        ({"tabs": [0]}, "member_missing"),
+        ({"tabs": [0, 1], "showing": 5}, "showing_not_in_tabs"),
+        ({"split": "row", "items": [{"tabs": [0, 1]}]}, "split_too_few_items"),
+    ],
+)
+def test_a_put_with_a_broken_layout_is_400_naming_the_reason(client: TestClient, layout, reason) -> None:
+    r = _create(client, "mine", _collection(members=[SCREEN, TOOL], layout=layout))
+    assert r.status_code == 400 and f": {reason}: " in r.json()["detail"]

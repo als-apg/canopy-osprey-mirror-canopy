@@ -90,6 +90,129 @@
     },
     {
       "source": "personal",
+      "ref": "personal:deep",
+      "rev": "f38fe1ec8077c5a3",
+      "id": "deep",
+      "name": "Deep spiral",
+      "description": "Eight splits deep, past the old depth cap: only the byte cap bounds a layout.",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "screen": "library/s3-promo/promotion"
+        },
+        {
+          "screen": "library/gtb/GTLView"
+        },
+        {
+          "screen": "library/bts/BTSView"
+        },
+        {
+          "screen": "library/common/KnobPanel"
+        },
+        {
+          "screen": "library/dev/b1-dev"
+        },
+        {
+          "tool": "trace"
+        },
+        {
+          "tool": "correlation"
+        },
+        {
+          "tool": "waveform"
+        }
+      ],
+      "layout": {
+        "split": "column",
+        "items": [
+          {
+            "tabs": [
+              0
+            ]
+          },
+          {
+            "split": "row",
+            "items": [
+              {
+                "tabs": [
+                  1
+                ]
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tabs": [
+                      2
+                    ]
+                  },
+                  {
+                    "split": "row",
+                    "items": [
+                      {
+                        "tabs": [
+                          3
+                        ]
+                      },
+                      {
+                        "split": "column",
+                        "items": [
+                          {
+                            "tabs": [
+                              4
+                            ]
+                          },
+                          {
+                            "split": "row",
+                            "items": [
+                              {
+                                "tabs": [
+                                  5
+                                ]
+                              },
+                              {
+                                "split": "column",
+                                "items": [
+                                  {
+                                    "tabs": [
+                                      6
+                                    ]
+                                  },
+                                  {
+                                    "split": "column",
+                                    "items": [
+                                      {
+                                        "tabs": [
+                                          7
+                                        ]
+                                      },
+                                      {
+                                        "tabs": [
+                                          8
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
       "ref": "personal:drafts",
       "rev": "9a2274c5450eb57c",
       "id": "drafts",
@@ -112,38 +235,27 @@
     },
     {
       "source": "personal",
-      "ref": "personal:undocked",
-      "rev": "c7634e7d25de408e",
-      "id": "undocked",
-      "name": "Partly docked",
-      "description": "Two docked members; the others open undocked.",
+      "ref": "personal:root-tile",
+      "rev": "a7dbdd060b2f8c37",
+      "id": "root-tile",
+      "name": "One tile",
+      "description": "A single tile holding every member as a tab, showing the first.",
       "members": [
         {
-          "screen": "library/gtb/GTLView",
-          "slot": "left"
+          "screen": "library/common/KnobPanel"
         },
         {
-          "screen": "library/bts/BTSView",
-          "slot": "right"
+          "screen": "library/dev/b1-dev"
         },
         {
-          "screen": "library/common/KnobPanel",
-          "slot": "spare"
-        },
-        {
-          "tool": "waveform",
-          "query": ""
+          "tool": "trace"
         }
       ],
       "layout": {
-        "split": "column",
-        "items": [
-          {
-            "slot": "left"
-          },
-          {
-            "slot": "right"
-          }
+        "tabs": [
+          0,
+          1,
+          2
         ]
       },
       "updated": "2026-10-16T00:00:00+00:00"
@@ -151,56 +263,99 @@
     {
       "source": "personal",
       "ref": "personal:grid",
-      "rev": "e616eb1ec69e6ee2",
+      "rev": "cbff71cc3430b331",
       "id": "grid",
       "name": "Ring grid",
       "members": [
         {
-          "screen": "library/sr/overview",
-          "slot": "a"
+          "screen": "library/sr/overview"
         },
         {
-          "screen": "library/s3-promo/promotion",
-          "slot": "b"
+          "screen": "library/s3-promo/promotion"
         },
         {
           "tool": "trace",
           "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
-          "name": "Beam current",
-          "slot": "c"
+          "name": "Beam current"
         },
         {
-          "tool": "correlation",
-          "slot": "d"
+          "tool": "correlation"
         }
       ],
       "layout": {
         "split": "row",
         "items": [
           {
+            "split": "column",
             "items": [
               {
-                "slot": "a"
+                "tabs": [
+                  0
+                ]
               },
               {
-                "slot": "c"
+                "tabs": [
+                  2
+                ]
               }
             ],
             "size": 2
           },
           {
+            "split": "column",
             "items": [
               {
-                "slot": "b"
+                "tabs": [
+                  1
+                ]
               },
               {
-                "slot": "d"
+                "tabs": [
+                  3
+                ]
               }
             ],
             "size": 1
           }
-        ],
-        "active": "a"
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:tabbed",
+      "rev": "79b1a8cbe05e9182",
+      "id": "tabbed",
+      "name": "Transfer lines",
+      "description": "Two tiles side by side; the left one holds two tabs and shows the second.",
+      "members": [
+        {
+          "screen": "library/gtb/GTLView"
+        },
+        {
+          "screen": "library/bts/BTSView"
+        },
+        {
+          "tool": "waveform",
+          "query": ""
+        }
+      ],
+      "layout": {
+        "split": "row",
+        "items": [
+          {
+            "tabs": [
+              0,
+              1
+            ],
+            "showing": 1
+          },
+          {
+            "tabs": [
+              2
+            ]
+          }
+        ]
       },
       "updated": "2026-10-16T00:00:00+00:00"
     }

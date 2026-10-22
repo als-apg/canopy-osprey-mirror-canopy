@@ -6,7 +6,7 @@
     "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
     "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
     "Every batch here passes the hub's shape check; the hub stores the results as posted.",
-    "The viewer owns semantic bounds, one case per bound (bound names it): a tool's query grammar, its PV cap (maxPvs trace 12, correlation 8, waveform 8), Trace's range, place beside itself. Syntactic bounds are the hub's (refusals/invalid_command.json)."
+    "The viewer owns semantic bounds, one case per bound (bound names it): a tool's query grammar, its PV cap (maxPvs trace 12, correlation 8, waveform 8), Trace's range, a tab-bar index past the target tile's tabs. Syntactic bounds are the hub's (refusals/invalid_command.json)."
   ],
   "reason": "invalid_args",
   "cases": [
@@ -227,8 +227,8 @@
       ]
     },
     {
-      "name": "place beside the tile itself",
-      "bound": "place-beside-self",
+      "name": "drop at a tab-bar index past the tile's tabs",
+      "bound": "drop-tab-index",
       "batch": {
         "base": {
           "window": "w-A",
@@ -237,10 +237,16 @@
         "commands": [
           {
             "id": "c-e1-1",
-            "cmd": "place",
+            "cmd": "drop",
             "args": {
-              "key": "@trace",
-              "beside": "@trace"
+              "source": {
+                "tab": "@trace"
+              },
+              "target": {
+                "tile": "t1",
+                "zone": "tab",
+                "index": 3
+              }
             }
           }
         ]

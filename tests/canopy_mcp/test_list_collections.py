@@ -1,12 +1,14 @@
 """``list_collections``: the read-only agent view of every collection (FR10).
 
 Runs over the checked-in fixture set: ``valid/facility`` as the facility store,
-``valid/personal`` as the personal store and ``library/`` as the shared library.
+``valid/personal`` as the personal store and ``library/`` as the shared library; the
+refused-collection tests add ``old-shape/`` to a copy of the personal store.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -22,6 +24,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "collections"
 FACILITY = FIXTURES / "valid" / "facility"
 PERSONAL = FIXTURES / "valid" / "personal"
 LIBRARY = FIXTURES / "library"
+OLD_SHAPE = FIXTURES / "old-shape"
 
 
 def _trace_dist(root: Path, *pages: str) -> Path:
@@ -79,7 +82,10 @@ async def test_each_collection_carries_exactly_the_fr10_fields(settings: Setting
             "open_url",
             "available_count",
             "members",
+            "layout",
+            "refused",
         }
+        assert collection["refused"] is None
     control = _by_ref(result)["facility:control-assistant"]
     assert control["source"] == "facility"
     assert control["name"] == "Control assistant"
@@ -175,7 +181,7 @@ async def test_a_tool_this_host_does_not_serve_is_unavailable(settings: Settings
     assert waveform["available"] is False  # the trace dist has no waveform.html
     assert waveform["label"] == "Waveform"
     assert diagnostics["available_count"] == 2
-    blank = _by_ref(result)["personal:undocked"]["members"][3]
+    blank = _by_ref(result)["personal:tabbed"]["members"][2]
     assert blank == {
         "key": "tool:waveform?",
         "available": False,
@@ -184,6 +190,55 @@ async def test_a_tool_this_host_does_not_serve_is_unavailable(settings: Settings
         "tool": "waveform",
         "query": "",
     }
+
+
+async def test_layout_is_the_stored_collection_layout_or_null(settings: Settings) -> None:
+    result = _by_ref(await tool_module.list_collections())
+    for name in ("grid", "tabbed", "root-tile", "deep"):
+        stored = json.loads((PERSONAL / f"{name}.json").read_text(encoding="utf-8"))
+        assert result[f"personal:{name}"]["layout"] == stored["layout"], name
+    assert result["personal:root-tile"]["layout"] == {"tabs": [0, 1, 2]}
+    assert result["personal:drafts"]["layout"] is None
+    assert result["facility:control-assistant"]["layout"] is None
+
+
+@pytest.fixture
+def with_old_shape(settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
+    personal = tmp_path / "personal"
+    shutil.copytree(PERSONAL, personal)
+    for path in OLD_SHAPE.glob("*.json"):
+        shutil.copy(path, personal / path.name)
+    built = settings.model_copy(update={"collections_dir": personal})
+    monkeypatch.setattr(tool_module, "get_settings", lambda: built)
+    tool_module.reset_readers()
+    return built
+
+
+async def test_an_old_shape_collection_is_listed_as_refused(with_old_shape: Settings) -> None:
+    result = _by_ref(await tool_module.list_collections())
+    old = result["personal:old-grid"]
+    assert old["refused"].startswith("layout.items[0].items[0]: old_slot_shape")
+    assert old["layout"] is None
+    assert old["open_url"] is None
+    assert old["default"] is False
+    assert old["name"] == "Old ring grid"
+    assert [m["key"] for m in old["members"]] == [
+        "screen:library/sr/overview",
+        "screen:library/s3-promo/promotion",
+        "tool:trace?pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+        "tool:correlation",
+    ]
+    assert old["available_count"] == sum(m["available"] for m in old["members"])
+    assert result["personal:old-undocked"]["refused"].startswith("members[0].slot: old_slot_shape")
+    # Every valid collection is still listed, unrefused.
+    assert result["personal:grid"]["refused"] is None
+    assert result["personal:grid"]["open_url"] is not None
+
+
+def test_the_docstring_names_layout_and_refused() -> None:
+    doc = _normalised(tool_module.list_collections.__doc__ or "")
+    assert "`layout`" in doc and "`refused`" in doc
+    assert "never to open it" in doc
 
 
 async def test_available_count_counts_available_members(settings: Settings) -> None:
