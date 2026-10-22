@@ -19,10 +19,10 @@ from canopy_mcp.static import TOOL_IDS, viewer_config, configured_tools
 from canopy_mcp.listing import Judged, scan, judge
 from canopy_mcp.collections import (
     MAX_MEMBERS,
+    LAYOUT_REASONS,
     MAX_QUERY_BYTES,
     MAX_LAYOUT_BYTES,
     MAX_COLLECTION_BYTES,
-    LAYOUT_REASONS,
     InvalidLayout,
     OldShapeLayout,
     InvalidCollection,

@@ -234,18 +234,18 @@ from canopy_mcp.views import (
     clean_name,
     check_query,
 )
-from canopy_mcp.static import TOOL_IDS, _etag, _not_modified
-from canopy_mcp.listing import Judged, scan, judge
-from canopy_mcp.member_key import InvalidMember, member_key
 from canopy_mcp.layout import (
-    LAYOUT_REASONS,
     SPLITS,
+    LAYOUT_REASONS,
     LayoutForm,
     LayoutRefused,
     check_layout,
     find_old_shape,
     normalize_layout,
 )
+from canopy_mcp.static import TOOL_IDS, _etag, _not_modified
+from canopy_mcp.listing import Judged, scan, judge
+from canopy_mcp.member_key import InvalidMember, member_key
 
 __all__ = [
     "FACILITY",

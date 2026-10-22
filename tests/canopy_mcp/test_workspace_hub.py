@@ -22,8 +22,8 @@ import pytest
 from canopy_mcp.workspace import (
     VERBS,
     MAX_RESULTS,
-    LAYOUT_REASONS,
     MAX_BATCH_IDS,
+    LAYOUT_REASONS,
     Hub,
     Stream,
     StreamEnded,

@@ -22,10 +22,10 @@ from tests.canopy_mcp.test_workspace_fixtures import (
     VERBS,
     QUERIES,
     DESTRUCTIVE,
-    DESTRUCTIVE_WITH_LAYOUT,
     REFUSAL_REASONS,
     COMMAND_STATUSES,
     REJECTION_REASONS,
+    DESTRUCTIVE_WITH_LAYOUT,
     _viewer_verdict,
 )
 

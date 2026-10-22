@@ -62,7 +62,6 @@ from urllib.parse import unquote
 from collections.abc import Mapping, Callable
 
 from canopy_mcp.store import ID_PATTERN
-from canopy_mcp.member_key import canonical_macros
 from canopy_mcp.layout import (  # noqa: F401 - LAYOUT_REASONS, normalize_layout re-exported
     LAYOUT_REASONS,
     LayoutForm,
@@ -70,6 +69,7 @@ from canopy_mcp.layout import (  # noqa: F401 - LAYOUT_REASONS, normalize_layout
     check_layout,
     normalize_layout,
 )
+from canopy_mcp.member_key import canonical_macros
 
 PROTOCOL = 1
 
