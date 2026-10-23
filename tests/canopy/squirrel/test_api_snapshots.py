@@ -76,9 +76,9 @@ async def test_list_snapshots(client: AsyncClient, db_session: AsyncSession):
     await _seed_snapshot(db_session, "snap-B")
     r = await client.get("/v1/snapshots", headers=READ_HEADERS)
     assert r.status_code == 200
-    titles = {row["title"] for row in r.json()}
+    titles = {row["title"] for row in r.json()["results"]}
     assert {"snap-A", "snap-B"} <= titles
-    assert all("createdDate" in row and "pvCount" in row for row in r.json())
+    assert all("createdDate" in row and "pvCount" in row for row in r.json()["results"])
 
 
 async def test_list_reports_value_counts(client: AsyncClient, db_session: AsyncSession):
@@ -87,7 +87,7 @@ async def test_list_reports_value_counts(client: AsyncClient, db_session: AsyncS
     await _seed_snapshot(db_session, "empty")
     r = await client.get("/v1/snapshots", headers=READ_HEADERS)
     assert r.status_code == 200, r.text
-    assert {row["title"]: row["pvCount"] for row in r.json()} == {"with-value": 1, "empty": 0}
+    assert {row["title"]: row["pvCount"] for row in r.json()["results"]} == {"with-value": 1, "empty": 0}
 
 
 async def test_list_does_not_load_snapshot_values(client: AsyncClient, db_session: AsyncSession, test_engine):
@@ -115,40 +115,95 @@ async def test_list_filtered_by_title(client: AsyncClient, db_session: AsyncSess
     await _seed_snapshot(db_session, "alpha")
     await _seed_snapshot(db_session, "beta")
     r = await client.get("/v1/snapshots?title=alph", headers=READ_HEADERS)
-    assert {row["title"] for row in r.json()} == {"alpha"}
+    assert {row["title"] for row in r.json()["results"]} == {"alpha"}
 
 
-async def test_list_default_page_is_100_newest(client: AsyncClient, db_session: AsyncSession):
-    for day in range(1, 106):
+async def _seed_days(session: AsyncSession, count: int) -> None:
+    """Seed ``count`` snapshots, ``snap-001`` oldest, one day apart from 2026-01-02."""
+    for day in range(1, count + 1):
         await _seed_snapshot(
-            db_session, f"snap-{day:03d}", created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day)
+            session, f"snap-{day:03d}", created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day)
         )
-    r = await client.get("/v1/snapshots", headers=READ_HEADERS)
-    assert r.status_code == 200, r.text
-    titles = [row["title"] for row in r.json()]
-    assert len(titles) == 100
-    assert titles[0] == "snap-105"
-    assert titles[-1] == "snap-006"
 
 
-async def test_list_offset_reaches_past_first_page(client: AsyncClient, db_session: AsyncSession):
-    for day in range(1, 106):
-        await _seed_snapshot(
-            db_session, f"snap-{day:03d}", created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(days=day)
-        )
-    r = await client.get("/v1/snapshots?offset=100", headers=READ_HEADERS)
+async def _paged(client: AsyncClient, query: str = "", token: str | None = None) -> dict:
+    """GET one ``/v1/snapshots`` page, continuing from ``token`` when given."""
+    params = f"{query}&continuationToken={token}" if token else query
+    r = await client.get(f"/v1/snapshots?{params}", headers=READ_HEADERS)
     assert r.status_code == 200, r.text
-    assert [row["title"] for row in r.json()] == ["snap-005", "snap-004", "snap-003", "snap-002", "snap-001"]
+    return r.json()
+
+
+def _titles(page: dict) -> list[str]:
+    return [row["title"] for row in page["results"]]
+
+
+async def test_list_walks_every_snapshot_newest_first(client: AsyncClient, db_session: AsyncSession):
+    await _seed_days(db_session, 7)
+    first = await _paged(client, "pageSize=3")
+    second = await _paged(client, "pageSize=3", first["continuationToken"])
+    third = await _paged(client, "pageSize=3", second["continuationToken"])
+    assert _titles(first) == ["snap-007", "snap-006", "snap-005"]
+    assert _titles(second) == ["snap-004", "snap-003", "snap-002"]
+    assert _titles(third) == ["snap-001"]
+    assert third["continuationToken"] is None
+    assert first["totalCount"] == 7
+
+
+async def test_list_exact_multiple_ends_without_an_empty_page(client: AsyncClient, db_session: AsyncSession):
+    await _seed_days(db_session, 4)
+    first = await _paged(client, "pageSize=2")
+    second = await _paged(client, "pageSize=2", first["continuationToken"])
+    assert _titles(second) == ["snap-002", "snap-001"]
+    assert second["continuationToken"] is None
+
+
+async def test_list_default_page_is_100(client: AsyncClient, db_session: AsyncSession):
+    await _seed_days(db_session, 105)
+    first = await _paged(client)
+    assert len(first["results"]) == 100
+    assert _titles(await _paged(client, token=first["continuationToken"]))[0] == "snap-005"
+
+
+async def test_list_snapshot_created_mid_paging_is_not_repeated(client: AsyncClient, db_session: AsyncSession):
+    await _seed_days(db_session, 6)
+    first = await _paged(client, "pageSize=3")
+    # Newer than everything: with offset paging this shifts snap-004 onto page two as well.
+    await _seed_snapshot(db_session, "new", created_at=datetime(2026, 12, 1, tzinfo=UTC))
+    second = await _paged(client, "pageSize=3", first["continuationToken"])
+    assert _titles(first) == ["snap-006", "snap-005", "snap-004"]
+    assert _titles(second) == ["snap-003", "snap-002", "snap-001"]
+
+
+async def test_list_snapshot_deleted_mid_paging_skips_nothing(client: AsyncClient, db_session: AsyncSession):
+    await _seed_days(db_session, 6)
+    first = await _paged(client, "pageSize=3")
+    # Deleting a row already shown: with offset paging snap-003 would slide onto page one, unseen.
+    newest = first["results"][0]["id"]
+    assert (await client.delete(f"/v1/snapshots/{newest}", headers=WRITE_HEADERS)).status_code == 200
+    second = await _paged(client, "pageSize=3", first["continuationToken"])
+    assert _titles(second) == ["snap-003", "snap-002", "snap-001"]
+
+
+async def test_list_cursor_survives_deleting_its_own_row(client: AsyncClient, db_session: AsyncSession):
+    await _seed_days(db_session, 4)
+    first = await _paged(client, "pageSize=2")
+    last_shown = first["results"][-1]["id"]
+    assert (await client.delete(f"/v1/snapshots/{last_shown}", headers=WRITE_HEADERS)).status_code == 200
+    second = await _paged(client, "pageSize=2", first["continuationToken"])
+    assert _titles(second) == ["snap-002", "snap-001"]
 
 
 async def test_list_pages_are_disjoint_when_created_at_ties(client: AsyncClient, db_session: AsyncSession):
     same_time = datetime(2026, 7, 20, 6, 17, 24, tzinfo=UTC)
     seeded = {await _seed_snapshot(db_session, f"tie-{i}", created_at=same_time) for i in range(7)}
     seen: list[str] = []
-    for offset in range(0, 7, 3):
-        r = await client.get(f"/v1/snapshots?limit=3&offset={offset}", headers=READ_HEADERS)
-        assert r.status_code == 200, r.text
-        seen.extend(row["id"] for row in r.json())
+    token = None
+    for _ in range(3):
+        page = await _paged(client, "pageSize=3", token)
+        seen.extend(row["id"] for row in page["results"])
+        token = page["continuationToken"]
+    assert token is None
     assert len(seen) == 7
     assert set(seen) == seeded
 
@@ -157,13 +212,27 @@ async def test_list_paging_composes_with_filters(client: AsyncClient, db_session
     for i in range(4):
         await _seed_snapshot(db_session, f"keep-{i}", created_at=datetime(2026, 2, 1 + i, tzinfo=UTC))
         await _seed_snapshot(db_session, f"drop-{i}", created_at=datetime(2026, 3, 1 + i, tzinfo=UTC))
-    r = await client.get("/v1/snapshots?title=keep&limit=2&offset=1", headers=READ_HEADERS)
-    assert r.status_code == 200, r.text
-    assert [row["title"] for row in r.json()] == ["keep-2", "keep-1"]
+    query = "title=keep&end=2026-02-03T12:00:00Z&pageSize=2"
+    first = await _paged(client, query)
+    second = await _paged(client, query, first["continuationToken"])
+    assert _titles(first) == ["keep-2", "keep-1"]
+    assert _titles(second) == ["keep-0"]
+    assert first["totalCount"] == 3
 
 
-async def test_list_rejects_out_of_range_paging(client: AsyncClient):
-    for query in ("limit=0", "limit=1001", "offset=-1"):
+async def test_list_empty_result(client: AsyncClient):
+    page = await _paged(client)
+    assert page == {"results": [], "continuationToken": None, "totalCount": 0}
+
+
+async def test_list_rejects_malformed_token(client: AsyncClient):
+    for token in ("not-a-token", "bm9waXBl", "MjAyNi0wMS0wMVQwMDowMDowMHxub3QtYS11dWlk", "%%%"):
+        r = await client.get(f"/v1/snapshots?continuationToken={token}", headers=READ_HEADERS)
+        assert r.status_code == 400, token
+
+
+async def test_list_rejects_out_of_range_page_size(client: AsyncClient):
+    for query in ("pageSize=0", "pageSize=1001"):
         r = await client.get(f"/v1/snapshots?{query}", headers=READ_HEADERS)
         assert r.status_code == 422, query
 
@@ -178,24 +247,24 @@ async def test_list_filtered_by_start(client: AsyncClient, db_session: AsyncSess
     await _seed_early_and_late(db_session)
     r = await client.get("/v1/snapshots?start=2026-03-01T00:00:00Z", headers=READ_HEADERS)
     assert r.status_code == 200, r.text
-    assert {row["title"] for row in r.json()} == {"late"}
+    assert {row["title"] for row in r.json()["results"]} == {"late"}
 
 
 async def test_list_filtered_by_end(client: AsyncClient, db_session: AsyncSession):
     await _seed_early_and_late(db_session)
     r = await client.get("/v1/snapshots?end=2026-03-01T00:00:00Z", headers=READ_HEADERS)
     assert r.status_code == 200, r.text
-    assert {row["title"] for row in r.json()} == {"early"}
+    assert {row["title"] for row in r.json()["results"]} == {"early"}
 
 
 async def test_list_filtered_by_start_and_end(client: AsyncClient, db_session: AsyncSession):
     await _seed_early_and_late(db_session)
     r = await client.get("/v1/snapshots?start=2026-05-01T00:00:00Z&end=2026-07-01T00:00:00Z", headers=READ_HEADERS)
     assert r.status_code == 200, r.text
-    assert {row["title"] for row in r.json()} == {"late"}
+    assert {row["title"] for row in r.json()["results"]} == {"late"}
 
     r = await client.get("/v1/snapshots?start=2026-07-01T00:00:00Z&end=2026-08-01T00:00:00Z", headers=READ_HEADERS)
-    assert r.json() == []
+    assert r.json()["results"] == []
 
 
 async def test_list_datetime_filter_accepts_naive_and_offset_forms(client: AsyncClient, db_session: AsyncSession):
@@ -204,8 +273,8 @@ async def test_list_datetime_filter_accepts_naive_and_offset_forms(client: Async
     offset = await client.get("/v1/snapshots?start=2026-02-28T19:00:00-05:00", headers=READ_HEADERS)
     assert naive.status_code == 200, naive.text
     assert offset.status_code == 200, offset.text
-    assert {row["title"] for row in naive.json()} == {"late"}
-    assert {row["title"] for row in offset.json()} == {"late"}
+    assert {row["title"] for row in naive.json()["results"]} == {"late"}
+    assert {row["title"] for row in offset.json()["results"]} == {"late"}
 
 
 async def test_list_rejects_malformed_datetime(client: AsyncClient):

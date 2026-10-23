@@ -1,19 +1,25 @@
 # Observability setup guide
 
-Step-by-step bring-up of the logging → Loki → Grafana pipeline on a
-development machine. Requires Docker and this repository.
+Step-by-step bring-up of the logging → Loki → Grafana pipeline, plus the
+`/metrics` → Prometheus leg, on a development machine. Requires Docker and this repository.
 
 ## 1. Start the stack with the observability overlay
 
-From the repo root:
+From the repo root, with `docker/.env` in place (copy `docker/.env.example`;
+it sets the Redis password the base stack requires):
 
 ```bash
 docker compose -f docker/docker-compose.yml \
-               -f docker/observability/docker-compose.observability.yml up -d
+               -f docker/observability/docker-compose.observability.yml up -d --build
 ```
 
+`--build` rebuilds the api/worker images when `pyproject.toml` or `uv.lock`
+changed since your last build — the dev image installs dependencies at build
+time, so a stale image fails at import.
+
 This starts the usual stack (`canopy-api`, `canopy-worker`, `canopy-postgres`,
-`canopy-redis`) plus `canopy-loki`, `canopy-promtail`, and `canopy-grafana`.
+`canopy-redis`) plus `canopy-loki`, `canopy-promtail`, `canopy-prometheus`,
+and `canopy-grafana`.
 
 The base compose already sets `CANOPY_LOG_FORMAT=json` and
 `CANOPY_LOG_PATH=/tmp/canopy-logs/backend.log` (worker: `worker.log`), and
@@ -52,8 +58,19 @@ curl -sG http://localhost:3100/loki/api/v1/query_range \
   --data-urlencode 'query={app="canopy", type="analytics"}' | head -c 500
 ```
 
+**Metrics** — the parent app's exposition should already count the event you
+posted, under the analytics module's route template:
+
+```bash
+curl -s http://localhost:8000/metrics | grep 'canopy_http_requests_total{.*module="analytics"'
+```
+
+**Prometheus** — the `canopy-api` target should be `up` at
+<http://localhost:9090/targets>. The [metrics page](metrics.md) lists what is
+exported.
+
 **Grafana** — open <http://localhost:3000> (admin/admin unless overridden via
-`GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD`). The Loki datasource and the
+`GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD`). The Loki and Prometheus datasources and the
 *Canopy Frontend Analytics* / *Canopy Error Reporting* dashboards are
 provisioned automatically under the **Canopy** folder.
 
@@ -71,6 +88,13 @@ It appears on the *Canopy Error Reporting* dashboard (panels select
 
 ## Common issues
 
+- **`failed to bind host port 0.0.0.0:8000`** when `canopy-api` starts: another
+  process owns port 8000 — typically `uv run zensical serve` previewing these
+  docs, which answers with a redirect if you curl it by mistake. Stop it, or
+  start the stack with `API_HOST_PORT=8080` and use that port in every
+  command below. Then re-run the `up -d` command so compose *recreates*
+  `canopy-api`: the failed attempt leaves a half-created container with no
+  network, and `docker start` on it comes up without DNS or a published port.
 - **No data in Grafana**: check each stage in order — file, Loki, dashboard
   time range. `docker logs canopy-promtail` shows scrape/parse problems.
 - **Old plain-text lines in the log file**: lines written before JSON mode was
@@ -84,6 +108,6 @@ It appears on the *Canopy Error Reporting* dashboard (panels select
 ```bash
 docker compose -f docker/docker-compose.yml \
                -f docker/observability/docker-compose.observability.yml down
-docker volume rm canopy_canopy-loki-data canopy_canopy-grafana-data
+docker volume rm canopy_canopy-loki-data canopy_canopy-prometheus-data canopy_canopy-grafana-data
 rm -rf /tmp/canopy-logs
 ```

@@ -90,25 +90,21 @@ first one, which is what makes them the right tool for a fresh instance.
 Without a local `uv` environment, run the same commands inside the `api`
 container instead: `docker compose run --rm api python scripts/create_key.py ...`.
 
-### Facility instances
+### Production instances
 
-The env layer's two long-lived keys still live in the per-instance
-`APP_SECRETS_<INSTANCE>` GitHub secret's `_shared` block (see
-[facility deployment](facilities.md#prerequisite-app_secrets_instance-github-secrets)):
+The env layer's two long-lived keys live in the instance's `CANOPY_API_KEYS`,
+in the `.env` beside the production compose file (see
+[configuration](production.md#configuration)):
 
-```json
-{
-  "_shared": {
-    "CANOPY_API_KEYS": "<display-read-token>:read@*,<ops-admin-token>:admin@*"
-  }
-}
+```bash
+CANOPY_API_KEYS=<display-read-token>:read@*,<ops-admin-token>:admin@*
 ```
 
 Everything else for that instance — per-tool keys, CI keys — is minted with
-the CLI against the instance's database, not through the secret. The CLI ships
+the CLI against the instance's database, not through `.env`. The CLI ships
 in the image (`Dockerfile.prod` copies `scripts/`), so run it in the running
-`api` container rather than from a workstation — the facility host's Postgres
-is bound to `127.0.0.1` and isn't reachable from outside it:
+`api` container rather than from a workstation — the instance's Postgres is
+often bound to the host's `127.0.0.1` and isn't reachable from outside it:
 
 ```bash
 docker compose run --rm api python scripts/create_key.py "<app>" -r

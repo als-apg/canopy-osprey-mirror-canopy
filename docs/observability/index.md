@@ -7,6 +7,10 @@ canopy-api / canopy-worker write JSON log lines
     -> Promtail tails the log files
     -> Loki stores + indexes them
     -> Grafana dashboards query Loki
+
+canopy-api exposes Prometheus metrics at /metrics
+    -> Prometheus scrapes them
+    -> Grafana queries Prometheus
 ```
 
 Everything runs from one compose overlay — see the [setup guide](setup_guide.md).
@@ -76,9 +80,19 @@ Promtail indexes only low-cardinality fields as Loki labels: `app`, `job`,
 `properties.*`) are parsed at query time with LogQL's `| json` — keeping
 Loki's index small. Follow the same rule when adding new log fields.
 
+## Metrics
+
+The parent app serves an unauthenticated `GET /metrics` in Prometheus
+exposition format: request counts and latency histograms for every module's
+routes, labelled by module and route template rather than raw path, plus
+module gauges read from the same code that feeds `/health/summary` (Hare's
+client, monitor and subscription counts to start). The overlay's Prometheus
+scrapes it and Grafana gets a provisioned datasource. Naming, label and
+collection rules for adding module metrics are on the [metrics page](metrics.md).
+
 ## Dashboards
 
-Grafana is auto-provisioned with a Loki datasource and two dashboards
-(*Canopy Frontend Analytics*, *Canopy Error Reporting*) from
+Grafana is auto-provisioned with Loki and Prometheus datasources and two
+Loki-backed dashboards (*Canopy Frontend Analytics*, *Canopy Error Reporting*) from
 `docker/observability/grafana/`. Edit the JSON there (or export from the
 Grafana UI and copy back) to evolve them under review.

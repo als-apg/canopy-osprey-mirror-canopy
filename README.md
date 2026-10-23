@@ -1,6 +1,21 @@
 # Canopy
 
-Canopy is a planned platform for control system displays, tools and applications.
+Canopy is the backend for SLAC's control-system display platform. It is a single
+FastAPI application made of independent modules that serve live and historical
+process-variable (PV) data, formula results, machine-state snapshots and
+background jobs over REST and WebSocket APIs. It talks to EPICS Channel Access
+and pvAccess, and includes a simulation backend, so you can run it without an
+IOC.
+
+Canopy is pre-1.0 and under active development; APIs may change between
+releases.
+
+- [Documentation](https://slaclab.github.io/canopy/), including the
+  [getting started guide](https://slaclab.github.io/canopy/getting_started/) and
+  the [modules overview](https://slaclab.github.io/canopy/modules/)
+- [Deploy at your facility](#deployment)
+- [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
+- [License](LICENSE.md)
 
 ## Setup
 
@@ -60,6 +75,13 @@ CANOPY_API_KEYS="dev:read+write@*" CANOPY_EPICS__BACKEND=epics \
 ```
 
 Examples are provided under the `frontend-demos` directory for connecting to PVs.
+
+## Deployment
+
+Canopy ships as the `ghcr.io/slaclab/canopy` image. To run it at your
+facility, see [Deploy at your facility](https://slaclab.github.io/canopy/deployment/production/)
+([source](docs/deployment/production.md)) and the reference
+[`docker/docker-compose.prod.yml`](docker/docker-compose.prod.yml).
 
 ## Building Docs
 

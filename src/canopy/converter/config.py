@@ -47,7 +47,7 @@ class ConverterConfig(BaseSettings):
     ``calc.list`` when none is configured, like EDM's ``EDMDATAFILES``. Uploads are staged in a private temp
     dir, so without this a symbol file beside the original screen is never found and
     the symbol is dropped (with a warning). Set as a JSON list, e.g.
-    ``CANOPY_CONVERTER__SEARCH_PATHS='["/usr/local/lcls/tools/edm/display/lcls"]'``.
+    ``CANOPY_CONVERTER__SEARCH_PATHS='["/path/to/edm/displays"]'``.
     """
 
     # Reject uploads larger than this (bytes) before parsing. 10 MiB default.

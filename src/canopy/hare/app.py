@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from canopy.hare import gateway
+from canopy.hare import gateway, metrics
 from canopy.core.errors import register_canopy_error_handler
 from canopy.hare.config import get_hare_config
 from canopy.epics.config import get_epics_config
@@ -33,8 +33,12 @@ async def hare_lifespan():
     try:
         yield
     finally:
-        await broker.stop()
-        gateway.bind(None)
+        try:
+            await broker.stop()
+        finally:
+            # Unbind even if stop() raised, so neither the gateway nor the metrics
+            # collector keeps reading a half-torn-down broker.
+            gateway.bind(None)
         logger.info("Hare shutdown complete")
 
 
@@ -45,3 +49,4 @@ app = FastAPI(
 
 register_canopy_error_handler(app)
 app.include_router(v1_router)
+metrics.register()

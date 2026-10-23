@@ -192,5 +192,3 @@ database migrations, and the production variant.
 - [Fox](fox/index.md) — formulas over live and historical data.
 - [Vole](vole/index.md) — the time-aligned buffer behind Fox.
 - [Deployment](deployment/index.md) — running Canopy for real users.
-- [GitHub wiki](https://github.com/slaclab/Canopy/wiki) — module design
-  documents.

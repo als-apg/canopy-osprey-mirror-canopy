@@ -5,8 +5,8 @@ Two compose files live under `docker/`:
 - `docker-compose.yml` — the **development stack**: API + worker built from
   source with hot reload, plus bundled Postgres and Redis.
 - `docker-compose.prod.yml` — the **production app**: API + worker from a
-  prebuilt image, no data layer. Used by the
-  [facility deployment pipeline](facilities.md).
+  prebuilt image, no data layer. The reference for
+  [deploying at your facility](production.md).
 
 ## Development stack
 
@@ -84,17 +84,25 @@ docker compose down -v          # stop and wipe data
 
 It differs from the dev stack deliberately:
 
-- **No Postgres/Redis.** The data layer is provisioned separately (once per
-  instance) and reached over `127.0.0.1:<port>` on the host — see
-  [facility deployment](facilities.md#data-layer-init-one-time-per-instance).
+- **No Postgres/Redis.** Run Postgres 16 and Redis 7 however your site runs
+  databases, and point `CANOPY_DATABASE_URL` / `CANOPY_REDIS_URL` at them —
+  see [Postgres and Redis](production.md#postgres-and-redis).
 - **`network_mode: host`.** EPICS Channel Access / PV Access need UDP
   broadcast, which bridged container networking breaks. The API listens on
   `API_PORT` (default 8000) directly on the host.
-- **All config from a sibling `.env` file.** In the facility pipeline that
-  file is rendered from the instance's `APP_SECRETS` secret; nothing is baked
-  into the image or the compose file.
+- **All config from a sibling `.env` file.** Compose reads it for `IMAGE`
+  and `API_PORT` and passes it to both services as their environment; nothing
+  is baked into the image or the compose file. Write it by hand or render it
+  from your secret store.
 
 The production image is built from `docker/Dockerfile.prod` by CI on every
-push to `main` — see [image build](facilities.md#deploy) for tags. The image
-also carries the Alembic tree, so migrations run as
+push to `main` and every `v*` release tag — see
+[image tags](production.md#image-tags). The image also carries the Alembic
+tree, so migrations run as
 `docker compose run --rm api alembic upgrade head`.
+
+On the host, save the file as `compose.yml` next to its `.env`, so the bare
+`docker compose` commands in these docs find it. Compose doesn't pick up
+`docker-compose.prod.yml` by itself, and in the repo's `docker/` directory the
+same commands select the development stack. See
+[Deploy at your facility](production.md#run-with-the-reference-compose-file).

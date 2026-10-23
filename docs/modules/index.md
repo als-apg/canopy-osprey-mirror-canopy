@@ -19,8 +19,7 @@ through in-process gateways, so the whole platform runs as one API process
 | `/converter` | Converter | Legacy screen converter — EDM `.edl` / Qt `.ui` to Canopy Screen IR |
 
 Modules without a guide here yet are documented by their interactive API docs
-(below) and their design pages on the
-[GitHub wiki](https://github.com/slaclab/Canopy/wiki).
+(below).
 
 The top-level Swagger UI at `/docs` provides a dropdown to switch between
 Canopy's core API and each mounted module. Each module's standalone Swagger UI
@@ -81,6 +80,3 @@ These live in the same codebase but expose no HTTP API of their own:
 
 - **Owl** — plot-configuration persistence + legacy importer.
 - **Wren** — rules engine, hosted inside Hare.
-
-Design discussions for these live on the
-[GitHub wiki](https://github.com/slaclab/Canopy/wiki).

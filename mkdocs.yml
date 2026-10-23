@@ -104,7 +104,7 @@ nav:
   - Deployment:
     - deployment/index.md
     - Docker Compose: deployment/docker.md
-    - Facility Deployment: deployment/facilities.md
+    - Deploy at Your Facility: deployment/production.md
     - Appliance Mode: deployment/appliance.md
     - Color Schemes: deployment/color-schemes.md
     - API Keys: deployment/api-keys.md
@@ -118,6 +118,7 @@ nav:
   - Observability:
     - observability/index.md
     - Setup guide: observability/setup_guide.md
+    - Metrics: observability/metrics.md
   - API Reference:
     - Fox: api_reference/fox.md
     - Vole: api_reference/vole.md

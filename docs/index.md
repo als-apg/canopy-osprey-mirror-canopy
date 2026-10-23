@@ -26,12 +26,11 @@ Planned: **Owl** (plot-config persistence + legacy importer) and **Wren**
 (rules engine, hosted in Hare).
 
 See the [modules overview](modules/index.md) for shared conventions
-(authentication, errors, health checks) and the
-[GitHub wiki](https://github.com/slaclab/Canopy/wiki) for module designs.
+(authentication, errors, health checks).
 
 ## Running it
 
 - [Getting started](getting_started.md) — local development, simulation and
   real EPICS backends.
-- [Deployment](deployment/index.md) — Docker Compose and the SLAC facility
-  deployment pipeline.
+- [Deployment](deployment/index.md) — Docker Compose and deploying Canopy at
+  your facility.

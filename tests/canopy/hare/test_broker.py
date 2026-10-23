@@ -538,3 +538,156 @@ async def test_concurrent_subscribes_share_one_seed_attempt(fake_connector, get_
         (initial,) = _initial_frames(ws)
         assert initial["data"]["PV:SEED"]["connected"] is not get_fails
         assert "PV:SEED" in initial["meta"]
+
+
+async def test_seed_finishing_after_release_leaves_no_cached_state(fake_connector):
+    """A seed still in flight when its PV is released caches nothing once it finishes.
+
+    The next subscriber therefore seeds the PV afresh instead of being served
+    the orphaned attempt's value.
+    """
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    original_get = fake_connector.get
+    release = asyncio.Event()
+    gets: list[str] = []
+
+    async def stalled_get(pv, **kwargs):
+        gets.append(pv)
+        await release.wait()
+        return await original_get(pv, **kwargs)
+
+    fake_connector.get = stalled_get
+
+    broker.add_client("c1", FakeWebSocket())
+    orphaned = asyncio.create_task(broker.subscribe("c1", ["PV:SEED"]))
+    await asyncio.sleep(0.02)
+    await broker.unsubscribe("c1", ["PV:SEED"])
+    release.set()
+    await asyncio.wait_for(orphaned, 1.0)
+
+    assert "PV:SEED" not in broker._latest
+    assert "PV:SEED" not in broker._meta
+    assert "PV:SEED" not in broker._seed_retry_after
+
+    later = FakeWebSocket()
+    broker.add_client("c2", later)
+    await broker.subscribe("c2", ["PV:SEED"])
+    assert gets == ["PV:SEED", "PV:SEED"]
+    assert "PV:SEED" in _initial_frames(later)[0]["data"]
+
+
+async def test_orphaned_seed_finishing_last_keeps_the_newer_seed(fake_connector):
+    """A released PV's seed that finishes after a re-subscribe's seed does not overwrite it.
+
+    The first ``get`` is released only after the second one has completed, so
+    the orphaned attempt finishes last; the cache keeps the second value.
+    """
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    gates = [asyncio.Event(), asyncio.Event()]
+    calls = 0
+
+    async def gated_get(pv, **kwargs):
+        nonlocal calls
+        index = calls
+        calls += 1
+        await gates[index].wait()
+        return PVValue(pv=pv, value=float(index + 1), severity=AlarmSeverity.NO_ALARM, ts_ns=index + 1, connected=True)
+
+    fake_connector.get = gated_get
+
+    broker.add_client("c1", FakeWebSocket())
+    orphaned = asyncio.create_task(broker.subscribe("c1", ["PV:SEED"]))
+    await asyncio.sleep(0.02)
+    await broker.unsubscribe("c1", ["PV:SEED"])
+    broker.add_client("c2", FakeWebSocket())
+    fresh = asyncio.create_task(broker.subscribe("c2", ["PV:SEED"]))
+    await asyncio.sleep(0.02)
+
+    gates[1].set()
+    await asyncio.wait_for(fresh, 1.0)
+    gates[0].set()
+    await asyncio.wait_for(orphaned, 1.0)
+
+    assert broker._latest["PV:SEED"].value == 2.0
+
+
+async def test_seed_queued_for_a_slot_skips_a_pv_released_meanwhile(fake_connector):
+    """A seed still waiting for a ``seed_concurrency`` slot when its PV is released caches nothing.
+
+    With one slot, PV:B's seed queues behind PV:A's stalled read and PV:B is
+    released before the slot frees, so the next subscriber of PV:B seeds it afresh.
+    """
+    broker = PVBroker(
+        fake_connector, HareConfig(seed_concurrency=1, seed_retry_backoff_s=3600, monitor_grace_seconds=0)
+    )
+    original_get = fake_connector.get
+    release = asyncio.Event()
+    gets: list[str] = []
+
+    async def stalled_get(pv, **kwargs):
+        gets.append(pv)
+        if pv == "PV:A":
+            await release.wait()
+        return await original_get(pv, **kwargs)
+
+    fake_connector.get = stalled_get
+
+    broker.add_client("c1", FakeWebSocket())
+    first = asyncio.create_task(broker.subscribe("c1", ["PV:A", "PV:B"]))
+    await asyncio.sleep(0.02)
+    await broker.unsubscribe("c1", ["PV:B"])
+    release.set()
+    await asyncio.wait_for(first, 1.0)
+
+    assert gets == ["PV:A"]
+    assert "PV:B" not in broker._latest
+    assert "PV:B" not in broker._meta
+    assert "PV:B" not in broker._holds
+
+    later = FakeWebSocket()
+    broker.add_client("c2", later)
+    await broker.subscribe("c2", ["PV:B"])
+    assert gets == ["PV:A", "PV:B"]
+    assert "PV:B" in _initial_frames(later)[0]["data"]
+
+
+async def test_monitor_update_queued_before_release_is_not_cached(broker, fake_connector):
+    """A monitor update still queued when its PV is released is discarded when drained.
+
+    Nothing is cached or buffered for the released PV, so a later read goes to
+    the connector instead of serving the update from before the release.
+    """
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:A"])
+    fake_connector.emit("PV:A", 7.0)
+    await broker.unsubscribe("c1", ["PV:A"])
+    await broker._drain_nowait()
+
+    assert "PV:A" not in broker._latest
+    assert "PV:A" not in broker._buffer
+    assert (await broker.get_value("PV:A")).value == 0.0
+
+
+async def test_released_monitor_update_delivered_after_resubscribe_is_not_cached(broker, fake_connector):
+    """An update from a released monitor that arrives after a re-subscribe does not replace the fresh seed.
+
+    The EPICS backend hands updates to the loop with ``call_soon_threadsafe``, so
+    the old monitor's callback can still run once a new subscribe has seeded the
+    PV and started a new monitor. Only the new monitor's updates are cached.
+    """
+    broker.add_client("c1", FakeWebSocket())
+    await broker.subscribe("c1", ["PV:A"])
+    released_callback = fake_connector.callbacks["PV:A"]
+    await broker.unsubscribe("c1", ["PV:A"])
+    broker.add_client("c2", FakeWebSocket())
+    await broker.subscribe("c2", ["PV:A"])
+
+    released_callback(PVValue(pv="PV:A", value=7.0, severity=AlarmSeverity.NO_ALARM, ts_ns=2, connected=True))
+    await broker._drain_nowait()
+    assert broker._latest["PV:A"].value == 0.0
+    assert "PV:A" not in broker._buffer
+
+    fake_connector.emit("PV:A", 3.0)
+    await broker._drain_nowait()
+    assert broker._latest["PV:A"].value == 3.0
+    assert broker._buffer["PV:A"].value == 3.0

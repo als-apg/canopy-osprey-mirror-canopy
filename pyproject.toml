@@ -29,6 +29,8 @@ dependencies = [
     # The oldest release the live-frame encoding is tested with: numpy
     # arrays serialised natively, non-finite numbers as null.
     "orjson>=3.9.3",
+    # GET /metrics and the per-route HTTP middleware (canopy.core.metrics) run in every process.
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]
@@ -136,6 +138,8 @@ filterwarnings = [
 [tool.coverage.run]
 relative_files = true
 source = ["src/canopy"]
+# Async SQLAlchemy runs queries in greenlets; without this, lines after a DB await go untraced.
+concurrency = ["thread", "greenlet"]
 omit = ["*/tests/*", "*/test_*", "*/__pycache__/*"]
 
 [tool.coverage.report]

@@ -1,5 +1,6 @@
-# Observability overlay: Loki (log store) + Promtail (log shipper) + Grafana
-# (dashboards, auto-provisioned). Layer it on the base stack from the repo root:
+# Observability overlay: Loki (log store) + Promtail (log shipper) + Prometheus
+# (metrics store) + Grafana (dashboards, auto-provisioned). Layer it on the base
+# stack from the repo root:
 #
 #   docker compose -f docker/docker-compose.yml \
 #                  -f docker/observability/docker-compose.observability.yml up -d
@@ -43,6 +44,17 @@ services:
       - loki
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: canopy-prometheus
+    logging: *default-logging
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - canopy-prometheus-data:/prometheus
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.1.0
     container_name: canopy-grafana
@@ -58,8 +70,10 @@ services:
       - canopy-grafana-data:/var/lib/grafana
     depends_on:
       - loki
+      - prometheus
     restart: unless-stopped
 
 volumes:
   canopy-loki-data:
+  canopy-prometheus-data:
   canopy-grafana-data:

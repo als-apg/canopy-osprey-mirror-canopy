@@ -15,6 +15,7 @@ from canopy.core.security import require_read_access, require_write_access
 from canopy.contracts.jobs import JobCreatedDTO
 from canopy.core.time_parse import DateTimeBound
 from canopy.squirrel.errors import SnapshotNotFound
+from canopy.contracts.pagination import PagedResult
 from canopy.squirrel.dependencies import SnapshotServiceDep
 from canopy.squirrel.schemas.snapshot import (
     SnapshotDTO,
@@ -52,10 +53,15 @@ async def list_snapshots(
             )
         ),
     ] = None,
-    limit: int = Query(100, ge=1, le=1000, description="Max snapshots to return"),
-    offset: int = Query(0, ge=0, description="Snapshots to skip, for paging past the first `limit`"),
-) -> list[SnapshotSummaryDTO]:
-    """List snapshots, optionally filtered by title, tag IDs and/or creation time.
+    pageSize: int = Query(100, ge=1, le=1000),
+    continuationToken: str | None = Query(None, description="Token from the previous page; omit for the first"),
+) -> PagedResult[SnapshotSummaryDTO]:
+    """List snapshots newest first, optionally filtered by title, tag IDs and/or creation time.
+
+    Paged by keyset: each page continues from the sort position the previous one ended on
+    rather than skipping a count of rows, so snapshots created or deleted while a client
+    pages cannot make it see a row twice or miss one. Send the same filters with every
+    page's request.
 
     Parameters
     ----------
@@ -71,23 +77,30 @@ async def list_snapshots(
     end : datetime | None
         Upper bound on creation time, inclusive. A value without an offset is read as UTC,
         and a bare ``YYYY-MM-DD`` is refused with a 422.
-    limit : int
+    pageSize : int
         Page size, 1–1000 (default 100).
-    offset : int
-        Matching snapshots to skip. A page shorter than ``limit`` is the last one.
+    continuationToken : str | None
+        The previous page's ``continuationToken``; omit it for the first page.
 
     Returns
     -------
-    list[SnapshotSummaryDTO]
-        Matching snapshot summaries, newest first.
+    PagedResult[SnapshotSummaryDTO]
+        The page's summaries, newest first; ``continuationToken`` for the next page, which
+        is ``null`` on the last page; and ``totalCount``, the number of matching snapshots.
 
     Raises
     ------
     BadRequest
-        When both bounds are given and ``start`` is after ``end``.
+        When both bounds are given and ``start`` is after ``end``, or the continuation
+        token is malformed.
     """
     return await service.list_snapshots(
-        title=title, tag_ids=tags or None, start=start, end=end, limit=limit, offset=offset
+        title=title,
+        tag_ids=tags or None,
+        start=start,
+        end=end,
+        page_size=pageSize,
+        continuation_token=continuationToken,
     )
 
 

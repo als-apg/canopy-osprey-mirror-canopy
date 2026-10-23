@@ -13,7 +13,18 @@ import asyncio
 from datetime import datetime
 from collections.abc import Callable, Awaitable
 
-from sqlalchemy import or_, any_, func, delete, insert, select, update
+from sqlalchemy import (
+    Select,
+    or_,
+    any_,
+    func,
+    delete,
+    insert,
+    select,
+    tuple_,
+    update,
+    literal,
+)
 from sqlalchemy.orm import noload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,42 +105,15 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         await self.session.flush()
         return snapshot
 
-    async def search(
-        self,
-        title: str | None = None,
-        tag_ids: list[str] | None = None,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[Snapshot]:
-        """Search snapshots by title, tags and/or creation time.
-
-        Parameters
-        ----------
-        title : str | None
-            Case-insensitive substring match against the snapshot title.
-        tag_ids : list[str] | None
-            Tag IDs; a snapshot matches when it holds a PV carrying any of them.
-        start : datetime | None
-            Lower bound on ``created_at``, inclusive.
-        end : datetime | None
-            Upper bound on ``created_at``, inclusive.
-        limit : int
-            Maximum number of rows returned.
-        offset : int
-            Number of matching rows to skip before the first one returned.
-
-        Returns
-        -------
-        list[Snapshot]
-            Matching snapshots ordered by ``created_at`` descending, then ``id`` descending.
-        """
-        # ``noload`` skips the relationship's selectin default: listing needs only snapshot
-        # rows, and loading every value for every listed snapshot (~16k each for a full
-        # machine save) dominated the response time.
-        query = select(Snapshot).options(noload(Snapshot.values))
-
+    @staticmethod
+    def _filtered(
+        query: Select,
+        title: str | None,
+        tag_ids: list[str] | None,
+        start: datetime | None,
+        end: datetime | None,
+    ) -> Select:
+        """Apply the snapshot listing filters to ``query``; shared by the page and count queries."""
         if title:
             query = query.where(Snapshot.title.ilike(f"%{title}%"))
 
@@ -148,11 +132,79 @@ class SnapshotRepository(BaseRepository[Snapshot]):
         if end is not None:
             query = query.where(Snapshot.created_at <= end)
 
-        # ``id`` breaks ties between equal ``created_at`` values so offset pages neither
-        # overlap nor skip rows (bulk imports can share a capture time).
-        query = query.order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).offset(offset).limit(limit)
+        return query
+
+    async def search(
+        self,
+        title: str | None = None,
+        tag_ids: list[str] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 100,
+        after: tuple[datetime, str] | None = None,
+    ) -> tuple[list[Snapshot], tuple[datetime, str] | None, int]:
+        """Keyset-paginated search by title, tags and/or creation time.
+
+        Returns ``(results, next_cursor, total_count)``, newest first. A page starts after
+        a ``(created_at, id)`` cursor rather than an offset, so snapshots created or deleted
+        between page requests cannot shift later pages into repeating or skipping a row.
+        ``id`` breaks ties between equal ``created_at`` values (bulk imports can share a
+        capture time). The cursor is a sort position, not a row reference, so it stays
+        valid even when the snapshot it came from has been deleted.
+
+        Parameters
+        ----------
+        title : str | None
+            Case-insensitive substring match against the snapshot title.
+        tag_ids : list[str] | None
+            Tag IDs; a snapshot matches when it holds a PV carrying any of them.
+        start : datetime | None
+            Lower bound on ``created_at``, inclusive.
+        end : datetime | None
+            Upper bound on ``created_at``, inclusive.
+        limit : int
+            Maximum number of rows returned.
+        after : tuple[datetime, str] | None
+            ``(created_at, id)`` of the last row of the previous page; ``None`` for the first.
+
+        Returns
+        -------
+        tuple[list[Snapshot], tuple[datetime, str] | None, int]
+            The page ordered by ``created_at`` then ``id``, both descending; the cursor for
+            the next page, or ``None`` on the last page; and the count of all matching rows.
+        """
+        # ``noload`` skips the relationship's selectin default: listing needs only snapshot
+        # rows, and loading every value for every listed snapshot (~16k each for a full
+        # machine save) dominated the response time.
+        query = self._filtered(select(Snapshot).options(noload(Snapshot.values)), title, tag_ids, start, end)
+        count_query = self._filtered(select(func.count()).select_from(Snapshot), title, tag_ids, start, end)
+
+        if after is not None:
+            query = query.where(
+                tuple_(Snapshot.created_at, Snapshot.id)
+                < tuple_(
+                    # Typed like the columns: a bare string binds as VARCHAR, and
+                    # Postgres has no ``uuid < varchar`` operator.
+                    literal(after[0], Snapshot.created_at.type),
+                    literal(after[1], Snapshot.id.type),
+                )
+            )
+
+        # +1 to detect a next page
+        query = query.order_by(Snapshot.created_at.desc(), Snapshot.id.desc()).limit(limit + 1)
+
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        snapshots = list(result.scalars().all())
+
+        count_result = await self.session.execute(count_query)
+        total_count = count_result.scalar() or 0
+
+        next_cursor = None
+        if len(snapshots) > limit:
+            snapshots = snapshots[:limit]
+            next_cursor = (snapshots[-1].created_at, snapshots[-1].id)
+
+        return snapshots, next_cursor, total_count
 
     async def get_value_count(self, snapshot_id: str) -> int:
         result = await self.session.execute(

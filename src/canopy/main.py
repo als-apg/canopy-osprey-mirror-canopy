@@ -7,9 +7,9 @@ from importlib import import_module
 from contextlib import AsyncExitStack, asynccontextmanager
 from collections.abc import Iterable
 
-from fastapi import FastAPI, Request, WebSocket, status
+from fastapi import FastAPI, Request, Response, WebSocket, status
 from starlette.types import Send, Scope, ASGIApp, Receive
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from starlette.routing import Match, Mount
 from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +27,7 @@ from canopy.core.errors import (
     register_canopy_error_handler,
 )
 from canopy.core.logging import configure_logging
+from canopy.core.metrics import HTTPMetricsMiddleware, render_latest
 from canopy.core.modules import tag_module, module_for_app
 from canopy.core.security import (
     get_registry,
@@ -195,6 +196,10 @@ def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) 
     app.state.modules = selected
     tag_module(app, "core")
 
+    # Registered first so it sits INSIDE CORSMiddleware (Starlette wraps in reverse
+    # registration order): preflight OPTIONS requests that CORS answers itself never
+    # reach the router, and counting them would only inflate the "unmatched" series.
+    app.add_middleware(HTTPMetricsMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -223,6 +228,12 @@ def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) 
     @app.get("/health", tags=["meta"])
     async def health() -> HealthDTO:
         return HealthDTO.of()
+
+    @app.get("/metrics", tags=["meta"], response_class=PlainTextResponse)
+    async def metrics() -> Response:
+        """Prometheus exposition for this process."""
+        payload, content_type = render_latest()
+        return Response(content=payload, media_type=content_type)
 
     docs_specs = [(name, title) for name, title in API_MODULES if name in selected]
 

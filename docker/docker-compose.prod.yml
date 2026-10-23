@@ -1,14 +1,21 @@
-# Production compose: app containers only.
+# Production compose: app containers only. This is the reference for running
+# Canopy at a facility: copy it to the host as compose.yml, next to a .env
+# file, and adapt it as needed.
 #
-# Postgres + Redis are NOT here. They are brought up once per instance by the
-# Init Data Layer workflow (.github/workflows/init-data-layer.yml) and reached
-# over the host's 127.0.0.1:<port> published by that workflow. The app runs with
-# network_mode: host because the EPICS connector needs CA/PVA UDP broadcast.
+# Postgres 16 and Redis 7 are NOT here. Run them however your site runs
+# databases and point the app at them with CANOPY_DATABASE_URL and
+# CANOPY_REDIS_URL.
 #
-# The software-factory container-deploy playbook copies this file to the target,
-# writes a sibling .env (IMAGE=<ghcr>:<tag> plus the env rendered from the
-# APP_SECRETS JSON - the only config source; no env files are committed), then
-# runs `docker compose --env-file .env up -d`.
+# The app runs with network_mode: host because the EPICS connector needs CA/PVA
+# UDP broadcast, which bridged networking breaks. The API listens on API_PORT
+# (default 8000) directly on the host.
+#
+# All config comes from a sibling .env file: IMAGE=ghcr.io/slaclab/canopy:<tag>
+# for the compose file itself, plus the app's CANOPY_* / EPICS_* settings.
+# From that host directory, run `docker compose run --rm api alembic upgrade head`
+# before starting a new image, then `docker compose up -d`. Without -f, Compose
+# doesn't find this file under its repo name, and in this repo's docker/
+# directory the bare commands select the development stack.
 #
 # Every service logs to stdout continuously and the docker daemon keeps those
 # json-file logs without limit, so cap what is retained per container.
