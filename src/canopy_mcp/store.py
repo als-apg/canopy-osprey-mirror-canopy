@@ -88,6 +88,24 @@ def _warn_manifest_once(path: Path, exc: BaseException, consequence: str) -> Non
     logger.warning("draft manifest: %s: %s: %s (%s)", path, type(exc).__name__, exc, consequence)
 
 
+# The longest description ``manifest(descriptions=True)`` returns; a library of a few
+# hundred screens stays a cheap listing.
+DESCRIPTION_MAX = 200
+
+_SENTENCE_END = re.compile(r"(?<!\.\w\.)(?<=[.!?])\s(?=[A-Z])")
+
+
+def summarize_description(text: object) -> str:
+    """The first sentence of ``text`` on one line, cut to ``DESCRIPTION_MAX`` characters; ``""`` for a non-string."""
+    if not isinstance(text, str):
+        return ""
+    line = " ".join(text.split())
+    line = _SENTENCE_END.split(line, maxsplit=1)[0]
+    if len(line) > DESCRIPTION_MAX:
+        line = line[: DESCRIPTION_MAX - 1].rstrip() + "\u2026"
+    return line
+
+
 class InvalidDraftId(ValueError):
     """The id does not match ``^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$``."""
 
@@ -591,13 +609,17 @@ class DraftStore:
 
     # --- listing ------------------------------------------------------------
 
-    def manifest(self) -> dict[str, list[dict[str, Any]]]:
+    def manifest(self, *, descriptions: bool = False) -> dict[str, list[dict[str, Any]]]:
         """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape, computed fresh on each call.
 
         Entries carry the store's ``category``. ``path`` is what the viewer fetches under
         ``/drafts/``: ``screens/<id>.screen.json`` for a personal store, and
         ``<category>/screens/<id>.screen.json`` for any other. ``id`` is always the id
         this store reads the screen by.
+
+        With ``descriptions``, each entry also carries ``description``: the first
+        sentence of ``metadata.description``, at most ``DESCRIPTION_MAX`` characters,
+        ``""`` when the screen has none. The viewer's manifest leaves it out.
         """
         prefix = "" if self.category == DRAFTS else f"{self.category}/"
         screens = []
@@ -613,19 +635,23 @@ class DraftStore:
             except ValueError as exc:
                 _warn_manifest_once(path, exc, "listed with its id as the title")
                 doc, rev = None, self._rev_of(path)
-            title = doc.get("metadata", {}).get("title") if isinstance(doc, dict) else None
+            metadata = doc.get("metadata") if isinstance(doc, dict) else None
+            if not isinstance(metadata, dict):
+                metadata = {}
+            title = metadata.get("title")
             if not isinstance(title, str) or not title:
                 title = draft_id
-            screens.append(
-                {
-                    "id": draft_id,
-                    "kind": "ir",
-                    "category": self.category,
-                    "title": title,
-                    "path": prefix + path.relative_to(self.root).as_posix(),
-                    "rev": rev,
-                }
-            )
+            entry = {
+                "id": draft_id,
+                "kind": "ir",
+                "category": self.category,
+                "title": title,
+                "path": prefix + path.relative_to(self.root).as_posix(),
+                "rev": rev,
+            }
+            if descriptions:
+                entry["description"] = summarize_description(metadata.get("description"))
+            screens.append(entry)
         return {"screens": screens}
 
     def resolve_static(self, relpath: str) -> Path | None:

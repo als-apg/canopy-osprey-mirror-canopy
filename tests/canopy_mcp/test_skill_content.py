@@ -206,7 +206,10 @@ def test_skill_content_states_the_trace_range_rule() -> None:
     for unit in ("m", "h", "d", "w", "M"):
         assert f"`{unit}`" in section
     assert "`YYYY-MM-DDTHH:MM`" in section and "no\nzone" in section
-    assert "`from` may not be after `to`" in section
+    # react-trace refuses an equal pair (``fromMs >= toMs``), so "not after" was wrong.
+    assert "`from` must be before `to`" in section
+    assert "No `range` means `-1h`" in section
+    assert '`"v":1`' in section
 
 
 # --- the rules ----------------------------------------------------------------------------

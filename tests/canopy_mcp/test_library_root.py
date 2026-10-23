@@ -431,6 +431,17 @@ async def test_list_drafts_lists_both_roots(settings: Settings) -> None:
         assert (await get_screen(entry["draftId"]))["rev"] == entry["rev"]
 
 
+async def test_list_drafts_carries_library_descriptions(settings: Settings, roots: tuple[Path, Path]) -> None:
+    doc = _doc("SR overview")
+    doc["metadata"]["description"] = "Storage-ring overview. Lists every sector."
+    _put(roots[1] / "screens" / "sr" / "overview.screen.json", doc)
+
+    listed = {d["draftId"]: d["description"] for d in (await list_drafts())["drafts"]}
+
+    assert listed[LIBRARY_ID] == "Storage-ring overview."
+    assert listed["mine/view"] == ""
+
+
 # --- tools: writing -----------------------------------------------------------------
 
 

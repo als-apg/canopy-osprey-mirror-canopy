@@ -8,6 +8,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from canopy_mcp.merge import merge_patch
+from canopy_mcp.store import summarize_description
 from canopy_mcp.tools import drafts
 from canopy_mcp.config import Settings
 from canopy_mcp.catalog import set_catalog, build_catalog
@@ -144,12 +145,38 @@ async def test_new_screen_title_is_listed_in_manifest_and_list_drafts(settings, 
         {
             "draftId": "x/y",
             "title": "RF Status",
+            "description": "",
             "path": "screens/x/y.screen.json",
             "rev": out["rev"],
             "url": "http://127.0.0.1:8765/embed/drafts/x/y",
             "ref": "drafts/x/y",
         }
     ]
+
+
+async def test_list_drafts_carries_the_first_sentence_of_the_description(settings, store):
+    long = "Shows the RF stations, e.g. SR and BTS. Second sentence is left out."
+    await new_screen("rf", _doc(title="RF", metadata={"title": "RF", "description": long}))
+    await new_screen("plain", _doc(title="Plain"))
+    listed = {d["draftId"]: d["description"] for d in (await list_drafts())["drafts"]}
+    assert listed == {"plain": "", "rf": "Shows the RF stations, e.g. SR and BTS."}
+    # The viewer's manifest does not carry it.
+    assert all("description" not in entry for entry in store.manifest()["screens"])
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (None, ""),
+        (42, ""),
+        ("", ""),
+        ("  One line\n  wrapped.  ", "One line wrapped."),
+        ("No full stop", "No full stop"),
+        ("x" * 300, "x" * 199 + "\u2026"),
+    ],
+)
+def test_summarize_description(text, expected):
+    assert summarize_description(text) == expected
 
 
 async def test_list_drafts_empty_store(settings):
