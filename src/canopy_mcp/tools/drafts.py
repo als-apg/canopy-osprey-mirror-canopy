@@ -394,23 +394,28 @@ async def delete_draft(id: str, base_rev: str) -> dict[str, Any]:
 
 @mcp.tool
 async def list_drafts() -> dict[str, Any]:
-    """List every draft as ``{draftId, title, path, rev, url, ref}``.
+    """List every draft as ``{draftId, title, description, path, rev, url, ref}``.
 
-    ``ref`` (``drafts/<id>`` or ``library/<id>``) is what the workspace ``open``
-    command takes; ``draftId`` is what the other draft tools take.
+    ``description`` is the first sentence of the screen's ``metadata.description``
+    (at most 200 characters), ``""`` when it has none: use it with ``title`` to pick
+    the screen the user means. ``ref`` (``drafts/<id>`` or ``library/<id>``) is what
+    the workspace ``open`` command takes; ``draftId`` is what the other draft tools take.
 
     Screens of the shared library follow the drafts, with ``draftId``
     ``library/<id>``; they can be read, checked and screenshotted, not changed.
     """
     settings = get_settings()
-    listed = [(entry["id"], entry) for entry in get_store(settings).manifest()["screens"]]
+    listed = [(entry["id"], entry) for entry in get_store(settings).manifest(descriptions=True)["screens"]]
     library = get_library_store(settings)
     if library is not None:
-        listed += [(f"{library.category}/{entry['id']}", entry) for entry in library.manifest()["screens"]]
+        listed += [
+            (f"{library.category}/{entry['id']}", entry) for entry in library.manifest(descriptions=True)["screens"]
+        ]
     drafts = [
         {
             "draftId": tool_id,
             "title": entry["title"],
+            "description": entry["description"],
             "path": entry["path"],
             "rev": entry["rev"],
             "url": draft_url(settings, tool_id),

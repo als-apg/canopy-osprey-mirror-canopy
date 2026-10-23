@@ -106,7 +106,7 @@ ten. The two workspace tools are off by default and independent of
 | `get_schema` | read | Returns the Screen-IR JSON Schema. |
 | `check` | read | Reports schema, semantic, ref and lint findings for a document or a stored screen. |
 | `get_screen` | read | Returns one screen and its rev. |
-| `list_drafts` | read | Lists the drafts, then the library screens. |
+| `list_drafts` | read | Lists the drafts, then the library screens, each with its title and first-sentence description. |
 | `search_pvs` | read | Searches the PV directory by a glob pattern. |
 | `read_pv` | read | Reads one PV once. |
 | `screenshot` | read | Renders a screen as a PNG. |

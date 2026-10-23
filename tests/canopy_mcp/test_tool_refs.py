@@ -133,7 +133,7 @@ async def test_list_drafts_carries_a_ref_open_accepts(settings: Settings) -> Non
     assert refs["library/s3-promo/promotion"] == "library/s3-promo/promotion"
     assert refs["library/common/KnobPanel"] == "library/common/KnobPanel"
     for entry in listed:
-        assert set(entry) == {"draftId", "title", "path", "rev", "url", "ref"}
+        assert set(entry) == {"draftId", "title", "description", "path", "rev", "url", "ref"}
         assert_open_args({"ref": entry["ref"]})
         # the ref names the same screen as the url
         assert entry["url"].endswith("/embed/" + entry["ref"])
