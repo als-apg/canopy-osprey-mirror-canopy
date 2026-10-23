@@ -16,8 +16,8 @@ Three deployment paths are documented here:
 
 - [Docker Compose](docker.md) — the development stack, and the app-only
   production compose file.
-- [Facility deployment](facilities.md) — the GitHub Actions pipeline that
-  builds images and deploys the SLAC facility instances.
+- [Deploy at your facility](production.md) — image tags, required
+  configuration, migrations, and health checks for a production instance.
 - [Appliance mode](appliance.md) — one small Canopy per user, launched and
   configured by a host application instead of running as a shared service.
 
@@ -61,7 +61,7 @@ CANOPY_API_KEYS="<token>:<scope>[+<scope>][@<module>[+<module>]][,<token>:<scope
 Issue **separate tokens per client class** with the minimum scope, and generate
 long random values for production. The variable is parsed once at process
 startup, so adding, rotating, or revoking a key is a config change plus a
-restart — in the facility pipeline, a secret edit plus a deploy.
+restart.
 
 See [API keys](api-keys.md) for the provisioning, rotation, and revocation
 runbook.
@@ -75,14 +75,16 @@ at runtime:
 CANOPY_DATABASE_URL=postgresql+asyncpg://... uv run alembic upgrade head
 ```
 
-The production image carries the migration tree, and the facility deploy
-workflow runs `alembic upgrade head` (configurable) before restarting
-services. A fresh database serves nothing until its first migration.
+The production image carries the migration tree, so run
+`alembic upgrade head` from the new image before restarting services on it
+(see [Upgrade](production.md#upgrade)). A fresh database serves nothing until
+its first migration.
 
 ## Health checks
 
 | Endpoint | Use |
 |----------|-----|
-| `GET /health` | Process liveness — used by the container healthchecks and the deploy pipeline |
+| `GET /health` | Process liveness — used by the container healthchecks and post-deploy checks |
 | `GET /<module>/v1/health/watchdog` | Per-module liveness heartbeat (version, uptime) |
 | `GET /<module>/v1/health/summary` | Per-module status rollup (requires read access) — e.g. Hare's reports backend, client and monitor counts |
+| `GET /metrics` | Prometheus exposition (unauthenticated, like `/health`): request counts and latency per module route, plus module gauges — see [Metrics](../observability/metrics.md) |

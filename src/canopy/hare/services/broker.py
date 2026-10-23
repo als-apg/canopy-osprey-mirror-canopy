@@ -106,7 +106,7 @@ class PVBroker:
         self._buffer_lock = asyncio.Lock()
         # Bounded so a fast producer can't grow the queue without limit; the
         # QueueFull path in _on_event then applies backpressure by dropping.
-        self._queue: asyncio.Queue[PVValue] = asyncio.Queue(maxsize=config.event_queue_maxsize)
+        self._queue: asyncio.Queue[tuple[PVValue, object]] = asyncio.Queue(maxsize=config.event_queue_maxsize)
         self._running = False
         self._tasks: list[asyncio.Task] = []
         self._activation_hooks: list[tuple[LifecycleHook, set[str]]] = []
@@ -119,6 +119,11 @@ class PVBroker:
         self._negative: dict[str, _DeadName] = {}
         # Held PVs whose last seed left a half missing: no re-seed before this time.
         self._seed_retry_after: dict[str, float] = {}
+        # One token per held PV, from its first subscribe until `_stop_monitors`
+        # releases it; a re-subscribe after that gets a new one. Seeds and monitor
+        # updates carry the token they started under and are cached only while it
+        # is still the PV's, so nothing that outlives a release reaches the cache.
+        self._holds: dict[str, object] = {}
         # PVs with no subscriber kept warm until their release task fires.
         self._grace: dict[str, asyncio.Task] = {}
         # Late-connect re-describes in flight, one per PV (b6:IA-1).
@@ -340,6 +345,8 @@ class PVBroker:
             return []
         previously_subscribed = self._registry.client_pvs(client_id)
         newly = self._registry.subscribe(client_id, pvs)
+        for pv in pvs:
+            self._holds.setdefault(pv, object())
         self._cancel_release(newly)
         await self._start_monitors(newly)
         new_for_client = [pv for pv in pvs if pv not in previously_subscribed]
@@ -390,7 +397,7 @@ class PVBroker:
         """Return the in-flight seed for ``pv``, starting one if there is none."""
         task = self._seeding.get(pv)
         if task is None:
-            task = asyncio.create_task(self._seed_pv(pv), name=f"seed:{pv}")
+            task = asyncio.create_task(self._seed_pv(pv, self._holds.get(pv)), name=f"seed:{pv}")
             self._seeding[pv] = task
 
             def _forget(done: asyncio.Task, pv: str = pv) -> None:
@@ -460,7 +467,7 @@ class PVBroker:
         """True while ``pv`` has a subscriber or is being kept warm."""
         return pv in self._grace or bool(self._registry.subscribers(pv))
 
-    async def _seed_pv(self, pv: str) -> None:
+    async def _seed_pv(self, pv: str, hold: object | None) -> None:
         """Fetch the seed value + static metadata for one PV, get and describe at once.
 
         Never raises: a failed read becomes a disconnected value (and a negative
@@ -472,8 +479,14 @@ class PVBroker:
         bare. When either half is still missing afterwards the PV's retry
         deadline is set ``seed_retry_backoff_s`` ahead; when both are held it is
         cleared. `_stop_monitors` drops the deadline with the rest of the PV.
+
+        ``hold`` is the PV's token when the seed started. A PV released while its
+        seed waited for a slot is not read, and a read that outlives its PV's
+        release caches nothing and never overwrites what a newer seed fetched.
         """
         async with self._seed_sem:
+            if self._holds.get(pv) is not hold:
+                return
             before = self._latest.get(pv)
             need_get = before is None or (not before.connected and pv in self._seed_retry_after)
             need_meta = self._meta_is_missing(pv)
@@ -484,7 +497,7 @@ class PVBroker:
                 self._connector.describe(pv) if need_meta else _nothing(),
                 return_exceptions=True,
             )
-        if not self._is_held(pv):
+        if self._holds.get(pv) is not hold:
             return  # released while seeding; don't park it in the cache
 
         meta: PVMeta | None = None
@@ -550,11 +563,20 @@ class PVBroker:
     # --- monitor lifecycle ----------------------------------------------- #
 
     async def _start_monitors(self, pvs: Iterable[str]) -> None:
+        """Start a monitor, bound to the PV's current hold, for each PV that has none.
+
+        A PV released while an earlier PV's monitor was starting has no hold left
+        and gets no monitor. A monitor that fails to start is logged and does not
+        stop the rest of the batch.
+        """
         for pv in pvs:
-            if pv in self._monitors:
+            hold = self._holds.get(pv)
+            if pv in self._monitors or hold is None:
                 continue
             try:
-                self._monitors[pv] = await self._connector.subscribe(pv, self._on_event)
+                self._monitors[pv] = await self._connector.subscribe(
+                    pv, lambda value, hold=hold: self._on_event(value, hold)
+                )
             except Exception as exc:
                 logger.error("failed to start monitor for %s: %s", pv, exc)
 
@@ -593,7 +615,10 @@ class PVBroker:
         A monitor that fails to close is logged and does not stop the rest of
         the batch. The cached value, static metadata and seed retry deadline of
         every given PV are dropped whether or not it had a monitor, so a later
-        subscribe seeds the PV afresh (or from the negative cache).
+        subscribe seeds the PV afresh (or from the negative cache). So is its
+        hold: a seed still in flight is cancelled, updates its monitor already
+        queued are discarded when they land, and a later subscribe starts a seed
+        of its own.
 
         Parameters
         ----------
@@ -606,6 +631,10 @@ class PVBroker:
             self._latest.pop(pv, None)
             self._meta.pop(pv, None)
             self._seed_retry_after.pop(pv, None)
+            self._holds.pop(pv, None)
+            seed = self._seeding.pop(pv, None)
+            if seed is not None:
+                seed.cancel()
             sub = self._monitors.pop(pv, None)
             if sub is not None:
                 try:
@@ -615,18 +644,18 @@ class PVBroker:
 
     # --- event ingestion ------------------------------------------------- #
 
-    def _on_event(self, value: PVValue) -> None:
-        """Connector callback. Non-blocking; must run on the event loop thread."""
+    def _on_event(self, value: PVValue, hold: object) -> None:
+        """Connector callback, with the hold its monitor started under. Non-blocking; must run on the event loop thread."""
         try:
-            self._queue.put_nowait(value)
+            self._queue.put_nowait((value, hold))
         except asyncio.QueueFull:
             logger.warning("broker queue full; dropping update for %s", value.pv)
 
     async def _consume_loop(self) -> None:
         while self._running:
             try:
-                value = await self._queue.get()
-                await self._ingest(value)
+                value, hold = await self._queue.get()
+                await self._ingest(value, hold)
                 await self._drain_nowait()
             except asyncio.CancelledError:
                 raise
@@ -637,12 +666,20 @@ class PVBroker:
         """Process all currently-queued events without blocking. Drives `_consume_loop`; also called directly by tests."""
         while True:
             try:
-                value = self._queue.get_nowait()
+                value, hold = self._queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            await self._ingest(value)
+            await self._ingest(value, hold)
 
-    async def _ingest(self, value: PVValue) -> None:
+    async def _ingest(self, value: PVValue, hold: object) -> None:
+        """Cache a monitor update and buffer it for the next diff flush.
+
+        Kept only while ``hold`` is still the PV's: an update from a released
+        monitor, whether queued at release or delivered after a re-subscribe,
+        is neither cached nor buffered.
+        """
+        if self._holds.get(value.pv) is not hold:
+            return
         previous = self._latest.get(value.pv)
         self._latest[value.pv] = value
         if value.connected:
@@ -880,11 +917,14 @@ class PVBroker:
         return {
             "running": self._running,
             "backend": getattr(self._connector, "backend_name", None),
-            "clients": len(self._channels),
             "active_monitors": len(self._monitors),
             "warm_monitors": len(self._grace),
             "connected": self._connected_count(),
             **self._registry.stats(),
+            # After the spread so it wins over the registry's own ``clients``
+            # bookkeeping key; the two are kept in step, but this is the count
+            # of connected channels the health summary describes.
+            "clients": len(self._channels),
         }
 
     def _connected_count(self) -> int:

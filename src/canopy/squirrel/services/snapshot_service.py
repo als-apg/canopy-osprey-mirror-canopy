@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import base64
 import logging
+import binascii
+from uuid import UUID
 from typing import Any, Literal
 from datetime import UTC, datetime
 from dataclasses import asdict, dataclass
@@ -16,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from canopy.core.errors import BadRequest
 from canopy.core.time_parse import to_utc
 from canopy.squirrel.errors import SnapshotNotFound
+from canopy.contracts.pagination import PagedResult
 from canopy.squirrel.data.models import Snapshot
 from canopy.squirrel.restore_hooks import (
     RestoreHook,
@@ -182,6 +186,59 @@ def _utc_bound(name: str, value: datetime | None) -> datetime | None:
         raise BadRequest(f"{name} ({value.isoformat()}) is out of range once converted to UTC") from exc
 
 
+def _encode_cursor(cursor: tuple[datetime, str] | None) -> str | None:
+    """Pack a ``(created_at, id)`` listing cursor into an opaque continuation token.
+
+    Parameters
+    ----------
+    cursor : tuple[datetime, str] | None
+        Sort position of the last row on a page, from ``SnapshotRepository.search``.
+
+    Returns
+    -------
+    str | None
+        URL-safe token for the next page, or ``None`` when there is no next page.
+    """
+    if cursor is None:
+        return None
+    created_at, snapshot_id = cursor
+    raw = f"{to_utc(created_at).isoformat()}|{snapshot_id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(token: str | None) -> tuple[datetime, str] | None:
+    """Unpack a continuation token from ``_encode_cursor``.
+
+    Parameters
+    ----------
+    token : str | None
+        The ``continuationToken`` the client sent back, or ``None`` for the first page.
+
+    Returns
+    -------
+    tuple[datetime, str] | None
+        The ``(created_at, id)`` sort position to continue after.
+
+    Raises
+    ------
+    BadRequest
+        When the token was not produced by ``_encode_cursor``. Checked here so a tampered
+        token is a clean 400 rather than an asyncpg encode error (500).
+    """
+    if token is None:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
+        created_at_text, snapshot_id = raw.split("|")
+        created_at = datetime.fromisoformat(created_at_text)
+        UUID(snapshot_id)
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise BadRequest("Invalid continuationToken") from exc
+    if created_at.tzinfo is None:
+        raise BadRequest("Invalid continuationToken")
+    return created_at, snapshot_id
+
+
 class SnapshotService:
     """Snapshot operations with EPICS integration. Owns no transaction — the caller
     (request dep or worker ``session_scope``) commits."""
@@ -234,10 +291,14 @@ class SnapshotService:
         tag_ids: list[str] | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[SnapshotSummaryDTO]:
-        """List snapshots, optionally filtered by title, tags and/or creation time.
+        page_size: int = 100,
+        continuation_token: str | None = None,
+    ) -> PagedResult[SnapshotSummaryDTO]:
+        """List snapshots one keyset page at a time, newest first, optionally filtered.
+
+        Each page continues from the sort position the previous page ended on, so
+        snapshots created or deleted between requests cannot make a later page repeat
+        or skip a row the way an offset would.
 
         Parameters
         ----------
@@ -250,28 +311,35 @@ class SnapshotService:
             ``created_at`` is a ``timestamptz`` and asyncpg refuses a naive bind parameter.
         end : datetime | None
             Upper bound on creation time, inclusive. Converted the same way as ``start``.
-        limit : int
-            Maximum number of summaries returned.
-        offset : int
-            Number of matching snapshots to skip, for paging past the first ``limit``.
+        page_size : int
+            Maximum number of summaries on the page.
+        continuation_token : str | None
+            Token from the previous page's result; ``None`` for the first page.
 
         Returns
         -------
-        list[SnapshotSummaryDTO]
-            Matching snapshot summaries, newest first.
+        PagedResult[SnapshotSummaryDTO]
+            The page's summaries, the token for the next page (``None`` on the last page),
+            and the number of snapshots matching the filters.
 
         Raises
         ------
         BadRequest
-            When a bound falls outside ``datetime``'s range once converted to UTC, or
-            both bounds are given and ``start`` is after ``end``.
+            When a bound falls outside ``datetime``'s range once converted to UTC, both
+            bounds are given and ``start`` is after ``end``, or the continuation token is
+            malformed.
         """
         start = _utc_bound("start", start)
         end = _utc_bound("end", end)
         if start is not None and end is not None and start > end:
             raise BadRequest(f"start ({start.isoformat()}) must not be after end ({end.isoformat()})")
-        snapshots = await self.snapshot_repo.search(
-            title=title, tag_ids=tag_ids, start=start, end=end, limit=limit, offset=offset
+        snapshots, next_cursor, total_count = await self.snapshot_repo.search(
+            title=title,
+            tag_ids=tag_ids,
+            start=start,
+            end=end,
+            limit=page_size,
+            after=_decode_cursor(continuation_token),
         )
 
         # One grouped query for all value counts (avoids N+1).
@@ -292,7 +360,11 @@ class SnapshotService:
                     meta_pvs=await self._get_meta_pv_values_for_snapshot(snap.id, meta_pvs),
                 )
             )
-        return result
+        return PagedResult(
+            results=result,
+            continuation_token=_encode_cursor(next_cursor),
+            total_count=total_count,
+        )
 
     async def snapshot_exists(self, snapshot_id: str) -> bool:
         """Lightweight existence check (no value load) — used before enqueueing a restore."""

@@ -1,0 +1,11 @@
+# Scrapes the parent app's /metrics (canopy.core.metrics; design in
+# docs/observability/metrics.md). The `api` hostname resolves on the shared
+# compose network, so this overlay must be layered on the base compose file.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: canopy-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
