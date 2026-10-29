@@ -4,18 +4,49 @@ Hare imports `build_connector` and `PVConnector` from here; the rest of
 `canopy.epics.*` is private implementation.
 """
 
+import importlib
+
 from canopy.epics.base import PVConnector, EpicsBackendUnavailable
 from canopy.epics.config import EpicsConfig
 
 
 def build_connector(config: EpicsConfig) -> PVConnector:
-    """Construct the connector backend named by `config.backend`."""
-    if config.backend == "simulation":
+    """Construct the connector backend named by `config.backend`.
+
+    Three forms are supported:
+      - ``"simulation"`` — the in-process synthetic backend (the default).
+      - ``"epics"`` — real Channel Access / PV Access.
+      - ``"module.path:ClassName"`` — dynamic import for an out-of-tree backend,
+        built through its ``from_config(config)`` classmethod.
+    """
+    backend = config.backend
+    if backend == "simulation":
         from canopy.epics.backends.simulation import SimulationConnector
 
         return SimulationConnector.from_config(config)
-    if config.backend == "epics":
+    if backend == "epics":
         from canopy.epics.backends.epics_backend import EpicsConnector
 
         return EpicsConnector.from_config(config)
-    raise EpicsBackendUnavailable(f"Unknown EPICS backend {config.backend!r}. Valid backends: 'simulation', 'epics'.")
+    if ":" in backend:
+        return _resolve_backend_class(backend).from_config(config)
+    raise EpicsBackendUnavailable(
+        f"Unknown EPICS backend {backend!r}. Valid backends: 'simulation', 'epics', or a 'module:Class' dotted path."
+    )
+
+
+def _resolve_backend_class(path: str) -> type[PVConnector]:
+    """Import the class a ``module.path:ClassName`` backend string names."""
+    module_path, _, class_name = path.partition(":")
+    if not module_path or module_path.startswith(".") or not class_name:
+        raise EpicsBackendUnavailable(f"EPICS backend {path!r} is not a 'module.path:ClassName' dotted path")
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as exc:
+        raise EpicsBackendUnavailable(f"Cannot import module '{module_path}' of EPICS backend {path!r}: {exc}") from exc
+    cls = getattr(module, class_name, None)
+    if cls is None:
+        raise EpicsBackendUnavailable(f"Class '{class_name}' of EPICS backend {path!r} not found in '{module_path}'")
+    if not callable(getattr(cls, "from_config", None)):
+        raise EpicsBackendUnavailable(f"EPICS backend {path!r} has no callable 'from_config' classmethod")
+    return cls

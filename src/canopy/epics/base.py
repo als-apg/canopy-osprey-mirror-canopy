@@ -5,6 +5,7 @@ are `simulation` (data all simulated in process without any dependencies) and `e
 (real CA/PVA via aioca/p4p).
 
 `canopy.epics.gateway` picks between them from the `CANOPY_EPICS__BACKEND` config value.
+The same value can instead name an out-of-tree backend by a `module:Class` dotted path.
 """
 
 from typing import Protocol, runtime_checkable
