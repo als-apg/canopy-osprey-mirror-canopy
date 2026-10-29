@@ -58,8 +58,8 @@ interpret it:
 
 ## Backends
 
-The EPICS connector behind Hare has two backends, selected with
-`CANOPY_EPICS__BACKEND`:
+The EPICS connector behind Hare ships two backends, selected with
+`CANOPY_EPICS__BACKEND`, and can load a third from your own package:
 
 - **`simulation`** (default) — every PV name resolves to a synthetic sine
   wave. No IOC or network needed; ideal for frontend development and CI.
@@ -71,6 +71,8 @@ The EPICS connector behind Hare has two backends, selected with
   (`EPICS_CA_ADDR_LIST`, `EPICS_PVA_ADDR_LIST`, ...). A Channel Access
   channel lost in an outage is searched for afresh every
   `CANOPY_EPICS__CA_RECONNECT_S` (default 15 s) until it reconnects.
+- **`module.path:ClassName`** — an out-of-tree backend, imported and built
+  at startup. See [Custom EPICS backend](../how_to/custom_epics_backend.md).
 
 ## Configuration
 
