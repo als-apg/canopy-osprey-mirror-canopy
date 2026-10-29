@@ -9,7 +9,7 @@ unknown widgets, hoisted formulas) for the API layer.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 from pathlib import Path
 from dataclasses import dataclass
 from collections.abc import Iterator, Sequence
@@ -67,6 +67,12 @@ class ConversionResult:
     stats: ConversionStats
 
 
+ScreenKind = Literal["edl", "ui"]
+"""Legacy screen formats the converter accepts."""
+
+SCREEN_KINDS: tuple[ScreenKind, ...] = get_args(ScreenKind)
+
+
 class ConversionService:
     """Converts ``.edl``/``.ui`` bytes to validated Screen IR + diagnostics.
 
@@ -96,9 +102,18 @@ class ConversionService:
         # EDMDATAFILES-style directories for symbol files (EDM screens only).
         self._search_paths = [str(p) for p in search_paths]
 
-    def convert(self, data: bytes, *, kind: Literal["edl", "ui"], filename: str | None = None) -> ConversionResult:
+    def convert(self, data: bytes, *, kind: ScreenKind, filename: str | None = None) -> ConversionResult:
         """Convert one screen. ``filename`` is the upload's original name; the screen
-        id and title derive from it (without it both are ``"screen"``)."""
+        id and title derive from it (without it both are ``"screen"``).
+
+        Raises ``UnsupportedInput`` (415) for a kind outside ``SCREEN_KINDS`` and
+        ``ConversionFailed`` (422) for any failure to convert a screen of a known kind.
+        """
+        # Reject an unknown kind here rather than by catching convert_bytes'
+        # ValueError: its parsers also raise ValueError for malformed input on a
+        # known kind, which is a 422, not a 415.
+        if kind not in SCREEN_KINDS:
+            raise UnsupportedInput(f"Unsupported screen kind {kind!r}; expected one of {', '.join(SCREEN_KINDS)}")
         try:
             screen = convert_bytes(
                 data,
@@ -109,9 +124,6 @@ class ConversionService:
                 filename=filename,
                 search_paths=self._search_paths if kind == "edl" and self._search_paths else None,
             )
-        except ValueError as exc:
-            # convert_bytes raises ValueError for an unsupported kind/suffix.
-            raise UnsupportedInput(str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - any parse/build failure on a known kind
             # The catch stays broad on purpose: pydmconverter raises bare ValueError
             # *and* KeyError for legitimately malformed input, the same types a server

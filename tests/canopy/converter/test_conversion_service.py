@@ -66,20 +66,27 @@ def test_unknown_edl_class_is_grouped_by_original_class():
     assert any("placeholder" in w for w in result.warnings)
 
 
-def test_bad_kind_raises_unsupported_input():
+def test_bad_kind_raises_unsupported_input(monkeypatch):
+    """An unknown kind is a 415, rejected before the converter is called."""
+
+    def _not_called(*_args, **_kwargs):
+        raise AssertionError("convert_bytes called for an unknown kind")
+
+    monkeypatch.setattr(cs, "convert_bytes", _not_called)
     with pytest.raises(UnsupportedInput):
         ConversionService().convert(b"whatever", kind="bogus")  # type: ignore[arg-type]
 
 
-def test_unexpected_failure_maps_to_conversion_failed_and_logs(monkeypatch, caplog):
-    """A non-ValueError from convert_bytes stays a 422 (ConversionFailed) but is logged.
+@pytest.mark.parametrize("exc", [KeyError("widget-type"), ValueError("invalid literal for int() with base 10: 'abc'")])
+def test_unexpected_failure_maps_to_conversion_failed_and_logs(monkeypatch, caplog, exc):
+    """Any failure on a known kind is a 422 (ConversionFailed) and is logged.
 
     The catch is intentionally broad (pydmconverter uses ValueError/KeyError for both
     bad input and bugs), so an unexpected error must still leave a traceback in the log.
     """
 
     def _boom(*_args, **_kwargs):
-        raise KeyError("widget-type")
+        raise exc
 
     monkeypatch.setattr(cs, "convert_bytes", _boom)
     with caplog.at_level(logging.ERROR, logger=cs.logger.name):
@@ -99,7 +106,8 @@ def test_search_paths_reach_convert_bytes_for_edl_only(monkeypatch):
     monkeypatch.setattr(cs, "convert_bytes", _fake_convert_bytes)
     service = ConversionService(search_paths=[Path("/displays/lcls"), "/displays/pps"])
     for kind in ("edl", "ui"):
-        with pytest.raises(UnsupportedInput):
+        # A ValueError on a known kind is a conversion failure (422).
+        with pytest.raises(ConversionFailed):
             service.convert(b"x", kind=kind)
     assert seen == {"edl": [str(Path("/displays/lcls")), "/displays/pps"], "ui": None}
 
