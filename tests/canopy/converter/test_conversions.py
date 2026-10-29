@@ -57,6 +57,19 @@ def test_unknown_suffix_is_unsupported():
     assert resp.json()["code"] == "converter_unsupported_input"
 
 
+def test_malformed_screen_of_known_kind_is_conversion_failed():
+    """A .ui the parser rejects with ValueError is a 422, not a 415."""
+    ui = (
+        b'<ui version="4.0"><widget class="QWidget" name="w">'
+        b'<property name="geometry"><rect><x>abc</x></rect></property>'
+        b"</widget></ui>"
+    )
+    with TestClient(app) as client:
+        resp = _post(client, filename="bad.ui", content=ui)
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "converter_conversion_failed"
+
+
 def test_upload_filename_names_the_screen():
     with TestClient(app) as client:
         resp = _post(client, filename="sdr_fb.edl")
