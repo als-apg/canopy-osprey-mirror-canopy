@@ -65,7 +65,9 @@ The EPICS connector behind Hare ships two backends, selected with
   wave. No IOC or network needed; ideal for frontend development and CI.
   The name's suffix picks the value kind: `:ENUM`, `:WAVEFORM` / `:WF`,
   `:STR_WAVEFORM` / `:STR_WF` (string waveform), `:STR`, `:TABLE`; anything
-  else is a scalar.
+  else is a scalar. A name under `SIM:NEVER:` stands for a PV no IOC serves:
+  it reads back disconnected, its monitor reports `connected: false` once and
+  then stays silent, and writes to it fail.
 - **`epics`** — real Channel Access / PV Access via the facility network.
   Discovery uses the standard EPICS environment variables
   (`EPICS_CA_ADDR_LIST`, `EPICS_PVA_ADDR_LIST`, ...). A Channel Access
