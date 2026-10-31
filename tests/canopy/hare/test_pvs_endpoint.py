@@ -82,3 +82,41 @@ def test_put_pv_rejects_nonpositive_timeout():
     with TestClient(app) as client:
         resp = client.put("/hare/v1/pvs/SIM:TEMP", json={"value": 1.0, "timeout": -5}, headers=WRITE_HEADERS)
     assert resp.status_code == 422
+
+
+def test_put_pv_with_binding_and_origin_succeeds_on_simulation():
+    # The simulation connector accepts both and ignores them.
+    body = {"value": 4.0, "binding": "b-1", "origin": {"screen": "ring/overview", "rev": "r1"}}
+    with TestClient(app) as client:
+        put = client.put("/hare/v1/pvs/SIM:PUT:ORIGIN", json=body, headers=WRITE_HEADERS)
+        get = client.get("/hare/v1/pvs/SIM:PUT:ORIGIN", headers=READ_HEADERS)
+    assert put.status_code == 200
+    assert get.json()["value"] == 4.0
+
+
+def test_put_pv_rejects_origin_without_screen():
+    with TestClient(app) as client:
+        resp = client.put("/hare/v1/pvs/SIM:TEMP", json={"value": 1.0, "origin": {"rev": "r1"}}, headers=WRITE_HEADERS)
+    assert resp.status_code == 422
+
+
+def test_put_pv_forwards_binding_and_origin_to_the_broker(monkeypatch):
+    from canopy.hare.services.broker import PVBroker
+
+    seen: dict = {}
+
+    async def fake_put(self, pv, value, *, wait=True, timeout=None, binding=None, origin=None):
+        seen.update(pv=pv, value=value, binding=binding, origin=origin)
+
+    monkeypatch.setattr(PVBroker, "put", fake_put)
+    body = {"value": 5.0, "binding": "b-9", "origin": {"screen": "ring/overview"}}
+    with TestClient(app) as client:
+        resp = client.put("/hare/v1/pvs/SIM:TEMP", json=body, headers=WRITE_HEADERS)
+    assert resp.status_code == 200
+    assert seen == {
+        "pv": "SIM:TEMP",
+        "value": 5.0,
+        "binding": "b-9",
+        "origin": {"screen": "ring/overview", "rev": None},
+    }
+    assert type(seen["origin"]) is dict

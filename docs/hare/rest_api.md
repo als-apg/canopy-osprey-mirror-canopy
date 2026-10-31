@@ -108,6 +108,8 @@ curl -X PUT -H "X-API-Key: dev" -H "Content-Type: application/json" \
 | `value` | number \| bool \| string \| array of scalars | required | The value to write |
 | `wait` | bool | `true` | Block until the IOC processes the write (put-with-callback). With `wait: true`, a `200` means the value landed. `false` submits without waiting for record processing |
 | `timeout` | number \| null | `null` | Per-write timeout in seconds (must be positive); `null` uses the connector default |
+| `binding` | string \| null | `null` | The connector binding the issuing screen was shown (the heartbeat's `binding`). A connector that can switch what it is connected to may refuse a write naming another; the built-in backends ignore it |
+| `origin` | object \| null | `null` | Where the write came from, for the connector's audit record: `{"screen": "<id>", "rev": "<revision or null>"}`; `screen` is required. The built-in backends ignore it |
 
 ### Response
 
