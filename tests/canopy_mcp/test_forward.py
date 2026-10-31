@@ -65,7 +65,8 @@ def upstream() -> Iterator[FakeUpstream]:
 def _settings(tmp_path: Path, base_url: str, api_key: str = KEY) -> Settings:
     drafts = tmp_path / "drafts"
     drafts.mkdir(exist_ok=True)
-    return Settings(base_url=base_url, api_key=api_key, drafts_dir=drafts)
+    # The test client names its server "testserver" in Host.
+    return Settings(base_url=base_url, api_key=api_key, drafts_dir=drafts, self_url="http://testserver")
 
 
 @pytest.fixture
@@ -235,3 +236,106 @@ def test_other_websocket_paths_are_refused(client: TestClient, upstream: FakeUps
 
 def test_existing_routes_still_answer(client: TestClient) -> None:
     assert client.get("/health").status_code == 200
+
+
+# --- cross-site handshakes -------------------------------------------------------
+
+PUBLIC = "https://panels.example"
+
+
+@pytest.fixture
+def public_client(tmp_path: Path, upstream: FakeUpstream) -> Iterator[TestClient]:
+    settings = _settings(tmp_path, f"http://127.0.0.1:{upstream.port}").model_copy(update={"public_url": PUBLIC})
+    with TestClient(create_app(settings, startup_hooks=[])) as c:
+        yield c
+
+
+@pytest.mark.parametrize("path", ["/hare/v1/ws/pvs", "/fox/v1/ws/formulas"])
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Sec-Fetch-Site": "cross-site"},
+        {"Origin": "https://evil.example"},
+        {"Origin": "ftp://testserver"},
+        # The configured origin is http://testserver (port 80): another port is another origin.
+        {"Origin": "http://testserver:9000"},
+        # DNS rebinding: the attacker's name resolves to this server, so Origin and Host agree.
+        {"Host": "evil.example", "Origin": "http://evil.example"},
+        {"Host": "evil.example:8765"},
+        # A loopback page on another port is another origin.
+        {"Host": "localhost:8765", "Origin": "http://localhost:9999"},
+        {"Host": "127.0.0.1:8765", "Origin": "http://localhost:8765"},
+        # A loopback origin never passes for a non-loopback Host.
+        {"Host": "testserver", "Origin": "http://localhost"},
+        # No Host at all.
+        {"Host": "", "Origin": "http://testserver"},
+    ],
+)
+def test_relay_refuses_a_cross_site_handshake(
+    client: TestClient, upstream: FakeUpstream, path: str, headers: dict[str, str]
+) -> None:
+    with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(path, headers=headers) as ws:
+        ws.receive_text()
+    assert exc.value.code == 1008
+    assert upstream.requests == []
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"},
+        {"Origin": "http://TestServer:80"},
+        {"Sec-Fetch-Site": "none"},
+        {"Host": "localhost:8765", "Origin": "http://localhost:8765"},
+        {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"},
+        {"Host": "[::1]:8765", "Origin": "http://[::1]:8765"},
+        {"Host": "127.0.0.1:8765"},
+    ],
+)
+def test_relay_accepts_a_same_origin_handshake(
+    client: TestClient, upstream: FakeUpstream, headers: dict[str, str]
+) -> None:
+    with client.websocket_connect("/hare/v1/ws/pvs", headers=headers) as ws:
+        assert ws.receive_text() == "welcome"
+    assert len(upstream.requests) == 1
+
+
+def test_relay_accepts_the_configured_public_origin(public_client: TestClient) -> None:
+    headers = {"Host": "panels.example", "Origin": PUBLIC}
+    with public_client.websocket_connect("/hare/v1/ws/pvs", headers=headers) as ws:
+        assert ws.receive_text() == "welcome"
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Host": "panels.example", "Origin": "http://localhost"},
+        {"Host": "panels.example", "Origin": "http://panels.example"},
+        {"Host": "panels.example", "Origin": "https://panels.example:8443"},
+    ],
+)
+def test_relay_refuses_other_origins_on_the_public_host(
+    public_client: TestClient, upstream: FakeUpstream, headers: dict[str, str]
+) -> None:
+    with (
+        pytest.raises(WebSocketDisconnect) as exc,
+        public_client.websocket_connect("/hare/v1/ws/pvs", headers=headers) as ws,
+    ):
+        ws.receive_text()
+    assert exc.value.code == 1008
+    assert upstream.requests == []
+
+
+def test_relay_refuses_a_loopback_self_origin_on_the_public_host(tmp_path: Path, upstream: FakeUpstream) -> None:
+    settings = _settings(tmp_path, f"http://127.0.0.1:{upstream.port}").model_copy(
+        update={"self_url": "http://127.0.0.1:8765", "public_url": PUBLIC}
+    )
+    headers = {"Host": "panels.example", "Origin": "http://127.0.0.1:8765"}
+    with (
+        TestClient(create_app(settings, startup_hooks=[])) as c,
+        pytest.raises(WebSocketDisconnect) as exc,
+        c.websocket_connect("/hare/v1/ws/pvs", headers=headers) as ws,
+    ):
+        ws.receive_text()
+    assert exc.value.code == 1008
+    assert upstream.requests == []

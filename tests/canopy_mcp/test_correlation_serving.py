@@ -216,7 +216,8 @@ def test_relay_does_not_offer_deflate_upstream(tmp_path: Path) -> None:
     try:
         drafts = tmp_path / "drafts"
         drafts.mkdir()
-        app = create_app(Settings(base_url=f"http://127.0.0.1:{port}", drafts_dir=drafts), startup_hooks=[])
+        settings = Settings(base_url=f"http://127.0.0.1:{port}", drafts_dir=drafts, self_url="http://testserver")
+        app = create_app(settings, startup_hooks=[])
         with TestClient(app) as c, c.websocket_connect("/fox/v1/ws/formulas") as ws:
             assert ws.receive_text() == "welcome"
     finally:

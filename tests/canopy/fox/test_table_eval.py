@@ -706,7 +706,10 @@ def test_table_frames_arrive_as_text_through_the_canopy_mcp_forward(tmp_path, fo
 
     drafts = tmp_path / "drafts"
     drafts.mkdir()
-    settings = Settings(base_url=f"http://127.0.0.1:{fox_server.port}", api_key="k", drafts_dir=drafts)
+    # The test client names its server "testserver" in Host, which the relay must accept.
+    settings = Settings(
+        base_url=f"http://127.0.0.1:{fox_server.port}", api_key="k", drafts_dir=drafts, self_url="http://testserver"
+    )
     with TestClient(create_app(settings, startup_hooks=[])) as client:
         with client.websocket_connect("/fox/v1/ws/formulas") as ws:
             ws.send_json(_table_subscribe())

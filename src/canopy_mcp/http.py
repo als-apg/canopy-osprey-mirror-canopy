@@ -10,9 +10,10 @@ collections and workspace routes ``{"error": <code>, "detail"?}``
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 from collections.abc import Callable
 
-from starlette.requests import Request
+from starlette.requests import Request, HTTPConnection
 from starlette.responses import Response, JSONResponse
 
 __all__ = [
@@ -23,6 +24,11 @@ __all__ = [
     "error_response",
     "etag",
     "is_cross_site",
+    "is_cross_site_handshake",
+    "LOOPBACK_HOSTS",
+    "configured_origins",
+    "host_name",
+    "normal_origin",
     "is_json_request",
     "json_response",
     "not_modified",
@@ -68,7 +74,7 @@ def is_json_request(request: Request) -> bool:
     return media == "application/json"
 
 
-def is_cross_site(request: Request) -> bool:
+def is_cross_site(request: HTTPConnection) -> bool:
     """Whether ``Sec-Fetch-Site`` is present and not one of :data:`ALLOWED_FETCH_SITES`.
 
     A request without the header passes: only a browser sends it, and a browser
@@ -76,6 +82,87 @@ def is_cross_site(request: Request) -> bool:
     """
     site = request.headers.get("sec-fetch-site")
     return site is not None and site.strip().lower() not in ALLOWED_FETCH_SITES
+
+
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+# Origin schemes by URL scheme: a WebSocket URL names the origin of its HTTP twin.
+_ORIGIN_SCHEMES = {"http": "http", "ws": "http", "https": "https", "wss": "https"}
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+Origin = tuple[str, str, int]
+
+
+def host_name(value: str | None) -> str | None:
+    """The lower-cased host name of a ``Host`` value (``name[:port]``, ``[v6][:port]``), or ``None``."""
+    if not value or not value.strip():
+        return None
+    try:
+        return urlsplit(f"//{value.strip()}").hostname
+    except ValueError:
+        return None
+
+
+def normal_origin(url: str | None) -> Origin | None:
+    """``(scheme, host, port)`` of ``url``: scheme http or https (ws/wss map to them),
+    host lower-cased, port explicit or 80/443 by scheme. ``None`` when it is not one."""
+    if not url:
+        return None
+    try:
+        parts = urlsplit(url.strip())
+        scheme = _ORIGIN_SCHEMES.get(parts.scheme.lower())
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        return None
+    if scheme is None or not host:
+        return None
+    return scheme, host, port if port is not None else _DEFAULT_PORTS[scheme]
+
+
+def configured_origins(*urls: str | None) -> frozenset[Origin]:
+    """The normalised origins of the configured server URLs that are set and valid."""
+    return frozenset(o for o in map(normal_origin, urls) if o is not None)
+
+
+def is_cross_site_handshake(conn: HTTPConnection, configured: frozenset[Origin]) -> bool:
+    """Whether a WebSocket handshake must be refused as coming from another site.
+
+    ``configured`` holds the origins of the server's own URLs
+    (:func:`configured_origins` of ``CANOPY_SELF_URL`` and ``CANOPY_PUBLIC_URL``).
+    The same-origin policy does not cover WebSockets, and under DNS rebinding a
+    page's ``Origin`` and ``Host`` both name the attacker's host, so neither is
+    trusted on its own. Refused:
+
+    - a cross-site ``Sec-Fetch-Site`` (:func:`is_cross_site`);
+    - a ``Host`` that is missing, or names neither loopback nor the host of a
+      configured origin;
+    - an ``Origin`` whose normalised origin (:func:`normal_origin`) is not a
+      configured origin or, only when ``Host`` is loopback, the request's own
+      origin (its scheme, the ``Host`` name and port). A loopback ``Origin`` is
+      never accepted for a non-loopback ``Host``.
+
+    A handshake without ``Origin`` (a non-browser client) is judged on ``Host``
+    and ``Sec-Fetch-Site`` alone.
+    """
+    if is_cross_site(conn):
+        return True
+    host = conn.headers.get("host")
+    name = host_name(host)
+    loopback = name in LOOPBACK_HOSTS
+    if not loopback and name not in {o[1] for o in configured}:
+        return True
+    origin = conn.headers.get("origin")
+    if origin is None:
+        return False
+    # A configured loopback origin (the default self URL) counts only on a loopback Host.
+    allowed = {o for o in configured if loopback or o[1] not in LOOPBACK_HOSTS}
+    if loopback:
+        own = normal_origin(f"{conn.url.scheme}://{host.strip()}")
+        if own is not None:
+            allowed.add(own)
+    seen = normal_origin(origin)
+    return seen is None or seen not in allowed
 
 
 def refuse_cross_site(request: Request, refusal: Callable[[], Response]) -> Response | None:

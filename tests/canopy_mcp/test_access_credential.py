@@ -96,7 +96,8 @@ def _secret_file(tmp_path: Path, name: str, content: str) -> Path:
 def _settings(tmp_path: Path, **overrides) -> Settings:
     drafts = tmp_path / "drafts"
     drafts.mkdir(exist_ok=True)
-    return Settings(**{"drafts_dir": drafts, "api_key": "k", **overrides})
+    # self_url: the test client names its server "testserver" in Host, which the relays must accept.
+    return Settings(**{"drafts_dir": drafts, "api_key": "k", "self_url": "http://testserver", **overrides})
 
 
 def _run(args: list[str], tmp_path: Path, **env: str) -> subprocess.CompletedProcess:

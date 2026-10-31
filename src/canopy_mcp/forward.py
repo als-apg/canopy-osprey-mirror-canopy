@@ -7,7 +7,12 @@ upstream handshake is built from scratch -- no client header is copied and any
 ``api_key`` query parameter is dropped -- so a browser can neither see the key
 nor substitute its own. An upstream that is not accepting connections yet is
 retried for ``CANOPY_RELAY_CONNECT_RETRY_S`` seconds (default 0: one attempt)
-before the browser's handshake is refused with close code 1011.
+before the browser's handshake is refused with close code 1011. A handshake from
+another site (:func:`canopy_mcp.http.is_cross_site_handshake`: a cross-site
+``Sec-Fetch-Site``; a ``Host`` naming neither loopback nor the host of
+``CANOPY_SELF_URL`` / ``CANOPY_PUBLIC_URL``; an ``Origin`` other than those URLs'
+origins or, on a loopback ``Host``, the request's own origin) is refused with
+close code 1008 before anything goes upstream.
 
 ``GET /mole/v1/{path}`` (the Trace tab's archiver reads) is forwarded the same
 way over HTTP: only ``Accept`` and the server key go upstream, ``api_key`` is
@@ -57,7 +62,13 @@ from starlette.responses import Response, JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketState
 from websockets.asyncio.client import ClientConnection, connect
 
-from canopy_mcp.http import is_cross_site, read_capped_body, code_detail_response
+from canopy_mcp.http import (
+    is_cross_site,
+    read_capped_body,
+    configured_origins,
+    code_detail_response,
+    is_cross_site_handshake,
+)
 from canopy_mcp.text import fully_unquoted
 from canopy.contracts import load_wc6_vectors
 from canopy_mcp.client import API_KEY_HEADER, auth_headers
@@ -166,8 +177,13 @@ async def _connect_upstream(url: str, headers: dict[str, str], retry_s: float) -
 def make_relay(settings: Settings, path: str) -> Callable[[WebSocket], Awaitable[None]]:
     """The WebSocket endpoint relaying ``path`` to the backend."""
     headers = auth_headers(settings)
+    origins = configured_origins(settings.self_url, settings.public_url)
 
     async def relay(websocket: WebSocket) -> None:
+        if is_cross_site_handshake(websocket, origins):
+            # Refused before anything goes upstream; closing before accept refuses the handshake.
+            await websocket.close(code=1008)
+            return
         url = upstream_ws_url(settings.base_url, path, websocket.query_params.multi_items())
         try:
             upstream = await _connect_upstream(url, headers, settings.relay_connect_retry_s)

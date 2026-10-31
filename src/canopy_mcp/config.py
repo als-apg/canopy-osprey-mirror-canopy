@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     self_url: str | None = None
     # Absolute base URL the tools' screen URLs name when it differs from self_url
     # (a server reached under another name than its own); unset means self_url.
+    # The origins of self_url and public_url are also the only non-loopback origins
+    # the API's WebSocket relays accept (canopy_mcp.http.is_cross_site_handshake).
     public_url: str | None = None
     # Path prefix an embedding host serves this server under (``/panel/canopy``);
     # when set, the URLs the tools return are that prefix plus the server path.

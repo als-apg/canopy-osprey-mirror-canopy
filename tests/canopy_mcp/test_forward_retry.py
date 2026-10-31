@@ -58,7 +58,10 @@ class LateUpstream:
 
 
 def _client(tmp_path: Path, port: int, **overrides: object) -> TestClient:
-    settings = Settings(base_url=f"http://127.0.0.1:{port}", drafts_dir=tmp_path / "drafts", **overrides)
+    # The test client names its server "testserver" in Host, which the relay must accept.
+    settings = Settings(
+        base_url=f"http://127.0.0.1:{port}", drafts_dir=tmp_path / "drafts", self_url="http://testserver", **overrides
+    )
     return TestClient(create_app(settings, startup_hooks=[]))
 
 
