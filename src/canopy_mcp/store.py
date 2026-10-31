@@ -422,6 +422,15 @@ class DraftStore:
 
     # --- reading ------------------------------------------------------------
 
+    def _contained(self, path: Path) -> Path | None:
+        """``path`` fully resolved when it is a regular file inside the root, else ``None``.
+
+        Every draft read goes through here, so a symlink under ``screens/`` that
+        points outside the store is never read, hashed, listed or served; it
+        counts as no draft at all.
+        """
+        return contained_file(self.root, path.relative_to(self.root))
+
     def _remember(self, path: Path, key: tuple[int, int, int] | None, rev: str) -> None:
         if key is None:
             self._revs.pop(path, None)
@@ -429,8 +438,11 @@ class DraftStore:
             self._revs[path] = (key, rev)
 
     def _rev_of(self, path: Path) -> str | None:
+        target = self._contained(path)
         try:
-            st = path.stat()
+            if target is None:
+                raise FileNotFoundError(path)
+            st = target.stat()
         except FileNotFoundError:
             self._revs.pop(path, None)
             return None
@@ -439,7 +451,7 @@ class DraftStore:
         if cached and cached[0] == _stat_key(st):
             return cached[1]
         try:
-            data, key = _read_keyed(path)
+            data, key = _read_keyed(target)
         except FileNotFoundError:
             self._revs.pop(path, None)
             return None
@@ -453,8 +465,11 @@ class DraftStore:
 
     def read(self, draft_id: str) -> tuple[dict[str, Any], str]:
         path = self.path_for(draft_id)
+        target = self._contained(path)
         try:
-            data, key = _read_keyed(path)
+            if target is None:
+                raise FileNotFoundError(path)
+            data, key = _read_keyed(target)
         except FileNotFoundError:
             raise DraftNotFound(draft_id) from None
         # Hash the bytes we parsed, so doc and rev always describe the same file state.
@@ -658,13 +673,17 @@ class DraftStore:
         return contained_file(self.root, Path(*parts))
 
     def list(self) -> list[str]:
-        """Every stored draft id, sorted; ids under a reserved first segment are left out."""
+        """Every stored draft id, sorted.
+
+        Ids under a reserved first segment are left out, and so is any screen file
+        that resolves outside the store (a symlink pointing elsewhere).
+        """
         if not self.screens.is_dir():
             return []
         ids = []
         for path in self.screens.rglob(f"*{SCREEN_SUFFIX}"):
             rel = path.relative_to(self.screens).as_posix()[: -len(SCREEN_SUFFIX)]
-            if ID_PATTERN.fullmatch(rel) and not self.reserves(rel) and path.is_file():
+            if ID_PATTERN.fullmatch(rel) and not self.reserves(rel) and self._contained(path) is not None:
                 ids.append(rel)
         return sorted(ids)
 
