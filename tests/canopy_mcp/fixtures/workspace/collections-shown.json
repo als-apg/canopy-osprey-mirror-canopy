@@ -1,0 +1,304 @@
+{
+  "about": [
+    "Shared vectors for collections.shown: the sidebar's shown selection.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "shown = (facility defaults union ticked) minus unticked, in collection list order; not 'fully shown'.",
+    "Each case: collections [{ref, default}] in list order, state {ticked, unticked} (refs), expect [refs].",
+    "Implementations: canopy shown_refs(all_collections, collections_state); the viewer's shownSelection."
+  ],
+  "cases": [
+    {
+      "name": "defaults only",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [],
+        "unticked": []
+      },
+      "expect": [
+        "facility:control-assistant",
+        "facility:storage-ring"
+      ]
+    },
+    {
+      "name": "a ticked collection joins the defaults",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [
+          "personal:grid"
+        ],
+        "unticked": []
+      },
+      "expect": [
+        "facility:control-assistant",
+        "facility:storage-ring",
+        "personal:grid"
+      ]
+    },
+    {
+      "name": "an unticked default leaves",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [],
+        "unticked": [
+          "facility:storage-ring"
+        ]
+      },
+      "expect": [
+        "facility:control-assistant"
+      ]
+    },
+    {
+      "name": "unticked wins over ticked",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [
+          "personal:grid"
+        ],
+        "unticked": [
+          "personal:grid"
+        ]
+      },
+      "expect": [
+        "facility:control-assistant",
+        "facility:storage-ring"
+      ]
+    },
+    {
+      "name": "list order, not tick order",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [
+          "personal:drafts",
+          "facility:injector"
+        ],
+        "unticked": []
+      },
+      "expect": [
+        "facility:control-assistant",
+        "facility:injector",
+        "facility:storage-ring",
+        "personal:drafts"
+      ]
+    },
+    {
+      "name": "a ticked ref that is not listed adds nothing",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [
+          "personal:gone"
+        ],
+        "unticked": []
+      },
+      "expect": [
+        "facility:control-assistant",
+        "facility:storage-ring"
+      ]
+    },
+    {
+      "name": "everything unticked",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [],
+        "unticked": [
+          "facility:control-assistant",
+          "facility:storage-ring"
+        ]
+      },
+      "expect": []
+    },
+    {
+      "name": "no collections",
+      "collections": [],
+      "state": {
+        "ticked": [
+          "personal:grid"
+        ],
+        "unticked": []
+      },
+      "expect": []
+    },
+    {
+      "name": "ticking a default changes nothing",
+      "collections": [
+        {
+          "ref": "facility:control-assistant",
+          "default": true
+        },
+        {
+          "ref": "facility:injector",
+          "default": false
+        },
+        {
+          "ref": "facility:storage-ring",
+          "default": true
+        },
+        {
+          "ref": "personal:grid",
+          "default": false
+        },
+        {
+          "ref": "personal:drafts",
+          "default": false
+        }
+      ],
+      "state": {
+        "ticked": [
+          "facility:control-assistant"
+        ],
+        "unticked": []
+      },
+      "expect": [
+        "facility:control-assistant",
+        "facility:storage-ring"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "about": [
+    "Command vectors for set_query.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "set_query",
+  "args": {
+    "key": "string, required",
+    "query": "string, required"
+  },
+  "extras": [
+    "previous_query"
+  ],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "set_query loads a query into an instance",
+      "command": {
+        "cmd": "set_query",
+        "args": {
+          "key": "@trace",
+          "query": "pv=A&range=-4h"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "previous_query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h"
+      }
+    },
+    {
+      "name": "the same query is a no-op",
+      "command": {
+        "cmd": "set_query",
+        "args": {
+          "key": "@trace",
+          "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": false,
+        "previous_query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h"
+      }
+    }
+  ]
+}

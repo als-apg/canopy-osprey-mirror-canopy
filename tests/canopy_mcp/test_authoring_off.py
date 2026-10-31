@@ -25,6 +25,7 @@ READ_TOOLS = [
     "search_pvs",
     "read_pv",
     "screenshot",
+    "list_collections",
 ]
 
 
@@ -50,6 +51,7 @@ def test_authoring_tools_are_the_ones_that_write() -> None:
         "remove_node",
         "delete_draft",
         "convert_legacy",
+        "request_push",
     }
     assert not set(AUTHORING_TOOLS) & set(READ_TOOLS)
 

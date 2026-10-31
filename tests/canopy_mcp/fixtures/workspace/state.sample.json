@@ -1,0 +1,97 @@
+{
+  "windowId": "w-A",
+  "seq": 41,
+  "shown": true,
+  "state": {
+    "tabs": [
+      {
+        "key": "library/gtb/GTLView?SR=1",
+        "kind": "screen",
+        "canBack": true,
+        "canForward": false
+      },
+      {
+        "key": "library/bts/BTSView",
+        "kind": "screen",
+        "canBack": false,
+        "canForward": false
+      },
+      {
+        "key": "@trace",
+        "kind": "tool",
+        "canBack": false,
+        "canForward": false
+      },
+      {
+        "key": "library/sr/overview",
+        "kind": "screen",
+        "canBack": false,
+        "canForward": false
+      }
+    ],
+    "active": "library/gtb/GTLView?SR=1",
+    "layout": {
+      "split": "row",
+      "items": [
+        {
+          "tile": "t1",
+          "tabs": [
+            "library/gtb/GTLView?SR=1",
+            "library/sr/overview"
+          ],
+          "showing": "library/gtb/GTLView?SR=1",
+          "size": 0.6
+        },
+        {
+          "split": "column",
+          "items": [
+            {
+              "tile": "t2",
+              "tabs": [
+                "library/bts/BTSView"
+              ],
+              "showing": "library/bts/BTSView"
+            },
+            {
+              "tile": "t3",
+              "tabs": [
+                "@trace"
+              ],
+              "showing": "@trace"
+            }
+          ],
+          "size": 0.4
+        }
+      ]
+    },
+    "zoom": {
+      "library/gtb/GTLView": {
+        "mode": "fit"
+      },
+      "library/bts/BTSView": {
+        "mode": "manual",
+        "percent": 75
+      },
+      "library/sr/overview": {
+        "mode": "fit"
+      }
+    },
+    "instances": {
+      "@trace": {
+        "tool": "trace",
+        "n": 1,
+        "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+        "view": null
+      }
+    },
+    "toolMru": [
+      "@trace"
+    ],
+    "labels": {
+      "library/gtb/GTLView?SR=1": "GTL View",
+      "library/bts/BTSView": "BTS View",
+      "@trace": "Data Browser",
+      "library/sr/overview": "Storage Ring"
+    }
+  }
+}

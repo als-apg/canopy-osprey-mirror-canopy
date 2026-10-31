@@ -1,0 +1,263 @@
+{
+  "about": [
+    "Command rejection vectors for invalid_args: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted.",
+    "The viewer owns semantic bounds, one case per bound (bound names it): a tool's query grammar, its PV cap (maxPvs trace 12, correlation 8, waveform 8), Trace's range, a tab-bar index past the target tile's tabs. Syntactic bounds are the hub's (refusals/invalid_command.json)."
+  ],
+  "reason": "invalid_args",
+  "cases": [
+    {
+      "name": "trace: a range react-trace does not read",
+      "bound": "trace-range",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "trace",
+              "query": "pv=A&range=yesterday"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "trace: a custom window ending before it starts",
+      "bound": "trace-range",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "set_query",
+            "args": {
+              "key": "@trace",
+              "query": "pv=A&range=custom&from=2026-09-30T12:00&to=2026-09-30T11:00"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "trace: no pv and no range key",
+      "bound": "trace-grammar",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "trace",
+              "query": "foo=bar"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "trace: more than 12 PVs",
+      "bound": "trace-pvs",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "trace",
+              "query": "pv=SR:BPM:00:X&pv=SR:BPM:01:X&pv=SR:BPM:02:X&pv=SR:BPM:03:X&pv=SR:BPM:04:X&pv=SR:BPM:05:X&pv=SR:BPM:06:X&pv=SR:BPM:07:X&pv=SR:BPM:08:X&pv=SR:BPM:09:X&pv=SR:BPM:10:X&pv=SR:BPM:11:X&pv=SR:BPM:12:X&range=-1h"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "correlation: more than 8 Y PVs",
+      "bound": "correlation-pvs",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "correlation",
+              "query": "x=SR:DIAG:DCCT:01:CURRENT:RB&y=PV:Y0&y=PV:Y1&y=PV:Y2&y=PV:Y3&y=PV:Y4&y=PV:Y5&y=PV:Y6&y=PV:Y7&y=PV:Y8"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "correlation: a value that does not decode",
+      "bound": "correlation-grammar",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "correlation",
+              "query": "x=%ZZ"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "waveform: more than 8 PVs",
+      "bound": "waveform-pvs",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "waveform",
+              "query": "pv=WF:0&pv=WF:1&pv=WF:2&pv=WF:3&pv=WF:4&pv=WF:5&pv=WF:6&pv=WF:7&pv=WF:8"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "waveform: a key that does not decode",
+      "bound": "waveform-grammar",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "waveform",
+              "query": "pv%=A"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    },
+    {
+      "name": "drop at a tab-bar index past the tile's tabs",
+      "bound": "drop-tab-index",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "drop",
+            "args": {
+              "source": {
+                "tab": "@trace"
+              },
+              "target": {
+                "tile": "t1",
+                "zone": "tab",
+                "index": 3
+              }
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "invalid_args"
+        }
+      ]
+    }
+  ]
+}

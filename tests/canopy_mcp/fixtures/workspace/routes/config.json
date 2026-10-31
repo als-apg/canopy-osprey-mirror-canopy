@@ -1,0 +1,114 @@
+{
+  "about": [
+    "Route vectors for the workspace advertisement in config.json.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Route vectors for the workspace's HTTP surface on FRONT. path is relative to the advertised workspace path (config.json workspace.path); there is no route that accepts commands.",
+    "Each case: setup steps (the scenarios' step grammar, on a fresh hub with epoch e1 and the clock at 0), one request {method, path, headers?, body?, padTo?}, expect {status, body?, events?}, then optional follow-up steps.",
+    "A body {'$file': <name>} is that fixture file's body (state.sample.json, state.oversize.json, state.reduced.json); state '$sample' / '$empty' as in the scenarios. padTo: once those are resolved, the body's compact JSON followed by spaces up to that many bytes.",
+    "A claim or report body is {windowId, seq, shown, state, truncated?}; truncated is true when the window reduced an oversize state. An error body is {error: <code>, detail?}; expect names the code only.",
+    "Every workspace route, the event stream included, refuses a Sec-Fetch-Site that is present and neither same-origin nor none with 403 cross_site, before it reads the body or the hub.",
+    "Bodies are at most 131072 bytes (413 too_large); a state that breaks the hub's normalisation is 422 invalid_state.",
+    "optIn: the explicit CANOPY_* opt-in (off by default). Off: config.json has no workspace key and every workspace route is 404."
+  ],
+  "route": "config",
+  "cases": [
+    {
+      "name": "the opt-in on advertises the path and protocol 1",
+      "optIn": true,
+      "request": {
+        "method": "GET",
+        "path": "/config.json"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "workspace": {
+            "path": "workspace",
+            "protocol": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "the opt-in off advertises nothing",
+      "optIn": false,
+      "request": {
+        "method": "GET",
+        "path": "/config.json"
+      },
+      "expect": {
+        "status": 200,
+        "absent": [
+          "workspace"
+        ]
+      }
+    },
+    {
+      "name": "the opt-in off: POST claim is 404",
+      "optIn": false,
+      "request": {
+        "method": "POST",
+        "path": "claim"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "the opt-in off: PUT active is 404",
+      "optIn": false,
+      "request": {
+        "method": "PUT",
+        "path": "active"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "the opt-in off: DELETE active?window=w-A is 404",
+      "optIn": false,
+      "request": {
+        "method": "DELETE",
+        "path": "active?window=w-A"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "the opt-in off: GET events?window=w-A is 404",
+      "optIn": false,
+      "request": {
+        "method": "GET",
+        "path": "events?window=w-A"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "the opt-in off: POST active/w-A/result is 404",
+      "optIn": false,
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result"
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "the opt-in off: GET  is 404",
+      "optIn": false,
+      "request": {
+        "method": "GET",
+        "path": ""
+      },
+      "expect": {
+        "status": 404
+      }
+    }
+  ]
+}

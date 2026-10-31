@@ -1,0 +1,1455 @@
+{
+  "about": [
+    "Route vectors for PUT <ws>/active (report).",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Route vectors for the workspace's HTTP surface on FRONT. path is relative to the advertised workspace path (config.json workspace.path); there is no route that accepts commands.",
+    "Each case: setup steps (the scenarios' step grammar, on a fresh hub with epoch e1 and the clock at 0), one request {method, path, headers?, body?, padTo?}, expect {status, body?, events?}, then optional follow-up steps.",
+    "A body {'$file': <name>} is that fixture file's body (state.sample.json, state.oversize.json, state.reduced.json); state '$sample' / '$empty' as in the scenarios. padTo: once those are resolved, the body's compact JSON followed by spaces up to that many bytes.",
+    "A claim or report body is {windowId, seq, shown, state, truncated?}; truncated is true when the window reduced an oversize state. An error body is {error: <code>, detail?}; expect names the code only.",
+    "Every workspace route, the event stream included, refuses a Sec-Fetch-Site that is present and neither same-origin nor none with 403 cross_site, before it reads the body or the hub.",
+    "Bodies are at most 131072 bytes (413 too_large); a state that breaks the hub's normalisation is 422 invalid_state.",
+    "A report whose seq is not above the window's high-water mark is answered 204 and changes nothing."
+  ],
+  "route": "report",
+  "cases": [
+    {
+      "name": "the slot holder reports",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": "$sample"
+        }
+      },
+      "expect": {
+        "status": 204
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "seq": 42
+          }
+        }
+      ]
+    },
+    {
+      "name": "a window that does not hold the slot",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-B",
+          "seq": 2,
+          "shown": true,
+          "state": "$empty"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "not_active"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "activeWindow": "w-A",
+            "seq": 41
+          }
+        }
+      ]
+    },
+    {
+      "name": "a report never claims",
+      "setup": [],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 1,
+          "shown": true,
+          "state": "$empty"
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "not_active"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "activeWindow": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a seq at or below the high-water mark changes nothing",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 41,
+          "shown": false,
+          "state": "$empty"
+        }
+      },
+      "expect": {
+        "status": 204
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "seq": 41,
+            "shown": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "a cross-site report",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "headers": {
+          "Sec-Fetch-Site": "cross-site"
+        },
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": "$sample"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "cross_site"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "seq": 41
+          }
+        }
+      ]
+    },
+    {
+      "name": "a report body over 128 KiB",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": "$sample"
+        },
+        "padTo": 131073
+      },
+      "expect": {
+        "status": 413,
+        "body": {
+          "error": "too_large"
+        }
+      }
+    },
+    {
+      "name": "a query over 4096 bytes",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a label over 120 characters",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a state key outside the closed schema",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            },
+            "pvValues": {
+              "SR:DIAG:DCCT:01:CURRENT:RB": 500.1
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a tab with the retired docked flag",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false,
+                "docked": true
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a layout that leaves an open tab out",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "a layout in the retired key-leaf shape",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "key": "library/gtb/GTLView?SR=1"
+                },
+                {
+                  "key": "library/bts/BTSView"
+                },
+                {
+                  "key": "@trace"
+                },
+                {
+                  "key": "library/sr/overview"
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL View",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    },
+    {
+      "name": "control and bidi characters are stripped from labels",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "windowId": "w-A",
+          "seq": 42,
+          "shown": true,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/gtb/GTLView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/bts/BTSView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/gtb/GTLView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/gtb/GTLView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/gtb/GTLView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/bts/BTSView"
+                      ],
+                      "showing": "library/bts/BTSView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/gtb/GTLView": {
+                "mode": "fit"
+              },
+              "library/bts/BTSView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/gtb/GTLView?SR=1": "GTL\u0007 View\u202e",
+              "library/bts/BTSView": "BTS View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            }
+          }
+        }
+      },
+      "expect": {
+        "status": 204
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "state": {
+              "labels": {
+                "library/gtb/GTLView?SR=1": "GTL View"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the reduced oversize state is accepted with truncated",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "$file": "state.reduced.json"
+        }
+      },
+      "expect": {
+        "status": 204
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "seq": 77,
+            "truncated": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "the oversize state is too large",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "path": "active",
+        "body": {
+          "$file": "state.oversize.json"
+        }
+      },
+      "expect": {
+        "status": 413,
+        "body": {
+          "error": "too_large"
+        }
+      }
+    }
+  ]
+}
