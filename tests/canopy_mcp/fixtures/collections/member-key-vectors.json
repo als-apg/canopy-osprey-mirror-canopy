@@ -1,0 +1,374 @@
+{
+  "about": [
+    "Shared vectors for memberKey(member), the identity of a collection member.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/collections/member-key-vectors.json); every other holder keeps a byte-identical copy.",
+    "ASCII-only: other characters are spelled as \\u escapes, an astral character as its surrogate pair. No trailing whitespace, one final newline.",
+    "A screen member {screen, macros?} keys as 'screen:<screen>', then '?' and the canonical macros when at least one macro survives.",
+    "Canonical macros: the reserved names embedded, theme, mode and every name starting _canopy are dropped (case-sensitive); the rest are sorted by Unicode code point, not by UTF-16 code unit; each pair is 'name=value' with both sides percent-encoded per RFC 3986 over UTF-8 (A-Z a-z 0-9 - . _ ~ literal, every other byte %XX in upper-case hex, space %20); pairs are joined by '&'.",
+    "A tool member {tool, query?, name?} keys as 'tool:<tool>', then '?' and the query verbatim when query is present; an absent query and a blank one differ.",
+    "The screen reference, the tool id and the query are written verbatim. name never contributes to the key.",
+    "Each case has a member and either expect (the key) or refused: true (the member has no key; an implementation raises or returns its error value)."
+  ],
+  "cases": [
+    {
+      "name": "screen without macros",
+      "member": {
+        "screen": "library/bpm-overview"
+      },
+      "expect": "screen:library/bpm-overview"
+    },
+    {
+      "name": "draft screen",
+      "member": {
+        "screen": "drafts/my-panel"
+      },
+      "expect": "screen:drafts/my-panel"
+    },
+    {
+      "name": "empty macros object adds no query",
+      "member": {
+        "screen": "library/a",
+        "macros": {}
+      },
+      "expect": "screen:library/a"
+    },
+    {
+      "name": "one macro",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "P": "SR01"
+        }
+      },
+      "expect": "screen:library/a?P=SR01"
+    },
+    {
+      "name": "keys are sorted",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "b": "2",
+          "a": "1",
+          "C": "3"
+        }
+      },
+      "expect": "screen:library/a?C=3&a=1&b=2"
+    },
+    {
+      "name": "empty value is kept",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "P": ""
+        }
+      },
+      "expect": "screen:library/a?P="
+    },
+    {
+      "name": "unreserved characters stay literal",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "A-z_0.9~"
+        }
+      },
+      "expect": "screen:library/a?x=A-z_0.9~"
+    },
+    {
+      "name": "tilde stays literal",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "~": "~"
+        }
+      },
+      "expect": "screen:library/a?~=~"
+    },
+    {
+      "name": "asterisk is encoded",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "*"
+        }
+      },
+      "expect": "screen:library/a?x=%2A"
+    },
+    {
+      "name": "space is %20, never +",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "a b"
+        }
+      },
+      "expect": "screen:library/a?x=a%20b"
+    },
+    {
+      "name": "plus is encoded",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "a+b"
+        }
+      },
+      "expect": "screen:library/a?x=a%2Bb"
+    },
+    {
+      "name": "query delimiters in a value are encoded",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "&=%#?/"
+        }
+      },
+      "expect": "screen:library/a?x=%26%3D%25%23%3F%2F"
+    },
+    {
+      "name": "delimiters in a name are encoded",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "a=b&c": "1"
+        }
+      },
+      "expect": "screen:library/a?a%3Db%26c=1"
+    },
+    {
+      "name": "non-ASCII value is UTF-8 percent-encoded",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "\u00e9\u20ac"
+        }
+      },
+      "expect": "screen:library/a?x=%C3%A9%E2%82%AC"
+    },
+    {
+      "name": "astral value",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "x": "\ud83d\ude00"
+        }
+      },
+      "expect": "screen:library/a?x=%F0%9F%98%80"
+    },
+    {
+      "name": "astral name",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "\ud83d\ude00": "1"
+        }
+      },
+      "expect": "screen:library/a?%F0%9F%98%80=1"
+    },
+    {
+      "name": "code-point order puts U+FF5E before an astral name",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "\ud83d\ude00": "astral",
+          "\uff5e": "bmp"
+        }
+      },
+      "expect": "screen:library/a?%EF%BD%9E=bmp&%F0%9F%98%80=astral"
+    },
+    {
+      "name": "sort is on the names, not on their encoding",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "\u00e9": "2",
+          "z": "1"
+        }
+      },
+      "expect": "screen:library/a?z=1&%C3%A9=2"
+    },
+    {
+      "name": "reserved embedded is dropped",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "embedded": "1",
+          "P": "x"
+        }
+      },
+      "expect": "screen:library/a?P=x"
+    },
+    {
+      "name": "reserved theme is dropped",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "theme": "dark",
+          "P": "x"
+        }
+      },
+      "expect": "screen:library/a?P=x"
+    },
+    {
+      "name": "reserved mode is dropped",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "mode": "edit",
+          "P": "x"
+        }
+      },
+      "expect": "screen:library/a?P=x"
+    },
+    {
+      "name": "_canopy prefix is dropped",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "_canopyFrom": "x",
+          "_canopy": "y",
+          "P": "x"
+        }
+      },
+      "expect": "screen:library/a?P=x"
+    },
+    {
+      "name": "only reserved names adds no query",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "theme": "dark",
+          "embedded": "1"
+        }
+      },
+      "expect": "screen:library/a"
+    },
+    {
+      "name": "reserved match is case-sensitive",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "Theme": "dark",
+          "_Canopy": "y",
+          "modes": "z"
+        }
+      },
+      "expect": "screen:library/a?Theme=dark&_Canopy=y&modes=z"
+    },
+    {
+      "name": "name is excluded from a screen key",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "P": "x"
+        },
+        "name": "Mine"
+      },
+      "expect": "screen:library/a?P=x"
+    },
+    {
+      "name": "tool without query",
+      "member": {
+        "tool": "trace"
+      },
+      "expect": "tool:trace"
+    },
+    {
+      "name": "tool with blank query",
+      "member": {
+        "tool": "trace",
+        "query": ""
+      },
+      "expect": "tool:trace?"
+    },
+    {
+      "name": "tool query is verbatim",
+      "member": {
+        "tool": "trace",
+        "query": "pv=SR:BPM 1&span=1h+x"
+      },
+      "expect": "tool:trace?pv=SR:BPM 1&span=1h+x"
+    },
+    {
+      "name": "tool query keeps non-ASCII verbatim",
+      "member": {
+        "tool": "waveform",
+        "query": "pv=\u00e9"
+      },
+      "expect": "tool:waveform?pv=\u00e9"
+    },
+    {
+      "name": "name is excluded from a tool key",
+      "member": {
+        "tool": "trace",
+        "query": "pv=a",
+        "name": "Orbit"
+      },
+      "expect": "tool:trace?pv=a"
+    },
+    {
+      "name": "name alone does not make a query",
+      "member": {
+        "tool": "correlation",
+        "name": "Default"
+      },
+      "expect": "tool:correlation"
+    },
+    {
+      "name": "neither screen nor tool",
+      "member": {
+        "name": "x"
+      },
+      "refused": true
+    },
+    {
+      "name": "both screen and tool",
+      "member": {
+        "screen": "library/a",
+        "tool": "trace"
+      },
+      "refused": true
+    },
+    {
+      "name": "empty screen",
+      "member": {
+        "screen": ""
+      },
+      "refused": true
+    },
+    {
+      "name": "non-string macro value",
+      "member": {
+        "screen": "library/a",
+        "macros": {
+          "P": 1
+        }
+      },
+      "refused": true
+    },
+    {
+      "name": "macros not an object",
+      "member": {
+        "screen": "library/a",
+        "macros": [
+          "P"
+        ]
+      },
+      "refused": true
+    },
+    {
+      "name": "non-string query",
+      "member": {
+        "tool": "trace",
+        "query": null
+      },
+      "refused": true
+    },
+    {
+      "name": "empty tool",
+      "member": {
+        "tool": ""
+      },
+      "refused": true
+    }
+  ]
+}

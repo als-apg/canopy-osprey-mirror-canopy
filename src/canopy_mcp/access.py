@@ -3,7 +3,7 @@
 A deployment that runs this server behind a proxy hands it a credential in a
 file (``CANOPY_ACCESS_TOKEN_FILE``). :class:`AccessGate` then requires that
 value in the ``X-Canopy-Access`` header of every HTTP request and WebSocket
-handshake, whatever the path or method -- the viewer, the drafts,
+handshake, whatever the path or method -- the viewer, ``/views``, the drafts,
 the forwards and ``/mcp`` alike. The one exception is ``GET /health``, which a
 supervisor has to be able to probe before it holds anything.
 

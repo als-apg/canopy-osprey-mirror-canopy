@@ -1,0 +1,18 @@
+{
+  "name": "Storage ring",
+  "description": "Storage ring overview and the S3 promotion screen.",
+  "members": [
+    {
+      "screen": "library/sr/overview"
+    },
+    {
+      "screen": "library/s3-promo/promotion"
+    },
+    {
+      "tool": "correlation",
+      "name": "Beam current vs. RF forward power",
+      "query": "x=SR:DIAG:DCCT:01:CURRENT:RB&y=SR:RF:CAVITY:01:POWER:FWD&range=-1h"
+    }
+  ],
+  "updated": "2026-10-16T00:00:00+00:00"
+}

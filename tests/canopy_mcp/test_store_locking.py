@@ -11,7 +11,9 @@ import subprocess
 import pytest
 
 from canopy_mcp import store as store_mod
+from canopy_mcp import views as views_mod
 from canopy_mcp.store import UMASK, DraftStore, RevConflict, ReadOnlyStore, lock_root
+from canopy_mcp.views import ViewStore
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
@@ -538,3 +540,77 @@ async def test_a_failed_mutation_leaves_the_lock_free(store):
     assert not _is_locked(store.root)
     assert not store._lock.locked()
     assert _files(store.root) == []
+
+
+# --- views ----------------------------------------------------------------------
+
+
+async def test_two_concurrent_view_puts_serialise_with_views_dir_outside_the_root(tmp_path, monkeypatch):
+    drafts, saved = tmp_path / "drafts", tmp_path / "volume" / "saved"
+    # Two stores, as two processes would hold: no shared asyncio.Lock.
+    one, two = ViewStore(drafts, views_dir=saved), ViewStore(drafts, views_dir=saved)
+    gate = _Gate(monkeypatch, views_mod)
+    first = asyncio.create_task(one.put("orbit", "One", "pv=A"))
+    try:
+        await gate.wait_entered()
+        # The lock is on the named directory, and the drafts root is neither locked nor created.
+        assert _is_locked(saved)
+        assert not drafts.exists()
+        second = asyncio.create_task(two.put("orbit", "Two", "pv=B"))
+        await asyncio.sleep(0.2)
+        assert not second.done()
+        assert _files(tmp_path) == []
+    finally:
+        gate.release.set()
+    (_, created_one), (view_two, created_two) = await asyncio.gather(first, second)
+    assert (created_one, created_two) == (True, False)
+    assert one.get("orbit") == view_two
+    assert view_two["name"] == "Two"
+    assert _files(tmp_path) == ["volume/saved/orbit.json"]
+    assert not drafts.exists()
+    assert not _is_locked(saved)
+
+
+async def test_a_kind_change_racing_a_put_is_judged_under_the_lock(tmp_path, monkeypatch):
+    saved = tmp_path / "saved"
+    one, two = ViewStore(tmp_path / "drafts", views_dir=saved), ViewStore(tmp_path / "drafts", views_dir=saved)
+    gate = _Gate(monkeypatch, views_mod)
+    first = asyncio.create_task(one.put("v", "One", "pv=A", "trace"))
+    try:
+        await gate.wait_entered()
+        second = asyncio.create_task(two.put("v", "Two", "pv=B", "logbook"))
+        await asyncio.sleep(0.2)
+        assert not second.done()
+    finally:
+        gate.release.set()
+    results = await asyncio.gather(first, second, return_exceptions=True)
+    assert isinstance(results[1], views_mod.ViewKindConflict)
+    assert one.get("v")["kind"] == "trace"
+
+
+async def test_view_files_and_directories_get_umask_modes(tmp_path):
+    store = ViewStore(tmp_path / "drafts")
+    await store.put("v", "V", "pv=A")
+    assert store.views.stat().st_mode & 0o777 == 0o777 & ~UMASK
+    assert store.path_for("v").stat().st_mode & 0o777 == 0o666 & ~UMASK
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory modes")
+async def test_a_0555_views_directory_refuses_put_and_delete(tmp_path):
+    store = ViewStore(tmp_path / "drafts")
+    await store.put("v", "V", "pv=A")
+    store.views.chmod(0o555)
+    try:
+        with pytest.raises(ReadOnlyStore):
+            await store.put("v", "W", "pv=B")
+        with pytest.raises(ReadOnlyStore):
+            await store.put("new", "N", "pv=C")
+        with pytest.raises(ReadOnlyStore):
+            await store.delete("v")
+        with pytest.raises(views_mod.ViewNotFound):
+            await store.delete("absent")
+        assert store.get("v")["name"] == "V"
+        assert not _is_locked(store.views)
+    finally:
+        store.views.chmod(0o755)
+    assert _files(tmp_path) == ["drafts/views/v.json"]

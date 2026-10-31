@@ -255,6 +255,7 @@ mcp = [
     { name = "playwright" },
     { name = "psutil" },
     { name = "pydmconverter" },
+    { name = "sse-starlette" },
     { name = "starlette" },
     { name = "websockets" },
 ]
@@ -303,6 +304,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "redis", marker = "extra == 'data'", specifier = ">=5.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'data'", specifier = ">=2.0" },
+    { name = "sse-starlette", marker = "extra == 'mcp'", specifier = ">=3.4" },
     { name = "starlette", marker = "extra == 'mcp'", specifier = ">=0.40" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.36" },
     { name = "websockets", marker = "extra == 'mcp'", specifier = ">=14" },

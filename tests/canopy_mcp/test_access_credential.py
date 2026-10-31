@@ -206,7 +206,7 @@ def test_the_gate_takes_the_place_of_the_proxy_guard(gated_app):
 def test_the_walk_reaches_the_mcp_route_the_viewer_the_stores_and_both_sockets(routes):
     """Guards the enumeration itself: a walk that finds nothing would pass every case below."""
     paths = {path for _, _, path in routes}
-    assert {"/mcp", "/", "/config.json", "/drafts/manifest.json", "/drafts/x", "/mole/v1/x"} <= paths
+    assert {"/mcp", "/", "/config.json", "/drafts/manifest.json", "/views", "/views/x", "/mole/v1/x"} <= paths
     assert {path for kind, _, path in routes if kind == "websocket"} == SOCKETS
     assert ("http", *OPEN) in routes
     assert {method for _, method, path in routes if path == "/mcp"} == set(ALL_METHODS)
@@ -315,6 +315,7 @@ def test_the_comparison_is_constant_time(monkeypatch, gated_app):
 
 def test_the_credential_opens_the_routes(client):
     assert client.get("/config.json", headers=ACCESS).status_code == 200
+    assert client.get("/views", headers=ACCESS).status_code == 200
     assert client.get("/drafts/manifest.json", headers=ACCESS).status_code == 200
     # The header name is matched whatever its case.
     assert client.get("/config.json", headers={"x-canopy-access": TOKEN}).status_code == 200
