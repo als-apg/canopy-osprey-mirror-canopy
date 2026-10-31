@@ -64,6 +64,45 @@ jobs:
         path: .coverage.linux
         include-hidden-files: true
 
+  # The oldest release of every direct dependency pyproject.toml admits. A floor the
+  # tests do not pass at turns this job red; uv.lock is not what it installs.
+  tests-floors:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: canopy
+          POSTGRES_PASSWORD: canopy
+          POSTGRES_DB: canopy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      with:
+        python-version: "3.12"
+
+    # The browser tests drive the Chromium build of the floor Playwright, the
+    # version the mcp extra's playwright>= line names.
+    - name: Install Chromium for the floor Playwright
+      run: >-
+        uvx --from "playwright==$(sed -n 's/^ *"playwright>=\([0-9.]*\)".*/\1/p' pyproject.toml)"
+        playwright install --with-deps chromium
+
+    # The perf bounds are for operator-class hardware, not a shared runner.
+    - name: Test under the dependency floors
+      run: ci/run-under-floors.sh tests/ -m "not perf"
+
   # Windows/macOS runners can't run service containers, so skip those tests (their conftest
   # skips when Postgres is unreachable)
   tests-other:
