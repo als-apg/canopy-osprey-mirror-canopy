@@ -11,6 +11,7 @@ from typing import Literal
 
 from canopy.mole.schemas.pv import PVMetadata
 from canopy.contracts.sample import Sample, BinnedPoint
+from canopy.mole.adapters.base import ArchiveBlock
 from canopy.mole.schemas.archiver import ArchiverListDTO
 from canopy.mole.services.archiver_service import ArchiverService
 
@@ -55,6 +56,33 @@ async def fetch_window(
         pv, t0_ns, t1_ns, archiver=archiver, max_points=max_points, include_last_before=include_last_before
     )
     return samples
+
+
+async def fetch_window_budgeted(
+    pv: str,
+    t0_ns: int,
+    t1_ns: int,
+    *,
+    archiver: str | None = None,
+    budget: int | None = None,
+) -> ArchiveBlock:
+    """Seed-path read as arrays, fetched newest-first in rate-sized windows and parsed off-loop.
+
+    See `ArchiverService.fetch_window_budgeted`. Terminal errors
+    (`ArchiverNotConfigured`, `PVNotFoundInArchiver`) propagate unchanged.
+    """
+    _, block = await get_service().fetch_window_budgeted(pv, t0_ns, t1_ns, archiver=archiver, budget=budget)
+    return block
+
+
+async def fetch_last_before(pv: str, ts_list: list[int], *, archiver: str | None = None) -> list[Sample | None]:
+    """The last sample at or before each of at most 500 timestamps (`ValueError` above)."""
+    return await get_service().fetch_last_before(pv, ts_list, archiver=archiver)
+
+
+async def event_faithful(*, archiver: str | None = None) -> bool:
+    """Whether the archiver stores change events with severity (False for a polled recorder)."""
+    return get_service().event_faithful(archiver=archiver)
 
 
 async def fetch_binned(

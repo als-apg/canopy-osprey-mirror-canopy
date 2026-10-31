@@ -11,6 +11,11 @@ class AlarmSeverity(StrEnum):
     INVALID = "INVALID"
 
 
+#: ``AlarmSeverity`` as a small integer, in declaration order: the severity code
+#: of Mole's ``ArchiveBlock`` and of Fox's ``RingSlice`` arrays.
+SEVERITY_ORDINAL: dict[AlarmSeverity, int] = {sev: i for i, sev in enumerate(AlarmSeverity)}
+
+
 class Sample(CanopyModel):
     """A single archived or live sample of a PV."""
 
