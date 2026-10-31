@@ -38,7 +38,8 @@ def test_convert_edl_returns_screen_ir():
         resp = _post(client)
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) >= {"screen", "warnings", "unknownWidgets", "formulas", "stats"}
+    assert set(body) >= {"screen", "warnings", "unknownWidgets", "formulas", "stats", "scheme"}
+    assert body["scheme"]["served"] == "canopy-default"
     assert body["screen"]["schemaVersion"] == "1.0"
     assert body["stats"]["widgetCount"] >= 1
     assert body["unknownWidgets"] == []
@@ -300,3 +301,124 @@ def test_get_batch_screen_miss_returns_404(monkeypatch):
         )
     assert resp.status_code == 404
     assert resp.json()["code"] == "converter_batch_result_not_found"
+
+
+# --- Phoebus .bob screens ---------------------------------------------------------
+
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+
+from canopy.converter.tasks import _kind_for, input_key, convert_batch  # noqa: E402
+from canopy.converter.api.v1.conversions import _resolve_kind  # noqa: E402
+
+# A minimal synthetic Phoebus Display Builder screen: a static label and a PV readback.
+BOB = b"""<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Synthetic</name>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <x>10</x>
+    <y>10</y>
+    <text>Hello</text>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Readback</name>
+    <x>10</x>
+    <y>40</y>
+    <pv_name>SYN:PV</pv_name>
+  </widget>
+</display>
+"""
+
+
+@pytest.mark.parametrize(
+    ("kind", "filename", "expected"),
+    [
+        (None, "x.bob", "bob"),
+        (None, "dir/Panel.BOB", "bob"),
+        ("bob", "noext", "bob"),
+        ("bob", "x.edl", "bob"),  # the explicit field wins over the suffix
+        (None, "x.edl", "edl"),
+        (None, "x.ui", "ui"),
+    ],
+)
+def test_resolve_kind_accepts_bob(kind, filename, expected):
+    assert _resolve_kind(kind, filename) == expected
+
+
+def test_resolve_kind_error_names_bob():
+    from canopy.converter.errors import UnsupportedInput
+
+    with pytest.raises(UnsupportedInput, match=r"\.bob"):
+        _resolve_kind(None, "x.txt")
+
+
+def test_convert_bob_upload_returns_screen_ir():
+    with TestClient(app) as client:
+        resp = _post(client, filename="synthetic.bob", content=BOB)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # The app converts with the canopy-default scheme, so the .bob's named colors become
+    # roles and the screen is stamped 1.1 (1.1 iff a role is present).
+    assert body["screen"]["schemaVersion"] == "1.1"
+    assert body["stats"]["widgetCount"] >= 2
+    assert body["unknownWidgets"] == []
+
+
+def test_convert_bob_with_explicit_kind_without_suffix():
+    with TestClient(app) as client:
+        resp = _post(client, filename="noext", content=BOB, data={"kind": "bob"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["screen"]["schemaVersion"] == "1.1"  # roles from the canopy-default scheme
+
+
+def test_validate_bob_upload_is_ok():
+    with TestClient(app) as client:
+        resp = client.post(
+            "/converter/v1/conversions/validate",
+            headers=READ_HEADERS,
+            files={"file": ("synthetic.bob", BOB, "application/octet-stream")},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+
+
+def test_batch_endpoint_accepts_archive_with_bob(monkeypatch):
+    _, captured = _patch_jobs(monkeypatch)
+    with TestClient(app) as client:
+        resp = client.post(
+            "/converter/v1/conversions/batch",
+            headers=READ_HEADERS,
+            files={"file": ("screens.zip", _zip_bytes({"panels/a.bob": BOB}), "application/zip")},
+        )
+    assert resp.status_code == 200
+    assert captured["function"] == "convert_batch"
+
+
+def test_batch_kind_for_bob_suffix():
+    assert _kind_for("panels/a.bob") == "bob"
+    assert _kind_for("panels/A.BOB") == "bob"
+
+
+async def test_batch_task_converts_bob_entry():
+    """A .bob inside a batch archive is picked up and converted, not skipped."""
+    redis = fakeredis.aioredis.FakeRedis()
+    await redis.set(input_key("bobtok"), _zip_bytes({"panels/a.bob": BOB, "screens/b.edl": EDL}))
+    manifest = await convert_batch({"redis": redis, "job_id": "bobjob"}, "bobtok")
+
+    assert manifest["total"] == 2
+    assert manifest["succeeded"] == 2, manifest
+    assert manifest["skipped"] == 0
+    row = next(r for r in manifest["rows"] if r["path"] == "panels/a.bob")
+    assert row["status"] == "succeeded"
+    screen = json.loads(await redis.get(row["resultKey"]))
+    assert screen["schemaVersion"] == "1.1"  # the batch worker converts with the scheme too
+
+
+async def test_batch_task_skip_message_names_bob():
+    redis = fakeredis.aioredis.FakeRedis()
+    await redis.set(input_key("skiptok"), _zip_bytes({"notes.txt": b"x"}))
+    manifest = await convert_batch({"redis": redis, "job_id": "skipjob"}, "skiptok")
+    assert manifest["skipped"] == 1
+    assert ".bob" in manifest["rows"][0]["warnings"][0]

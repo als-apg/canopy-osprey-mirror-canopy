@@ -54,8 +54,7 @@
           "label": "Open",
           "macros": {
             "DEV": "${P}"
-          },
-          "openInNewWindow": true
+          }
         },
         "geometry": {
           "x": 10,

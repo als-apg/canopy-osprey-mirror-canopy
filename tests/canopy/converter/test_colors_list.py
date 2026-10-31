@@ -1,5 +1,7 @@
 """The bundled EDM colors.list is valid, and conversions resolve palette indices through it."""
 
+import os
+
 from pydmconverter.edm.parser_helpers import parse_colors_list
 
 from canopy.converter.config import ConverterConfig
@@ -54,6 +56,34 @@ def test_bundled_colors_list_exists_and_parses_cleanly():
     # Synthetic extension: every residual index the corpus references resolves.
     assert data["static"][193]["name"] == "site-ext-193"
     assert len(data["static"]) == 101
+
+
+def test_the_service_hands_the_palette_to_the_converter(monkeypatch):
+    """A screen using ``fgColor index N`` resolves through the configured palette, whatever the environment says."""
+    monkeypatch.delenv("EDMCOLORFILE", raising=False)
+    monkeypatch.delenv("EDMFILES", raising=False)
+    config = ConverterConfig()
+    result = ConversionService(colors_list_path=config.colors_list_path).convert(_INDEXED_COLOR_EDL, kind="edl")
+    assert result.stats.widget_count == 1
+    label = result.screen["root"]["children"][0]
+    assert label["type"] == "text-label"
+    assert label["props"]["text"] == "Indexed colours"
+    # Index 25 is "Controller", rgb (0, 0, 65535) in the bundled palette.
+    assert label["props"]["foregroundColor"] == "#0000ff"
+
+
+def test_a_missing_palette_degrades_to_the_converter_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("EDMCOLORFILE", raising=False)
+    monkeypatch.delenv("EDMFILES", raising=False)
+    result = ConversionService(colors_list_path=tmp_path / "absent.list").convert(_INDEXED_COLOR_EDL, kind="edl")
+    assert result.stats.widget_count == 1
+    assert result.screen["root"]["children"][0]["props"]["text"] == "Indexed colours"
+
+
+def test_the_environment_is_not_written(monkeypatch):
+    monkeypatch.delenv("EDMCOLORFILE", raising=False)
+    ConversionService(colors_list_path=ConverterConfig().colors_list_path).convert(_INDEXED_COLOR_EDL, kind="edl")
+    assert "EDMCOLORFILE" not in os.environ
 
 
 def test_resolve_edm_lists_returns_the_bundled_colors_list():

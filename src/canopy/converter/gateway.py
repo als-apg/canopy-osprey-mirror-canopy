@@ -6,11 +6,9 @@ singleton at app startup; ``get_service()`` is exposed for ``dependencies.py``.
 Tests can re-bind a fake service freely.
 """
 
-from typing import Literal
-
 import anyio
 
-from canopy.converter.services.conversion_service import ConversionService
+from canopy.converter.services.conversion_service import ScreenKind, ConversionService
 
 _service: ConversionService | None = None
 
@@ -27,7 +25,7 @@ def get_service() -> ConversionService:
     return _service
 
 
-async def convert_screen(source: bytes, *, kind: Literal["edl", "ui"], filename: str | None = None) -> dict:
+async def convert_screen(source: bytes, *, kind: ScreenKind, filename: str | None = None) -> dict:
     """Parse legacy screen bytes -> validated Screen IR (plain dict).
 
     ``filename`` is the source's original name; the screen id and title derive from it.
@@ -39,5 +37,5 @@ async def convert_screen(source: bytes, *, kind: Literal["edl", "ui"], filename:
     return result.screen
 
 
-def _convert_sync(source: bytes, kind: Literal["edl", "ui"], filename: str | None = None):
+def _convert_sync(source: bytes, kind: ScreenKind, filename: str | None = None):
     return get_service().convert(source, kind=kind, filename=filename)

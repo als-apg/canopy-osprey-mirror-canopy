@@ -1,11 +1,13 @@
 import json
 from uuid import uuid4
-from typing import Literal, Annotated
+from typing import Any, Annotated
 from pathlib import Path
 
-from fastapi import File, Form, Security, APIRouter, UploadFile
+from fastapi import File, Form, Request, Security, APIRouter, UploadFile
 from starlette.concurrency import run_in_threadpool
 
+from canopy.core.config import module_selected
+from canopy.core.errors import ModuleUnavailable
 from canopy.core.security import require_read_access
 from canopy.contracts.jobs import JobCreatedDTO
 from canopy.converter.errors import (
@@ -20,7 +22,9 @@ from canopy.converter.dependencies import (
     ConversionServiceDep,
 )
 from canopy.converter.schemas.conversions import (
+    SchemeMetaDTO,
     BatchScreenDTO,
+    DroppedPropsDTO,
     UnknownWidgetDTO,
     FormulaSummaryDTO,
     ValidateResultDTO,
@@ -28,22 +32,25 @@ from canopy.converter.schemas.conversions import (
     ScreenConversionResultDTO,
 )
 from canopy.converter.adapters.fox_validation import validate_formulas
-from canopy.converter.services.conversion_service import ConversionResult
+from canopy.converter.services.conversion_service import (
+    SUFFIX_KIND,
+    SCREEN_KINDS,
+    ScreenKind,
+    ConversionResult,
+)
 
 router = APIRouter(tags=["Converter / Conversions"])
 
-_SUFFIX_KIND: dict[str, Literal["edl", "ui"]] = {".edl": "edl", ".ui": "ui"}
 
-
-def _resolve_kind(kind: str | None, filename: str | None) -> Literal["edl", "ui"]:
+def _resolve_kind(kind: str | None, filename: str | None) -> ScreenKind:
     """Prefer the explicit ``kind`` form field; else infer from the filename suffix."""
-    if kind in ("edl", "ui"):
+    if kind in SCREEN_KINDS:
         return kind  # type: ignore[return-value]
     if filename:
-        guessed = _SUFFIX_KIND.get(Path(filename).suffix.lower())
+        guessed = SUFFIX_KIND.get(Path(filename).suffix.lower())
         if guessed is not None:
             return guessed
-    raise UnsupportedInput("Could not determine screen kind; pass kind=edl|ui or upload a .edl/.ui file")
+    raise UnsupportedInput("Could not determine screen kind; pass kind=edl|ui|bob or upload a .edl/.ui/.bob file")
 
 
 async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
@@ -56,6 +63,18 @@ async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
     if len(data) > max_bytes:
         raise UploadTooLarge(f"Upload is {len(data)} bytes; limit is {max_bytes} bytes")
     return data
+
+
+def _scheme_dto(meta: dict[str, Any] | None) -> SchemeMetaDTO | None:
+    """The DTO form of a scheme meta: every field but ``flatHash`` (``None`` when scheme-free)."""
+    if meta is None:
+        return None
+    return SchemeMetaDTO(
+        id=meta.get("id"),
+        sha256=meta.get("sha256"),
+        served=meta["served"],
+        errors=list(meta.get("errors") or []),
+    )
 
 
 def _to_dto(result: ConversionResult, warnings: list[str]) -> ScreenConversionResultDTO:
@@ -71,6 +90,8 @@ def _to_dto(result: ConversionResult, warnings: list[str]) -> ScreenConversionRe
             macro_count=result.stats.macro_count,
             rule_count=result.stats.rule_count,
         ),
+        dropped_props=[DroppedPropsDTO(node_id=d.node_id, props=list(d.props)) for d in result.dropped_props],
+        scheme=_scheme_dto(result.scheme),
     )
 
 
@@ -79,12 +100,12 @@ async def create_conversion(
     service: ConversionServiceDep,
     config: ConverterConfigDep,
     fox_validate: FoxValidateDep,
-    file: Annotated[UploadFile, File(description="A legacy .edl or .ui screen")],
-    kind: Annotated[Literal["edl", "ui"] | None, Form()] = None,
+    file: Annotated[UploadFile, File(description="A legacy .edl, .ui or .bob screen")],
+    kind: Annotated[ScreenKind | None, Form()] = None,
 ) -> ScreenConversionResultDTO:
     """Convert one uploaded legacy screen to Canopy Screen IR (synchronous).
 
-    ``kind`` may be omitted when the filename carries a ``.edl``/``.ui`` suffix.
+    ``kind`` may be omitted when the filename carries a ``.edl``/``.ui``/``.bob`` suffix.
     The screen is validated against the Screen IR schema before it is returned.
     """
     data = await _read_upload(file, config.max_upload_bytes)
@@ -100,8 +121,8 @@ async def validate_conversion(
     service: ConversionServiceDep,
     config: ConverterConfigDep,
     fox_validate: FoxValidateDep,
-    file: Annotated[UploadFile, File(description="A legacy .edl or .ui screen")],
-    kind: Annotated[Literal["edl", "ui"] | None, Form()] = None,
+    file: Annotated[UploadFile, File(description="A legacy .edl, .ui or .bob screen")],
+    kind: Annotated[ScreenKind | None, Form()] = None,
 ) -> ValidateResultDTO:
     """Dry-run a conversion and return only diagnostics (the IR is discarded).
 
@@ -117,7 +138,13 @@ async def validate_conversion(
         resolved = _resolve_kind(kind, file.filename)
         result = await run_in_threadpool(lambda: service.convert(data, kind=resolved, filename=file.filename))
     except (UnsupportedInput, ConversionFailed) as exc:
-        return ValidateResultDTO(ok=False, warnings=[exc.detail])
+        # No result to read the scheme from: report the service's own, so a failed
+        # dry run still tells the Builder which scheme an import would use.
+        return ValidateResultDTO(
+            ok=False,
+            warnings=[exc.detail],
+            scheme=_scheme_dto(getattr(service, "scheme_meta", None)),
+        )
     formula_warnings = await validate_formulas(result.formulas, validate=fox_validate)
     return ValidateResultDTO(
         ok=True,
@@ -125,6 +152,7 @@ async def validate_conversion(
         unknown_widgets=[
             UnknownWidgetDTO(original_class=u.original_class, count=u.count) for u in result.unknown_widgets
         ],
+        scheme=_scheme_dto(result.scheme),
     )
 
 
@@ -133,10 +161,29 @@ def _looks_like_archive(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04" or data[:2] == b"\x1f\x8b"
 
 
-@router.post("/conversions/batch", dependencies=[Security(require_read_access)])
+def _require_jobs(request: Request) -> None:
+    """Raise ``ModuleUnavailable`` (503) when this deployment runs without Jobs.
+
+    Batch conversion queues its work through the Jobs module. Where Jobs is not
+    mounted its gateway has no pool (and may not be importable at all), so the
+    batch routes refuse here, before touching it.
+    """
+    if not module_selected(request.scope, "jobs"):
+        raise ModuleUnavailable("Batch conversion needs the jobs module, which this deployment does not run")
+
+
+_MODULE_UNAVAILABLE_RESPONSE = {503: {"description": "The jobs module is not part of this deployment"}}
+
+
+@router.post(
+    "/conversions/batch",
+    dependencies=[Security(require_read_access)],
+    responses=_MODULE_UNAVAILABLE_RESPONSE,
+)
 async def create_batch_conversion(
+    request: Request,
     config: ConverterConfigDep,
-    file: Annotated[UploadFile, File(description="A .zip or .tar.gz of legacy .edl/.ui screens")],
+    file: Annotated[UploadFile, File(description="A .zip or .tar.gz of legacy .edl/.ui/.bob screens")],
 ) -> JobCreatedDTO:
     """Convert a folder of legacy screens asynchronously.
 
@@ -145,6 +192,8 @@ async def create_batch_conversion(
     ``succeeded`` rows carry an ``index``; fetch each screen's IR from
     ``GET /conversions/batch/{jobId}/screens/{index}``.
     """
+    _require_jobs(request)
+
     # Lazy import: keeps the converter loadable without Jobs and routes the
     # cross-module call through the public gateway only (mirrors get_fox_validate).
     from canopy.jobs import gateway as jobs_gateway
@@ -161,13 +210,19 @@ async def create_batch_conversion(
     return JobCreatedDTO(job_id=job_id, status_url=f"/jobs/v1/{job_id}")
 
 
-@router.get("/conversions/batch/{job_id}/screens/{index}", dependencies=[Security(require_read_access)])
-async def get_batch_screen(job_id: str, index: int) -> BatchScreenDTO:
+@router.get(
+    "/conversions/batch/{job_id}/screens/{index}",
+    dependencies=[Security(require_read_access)],
+    responses=_MODULE_UNAVAILABLE_RESPONSE,
+)
+async def get_batch_screen(request: Request, job_id: str, index: int) -> BatchScreenDTO:
     """Fetch one converted screen's IR from a finished batch by its manifest ``index``.
 
     Diagnostics (warnings, unknown widgets) live in the batch manifest row; this
     returns just the Screen IR document the editor loads.
     """
+    _require_jobs(request)
+
     from canopy.jobs import gateway as jobs_gateway
     from canopy.converter.tasks import result_key
 

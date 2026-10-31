@@ -7,6 +7,7 @@ from canopy.converter import gateway
 from canopy.core.errors import register_canopy_error_handler
 from canopy.converter.config import get_converter_config
 from canopy.converter.runtime import mark_started
+from canopy.core.color_scheme import get_color_scheme
 from canopy.converter.api.v1.router import router as v1_router
 from canopy.converter.adapters.edm_lists import resolve_edm_lists
 from canopy.converter.services.conversion_service import ConversionService
@@ -16,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def converter_lifespan():
-    """Startup: point the EDM parser at colors.list, construct the service, bind
-    the gateway.
+    """Startup: construct the service and bind the gateway.
 
     Composed by the parent app's lifespan in ``canopy.main`` — mounted sub-apps
     do not run their own lifespan automatically behind ``app.mount()``.
@@ -36,17 +36,23 @@ async def converter_lifespan():
     """
     config = get_converter_config()
     colors_list, calc_list = resolve_edm_lists(config)
+    # The color scheme is flattened once per process (get_color_scheme caches per
+    # path); the service receives the loaded result and never loads one itself.
     service = ConversionService(
+        scheme=get_color_scheme(config.scheme_path),
         colors_list_path=colors_list,
         calc_list_path=calc_list,
+        color_def_path=config.color_def_path,
         search_paths=config.search_paths,
     )
     gateway.bind(service)
     mark_started()
     logger.info(
-        "Converter started: colors_list=%s, calc_list=%s",
+        "Converter started: colors_list=%s, calc_list=%s, scheme=%s, color_def=%s",
         colors_list,
         calc_list,
+        (service.scheme_meta or {}).get("served"),
+        config.color_def_path,
     )
     try:
         yield
