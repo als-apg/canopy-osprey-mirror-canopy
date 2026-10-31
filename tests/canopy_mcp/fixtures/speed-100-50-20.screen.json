@@ -1,0 +1,2212 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "speed-100-50-20",
+  "metadata": {
+    "title": "check speed fixture",
+    "source": {
+      "type": "native"
+    },
+    "size": {
+      "width": 1200,
+      "height": 300
+    }
+  },
+  "macros": [],
+  "formulas": [
+    {
+      "name": "f00",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 1",
+      "bindings": {
+        "a": "SR:C01:BPM1:X",
+        "b": "SR:C02:BPM2:Y"
+      }
+    },
+    {
+      "name": "f01",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 2",
+      "bindings": {
+        "a": "SR:C03:BPM3:X",
+        "b": "SR:C04:BPM4:Y"
+      }
+    },
+    {
+      "name": "f02",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 3",
+      "bindings": {
+        "a": "SR:C05:BPM5:X",
+        "b": "SR:C06:BPM6:Y"
+      }
+    },
+    {
+      "name": "f03",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 4",
+      "bindings": {
+        "a": "SR:C07:BPM7:X",
+        "b": "SR:C08:BPM8:Y"
+      }
+    },
+    {
+      "name": "f04",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 5",
+      "bindings": {
+        "a": "SR:C09:BPM9:X",
+        "b": "SR:C10:BPM1:Y"
+      }
+    },
+    {
+      "name": "f05",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 6",
+      "bindings": {
+        "a": "SR:C11:BPM2:X",
+        "b": "SR:C12:BPM3:Y"
+      }
+    },
+    {
+      "name": "f06",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 7",
+      "bindings": {
+        "a": "SR:C01:BPM4:X",
+        "b": "SR:C02:BPM5:Y"
+      }
+    },
+    {
+      "name": "f07",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 8",
+      "bindings": {
+        "a": "SR:C03:BPM6:X",
+        "b": "SR:C04:BPM7:Y"
+      }
+    },
+    {
+      "name": "f08",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 9",
+      "bindings": {
+        "a": "SR:C05:BPM8:X",
+        "b": "SR:C06:BPM9:Y"
+      }
+    },
+    {
+      "name": "f09",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 10",
+      "bindings": {
+        "a": "SR:C07:BPM1:X",
+        "b": "SR:C08:BPM2:Y"
+      }
+    },
+    {
+      "name": "f10",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 11",
+      "bindings": {
+        "a": "SR:C09:BPM3:X",
+        "b": "SR:C10:BPM4:Y"
+      }
+    },
+    {
+      "name": "f11",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 12",
+      "bindings": {
+        "a": "SR:C11:BPM5:X",
+        "b": "SR:C12:BPM6:Y"
+      }
+    },
+    {
+      "name": "f12",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 13",
+      "bindings": {
+        "a": "SR:C01:BPM7:X",
+        "b": "SR:C02:BPM8:Y"
+      }
+    },
+    {
+      "name": "f13",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 14",
+      "bindings": {
+        "a": "SR:C03:BPM9:X",
+        "b": "SR:C04:BPM1:Y"
+      }
+    },
+    {
+      "name": "f14",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 15",
+      "bindings": {
+        "a": "SR:C05:BPM2:X",
+        "b": "SR:C06:BPM3:Y"
+      }
+    },
+    {
+      "name": "f15",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 16",
+      "bindings": {
+        "a": "SR:C07:BPM4:X",
+        "b": "SR:C08:BPM5:Y"
+      }
+    },
+    {
+      "name": "f16",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 17",
+      "bindings": {
+        "a": "SR:C09:BPM6:X",
+        "b": "SR:C10:BPM7:Y"
+      }
+    },
+    {
+      "name": "f17",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 18",
+      "bindings": {
+        "a": "SR:C11:BPM8:X",
+        "b": "SR:C12:BPM9:Y"
+      }
+    },
+    {
+      "name": "f18",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 19",
+      "bindings": {
+        "a": "SR:C01:BPM1:X",
+        "b": "SR:C02:BPM2:Y"
+      }
+    },
+    {
+      "name": "f19",
+      "kind": "scalar",
+      "expression": "({a} - {b}) * 20",
+      "bindings": {
+        "a": "SR:C03:BPM3:X",
+        "b": "SR:C04:BPM4:Y"
+      }
+    }
+  ],
+  "root": {
+    "id": "root",
+    "type": "group",
+    "props": {},
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 1200,
+      "height": 300
+    },
+    "children": [
+      {
+        "id": "n000",
+        "type": "text-label",
+        "props": {
+          "text": "Label 0"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r00",
+            "name": "rule 0",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f00"
+          }
+        ]
+      },
+      {
+        "id": "n001",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM2:Y"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r01",
+            "name": "rule 1",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f01"
+          }
+        ]
+      },
+      {
+        "id": "n002",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 240,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r02",
+            "name": "rule 2",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f02"
+          }
+        ]
+      },
+      {
+        "id": "n003",
+        "type": "text-label",
+        "props": {
+          "text": "Label 3"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r03",
+            "name": "rule 3",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f03"
+          }
+        ]
+      },
+      {
+        "id": "n004",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM5:X"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r04",
+            "name": "rule 4",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f04"
+          }
+        ]
+      },
+      {
+        "id": "n005",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 600,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r05",
+            "name": "rule 5",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f05"
+          }
+        ]
+      },
+      {
+        "id": "n006",
+        "type": "text-label",
+        "props": {
+          "text": "Label 6"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r06",
+            "name": "rule 6",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f06"
+          }
+        ]
+      },
+      {
+        "id": "n007",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM8:Y"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r07",
+            "name": "rule 7",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f07"
+          }
+        ]
+      },
+      {
+        "id": "n008",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 960,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r08",
+            "name": "rule 8",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f08"
+          }
+        ]
+      },
+      {
+        "id": "n009",
+        "type": "text-label",
+        "props": {
+          "text": "Label 9"
+        },
+        "geometry": {
+          "x": 1080,
+          "y": 0,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r09",
+            "name": "rule 9",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f09"
+          }
+        ]
+      },
+      {
+        "id": "n010",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM2:X"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r10",
+            "name": "rule 10",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f10"
+          }
+        ]
+      },
+      {
+        "id": "n011",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 120,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r11",
+            "name": "rule 11",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f11"
+          }
+        ]
+      },
+      {
+        "id": "n012",
+        "type": "text-label",
+        "props": {
+          "text": "Label 12"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r12",
+            "name": "rule 12",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f12"
+          }
+        ]
+      },
+      {
+        "id": "n013",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM5:Y"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r13",
+            "name": "rule 13",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f13"
+          }
+        ]
+      },
+      {
+        "id": "n014",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 480,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r14",
+            "name": "rule 14",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f14"
+          }
+        ]
+      },
+      {
+        "id": "n015",
+        "type": "text-label",
+        "props": {
+          "text": "Label 15"
+        },
+        "geometry": {
+          "x": 600,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r15",
+            "name": "rule 15",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f15"
+          }
+        ]
+      },
+      {
+        "id": "n016",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM8:X"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r16",
+            "name": "rule 16",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f16"
+          }
+        ]
+      },
+      {
+        "id": "n017",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 840,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r17",
+            "name": "rule 17",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f17"
+          }
+        ]
+      },
+      {
+        "id": "n018",
+        "type": "text-label",
+        "props": {
+          "text": "Label 18"
+        },
+        "geometry": {
+          "x": 960,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r18",
+            "name": "rule 18",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f18"
+          }
+        ]
+      },
+      {
+        "id": "n019",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM2:Y"
+        },
+        "geometry": {
+          "x": 1080,
+          "y": 30,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r19",
+            "name": "rule 19",
+            "targetProperty": "visible",
+            "default": true,
+            "formula": "fox://f19"
+          }
+        ]
+      },
+      {
+        "id": "n020",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 0,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r20",
+            "name": "rule 20",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C09:BPM3:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 20",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n021",
+        "type": "text-label",
+        "props": {
+          "text": "Label 21"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r21",
+            "name": "rule 21",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C10:BPM4:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 21",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n022",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM5:X"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r22",
+            "name": "rule 22",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C11:BPM5:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 22",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n023",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 360,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r23",
+            "name": "rule 23",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C12:BPM6:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 23",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n024",
+        "type": "text-label",
+        "props": {
+          "text": "Label 24"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r24",
+            "name": "rule 24",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C01:BPM7:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 24",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n025",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM8:Y"
+        },
+        "geometry": {
+          "x": 600,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r25",
+            "name": "rule 25",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C02:BPM8:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 25",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n026",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 720,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r26",
+            "name": "rule 26",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C03:BPM9:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 26",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n027",
+        "type": "text-label",
+        "props": {
+          "text": "Label 27"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r27",
+            "name": "rule 27",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C04:BPM1:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 27",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n028",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM2:X"
+        },
+        "geometry": {
+          "x": 960,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r28",
+            "name": "rule 28",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C05:BPM2:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 28",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n029",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 1080,
+          "y": 60,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r29",
+            "name": "rule 29",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C06:BPM3:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 29",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n030",
+        "type": "text-label",
+        "props": {
+          "text": "Label 30"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r30",
+            "name": "rule 30",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C07:BPM4:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 30",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n031",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM5:Y"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r31",
+            "name": "rule 31",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C08:BPM5:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 31",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n032",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 240,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r32",
+            "name": "rule 32",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C09:BPM6:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 32",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n033",
+        "type": "text-label",
+        "props": {
+          "text": "Label 33"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r33",
+            "name": "rule 33",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C10:BPM7:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 33",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n034",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM8:X"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r34",
+            "name": "rule 34",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C11:BPM8:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 34",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n035",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 600,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r35",
+            "name": "rule 35",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C12:BPM9:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 35",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n036",
+        "type": "text-label",
+        "props": {
+          "text": "Label 36"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r36",
+            "name": "rule 36",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C01:BPM1:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 36",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n037",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM2:Y"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r37",
+            "name": "rule 37",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C02:BPM2:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 37",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n038",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 960,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r38",
+            "name": "rule 38",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C03:BPM3:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 38",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n039",
+        "type": "text-label",
+        "props": {
+          "text": "Label 39"
+        },
+        "geometry": {
+          "x": 1080,
+          "y": 90,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r39",
+            "name": "rule 39",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C04:BPM4:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 39",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n040",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM5:X"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r40",
+            "name": "rule 40",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C05:BPM5:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 40",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n041",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 120,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r41",
+            "name": "rule 41",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C06:BPM6:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 41",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n042",
+        "type": "text-label",
+        "props": {
+          "text": "Label 42"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r42",
+            "name": "rule 42",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C07:BPM7:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 42",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n043",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM8:Y"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r43",
+            "name": "rule 43",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C08:BPM8:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 43",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n044",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 480,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r44",
+            "name": "rule 44",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C09:BPM9:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 44",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n045",
+        "type": "text-label",
+        "props": {
+          "text": "Label 45"
+        },
+        "geometry": {
+          "x": 600,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r45",
+            "name": "rule 45",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C10:BPM1:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 45",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n046",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM2:X"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r46",
+            "name": "rule 46",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C11:BPM2:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 46",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n047",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 840,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r47",
+            "name": "rule 47",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C12:BPM3:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 47",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n048",
+        "type": "text-label",
+        "props": {
+          "text": "Label 48"
+        },
+        "geometry": {
+          "x": 960,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r48",
+            "name": "rule 48",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C01:BPM4:X",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 48",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n049",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM5:Y"
+        },
+        "geometry": {
+          "x": 1080,
+          "y": 120,
+          "width": 120,
+          "height": 30
+        },
+        "rules": [
+          {
+            "id": "r49",
+            "name": "rule 49",
+            "targetProperty": "visible",
+            "default": true,
+            "pvs": [
+              {
+                "name": "SR:C02:BPM5:Y",
+                "trigger": true
+              }
+            ],
+            "conditions": [
+              {
+                "expression": "pv0 > 49",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "n050",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 0,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n051",
+        "type": "text-label",
+        "props": {
+          "text": "Label 51"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n052",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM8:X"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n053",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 360,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n054",
+        "type": "text-label",
+        "props": {
+          "text": "Label 54"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n055",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM2:Y"
+        },
+        "geometry": {
+          "x": 600,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n056",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 720,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n057",
+        "type": "text-label",
+        "props": {
+          "text": "Label 57"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n058",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM5:X"
+        },
+        "geometry": {
+          "x": 960,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n059",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 1080,
+          "y": 150,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n060",
+        "type": "text-label",
+        "props": {
+          "text": "Label 60"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n061",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM8:Y"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n062",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 240,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n063",
+        "type": "text-label",
+        "props": {
+          "text": "Label 63"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n064",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM2:X"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n065",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 600,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n066",
+        "type": "text-label",
+        "props": {
+          "text": "Label 66"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n067",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM5:Y"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n068",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 960,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n069",
+        "type": "text-label",
+        "props": {
+          "text": "Label 69"
+        },
+        "geometry": {
+          "x": 1080,
+          "y": 180,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n070",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM8:X"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n071",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 120,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n072",
+        "type": "text-label",
+        "props": {
+          "text": "Label 72"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n073",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM2:Y"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n074",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 480,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n075",
+        "type": "text-label",
+        "props": {
+          "text": "Label 75"
+        },
+        "geometry": {
+          "x": 600,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n076",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM5:X"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n077",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 840,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n078",
+        "type": "text-label",
+        "props": {
+          "text": "Label 78"
+        },
+        "geometry": {
+          "x": 960,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n079",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM8:Y"
+        },
+        "geometry": {
+          "x": 1080,
+          "y": 210,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n080",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 0,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n081",
+        "type": "text-label",
+        "props": {
+          "text": "Label 81"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n082",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM2:X"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n083",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 360,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n084",
+        "type": "text-label",
+        "props": {
+          "text": "Label 84"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n085",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM5:Y"
+        },
+        "geometry": {
+          "x": 600,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n086",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 720,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n087",
+        "type": "text-label",
+        "props": {
+          "text": "Label 87"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n088",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C05:BPM8:X"
+        },
+        "geometry": {
+          "x": 960,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n089",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 1080,
+          "y": 240,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n090",
+        "type": "text-label",
+        "props": {
+          "text": "Label 90"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n091",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C08:BPM2:Y"
+        },
+        "geometry": {
+          "x": 120,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n092",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 240,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n093",
+        "type": "text-label",
+        "props": {
+          "text": "Label 93"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n094",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C11:BPM5:X"
+        },
+        "geometry": {
+          "x": 480,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n095",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 600,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n096",
+        "type": "text-label",
+        "props": {
+          "text": "Label 96"
+        },
+        "geometry": {
+          "x": 720,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n097",
+        "type": "pv-label",
+        "props": {
+          "pv": "SR:C02:BPM8:Y"
+        },
+        "geometry": {
+          "x": 840,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      },
+      {
+        "id": "n098",
+        "type": "rectangle",
+        "props": {},
+        "geometry": {
+          "x": 960,
+          "y": 270,
+          "width": 120,
+          "height": 30
+        }
+      }
+    ]
+  }
+}
