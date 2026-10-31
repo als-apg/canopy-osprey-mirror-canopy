@@ -22,7 +22,8 @@ to be writable by the server and readable by whoever reviews. Without
 offered and answers `push_unavailable`.
 
 `request_push` is an authoring tool. With `CANOPY_AUTHORING=0` it is not
-offered at all. Both switches are listed in the `canopy_mcp` package README.
+offered at all. Both switches are listed under
+[appliance mode](../deployment/appliance.md).
 
 ## 2. Call the tool
 
@@ -129,8 +130,9 @@ with no stored draft) are a tool error instead.
 
 !!! note "A warning does not refuse a push"
     Only error findings refuse. A `spec_unavailable` warning, which `check`
-    returns while no specification is staged, lets the push through with the
-    schema and property checks not run. The reviewer should know that those
+    returns while no specification is staged (see
+    [appliance mode](../deployment/appliance.md#spec_unavailable)), lets the
+    push through with the schema and property checks not run. The reviewer should know that those
     two checks did not happen.
 
 ## Limits

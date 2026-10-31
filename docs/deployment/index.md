@@ -12,12 +12,14 @@ Both run from the same image (`ghcr.io/slaclab/canopy`) and share the same
 configuration. Postgres holds the persistent modules' data (one schema per
 module); Redis carries the job queue.
 
-Two deployment paths are documented here:
+Three deployment paths are documented here:
 
 - [Docker Compose](docker.md) — the development stack, and the app-only
   production compose file.
 - [Deploy at your facility](production.md) — image tags, required
   configuration, migrations, and health checks for a production instance.
+- [Appliance mode](appliance.md) — one small Canopy per user, launched and
+  configured by a host application instead of running as a shared service.
 
 ## Configuration
 
@@ -40,6 +42,9 @@ essentials:
 The annotated template
 [`.env.example`](https://github.com/slaclab/Canopy/blob/main/.env.example)
 at the repo root documents every setting with its default.
+
+The panel-builder server of [appliance mode](appliance.md) reads its own flat
+`CANOPY_*` names, which are listed on that page.
 
 !!! warning "Simulation is the default backend"
     A deployment that forgets `CANOPY_EPICS__BACKEND=epics` starts cleanly,

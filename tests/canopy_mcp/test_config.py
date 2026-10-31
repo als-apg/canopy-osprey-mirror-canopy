@@ -96,13 +96,14 @@ def test_settings_read_the_collection_dirs_from_env(monkeypatch, tmp_path):
 
 
 _ROOT = Path(__file__).resolve().parents[2]
-_README = _ROOT / "src" / "canopy_mcp" / "README.md"
+_DOCUMENTED_IN = ("src/canopy_mcp/README.md", "docs/deployment/appliance.md")
 
 
+@pytest.mark.parametrize("doc", _DOCUMENTED_IN)
 @pytest.mark.parametrize("name", ["CANOPY_COLLECTIONS_DIR", "CANOPY_FACILITY_COLLECTIONS_DIR"])
-def test_the_collection_dirs_are_documented_settings(name):
+def test_the_collection_dirs_are_documented_settings(doc, name):
     assert name.removeprefix("CANOPY_").lower() in Settings.model_fields
-    assert f"| `{name}` |" in _README.read_text(encoding="utf-8")
+    assert f"| `{name}` |" in (_ROOT / doc).read_text(encoding="utf-8")
 
 
 def test_settings_read_the_file_and_self_url_variables(monkeypatch, tmp_path):
