@@ -5,7 +5,7 @@ import json
 import pytest
 from fastmcp.exceptions import ToolError
 
-from canopy_mcp.store import DraftStore, DraftNotFound
+from canopy_mcp.store import DraftStore, RevConflict, DraftNotFound, ReadOnlyStore
 from canopy_mcp.tools import drafts, _common
 from canopy_mcp.config import Settings
 from canopy_mcp.catalog import set_catalog, build_catalog
@@ -98,3 +98,35 @@ async def test_list_drafts_leaves_out_symlink_leaving_the_root(settings, escapin
 async def test_check_refuses_symlink_leaving_the_root(settings, escaping_link):
     with pytest.raises(ToolError, match="no draft stored"):
         await run_check(draft_id="x", settings=settings)
+
+
+async def test_store_write_refuses_a_directory_leaving_the_root(settings, escaping_dir):
+    store = DraftStore(settings.drafts_dir)
+    before = (escaping_dir / "y.screen.json").read_bytes()
+    for target in ("sub/y", "sub/new"):
+        with pytest.raises(ReadOnlyStore):
+            await store.write(target, SECRET, None)
+    assert (escaping_dir / "y.screen.json").read_bytes() == before
+    assert sorted(p.name for p in escaping_dir.iterdir()) == ["y.screen.json"]
+
+
+async def test_store_write_refuses_all_when_one_draft_leaves_the_root(settings, escaping_dir):
+    store = DraftStore(settings.drafts_dir)
+    with pytest.raises(ReadOnlyStore):
+        await store.write_many({"inside": (SECRET, None), "sub/y": (SECRET, None)})
+    assert store.rev("inside") is None
+
+
+async def test_store_create_never_writes_through_a_file_link_leaving_the_root(settings, escaping_link):
+    store = DraftStore(settings.drafts_dir)
+    before = escaping_link.read_bytes()
+    with pytest.raises(RevConflict):
+        await store.write("x", {"replaced": True}, None)
+    assert escaping_link.read_bytes() == before
+
+
+async def test_new_screen_leaves_the_outside_file_untouched(settings, escaping_dir):
+    before = (escaping_dir / "y.screen.json").read_bytes()
+    result = await drafts.new_screen("sub/y", dict(SECRET, id="y"))
+    assert result["refused"] is True
+    assert (escaping_dir / "y.screen.json").read_bytes() == before

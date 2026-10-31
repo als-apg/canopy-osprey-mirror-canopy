@@ -459,6 +459,17 @@ class DraftStore:
         self._remember(path, key, rev)
         return rev
 
+    def _at_rev(self, path: Path, expect: str | None) -> bool:
+        """Whether the draft at ``path`` is at ``expect`` (``None``: nothing is there).
+
+        An entry that exists but resolves outside the store reads as no draft, yet
+        it is not absent: it never matches ``None``, so a create cannot write
+        through it.
+        """
+        if expect is None and os.path.lexists(path):
+            return False
+        return self._rev_of(path) == expect
+
     def rev(self, draft_id: str) -> str | None:
         """The current rev, or ``None`` when no such draft exists."""
         return self._rev_of(self.path_for(draft_id))
@@ -507,7 +518,15 @@ class DraftStore:
     def _write_many_locked(self, prepared: dict[str, tuple[Path, bytes, str | None]]) -> dict[str, str]:
         make_dirs(self.root)
         with lock_root(self.root):
-            conflicts = [draft_id for draft_id, (path, _, expect) in prepared.items() if self._rev_of(path) != expect]
+            # As for assets: a symlinked store root is fine, a screens/ (or any
+            # directory under it) resolving elsewhere is not. Checked for every
+            # draft before any directory is made or any file written.
+            base = self.root.resolve(strict=True) / "screens"
+            for draft_id, (path, _, _) in prepared.items():
+                parent = path.parent.resolve(strict=False)
+                if not parent.is_relative_to(base):
+                    raise ReadOnlyStore(f"{draft_id}: its directory resolves outside the store's screens/")
+            conflicts = [draft_id for draft_id, (path, _, expect) in prepared.items() if not self._at_rev(path, expect)]
             if conflicts:
                 raise RevConflict(conflicts)
             return {draft_id: self._write_file(path, data) for draft_id, (path, data, _) in prepared.items()}
