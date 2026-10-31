@@ -6,6 +6,7 @@ failure comes back as an entry in ``skipped`` in the same shape the lint
 tool uses.
 """
 
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -32,9 +33,24 @@ def _error_message(response: httpx.Response) -> str:
     return reason
 
 
+# A protocol prefix such as ``pva://``; the only place a literal slash may appear.
+_PROTOCOL = re.compile(r"^[a-z]+://")
+
+
 def _pv_path(name: str) -> str:
-    # Hare's route uses a path converter, so slashes (``pva://``) stay literal.
-    return "/hare/v1/pvs/" + quote(name, safe="/:")
+    """The Hare path for PV ``name``; :class:`ToolError` when the name could leave ``/hare/v1/pvs/``.
+
+    Hare's route uses a path converter, so a protocol prefix (``pva://``) stays
+    literal. Every other slash is percent-encoded, and a name holding a ``.`` or
+    ``..`` segment is refused, so the client's dot-segment removal cannot steer
+    the request to another data-plane path.
+    """
+    match = _PROTOCOL.match(name)
+    prefix = match.group(0) if match else ""
+    rest = name[len(prefix) :]
+    if any(segment in (".", "..") for segment in rest.split("/")):
+        raise ToolError(f"not a PV name: {name!r} (holds a '.' or '..' path segment)")
+    return "/hare/v1/pvs/" + prefix + quote(rest, safe=":")
 
 
 async def _get_json(client: httpx.AsyncClient, path: str) -> Any:

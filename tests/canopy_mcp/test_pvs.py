@@ -69,6 +69,34 @@ async def test_read_pv_keeps_protocol_prefix_in_path(httpx_mock: HTTPXMock):
     assert result["value"]["value"] == 0.125
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../../raccoon/v1/pvs",
+        "../../raccoon/v1/pvs?pattern=*",
+        "SR:C01/../../../raccoon/v1/pvs",
+        "pva://../../raccoon/v1/pvs",
+        "./X",
+        "..",
+    ],
+)
+async def test_read_pv_refuses_dot_segments(httpx_mock: HTTPXMock, name):
+    with pytest.raises(ToolError, match="not a PV name"):
+        await read_pv(name)
+    assert httpx_mock.get_requests() == []
+
+
+async def test_read_pv_never_leaves_the_hare_pvs_path(httpx_mock: HTTPXMock):
+    # Slashes outside the protocol prefix are encoded, so no name reaches another route.
+    httpx_mock.add_response(json=PV_VALUE)
+
+    await read_pv("raccoon/v1/pvs?pattern=*#x")
+
+    [request] = httpx_mock.get_requests()
+    assert request.url.raw_path.startswith(b"/hare/v1/pvs/raccoon%2Fv1%2Fpvs%3Fpattern%3D%2A%23x")
+    assert request.url.query == b""
+
+
 async def test_read_pv_error_raises_tool_error_naming_status(httpx_mock: HTTPXMock):
     httpx_mock.add_response(status_code=404, json={"code": "pv_not_found", "detail": "no such PV"})
 
