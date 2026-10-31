@@ -28,6 +28,10 @@ LifecycleHook = Callable[[list[str]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
+# The fields of a describe that learned nothing: what a connector returns for a
+# channel it could not describe in time (only the name is set).
+_EMPTY_META_FIELDS = PVMeta(pv="").model_dump(exclude={"pv"})
+
 
 @runtime_checkable
 class ClientChannel(Protocol):
@@ -361,10 +365,32 @@ class PVBroker:
             ``True`` when a describe should be started, otherwise ``False``.
         """
         cached = self._latest.get(pv)
-        if cached is None or not cached.connected or pv in self._meta:
+        if cached is None or not cached.connected or not self._meta_is_missing(pv):
             return False
         now = time.monotonic()
         return now >= self._seed_retry_after.get(pv, now)
+
+    def _meta_is_missing(self, pv: str) -> bool:
+        """Report whether a PV has no metadata worth keeping: none cached, or only a bare one.
+
+        A describe that timed out comes back as a `PVMeta` naming only the PV.
+        It is cached and sent like any other, but counts as missing, so the PV
+        is described again after ``seed_retry_backoff_s`` or on its next
+        connect, instead of keeping the empty metadata for as long as it is
+        subscribed.
+
+        Parameters
+        ----------
+        pv : str
+            Validated name of a subscribed PV.
+
+        Returns
+        -------
+        bool
+            ``True`` when the PV still needs a describe, otherwise ``False``.
+        """
+        meta = self._meta.get(pv)
+        return meta is None or meta.model_dump(exclude={"pv"}) == _EMPTY_META_FIELDS
 
     def _ensure_connect_timer(self, pv: str) -> None:
         """Start a PV's connect timer unless one is already running.
@@ -478,7 +504,7 @@ class PVBroker:
                 self._describe_again.discard(pv)
                 async with self._seed_sem, lock:
                     cached = self._latest.get(pv)
-                    if self._seed_locks.get(pv) is not lock or pv in self._meta:
+                    if self._seed_locks.get(pv) is not lock or not self._meta_is_missing(pv):
                         return
                     if cached is None or not cached.connected:
                         return
@@ -496,6 +522,8 @@ class PVBroker:
 
         A failure is logged and sets the deadline ``seed_retry_backoff_s``
         ahead, so a later subscribe does not retry at once; success clears it.
+        A bare result (see `_meta_is_missing`) is cached but sets the deadline
+        like a failure.
         `_stop_monitors` discards the PV's seed lock on release and a later
         subscribe creates a new one, so the result is cached only while ``lock``
         is still the PV's: an attempt that outlives its PV's release leaves
@@ -515,10 +543,11 @@ class PVBroker:
             meta = None
         if self._seed_locks.get(pv) is not lock:
             return
-        if meta is None:
+        if meta is not None:
+            self._meta[pv] = meta
+        if self._meta_is_missing(pv):
             self._seed_retry_after[pv] = time.monotonic() + self._config.seed_retry_backoff_s
         else:
-            self._meta[pv] = meta
             self._seed_retry_after.pop(pv, None)
 
     async def _fan_out(self, pv: str, lock: asyncio.Lock) -> None:
@@ -681,8 +710,8 @@ class PVBroker:
         nor buffered.
 
         The first update of a PV cancels its connect timer. A connected update
-        for a PV with no cached metadata, whose previous value was missing or
-        disconnected, starts a background describe through
+        for a PV whose metadata is missing (see `_meta_is_missing`), whose
+        previous value was missing or disconnected, starts a background describe through
         `_ensure_describe_task` regardless of any retry deadline: the channel
         has just connected, so its metadata is available now. If the PV's
         describe task is still sending its previous result, the task runs again
@@ -702,7 +731,7 @@ class PVBroker:
         self._latest[value.pv] = value
         if previous is None:
             self._cancel_task(self._connect_timers, value.pv)
-        if value.connected and value.pv not in self._meta and (previous is None or not previous.connected):
+        if value.connected and self._meta_is_missing(value.pv) and (previous is None or not previous.connected):
             self._ensure_describe_task(value.pv, again_if_running=True)
         async with self._buffer_lock:
             self._buffer[value.pv] = value
