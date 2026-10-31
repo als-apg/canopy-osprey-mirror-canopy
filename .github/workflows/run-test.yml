@@ -44,6 +44,13 @@ jobs:
     - name: Install dependencies
       run: uv sync --group dev --all-extras
 
+    - name: Check import contracts
+      run: uv run --all-extras lint-imports
+
+    # The browser tests drive Chromium; they fail, not skip, where it is absent.
+    - name: Install Chromium
+      run: uv run --all-extras playwright install --with-deps chromium
+
     # The perf bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
       run: uv run coverage run -m pytest tests/ -v -m "not perf"
@@ -81,6 +88,9 @@ jobs:
 
     - name: Install dependencies
       run: uv sync --group dev --all-extras
+
+    - name: Install Chromium
+      run: uv run --all-extras playwright install chromium
 
     # The perf bounds are for operator-class hardware, not a shared runner.
     - name: Test with pytest
