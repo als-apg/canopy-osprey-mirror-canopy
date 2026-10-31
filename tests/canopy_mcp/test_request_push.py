@@ -10,6 +10,7 @@ import os
 import re
 import json
 import fcntl
+import shutil
 import asyncio
 import hashlib
 import threading
@@ -190,7 +191,6 @@ async def test_a_push_writes_the_closure_and_a_request_that_describes_it(setting
         "sourceDir": "rf",
         "targetDir": "sr/rf",
         "files": members,
-        "evicted": [],
     }
     bundle = Path(settings.push_dir) / result["rid"]
     assert _tree(bundle) == [
@@ -910,7 +910,7 @@ async def test_an_unwritable_push_dir_answers_push_unavailable_without_its_path(
     assert str(settings.push_dir) not in json.dumps(result)
 
 
-# --- pruning --------------------------------------------------------------------------
+# --- the queue --------------------------------------------------------------------------
 
 
 def _old_bundle(push_dir: Path, name: str, age: int) -> None:
@@ -924,23 +924,20 @@ def _old_bundle(push_dir: Path, name: str, age: int) -> None:
     os.utime(request, (stamp, stamp))
 
 
-async def test_only_the_newest_eight_bundles_are_kept_and_the_evicted_are_named(settings, view) -> None:
+async def test_a_full_queue_refuses_the_push_and_deletes_no_bundle(settings, view) -> None:
+    """Eight requests wait for review: the ninth is refused, and every waiting request stays."""
     push_dir = Path(settings.push_dir)
-    # Names in the opposite order to their age, so the order is not the names'.
-    olds = {f"{15 - age:016x}": age for age in range(1, 10)}
-    for name, age in olds.items():
-        _old_bundle(push_dir, name, age)
+    for age in range(1, 9):
+        _old_bundle(push_dir, f"{age:016x}", age)
+    before = _tree(push_dir)
 
     result = await request_push("rf/view", "sr/rf", "note")
 
-    oldest_two = sorted(name for name, age in olds.items() if age in (8, 9))
-    assert result["evicted"] == oldest_two
-    kept = sorted(p.name for p in push_dir.iterdir())
-    assert len(kept) == 8 and result["rid"] in kept
-    assert kept == sorted([result["rid"], *(name for name, age in olds.items() if age <= 7)])
+    assert (result["refused"], result["reason"]) == (True, "push_queue_full")
+    assert _tree(push_dir) == before
 
 
-async def test_eight_bundles_fit_and_the_ninth_evicts_the_oldest(settings, view) -> None:
+async def test_the_eighth_request_fits_and_the_ninth_is_refused(settings, view) -> None:
     push_dir = Path(settings.push_dir)
     for age in range(1, 8):
         _old_bundle(push_dir, f"{age:016x}", age)
@@ -948,9 +945,11 @@ async def test_eight_bundles_fit_and_the_ninth_evicts_the_oldest(settings, view)
     eighth = await request_push("rf/view", "sr/rf", "eighth")
     ninth = await request_push("rf/view", "sr/rf", "ninth")
 
-    assert eighth["evicted"] == []
-    assert ninth["evicted"] == [f"{7:016x}"]
-    assert {eighth["rid"], ninth["rid"]} <= {p.name for p in push_dir.iterdir()}
+    assert "refused" not in eighth and ninth["reason"] == "push_queue_full"
+    assert len(list(push_dir.iterdir())) == push.MAX_PENDING_BUNDLES
+    # once the reviewer removes one, the next push is filed
+    shutil.rmtree(push_dir / f"{1:016x}")
+    assert "rid" in await request_push("rf/view", "sr/rf", "again")
 
 
 async def test_a_directory_without_request_json_is_deleted_and_never_counted(settings, view) -> None:
@@ -964,14 +963,14 @@ async def test_a_directory_without_request_json_is_deleted_and_never_counted(set
 
     result = await request_push("rf/view", "sr/rf", "note")
 
-    assert result["evicted"] == []  # the two leftovers are not evictions
+    assert "rid" in result  # the two leftovers do not count against the queue
     names = {p.name for p in push_dir.iterdir()}
     assert "interrupted" not in names and "empty" not in names
     assert "stray.txt" in names
     assert len(names - {"stray.txt"}) == 8
 
 
-async def test_a_refused_push_evicts_nothing(settings, monkeypatch) -> None:
+async def test_a_refused_push_changes_nothing(settings, monkeypatch) -> None:
     push_dir = Path(settings.push_dir)
     for age in range(1, 10):
         _old_bundle(push_dir, f"{age:016x}", age)

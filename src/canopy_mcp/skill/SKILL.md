@@ -334,16 +334,13 @@ reviews the request and accepts or rejects it outside this session.
 The result has a `rid`, the name of the request. Give the `rid` to the user.
 The reviewer needs it.
 
-The server keeps only the newest 8 requests. When a new request displaces
-older ones, the result lists their rids in `evicted`. Tell the user every rid
-in `evicted`, each time: a displaced request that was not reviewed yet is gone
-and has to be pushed again. Do not push it again yourself unless the user asks.
-
 A refusal comes back as `{refused: true, reason, message}` and files nothing.
 
 - `push_unavailable`: this server takes no pushes. Tell the user. Do not
   retry. If your screens root is a source tree, the way to share a screen is
   the commit described above.
+- `push_queue_full`: 8 requests already wait for review. Tell the user. Do
+  not retry until the reviewer has worked through some of them.
 - `read_only_store` or `library_source`: the id is a library screen. Push
   your own copy.
 - `closure_refused`: `refusals` lists references and rules that would not

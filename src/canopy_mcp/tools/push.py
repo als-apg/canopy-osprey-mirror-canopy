@@ -21,7 +21,7 @@ happens under a lock:
    them is checked (:func:`~canopy_mcp.tools.check.run_check`, which may wait
    on the PV directory). A draft saved meanwhile is neither blocked nor read.
 3. **Write.** A second synchronous section, under an ``flock`` on the push
-   directory, writes those same bytes as the bundle and prunes old bundles.
+   directory, writes those same bytes as the bundle.
 
 **Grammar.** Each member is named by its path below ``source_dir``, which is
 where it lands below ``screens/<target_dir>/``:
@@ -49,8 +49,12 @@ deletes it::
 
 ``rid`` is 16 lower-case hex digits, ``rev`` the sha256 of the top screen's
 bytes, ``created`` a UTC time (``2026-01-31T12:00:00Z``) and ``files`` is sorted
-by path. Only the newest :data:`KEEP_BUNDLES` bundles are kept; the rids pruned
-to make room are returned as ``evicted``.
+by path.
+
+**Queue.** Every complete bundle in the push directory is a request waiting for
+review; the reviewer removes it once it is accepted or rejected. A push never
+deletes one: once :data:`MAX_PENDING_BUNDLES` are waiting, the next push is
+refused with ``push_queue_full`` until the reviewer has worked through some.
 
 Refusals are returned, not raised, as ``{draftId, refused: true, reason,
 message, ...}``; nothing was written. ``reason`` is one of:
@@ -58,6 +62,7 @@ message, ...}``; nothing was written. ``reason`` is one of:
 * ``read_only_store`` -- the id names a library screen;
 * ``library_source`` -- the id's first segment is ``library``;
 * ``push_unavailable`` -- no push directory is configured, or it cannot be written;
+* ``push_queue_full`` -- :data:`MAX_PENDING_BUNDLES` requests are already waiting for review;
 * ``closure_refused`` -- with ``refusals``, the :class:`~canopy_mcp.library_screens.Refusal`
   list of :func:`~canopy_mcp.library_screens.push_closure`;
 * ``grammar_refused`` -- with ``refusals``, a list of ``{code, path, message}``
@@ -126,7 +131,7 @@ MAX_TOTAL_BYTES = 32 * 2**20
 # What the host's listing reads of one ``request.json`` at most.
 MAX_REQUEST_BYTES = 64 * 2**10
 MAX_NOTE_CHARS = 2000
-KEEP_BUNDLES = 8
+MAX_PENDING_BUNDLES = 8
 GRAMMAR_CODES = (
     "bad_segment",
     "reserved_segment",
@@ -145,6 +150,10 @@ _UNWRITABLE = frozenset({errno.EROFS, errno.EACCES, errno.EPERM})
 
 class _NoDraft(Exception):
     """The store holds no screen under the id asked for."""
+
+
+class _QueueFull(Exception):
+    """``MAX_PENDING_BUNDLES`` requests are already waiting for review."""
 
 
 # --- arguments ------------------------------------------------------------------------
@@ -398,18 +407,25 @@ def _write_bundle(
     target_dir: str,
     note: str,
     files: Mapping[str, bytes],
-) -> tuple[str, list[str]]:
-    """Write ``files`` as a new bundle under ``push_dir``; returns its rid and the rids pruned.
+) -> str:
+    """Write ``files`` as a new bundle under ``push_dir``; returns its rid.
 
     Synchronous and blocking: run it in a worker thread. Everything happens under
-    an ``flock`` on ``push_dir``, which is created when missing. A bundle that
-    cannot be completed is removed again.
+    an ``flock`` on ``push_dir``, which is created when missing. Interrupted
+    writes (a directory without ``request.json``) are removed; a complete bundle
+    never is. Raises :class:`_QueueFull` when ``MAX_PENDING_BUNDLES`` complete
+    bundles are waiting. A bundle that cannot be completed is removed again.
     """
     make_dirs(push_dir)
     with lock_root(push_dir):
-        for leftover in _bundles(push_dir):
-            if not (leftover / REQUEST_NAME).is_file():
-                shutil.rmtree(leftover, ignore_errors=True)
+        pending = 0
+        for bundle in _bundles(push_dir):
+            if (bundle / REQUEST_NAME).is_file():
+                pending += 1
+            else:
+                shutil.rmtree(bundle, ignore_errors=True)
+        if pending >= MAX_PENDING_BUNDLES:
+            raise _QueueFull
         for _ in range(_RID_ATTEMPTS):
             rid = secrets.token_hex(8)
             bundle = push_dir / rid
@@ -432,16 +448,7 @@ def _write_bundle(
         except BaseException:
             shutil.rmtree(bundle, ignore_errors=True)
             raise
-
-        def age(candidate: Path) -> tuple[int, str]:
-            return ((candidate / REQUEST_NAME).stat().st_mtime_ns, candidate.name)
-
-        # Newest first by the time ``request.json`` was written; the new bundle always stays.
-        others = sorted((b for b in _bundles(push_dir) if b != bundle), key=age, reverse=True)
-        evicted = others[KEEP_BUNDLES - 1 :]
-        for old in evicted:
-            shutil.rmtree(old, ignore_errors=True)
-    return rid, sorted(old.name for old in evicted)
+    return rid
 
 
 # --- the tool -------------------------------------------------------------------------
@@ -470,17 +477,16 @@ async def request_push(
       contain ``id`` and everything ``id`` refers to. Default: the directory of
       ``id``. ``""`` (the top level) is taken only for a top-level id.
 
-    Returns ``{draftId, rid, rev, sourceDir, targetDir, files, evicted}``.
+    Returns ``{draftId, rid, rev, sourceDir, targetDir, files}``.
     ``rid`` names the request; give it to the user, since the reviewer needs it.
-    ``files`` lists the copied paths below ``source_dir``. Only the newest 8
-    requests are kept: ``evicted`` lists the rids of older requests this one
-    displaced. Tell the user about every evicted rid, because a request that
-    was not yet reviewed has to be pushed again.
+    ``files`` lists the copied paths below ``source_dir``.
 
     A refusal is ``{draftId, refused: true, reason, message, ...}`` and files
     nothing. ``reason``:
 
     * ``push_unavailable`` -- this server takes no pushes;
+    * ``push_queue_full`` -- 8 requests already wait for review; nothing was
+      filed. Tell the user to ask the reviewer, then push again;
     * ``read_only_store`` / ``library_source`` -- ``id`` is a library screen;
     * ``closure_refused`` -- ``refusals`` lists refs or rules that would not
       mean the same in the library: an unresolved ref, a macro in a ref, a ref
@@ -542,11 +548,17 @@ async def request_push(
 
     # 3. Write exactly those bytes, under the push directory's lock.
     try:
-        rid, evicted = await asyncio.to_thread(
+        rid = await asyncio.to_thread(
             _write_bundle, Path(settings.push_dir), local_id, source, rev, target_dir, note, files
         )
     except ReadOnlyStore:
         return refused(id, "push_unavailable", "push_unavailable: this server's push directory cannot be written")
+    except _QueueFull:
+        message = (
+            f"push_queue_full: {MAX_PENDING_BUNDLES} requests already wait for review; nothing was filed. "
+            "Ask the reviewer to work through them, then push again"
+        )
+        return refused(id, "push_queue_full", message)
     return {
         "draftId": id,
         "rid": rid,
@@ -554,7 +566,6 @@ async def request_push(
         "sourceDir": source,
         "targetDir": target_dir,
         "files": sorted(files),
-        "evicted": evicted,
     }
 
 

@@ -50,8 +50,7 @@ The answer is
   "rev": "<sha256 of the screen>",
   "sourceDir": "rf",
   "targetDir": "sr/rf",
-  "files": ["overview.screen.json", "img/cavity.png"],
-  "evicted": []
+  "files": ["overview.screen.json", "img/cavity.png"]
 }
 ```
 
@@ -101,12 +100,12 @@ accepted, and the report written at acceptance stays with the library.
     The tool judges a pushed image by its suffix and its size; it does not
     decode it.
 
-## Eviction
+## The review queue
 
-Only the newest 8 requests are kept. A request that displaces older ones
-lists their rids in `evicted`. A displaced request that was not reviewed yet
-is gone and has to be pushed again, so the agent tells the user about every
-evicted rid.
+Every request in the push directory waits for review until the reviewer
+removes it. A push never deletes one. Once 8 requests are waiting, the next
+push is refused with `push_queue_full` until the reviewer has worked through
+some of them.
 
 ## Refusals
 
@@ -119,6 +118,7 @@ A refusal is returned, not raised, and files nothing:
 | `reason` | Meaning | Extra key |
 |----------|---------|-----------|
 | `push_unavailable` | No push directory is configured, or it cannot be written. | |
+| `push_queue_full` | 8 requests already wait for review. Push again once the reviewer has worked through some. | |
 | `read_only_store`, `library_source` | `id` names a library screen. A push comes from the user's own drafts. | |
 | `closure_refused` | A reference or rule would not mean the same in the library: an unresolved reference, a macro in a reference, a reference that leaves `source_dir`, a root-relative or cross-root reference, a rule that retargets a reference or a PV channel. | `refusals` |
 | `grammar_refused` | A name or content the library does not take (see the limits below). | `refusals`: `{code, path, message}` |
