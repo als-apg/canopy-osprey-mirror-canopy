@@ -193,19 +193,36 @@ the PVs whose values changed since the last one, and only the dynamic
 
 ### heartbeat
 
-Sent every `CANOPY_HARE__HEARTBEAT_INTERVAL_S` seconds (default 5) so clients
-know the broker is alive even when no values are changing.
+The first frame of every socket, then sent every
+`CANOPY_HARE__HEARTBEAT_INTERVAL_S` seconds (default 5) so clients know the
+broker is alive even when no values are changing.
 
 ```json
 {
   "type": "heartbeat",
   "timestamp": 1700000005.0,
-  "backend": "simulation"
+  "backend": "simulation",
+  "label": null,
+  "notice": null,
+  "binding": null,
+  "reachable": null,
+  "writes": null
 }
 ```
 
 `backend` names the active EPICS backend — a frontend can surface a warning
 when it is unexpectedly `simulation`.
+
+The other fields are the connector's own statement, `null` when it makes no
+claim; the built-in backends make none. `label` and `notice` name what the
+connector is connected to and a remark to show next to it; `binding` identifies
+that connection and is sent back with a write (see the `PUT` body's `binding`).
+`reachable` says whether the control system answers
+(`{"state": "yes" | "no" | "unknown", "since", "reason"}`) and `writes` whether
+screens may write (`{"state": "on" | "off" | "locked" | "applying", "reason",
+"cause"}`); treat a `state` you do not know as `unknown` and as not writable.
+When any of these change, a heartbeat is sent at once, within one batching
+window, without waiting for the next keep-alive.
 
 ### pong
 
@@ -255,6 +272,7 @@ sequenceDiagram
     participant Client
     participant Hare
 
+    Hare->>Client: heartbeat {backend, label, ...}
     Client->>Hare: subscribe {pvNames: [A, B]}
     Hare->>Client: initial {data: {A}, meta: {A}}
     Note right of Hare: A was already cached;<br/>B is seeded in the background
