@@ -291,3 +291,69 @@ def test_an_empty_default_passed_down_still_flags(tmp_path):
     )
     rows = [r for r in library_screens.list_write_bindings(DraftStore(tmp_path)) if r["instance"] == "/0:e"]
     assert [(r["pvResolved"], r["unresolvedMacro"]) for r in rows] == [(":SP", True)]
+
+
+# --- holes the listing must not have ----------------------------------------------
+
+
+def test_a_macro_valued_action_type_that_resolves_to_write_pv_is_listed(tmp_path):
+    rows = _rows(
+        tmp_path,
+        _w("act", "regular-button", actions=[{"type": "$(T)", "pvName": "SR:RESET", "value": 1}]),
+        _w("brace", "regular-button", actions=[{"type": "${T}", "pvName": "SR:B"}]),
+        _w("other", "regular-button", actions=[{"type": "$(O)", "pvName": "SR:NOT", "file": "x.screen.json"}]),
+        macros=[{"name": "T", "default": "write_pv"}, {"name": "O", "default": "open_display"}],
+    )
+    assert [(r["nodeId"], r["kind"], r["pvResolved"], r["unresolvedMacro"]) for r in rows] == [
+        ("act", "write_pv", "SR:RESET", False),
+        ("brace", "write_pv", "SR:B", False),
+    ]
+
+
+def test_an_action_type_still_holding_a_macro_is_listed(tmp_path):
+    """No caller macros: a type the caller picks may be ``write_pv``."""
+    rows = _rows(tmp_path, _w("act", "regular-button", actions=[{"type": "$(UNSET)", "pvName": "SR:X"}]))
+    assert [(r["kind"], r["pvResolved"]) for r in rows] == [("write_pv", "SR:X")]
+
+
+def test_a_name_blank_only_after_substitution_is_kept_as_unresolved(tmp_path):
+    rows = _rows(
+        tmp_path,
+        _w("act", "regular-button", actions=[{"type": "write_pv", "pvName": "$(P)", "value": 1}]),
+        _w("sl", "pv-slider", pv="${P}"),
+        _w("blank", "regular-button", actions=[{"type": "write_pv", "pvName": "  "}, {"type": "write_pv"}]),
+        _w("bl", "pv-toggle", pv=""),
+        macros=[{"name": "P", "default": ""}],
+    )
+    assert [(r["nodeId"], r["kind"], r["pvAsWritten"], r["pvResolved"], r["unresolvedMacro"]) for r in rows] == [
+        ("act", "write_pv", "$(P)", "", True),
+        ("sl", "pv-slider", "${P}", "", True),
+    ]
+
+
+def test_a_name_emptied_by_an_embed_macro_is_kept_as_unresolved(tmp_path):
+    _put(tmp_path, "s/leaf", _screen("leaf", _w("s", "pv-slider", pv="$(D)")))
+    rows = _rows(tmp_path, _w("e", "embedded-display", file="leaf.screen.json", macros={"D": ""}))
+    assert [(r["instance"], r["pvResolved"], r["unresolvedMacro"]) for r in rows] == [("/0:e", "", True)]
+
+
+@pytest.mark.parametrize("ntype", [["pv-slider"], {"type": "pv-button"}, 7, None])
+def test_a_node_type_that_is_not_a_string_raises_nothing(tmp_path, ntype):
+    rows = _rows(
+        tmp_path,
+        _w("odd", ntype, pv="ODD", actions=[{"type": "write_pv", "pvName": "ODD:ACT"}]),
+        _w("b", "pv-button", pv="GO"),
+    )
+    assert [(r["nodeId"], r["pvResolved"]) for r in rows] == [("odd", "ODD:ACT"), ("b", "GO")]
+    assert [r["pvResolved"] for r in library_screens.list_write_bindings(DraftStore(tmp_path))] == ["ODD:ACT", "GO"]
+
+
+def test_a_rule_retargeting_actions_is_left_to_the_push_refusal(tmp_path):
+    """Not a row: push_closure refuses the rule, which is what keeps it out of the library."""
+    rule = {"id": "r", "targetProperty": "actions", "pvs": [{"name": "SR:SEL"}], "expressions": []}
+    top = _screen("top", _w("act", "regular-button", rules=[rule], actions=[]))
+    _put(tmp_path, "s/top", top)
+    assert library_screens.list_screen_write_bindings(DraftStore(tmp_path), "s/top") == []
+    with pytest.raises(library_screens.PushRefused) as refused:
+        library_screens.push_closure(_tree(**{"s/top": top}), "s/top", "s")
+    assert refused.value.codes == ["rule_retargets_ref"]

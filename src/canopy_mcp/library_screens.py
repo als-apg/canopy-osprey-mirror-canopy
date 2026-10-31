@@ -90,17 +90,35 @@ def _read_top(store: DraftStore | Tree, draft_id: str, listing: Collection[str] 
     return doc if isinstance(doc, dict) else None
 
 
-def _written_names(raw: dict[str, Any]) -> Iterator[tuple[str, str]]:
-    """``(kind, pv as written)`` for every write one node names: each channel of a
-    write-capable widget and each ``write_pv`` action's ``pvName``."""
+def _may_write(action_type: Any) -> bool:
+    """Whether an action of this (substituted) ``type`` writes a PV, or could once a caller picks its macros."""
+    if not isinstance(action_type, str):
+        return False
+    return action_type.strip() == WRITE_PV_ACTION or has_macro(action_type)
+
+
+def _written_names(raw: dict[str, Any], props: dict[str, Any]) -> Iterator[tuple[str, str]]:
+    """``(kind, pv as written)`` for every write one node names.
+
+    A write-capable widget writes each of its channels. An action is judged on
+    its substituted form (so ``type: "$(T)"`` defaulting to ``write_pv`` counts,
+    and one whose type still holds a macro counts too: the caller may pick
+    ``write_pv``), and its ``pvName`` is reported as written.
+    """
     ntype = raw.get("type")
     raw_props = props_of(raw)
-    if ntype in WRITE_CAPABLE_TYPES:
+    if isinstance(ntype, str) and ntype in WRITE_CAPABLE_TYPES:
         yield from ((ntype, name) for name in raw_channels(ntype, raw_props))
-    actions = raw_props.get("actions")
-    for action in actions if isinstance(actions, list) else []:
-        if isinstance(action, dict) and action.get("type") == WRITE_PV_ACTION and isinstance(action.get("pvName"), str):
-            yield WRITE_PV_ACTION, action["pvName"]
+    actions, written = props.get("actions"), raw_props.get("actions")
+    if not isinstance(actions, list):
+        return
+    for index, action in enumerate(actions):
+        if not isinstance(action, dict) or not _may_write(action.get("type")):
+            continue
+        as_written = written[index] if isinstance(written, list) and index < len(written) else action
+        pv = as_written.get("pvName") if isinstance(as_written, dict) else None
+        if isinstance(pv, str):
+            yield WRITE_PV_ACTION, pv
 
 
 def list_screen_write_bindings(
@@ -115,12 +133,22 @@ def list_screen_write_bindings(
     ``include_hidden=True``: a rule can show a statically hidden widget, so its
     bindings count. A row is a ``write_pv`` action's ``pvName`` (``kind``
     ``write_pv``) or a channel of a write-capable widget (``kind`` its type, one
-    of ``WRITE_CAPABLE_TYPES``). ``top`` is ``draft_id``; ``screen`` and
-    ``instance`` say where under it the node sits. ``pvResolved`` is the
-    substituted, trimmed name; a blank one is no binding. ``unresolvedMacro`` is
-    true when it still holds ``${`` or ``$(`` or a macro it uses took an empty
-    default. Rows that are equal in every key are listed once. A screen that
-    cannot be read has no rows.
+    of ``WRITE_CAPABLE_TYPES``). An action counts when its substituted ``type``
+    is ``write_pv`` or still holds a macro. ``top`` is ``draft_id``; ``screen``
+    and ``instance`` say where under it the node sits.
+
+    ``pvResolved`` is the substituted, trimmed name. Only a name that is blank
+    as written is no binding: one that comes out blank after substitution is a
+    write whose target the caller's macros pick, and is listed with
+    ``unresolvedMacro`` true. ``unresolvedMacro`` is also true when the name
+    still holds ``${`` or ``$(`` or a macro it uses took an empty default. Rows
+    that are equal in every key are listed once. A screen that cannot be read
+    has no rows.
+
+    A rule whose ``targetProperty`` names ``actions`` (or a channel key) can
+    change what a node writes at run time; such rules are not listed here.
+    :func:`push_closure` refuses every one of them (``rule_retargets_ref``,
+    ``rule_retargets_channel``), which is what keeps them out of the library.
     """
     doc = _read_top(store, draft_id, listing)
     if doc is None:
@@ -129,10 +157,10 @@ def list_screen_write_bindings(
     seen: set[str] = set()
     for visit in visits(doc, store, draft_id, include_hidden=True, listing=listing):
         node = visit.node
-        for kind, pv in _written_names(visit.raw):
-            resolved = substitute(pv, node["macros"]).strip()
-            if not resolved:
+        for kind, pv in _written_names(visit.raw, node["props"]):
+            if not pv.strip():
                 continue
+            resolved = substitute(pv, node["macros"]).strip()
             row: WriteBinding = {
                 "top": draft_id,
                 "screen": node["screen"],
@@ -142,7 +170,7 @@ def list_screen_write_bindings(
                 "pvAsWritten": pv,
                 "pvResolved": resolved,
                 "local": resolved.startswith(LOC_PREFIX),
-                "unresolvedMacro": is_unresolved(pv, resolved, visit.empty_defaults),
+                "unresolvedMacro": not resolved or is_unresolved(pv, resolved, visit.empty_defaults),
             }
             identity = json.dumps(row, sort_keys=True, default=repr)
             if identity not in seen:
