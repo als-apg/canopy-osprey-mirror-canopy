@@ -964,12 +964,22 @@ class PVBroker:
             "backend": getattr(self._connector, "backend_name", None),
             "active_monitors": len(self._monitors),
             "warm_monitors": len(self._grace),
+            "connected": self._connected_count(),
             **self._registry.stats(),
             # After the spread so it wins over the registry's own ``clients``
             # bookkeeping key; the two are kept in step, but this is the count
             # of connected channels the health summary describes.
             "clients": len(self._channels),
         }
+
+    def _connected_count(self) -> int:
+        """Of the active monitors, how many whose latest value is connected.
+
+        A monitor with no value yet counts as not connected: nothing has said
+        the channel is there. ``active_monitors`` is the total it is read
+        against.
+        """
+        return sum(1 for pv in self._monitors if (latest := self._latest.get(pv)) is not None and latest.connected)
 
     # --- lifecycle hooks ------------------------------------------------- #
 
