@@ -29,6 +29,7 @@ class ErrorCode(StrEnum):
     API_KEY_NOT_FOUND = auto()
     API_KEY_SELF_DEACTIVATION = auto()
     KEY_STORE_UNAVAILABLE = auto()
+    MODULE_UNAVAILABLE = auto()
 
     # Mole
     ARCHIVER_NOT_CONFIGURED = auto()
@@ -187,6 +188,13 @@ class KeyStoreUnavailable(CanopyError):
 
     status_code = 503
     error_code = ErrorCode.KEY_STORE_UNAVAILABLE
+
+
+class ModuleUnavailable(CanopyError):
+    """The request needs a module this deployment did not select (``CANOPY_MODULES``)."""
+
+    status_code = 503
+    error_code = ErrorCode.MODULE_UNAVAILABLE
 
 
 def register_canopy_error_handler(app: FastAPI) -> None:

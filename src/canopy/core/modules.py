@@ -1,12 +1,12 @@
 """The canonical set of module scopes an API key can be restricted to.
 
-Mirrors the mount points in ``canopy.main`` plus ``core`` for the parent app's
-own routes (``/health``, ``/v1/api-keys``). Hardcoded rather than derived from
-``main.py`` at import time — ``main`` imports ``canopy.core.security``, so the
-reverse import would be circular — but ``tests/canopy/core/test_modules.py``
-asserts this set equals the actual mounts, so an eleventh sub-app cannot be
-added without either updating this set or failing CI.
+Every mountable module (``canopy.core.config.ALL_MODULES``) plus ``core`` for
+the parent app's own routes (``/health``, ``/docs``, ``/v1/api-keys``). Derived
+from the one module list, so a new sub-app is scopable as soon as it is
+mountable; ``tests/canopy/core/test_modules.py`` checks it against the mounts.
 """
+
+from canopy.core.config import ALL_MODULES
 
 WILDCARD = "*"
 
@@ -16,21 +16,7 @@ JOBS = "jobs"
 (squirrel, converter, ...) already returned, so gating it behind an explicit
 ``+jobs`` would just break polling for every module that hands out job ids."""
 
-MODULES: frozenset[str] = frozenset(
-    {
-        "core",
-        "mole",
-        "hare",
-        "raccoon",
-        "vole",
-        "fox",
-        "squirrel",
-        "magpie",
-        "jobs",
-        "converter",
-        "analytics",
-    }
-)
+MODULES: frozenset[str] = frozenset(ALL_MODULES) | {"core"}
 
 
 def split_modules(modules: set[str]) -> tuple[frozenset[str], frozenset[str]]:

@@ -1,47 +1,49 @@
-"""Canopy API entrypoint: composes every module's sub-app and lifespan into one FastAPI app."""
+"""Canopy API entrypoint: composes the selected modules' sub-apps and lifespans into one FastAPI app."""
 
 import json
 import logging
 from html import escape
-from contextlib import asynccontextmanager
+from importlib import import_module
+from contextlib import AsyncExitStack, asynccontextmanager
+from collections.abc import Iterable
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, status
+from starlette.types import Send, Scope, ASGIApp, Receive
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from starlette.routing import Match, Mount
+from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from canopy import __version__
-from canopy.fox.app import app as fox_app
-from canopy.fox.app import fox_lifespan
-from canopy.hare.app import app as hare_app
-from canopy.hare.app import hare_lifespan
-from canopy.jobs.app import app as jobs_app
-from canopy.jobs.app import jobs_lifespan
-from canopy.mole.app import app as mole_app
-from canopy.mole.app import mole_lifespan
-from canopy.vole.app import app as vole_app
-from canopy.vole.app import vole_lifespan
-from canopy.magpie.app import app as magpie_app
-from canopy.magpie.app import magpie_lifespan
-from canopy.core.config import get_settings
-from canopy.core.errors import register_canopy_error_handler
-from canopy.raccoon.app import app as raccoon_app
-from canopy.raccoon.app import raccoon_lifespan
+from canopy.core.config import (
+    MODULES_SCOPE_KEY,
+    get_settings,
+    parse_modules,
+    resolve_modules,
+)
+from canopy.core.errors import (
+    CanopyError,
+    InvalidAPIKey,
+    KeyStoreUnavailable,
+    InsufficientReadAccess,
+    InsufficientModuleAccess,
+    register_canopy_error_handler,
+)
 from canopy.core.logging import configure_logging
 from canopy.core.metrics import HTTPMetricsMiddleware, render_latest
-from canopy.core.modules import tag_module
-from canopy.squirrel.app import app as squirrel_app
-from canopy.squirrel.app import squirrel_lifespan
-from canopy.analytics.app import app as analytics_app
-from canopy.analytics.app import analytics_lifespan
-from canopy.converter.app import app as converter_app
-from canopy.converter.app import converter_lifespan
-from canopy.core.security import bind_key_registry
-from canopy.core.keys.routes import router as api_keys_router
-from canopy.core.keys.registry import build_key_registry
+from canopy.core.modules import tag_module, module_for_app
+from canopy.core.security import (
+    get_registry,
+    token_from_scope,
+    is_database_chain,
+    load_key_registry,
+)
+from canopy.contracts.health import HealthDTO
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
+# Every module's name on the ``/docs`` page, in composition order (``ALL_MODULES``).
 API_MODULES = (
     ("mole", "Mole"),
     ("hare", "Hare"),
@@ -56,104 +58,198 @@ API_MODULES = (
 )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Compose per-module lifespans. Mounted sub-apps don't run their own."""
-    # Env keys first, then the database: the handful of long-lived credentials in
-    # the deployment secret keep working when Postgres is unreachable, including on
-    # a cold start when the cache has nothing stale to serve. Parsed before anything
-    # can serve, so a bad CANOPY_API_KEYS surfaces in the startup log instead of as
-    # an unexplained 401 on the first request.
-    settings = get_settings()
-    bind_key_registry(build_key_registry(settings))
-    async with (
-        mole_lifespan(),
-        hare_lifespan(),
-        raccoon_lifespan(),
-        vole_lifespan(),
-        fox_lifespan(),
-        squirrel_lifespan(),
-        magpie_lifespan(),
-        jobs_lifespan(),
-        converter_lifespan(),
-        analytics_lifespan(),
-    ):
-        logger.info(f"Starting Canopy API [version {__version__}]")
-        yield
+class _SelectedModules:
+    """Publish the app's module selection on every ASGI scope.
+
+    Mounted sub-apps are shared singletons and cannot see the app they are
+    mounted in; the scope is what reaches them, so a route can tell whether a
+    peer module is part of this deployment (``canopy.core.config.module_selected``).
+    """
+
+    def __init__(self, app: ASGIApp, modules: frozenset[str]) -> None:
+        self.app = app
+        self.modules = modules
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        scope[MODULES_SCOPE_KEY] = self.modules
+        await self.app(scope, receive, send)
+
+
+class _ClosedMeta:
+    """Refuse every request whose key cannot read the module it targets, except ``GET /health``.
+
+    Per-route dependencies cannot do this: the docs and OpenAPI pages of the
+    parent and of each mounted sub-app, the root document and the per-module
+    watchdogs have none, and a CORS preflight is answered before routing.
+
+    The target module is the one the router would dispatch to: the first route
+    that fully matches the scope, its sub-app's tag for a mount and ``core`` for
+    a parent route (or none). A key is admitted iff it reads and is scoped to
+    that module; each route still checks the scope it needs. Refusals are the
+    route dependencies' own errors: 401 ``invalid_api_key`` for a missing or
+    unknown key, 503 ``key_store_unavailable`` when the key store cannot answer,
+    403 ``insufficient_module_access`` for a key scoped elsewhere and 403
+    ``insufficient_read_access`` for a key in the module without read.
+
+    The gate is the outermost layer, so it also refuses a CORS preflight, which
+    a browser sends without the key: a closed app serves same-origin clients only.
+    """
+
+    _DETAIL = "A valid API key is required"
+
+    def __init__(self, app: ASGIApp, *, router_app: FastAPI) -> None:
+        self.app = app
+        self.router_app = router_app
+
+    def _module_for(self, scope: Scope) -> str:
+        for route in self.router_app.router.routes:
+            match, _ = route.matches(scope)
+            if match == Match.FULL:
+                return module_for_app(route.app) if isinstance(route, Mount) else "core"
+        return "core"
+
+    async def _refusal(self, scope: Scope) -> CanopyError | None:
+        """The error this scope is refused with, or ``None`` to admit it."""
+        token = token_from_scope(scope)
+        if token is None:
+            return InvalidAPIKey(self._DETAIL)
+        try:
+            key = await get_registry().get(token)
+        except KeyStoreUnavailable as exc:
+            return exc
+        if key is None:
+            return InvalidAPIKey(self._DETAIL)
+        module = self._module_for(scope)
+        if not key.allows_module(module):
+            return InsufficientModuleAccess(f"API key is not scoped to '{module}'")
+        if not key.read:
+            return InsufficientReadAccess("API key does not have read access")
+        return None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        is_health = scope["type"] == "http" and scope["method"] == "GET" and scope["path"] == "/health"
+        refused = None if is_health else await self._refusal(scope)
+        if refused is None:
+            await self.app(scope, receive, send)
+            return
+
+        status_code, code, detail = refused.status_code, refused.error_code.value, refused.detail
+        refusal = JSONResponse({"code": code, "detail": detail}, status_code=status_code)
+        if scope["type"] == "http":
+            await refusal(scope, receive, send)
+            return
+        websocket = WebSocket(scope, receive, send)
+        if "websocket.http.response" in scope.get("extensions", {}):
+            await websocket.send_denial_response(refusal)
+        else:
+            # A server that cannot answer a handshake with an HTTP response.
+            close_code = (
+                status.WS_1011_INTERNAL_ERROR
+                if status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+                else status.WS_1008_POLICY_VIOLATION
+            )
+            await websocket.close(code=close_code, reason=f"{code}: {detail}")
+
+
+def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) -> FastAPI:
+    """Compose the Canopy API from the named modules.
+
+    ``modules`` is an iterable of module names or one comma-separated string;
+    an empty selection means every module and an unknown name raises
+    ``ValueError``. Only the selected modules are imported, so a module whose
+    dependencies are not installed costs nothing as long as it is left out.
+
+    ``closed_meta`` puts the whole app behind the key registry except
+    ``GET /health``; ``None`` takes the ``CANOPY_CLOSED_META`` setting. The key
+    registry is built and bound here, once, so a keys file that cannot supply
+    one raises ``KeysFileError`` before any app exists. ``/v1/api-keys`` is
+    mounted only when that registry is the env + database chain.
+    """
+    registry = load_key_registry()
+    if closed_meta is None:
+        closed_meta = get_settings().closed_meta
+
+    selected = parse_modules(modules) if isinstance(modules, str) else resolve_modules(modules)
+
+    # Import here, not at module top: an unselected sub-app must never load.
+    sub_apps = {name: import_module(f"canopy.{name}.app") for name in selected}
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Compose per-module lifespans. Mounted sub-apps don't run their own."""
+        async with AsyncExitStack() as stack:
+            for name, module in sub_apps.items():
+                await stack.enter_async_context(getattr(module, f"{name}_lifespan")())
+            logger.info(f"Starting Canopy API [version {__version__}] with modules: {', '.join(selected)}")
+            yield
         logger.info("Canopy API shutdown complete")
 
+    app = FastAPI(
+        title="Canopy",
+        description="Control-system display platform — backend API",
+        version=__version__,
+        lifespan=lifespan,
+        # One aggregate /docs over the selected modules instead (below).
+        docs_url=None,
+        redoc_url=None,
+    )
+    app.state.modules = selected
+    tag_module(app, "core")
 
-app = FastAPI(
-    title="Canopy",
-    description="Control-system display platform — backend API",
-    version=__version__,
-    lifespan=lifespan,
-    docs_url=None,
-    redoc_url=None,
-)
+    # Registered first so it sits INSIDE CORSMiddleware (Starlette wraps in reverse
+    # registration order): preflight OPTIONS requests that CORS answers itself never
+    # reach the router, and counting them would only inflate the "unmatched" series.
+    app.add_middleware(HTTPMetricsMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_middleware(_SelectedModules, modules=frozenset(selected))
+    if closed_meta:
+        # Added last, so it is the outermost layer: a keyless preflight is
+        # refused here and never reaches CORS (same-origin clients only).
+        app.add_middleware(_ClosedMeta, router_app=app)
 
-# Registered first so it sits INSIDE CORSMiddleware (Starlette wraps in reverse
-# registration order): preflight OPTIONS requests that CORS answers itself never
-# reach the router, and counting them would only inflate the "unmatched" series.
-app.add_middleware(HTTPMetricsMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    register_canopy_error_handler(app)
 
-register_canopy_error_handler(app)
-tag_module(app, "core")
+    if is_database_chain(registry):
+        # Imported here: key management needs the database, which a keys file or a lean install lacks.
+        from canopy.core.keys.routes import router as api_keys_router
 
-app.include_router(api_keys_router)
+        app.include_router(api_keys_router)
 
-app.mount("/mole", mole_app)
-app.mount("/hare", hare_app)
-app.mount("/raccoon", raccoon_app)
-app.mount("/vole", vole_app)
-app.mount("/fox", fox_app)
-app.mount("/squirrel", squirrel_app)
-app.mount("/magpie", magpie_app)
-app.mount("/jobs", jobs_app)
-app.mount("/converter", converter_app)
-app.mount("/analytics", analytics_app)
+    for name, module in sub_apps.items():
+        tag_module(module.app, name)
+        app.mount(f"/{name}", module.app)
 
-tag_module(mole_app, "mole")
-tag_module(hare_app, "hare")
-tag_module(raccoon_app, "raccoon")
-tag_module(vole_app, "vole")
-tag_module(fox_app, "fox")
-tag_module(squirrel_app, "squirrel")
-tag_module(magpie_app, "magpie")
-tag_module(jobs_app, "jobs")
-tag_module(converter_app, "converter")
-tag_module(analytics_app, "analytics")
+    @app.get("/health", tags=["meta"])
+    async def health() -> HealthDTO:
+        return HealthDTO.of()
 
+    @app.get("/metrics", tags=["meta"], response_class=PlainTextResponse)
+    async def metrics() -> Response:
+        """Prometheus exposition for this process."""
+        payload, content_type = render_latest()
+        return Response(content=payload, media_type=content_type)
 
-@app.get("/health", tags=["meta"])
-async def health() -> dict[str, str]:
-    return {"status": "healthy"}
+    docs_specs = [(name, title) for name, title in API_MODULES if name in selected]
 
-
-@app.get("/metrics", tags=["meta"], response_class=PlainTextResponse)
-async def metrics() -> Response:
-    """Prometheus exposition for this process."""
-    payload, content_type = render_latest()
-    return Response(content=payload, media_type=content_type)
-
-
-@app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
-async def docs_ui(request: Request) -> HTMLResponse:
-    root_path = request.scope.get("root_path", "").rstrip("/")
-    specs = [
-        {"url": f"{root_path}/openapi.json", "name": "Canopy"},
-        *[{"url": f"{root_path}/{path}/openapi.json", "name": name} for path, name in API_MODULES],
-    ]
-    serialized_specs = json.dumps(specs).replace("<", "\\u003c")
-    return HTMLResponse(
-        f"""<!DOCTYPE html>
+    @app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
+    async def docs_ui(request: Request) -> HTMLResponse:
+        root_path = request.scope.get("root_path", "").rstrip("/")
+        specs = [
+            {"url": f"{root_path}/openapi.json", "name": "Canopy"},
+            *[{"url": f"{root_path}/{path}/openapi.json", "name": name} for path, name in docs_specs],
+        ]
+        serialized_specs = json.dumps(specs).replace("<", "\\u003c")
+        return HTMLResponse(
+            f"""<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -179,14 +275,18 @@ const ui = SwaggerUIBundle({{
 </script>
 </body>
 </html>"""
-    )
+        )
+
+    @app.get("/", tags=["meta"])
+    async def root() -> dict[str, str]:
+        return {
+            "name": "Canopy",
+            "version": __version__,
+            "docs": "/docs",
+            "health": "/health",
+        }
+
+    return app
 
 
-@app.get("/", tags=["meta"])
-async def root() -> dict[str, str]:
-    return {
-        "name": "Canopy",
-        "version": __version__,
-        "docs": "/docs",
-        "health": "/health",
-    }
+app = build_app(get_settings().modules)
