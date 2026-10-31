@@ -101,20 +101,17 @@ class HareIngestService:
         await self._broker.remove_client(self.CLIENT_ID)
         logger.info("HareIngestService stopped")
 
-    async def subscribe(self, pvs: list[str], *, wait_seed: bool = True) -> list[str]:
+    async def subscribe(self, pvs: list[str]) -> list[str]:
         """Subscribe Vole to live updates for these PVs via Hare.
 
         Returns which of ``pvs`` are subscribed afterwards. Only names the broker
         accepted are recorded — a rejected one would make GraceManager believe
-        there is a buffer to tear down. ``wait_seed=False`` returns before the
-        broker's seed reads land, so a dead name does not cost the CA timeout.
+        there is a buffer to tear down. The broker seeds new PVs in the
+        background, so a dead name does not hold the caller.
         """
         new_pvs = [pv for pv in pvs if pv not in self._subscribed_pvs]
         if new_pvs:
-            if wait_seed:
-                accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs)
-            else:
-                accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs, wait_seed=False)
+            accepted = await self._broker.subscribe(self.CLIENT_ID, new_pvs)
             self._subscribed_pvs.update(accepted)
             for pv in accepted:
                 self._by_canonical.setdefault(strip_protocol_prefix(pv), set()).add(pv)
