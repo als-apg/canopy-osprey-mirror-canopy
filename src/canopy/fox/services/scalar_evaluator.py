@@ -10,7 +10,11 @@ from canopy.fox.errors import FormulaTypeError, FormulaInputMissing
 from canopy.contracts.sample import AlarmSeverity
 from canopy.contracts.formula import FormulaSpec, ScalarResult
 from canopy.fox.services.parser import ParsedFormula
-from canopy.fox.services.evaluator import worst_severity, evaluate_scalar
+from canopy.fox.services.evaluator import (
+    worst_severity,
+    evaluate_scalar,
+    raise_on_open_outage,
+)
 
 
 async def evaluate_scalar_formula(
@@ -24,6 +28,8 @@ async def evaluate_scalar_formula(
     severities: list[AlarmSeverity] = []
     inputs_used: dict[str, int] = {}
     missing: list[str] = []
+
+    raise_on_open_outage(spec, parsed, data_source)
 
     for idx, token in enumerate(parsed.tokens):
         pv = spec.bindings[token]
@@ -48,7 +54,7 @@ async def evaluate_scalar_formula(
         inputs_used[pv] = sample.ts_ns
 
     if missing:
-        raise FormulaInputMissing(f"PVs not available: {missing}")
+        raise FormulaInputMissing.for_pvs(missing)
 
     timeout_s = config.eval_timeout_ms / 1000.0
     value = await evaluate_scalar(parsed, variables, timeout_s)

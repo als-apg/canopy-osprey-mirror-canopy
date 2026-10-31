@@ -1,0 +1,27 @@
+{
+  "type": "result",
+  "id": "fedcba9876543210fedcba9876543210",
+  "data": {
+    "kind": "table",
+    "table": {
+      "tsNs": [],
+      "columns": {
+        "x": [],
+        "y": []
+      },
+      "inputs": {
+        "x": {
+          "history": "live-only",
+          "status": "no-data",
+          "lateAfterFinal": false
+        },
+        "y": {
+          "history": "not-archived",
+          "status": "no-data",
+          "lateAfterFinal": false
+        }
+      },
+      "totalRows": 0
+    }
+  }
+}

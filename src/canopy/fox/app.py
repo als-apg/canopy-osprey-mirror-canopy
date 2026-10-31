@@ -10,13 +10,23 @@ from canopy.core.clock import SystemClock
 from canopy.fox.config import get_fox_config
 from canopy.core.errors import register_canopy_error_handler
 from canopy.fox.runtime import mark_started
+from canopy.vole.errors import IngestUnavailable
 from canopy.vole.adapter import VoleDataSource
 from canopy.fox.api.v1.router import router as v1_router
 from canopy.fox.services.parser import Parser
+from canopy.fox.services.table_store import TablePort
 from canopy.fox.services.formula_service import FormulaService
 from canopy.fox.services.subscription_manager import SubscriptionManager
 
 logger = logging.getLogger(__name__)
+
+
+def _is_live_fed(name: str) -> bool:
+    """True while Vole's ingest is subscribed to ``name`` (derived per call, never cached)."""
+    try:
+        return vole_gateway.get_ingest().is_subscribed(name)
+    except IngestUnavailable:
+        return False
 
 
 @asynccontextmanager
@@ -33,11 +43,25 @@ async def fox_lifespan():
         fetch_binned=mole_gateway.fetch_binned,
         subscribe_live=vole_gateway.subscribe_live,
         clock=SystemClock(),
+        is_live_fed=_is_live_fed,
     )
     parser = Parser(max_expression_len=config.max_expression_len)
     service = FormulaService(data_source, parser, config)
     gateway.bind(service)
 
+    table_port = TablePort(
+        last_at_or_before=data_source.last_at_or_before,
+        samples_since=data_source.samples_since,
+        ring_slice=data_source.ring_slice,
+        now_ns=SystemClock().now_ns,
+        watermark=vole_gateway.watermark_ns,
+        fetch_window_budgeted=mole_gateway.fetch_window_budgeted,
+        fetch_last_before=mole_gateway.fetch_last_before,
+        event_faithful=mole_gateway.event_faithful,
+        pin=vole_gateway.pin,
+        unpin=vole_gateway.unpin,
+        ensure_capacity=vole_gateway.ensure_capacity,
+    )
     sub_manager = SubscriptionManager(
         formula_service=service,
         on_change_fn=vole_gateway.on_change,
@@ -45,6 +69,8 @@ async def fox_lifespan():
         subscribe_latest_fn=vole_gateway.subscribe_latest,
         min_interval_ms=config.min_interval_ms,
         max_subscriptions_per_client=config.max_subscriptions_per_client,
+        input_wait_notify_s=config.input_wait_notify_s,
+        table_port=table_port,
     )
     gateway.bind_subscription_manager(sub_manager)
 

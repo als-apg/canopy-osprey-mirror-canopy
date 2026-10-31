@@ -11,6 +11,7 @@ import logging
 
 from fastapi import Security, APIRouter, WebSocket, WebSocketDisconnect
 
+from canopy.fox.errors import TABLE_UPDATE_UNSUPPORTED_MESSAGE
 from canopy.core.errors import ErrorCode, CanopyError
 from canopy.core.security import ws_require_read_access
 from canopy.fox.dependencies import SubscriptionManagerDep
@@ -44,8 +45,10 @@ def _coerce_opt_int(value: object, field: str) -> int | None:
     return None if value is None else _coerce_int(value, field)
 
 
-async def _send_error(send_fn, code: str, message: str, *, sub_id: str | None = None) -> None:
-    frame: dict = {"type": "error", "code": code, "message": message}
+async def _send_error(send_fn, code: str, message: str, *, sub_id: str | None = None, retryable: bool = False) -> None:
+    # Errors sent from here are contract or validation rejects (or a failed
+    # start): nothing retries them server-side, so ``retryable`` is false.
+    frame: dict = {"type": "error", "code": code, "message": message, "retryable": retryable}
     if sub_id is not None:
         frame["id"] = sub_id
     await send_fn(frame)
@@ -63,16 +66,25 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
     Server -> client:
     - ``{"type": "subscribed", "id": "<assigned>"}``
     - ``{"type": "result", "id": "...", "data": {...}}``
-    - ``{"type": "error", "code": "...", "message": "..."}``
+    - ``{"type": "error", "code": "...", "message": "...", "retryable": bool}``
     - ``{"type": "pong", "timestamp": T}``
+
+    A live ``table`` polls at a server-derived interval (``intervalMs`` is
+    ignored) and its result frames carry ``data = {kind: "table", table: {...}}``
+    with nulls for NaN/±inf. Tables are never updated in place.
     """
     await websocket.accept()
     client_id = uuid.uuid4().hex
     send_lock = asyncio.Lock()
 
-    async def send_fn(msg: dict) -> None:
+    async def send_fn(msg: dict | str) -> None:
+        # Every Fox frame is a WebSocket *text* frame: a dict goes out via
+        # send_json (text mode), a table eval's pre-encoded JSON via send_text.
         async with send_lock:
-            await websocket.send_json(msg)
+            if isinstance(msg, str):
+                await websocket.send_text(msg)
+            else:
+                await websocket.send_json(msg)
 
     try:
         while True:
@@ -111,6 +123,16 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
                     await _send_error(send_fn, ErrorCode.INVALID_SPEC.value, f"invalid spec: {exc}")
                     continue
 
+                # A live table is checked whole (lookback, caps, bindings, every
+                # column) before it is acknowledged, pinned or subscribed. A
+                # table with a fixed t1 falls through to the one-shot reject.
+                if spec.kind == "table" and t1_ns == 0:
+                    try:
+                        manager.validate_table(spec, t0_ns)
+                    except CanopyError as exc:
+                        await _send_error(send_fn, exc.error_code.value, exc.detail)
+                        continue
+
                 sub_id = uuid.uuid4().hex
                 await send_fn({"type": "subscribed", "id": sub_id})
                 try:
@@ -125,13 +147,22 @@ async def ws_formulas(websocket: WebSocket, manager: SubscriptionManagerDep) -> 
 
             elif mtype == "update":
                 sub_id = message.get("id", "")
+                spec_update = message.get("spec")
+                # Tables are never updated in place; reject before any other check.
+                if isinstance(spec_update, dict) and spec_update.get("kind") == "table":
+                    await _send_error(
+                        send_fn,
+                        ErrorCode.TABLE_UPDATE_UNSUPPORTED.value,
+                        TABLE_UPDATE_UNSUPPORTED_MESSAGE,
+                        sub_id=sub_id or None,
+                    )
+                    continue
                 try:
                     t0_update = _coerce_opt_int(message.get("t0Ns"), "t0Ns")
                     interval_update = _coerce_opt_int(message.get("intervalMs"), "intervalMs")
                 except _WSValidationError as exc:
                     await _send_error(send_fn, ErrorCode.INVALID_MESSAGE.value, str(exc))
                     continue
-                spec_update = message.get("spec")
 
                 if not sub_id:
                     await _send_error(send_fn, ErrorCode.INVALID_MESSAGE.value, "update requires 'id'")
