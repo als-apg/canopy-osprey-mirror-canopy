@@ -51,6 +51,12 @@ class HareConfig(BaseSettings):
     from retrying it on every subscribe.
     """
 
+    # --- keep-warm --- #
+    # After a PV loses its last subscriber its monitor and cached value are kept
+    # this long, so switching back to a screen is served from cache instead of
+    # seeding the PV again. Mirrors Vole's buffer_grace_seconds. 0 releases at once.
+    monitor_grace_seconds: float = 60.0
+
 
 def get_hare_config() -> HareConfig:
     return HareConfig()
