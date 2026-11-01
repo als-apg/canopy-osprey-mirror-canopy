@@ -21,14 +21,20 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "build-payload.sh"
 SDK_VERSION = "0.3.0"
-INTEGRITY = {"client": "sha512-client==", "react": "sha512-react==", "shell": "sha512-shell=="}
+INTEGRITY = {
+    "client": "sha512-client==",
+    "react": "sha512-react==",
+    "screen-ir": "sha512-screen+ir==",
+    "shell": "sha512-shell==",
+}
+NPMRC = "@slaclab:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n"
 
 
-def lockfile(entries: dict[str, tuple[str, str]]) -> str:
+def lockfile(entries: dict[str, tuple[str, str]], workspace: tuple[str, ...] = ()) -> str:
     """A pnpm lockfile whose packages section holds ``{package: (version, integrity)}``.
 
     Laid out as a real one: the importers and snapshots sections name the same
-    packages, and an entry may carry fields after its resolution.
+    packages, with peers, and ``workspace`` packages are links in the importers.
     """
     lines = ["lockfileVersion: '9.0'", "", "importers:", "", "  .:", "    dependencies:"]
     for package, (version, _) in entries.items():
@@ -36,6 +42,12 @@ def lockfile(entries: dict[str, tuple[str, str]]) -> str:
             f"      '@slaclab/canopy-{package}':",
             f"        specifier: ^{version}",
             f"        version: {version}",
+        ]
+    for package in workspace:
+        lines += [
+            f"      '@slaclab/canopy-{package}':",
+            "        specifier: workspace:^",
+            f"        version: link:packages/{package}",
         ]
     lines += [
         "",
@@ -64,17 +76,18 @@ def lockfile(entries: dict[str, tuple[str, str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def sdk_lock(*packages: str, **changed: tuple[str, str]) -> str:
+def sdk_lock(*packages: str, workspace: tuple[str, ...] = (), **changed: tuple[str, str]) -> str:
     """A lockfile resolving ``packages`` to the release; ``changed`` overrides single entries."""
-    return lockfile({p: changed.get(p, (SDK_VERSION, INTEGRITY[p])) for p in packages})
+    return lockfile({p: changed.get(p, (SDK_VERSION, INTEGRITY[p])) for p in packages}, workspace)
 
 
-# The runtime also resolves canopy-react, which Trace does not use.
-RT_LOCK = sdk_lock("client", "react", "shell")
-TRACE_LOCK = sdk_lock("client", "shell")
+RT_PACKAGES = ("client", "react", "screen-ir", "shell")
+TRACE_PACKAGES = ("client", "shell")
+RT_LOCK = sdk_lock(*RT_PACKAGES, workspace=("screen-runtime",))
+TRACE_LOCK = sdk_lock(*TRACE_PACKAGES)
 
 UV_STUB = r"""#!/bin/sh
-printf 'uv\t%s\t%s\n' "$PWD" "$*" >> "$STUB_LOG"
+printf 'uv\t%s\t%s\tTOKEN=%s\n' "$PWD" "$*" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
 [ "$1 $2" = "build --wheel" ] || exit 97
 [ -z "${STUB_FAIL_UV:-}" ] || exit 1
 out="$4"
@@ -91,16 +104,16 @@ ls > "$out/$name.files"
 # Like setuptools_scm, the version names the checkout's HEAD as ``+g<7 hex>``;
 # STUB_SCM_VERSION replaces it outright.
 UVX_STUB = r"""#!/bin/sh
-printf 'uvx\t%s\t%s\n' "$PWD" "$*" >> "$STUB_LOG"
+printf 'uvx\t%s\t%s\tTOKEN=%s\n' "$PWD" "$*" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
 [ -z "${STUB_SCM_VERSION:-}" ] || { echo "$STUB_SCM_VERSION"; exit 0; }
 node="$(git rev-parse HEAD | cut -c1-7)"
 if grep -q PyDMConverter pyproject.toml; then echo "4.5.6+g$node"; else echo "1.2.3.dev4+g$node"; fi
 """
 
 PNPM_STUB = r"""#!/bin/sh
-printf 'pnpm\t%s\t%s\tTRACE=%s HUSKY=%s\n' "$PWD" "$*" "${TRACE:-unset}" "${HUSKY:-unset}" >> "$STUB_LOG"
+printf 'pnpm\t%s\t%s\tTRACE=%s HUSKY=%s TOKEN=%s\n' "$PWD" "$*" "${TRACE:-unset}" "${HUSKY:-unset}" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
 case "$*" in
-    "install --frozen-lockfile")
+    "install --frozen-lockfile --ignore-scripts")
         case "${STUB_FAIL_INSTALL:-}" in "$(basename "$PWD")") exit 1 ;; esac
         ;;
     "run build")
@@ -225,11 +238,12 @@ def world(tmp_path: Path) -> dict:
     rt_files = {
         "package.json": "{}\n",
         "pnpm-lock.yaml": RT_LOCK,
+        ".npmrc": NPMRC,
         "apps/viewer/package.json": "{}\n",
         "packages/runtime/ir-map.json": IR_MAP,
     }
     rt = make_repo(src / "canopy-screen-runtime", rt_files)
-    trace = make_repo(src / "react-trace", {"package.json": "{}\n", "pnpm-lock.yaml": TRACE_LOCK})
+    trace = make_repo(src / "react-trace", {"package.json": "{}\n", "pnpm-lock.yaml": TRACE_LOCK, ".npmrc": NPMRC})
     git(trace, "branch", "feature", "HEAD~1")
 
     bin_dir = tmp_path / "bin"
@@ -244,7 +258,7 @@ def world(tmp_path: Path) -> dict:
     log = tmp_path / "stub.log"
     dropped = {
         "PYDM", "RT", "SDK", "SDK_SHA", "TRACE", "TRACE_REF", "CANOPY_SHA", "RT_SHA", "PYDM_SHA",
-        "CANOPY_VERSION", "PYDM_VERSION", "HUSKY", "SPEC",
+        "CANOPY_VERSION", "PYDM_VERSION", "HUSKY", "SPEC", "NODE_AUTH_TOKEN",
     }  # fmt: skip
     env = {k: v for k, v in os.environ.items() if k not in dropped}
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
@@ -271,10 +285,19 @@ def world(tmp_path: Path) -> dict:
     }
 
 
-def build(world: dict, *args: str, unset: tuple[str, ...] = (), out: Path | bool | None = None, **extra: str):
-    # SDK_SHA has no default in the script; here it is the SDK's HEAD unless a test says otherwise.
+def build(
+    world: dict, *args: str, unset: tuple[str, ...] = (), out: Path | bool | None = None, tag: bool = True, **extra: str
+):
+    # SDK_SHA has no default in the script; here it is the SDK's HEAD unless a test says otherwise,
+    # and the release tag names it unless the test is about the tag.
     env = {k: v for k, v in {**world["env"], "SDK_SHA": head(world["sdk"])}.items() if k not in unset}
     env.update(extra)
+    if tag:
+        target = env.get("SDK_SHA", "HEAD")
+        if not subprocess.run(
+            ["git", "cat-file", "-e", f"{target}^{{commit}}"], cwd=world["sdk"], capture_output=True
+        ).returncode:
+            git(world["sdk"], "tag", "-f", f"v{SDK_VERSION}", target)
     argv = ["bash", str(world["canopy"] / "scripts" / "build-payload.sh"), *args]
     if out is not False:
         argv.append(str(out or world["out"]))
@@ -326,8 +349,8 @@ def test_staged_names_five_commits_and_both_versions(world):
         "runtime": head(world["rt"]),
         "sdk": head(world["sdk"]),
         "sdk_packages": {
-            "runtime": {f"@slaclab/canopy-{p}": resolved_entry(p) for p in ("client", "react", "shell")},
-            "trace": {f"@slaclab/canopy-{p}": resolved_entry(p) for p in ("client", "shell")},
+            "runtime": {f"@slaclab/canopy-{p}": resolved_entry(p) for p in RT_PACKAGES},
+            "trace": {f"@slaclab/canopy-{p}": resolved_entry(p) for p in TRACE_PACKAGES},
         },
         "pydm": head(world["pydm"]),
         "trace": head(world["trace"]),
@@ -396,19 +419,24 @@ def test_builds_run_only_in_exports_under_one_root(world):
 def test_the_runtime_installs_its_lockfile_then_builds(world):
     ok(build(world))
     runtime = [argv for tool, cwd, argv, _ in calls(world) if tool == "pnpm" and cwd.name == "canopy-screen-runtime"]
-    assert runtime == ["install --frozen-lockfile", "run build"]
+    assert runtime == ["install --frozen-lockfile --ignore-scripts", "run build"]
 
 
 def test_trace_is_built_with_its_own_build_steps(world):
     ok(build(world))
     trace = [argv for tool, cwd, argv, _ in calls(world) if tool == "pnpm" and cwd.name == "react-trace"]
-    assert trace == ["install --frozen-lockfile", "exec tsc -b", "exec vite build --base=./", "run check-dist"]
+    assert trace == [
+        "install --frozen-lockfile --ignore-scripts",
+        "exec tsc -b",
+        "exec vite build --base=./",
+        "run check-dist",
+    ]
 
 
 def test_pnpm_never_sees_trace_and_husky_is_off(world):
     ok(build(world))
     notes = {note for tool, _, _, note in calls(world) if tool == "pnpm"}
-    assert notes == {"TRACE=unset HUSKY=0"}
+    assert {note.rsplit(" ", 1)[0] for note in notes} == {"TRACE=unset HUSKY=0"}
 
 
 def test_uncommitted_edits_are_absent_from_the_payload(world):
@@ -1113,9 +1141,11 @@ def test_workspace_and_vector_checks_are_recorded_side_by_side(world):
 # --- one SDK per payload ---------------------------------------------------------
 
 
-def built_nothing_after_the_installs(world: dict) -> None:
-    pnpm = [argv for tool, _, argv, _ in calls(world) if tool == "pnpm"]
-    assert set(pnpm) <= {"install --frozen-lockfile"}
+def refused_before_any_install(world: dict, proc, *fragments: str) -> None:
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    for fragment in fragments:
+        assert fragment in proc.stderr, proc.stderr
+    assert not [c for c in calls(world) if c[0] in ("pnpm", "uv")]
     assert not (world["out"] / "STAGED.json").exists()
 
 
@@ -1144,26 +1174,17 @@ def test_shared_fixtures_are_checked_without_any_gitlink(world):
 
 
 def test_another_sdk_version_in_trace_is_refused(world):
-    commit(world["trace"], {"pnpm-lock.yaml": sdk_lock("client", "shell", client=("0.2.0", "sha512-old=="))}, "old")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert "@slaclab/canopy-client" in proc.stderr and "0.2.0" in proc.stderr and SDK_VERSION in proc.stderr
-    assert "RT_SHA=" in proc.stderr and "TRACE_SHA=" in proc.stderr and "one SDK" in proc.stderr
-    built_nothing_after_the_installs(world)
+    commit(world["trace"], {"pnpm-lock.yaml": sdk_lock(*TRACE_PACKAGES, client=("0.2.0", "sha512-old=="))}, "old")
+    refused_before_any_install(
+        world, build(world), "@slaclab/canopy-client", "0.2.0", SDK_VERSION, "RT_SHA=", "TRACE_SHA=", "one SDK"
+    )
 
 
 def test_the_same_version_with_another_integrity_is_refused(world):
     # A rebuilt pack under one version number: not the same SDK.
-    commit(
-        world["rt"],
-        {"pnpm-lock.yaml": sdk_lock("client", "react", "shell", shell=(SDK_VERSION, "sha512-rebuilt=="))},
-        "pack",
-    )
-    proc = build(world)
-    assert proc.returncode != 0
-    assert "@slaclab/canopy-shell" in proc.stderr and "sha512-rebuilt==" in proc.stderr
-    assert INTEGRITY["shell"] in proc.stderr
-    built_nothing_after_the_installs(world)
+    lock = sdk_lock(*RT_PACKAGES, shell=(SDK_VERSION, "sha512-rebuilt=="))
+    commit(world["rt"], {"pnpm-lock.yaml": lock}, "pack")
+    refused_before_any_install(world, build(world), "@slaclab/canopy-shell", "sha512-rebuilt==", INTEGRITY["shell"])
 
 
 def test_a_package_on_one_side_only_is_not_compared_but_is_recorded(world):
@@ -1174,72 +1195,154 @@ def test_a_package_on_one_side_only_is_not_compared_but_is_recorded(world):
 
 
 def test_no_trace_records_only_the_runtime_and_compares_nothing(world):
-    commit(world["trace"], {"pnpm-lock.yaml": sdk_lock("client", "shell", client=("0.2.0", "sha512-old=="))}, "old")
+    commit(world["trace"], {"pnpm-lock.yaml": sdk_lock(*TRACE_PACKAGES, client=("0.2.0", "sha512-old=="))}, "old")
     ok(build(world, "--no-trace"))
     packages = staged(world)["sdk_packages"]
     assert packages["trace"] is None
-    assert set(packages["runtime"]) == {f"@slaclab/canopy-{p}" for p in ("client", "react", "shell")}
+    assert set(packages["runtime"]) == {f"@slaclab/canopy-{p}" for p in RT_PACKAGES}
 
 
 @pytest.mark.parametrize("repo,label", [("rt", "runtime"), ("trace", "Trace")])
 def test_a_lockfile_without_the_sdk_is_refused(world, repo, label):
     commit(world[repo], {"pnpm-lock.yaml": lockfile({})}, "no sdk")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert f"the {label} " in proc.stderr
-    assert "resolves no @slaclab/canopy-* package" in proc.stderr
-    built_nothing_after_the_installs(world)
+    refused_before_any_install(world, build(world), f"the {label} ", "does not resolve @slaclab/canopy-client")
 
 
-@pytest.mark.parametrize(
-    "repo,name,label", [("rt", "canopy-screen-runtime", "runtime"), ("trace", "react-trace", "Trace")]
-)
-def test_a_failed_frozen_install_says_the_lockfile_must_resolve_the_release(world, repo, name, label):
+def test_a_package_missing_from_the_fixed_set_is_refused(world):
+    commit(world["rt"], {"pnpm-lock.yaml": sdk_lock("client", "react", "shell")}, "no screen-ir")
+    refused_before_any_install(world, build(world), "does not resolve @slaclab/canopy-screen-ir")
+
+
+def test_a_package_outside_the_fixed_set_is_refused(world):
+    # canopy-react is the runtime's, not Trace's, even though the SDK holds it.
+    commit(world["trace"], {"pnpm-lock.yaml": sdk_lock("client", "react", "shell")}, "extra")
+    refused_before_any_install(world, build(world), "@slaclab/canopy-react is neither in the fixed set")
+
+
+def test_a_transitive_package_outside_the_fixed_set_is_refused(world):
+    # No importer asks for it: only the packages section names it.
+    entry = f"  '@slaclab/canopy-charts@{SDK_VERSION}':\n    resolution: {{integrity: sha512-charts==}}\n\nsnapshots:"
+    commit(world["rt"], {"pnpm-lock.yaml": RT_LOCK.replace("snapshots:", entry)}, "transitive")
+    refused_before_any_install(world, build(world), "is not in the fixed package set", "@slaclab/canopy-charts@")
+
+
+@pytest.mark.parametrize("name,label", [("canopy-screen-runtime", "runtime"), ("react-trace", "Trace")])
+def test_a_failed_install_stops_the_build(world, name, label):
     proc = build(world, STUB_FAIL_INSTALL=name)
     assert proc.returncode != 0
-    assert f"installing the {label} export of {head(world[repo])} failed" in proc.stderr
-    assert "--frozen-lockfile" in proc.stderr
-    built_nothing_after_the_installs(world)
+    assert f"installing the {label} export of" in proc.stderr
+    assert not [c for c in calls(world) if c[0] == "pnpm" and not c[2].startswith("install")]
+    assert not (world["out"] / "STAGED.json").exists()
 
 
-def test_only_a_frozen_install_is_ever_run(world):
+def test_every_install_is_frozen_and_runs_no_scripts(world):
     ok(build(world))
     installs = {argv for tool, _, argv, _ in calls(world) if tool == "pnpm" and argv.startswith("install")}
-    assert installs == {"install --frozen-lockfile"}
+    assert installs == {"install --frozen-lockfile --ignore-scripts"}
+
+
+def test_the_check_runs_on_the_commit_before_either_install(world):
+    # The working tree holds a good lockfile; the recorded commit does not.
+    good = head(world["trace"])
+    commit(world["trace"], {"pnpm-lock.yaml": lockfile({})}, "bad")
+    bad = head(world["trace"])
+    git(world["trace"], "checkout", "-q", good, "--", "pnpm-lock.yaml")
+    refused_before_any_install(world, build(world, TRACE_REF=bad), "does not resolve")
 
 
 def test_two_versions_in_one_lockfile_are_refused(world):
-    text = RT_LOCK.replace(
-        "snapshots:", "  '@slaclab/canopy-client@0.2.0':\n    resolution: {integrity: sha512-old==}\n\nsnapshots:"
+    entry = "  '@slaclab/canopy-client@0.2.0':\n    resolution: {integrity: sha512-old==}\n\nsnapshots:"
+    commit(world["rt"], {"pnpm-lock.yaml": RT_LOCK.replace("snapshots:", entry)}, "two")
+    refused_before_any_install(world, build(world), "more than one version", "@slaclab/canopy-client")
+
+
+CLIENT_KEY = f"  '@slaclab/canopy-client@{SDK_VERSION}':"
+CLIENT_RESOLUTION = f"    resolution: {{integrity: {INTEGRITY['client']}}}"
+CLIENT_IMPORTER = f"        specifier: ^{SDK_VERSION}\n        version: {SDK_VERSION}"
+
+
+@pytest.mark.parametrize(
+    "old,new,why",
+    [
+        pytest.param(CLIENT_KEY, "  '@slaclab/canopy-client@npm:other@1.0.0':", "plain registry version", id="alias"),
+        pytest.param(CLIENT_KEY, "  '@slaclab/canopy-client@link:../x':", "plain registry version", id="link"),
+        pytest.param(CLIENT_KEY, "  '@slaclab/canopy-client@file:../x.tgz':", "plain registry version", id="file"),
+        pytest.param(CLIENT_KEY, "  '@slaclab/canopy-client@https://e.org/x.tgz':", "plain registry version", id="url"),
+        pytest.param(
+            CLIENT_RESOLUTION,
+            CLIENT_RESOLUTION.replace("}", ", tarball: https://e.org/x.tgz}"),
+            "field other than a registry integrity",
+            id="tarball",
+        ),
+        pytest.param(
+            CLIENT_RESOLUTION,
+            CLIENT_RESOLUTION.replace("integrity: ", "type: git, integrity: "),
+            "field other than a registry integrity",
+            id="other-resolution-field",
+        ),
+        pytest.param(
+            CLIENT_RESOLUTION,
+            "    resolution:\n      integrity: sha512-client==",
+            "field other than a registry integrity",
+            id="unrecognised-layout",
+        ),
+        pytest.param(
+            CLIENT_RESOLUTION,
+            CLIENT_RESOLUTION + "\n    version: 0.3.0",
+            "field other than a registry integrity",
+            id="extra-entry-field",
+        ),
+        pytest.param(
+            CLIENT_IMPORTER,
+            "        specifier: npm:other@1.0.0\n        version: other@1.0.0",
+            "something other than a registry version",
+            id="importer-alias",
+        ),
+        pytest.param(
+            CLIENT_IMPORTER,
+            f"        specifier: ^{SDK_VERSION}\n        version: link:../x",
+            "something other than a registry version",
+            id="importer-link",
+        ),
+        pytest.param(
+            f"  '@slaclab/canopy-client@{SDK_VERSION}(react@19.2.7)':",
+            "  '@slaclab/canopy-client@file:../x.tgz(react@19.2.7)':",
+            "not a form this check reads",
+            id="snapshot-file",
+        ),
+        pytest.param(
+            "importers:",
+            "overrides:\n  '@slaclab/canopy-client': file:../x.tgz\n\nimporters:",
+            "names the SDK in section overrides",
+            id="overrides-section",
+        ),
+        pytest.param(
+            "lockfileVersion: '9.0'", "lockfileVersion: '10.0'", "not lockfile version 9.0", id="lock-version"
+        ),
+    ],
+)
+def test_a_lockfile_entry_that_is_not_a_registry_package_is_refused(world, old, new, why):
+    assert old in RT_LOCK
+    commit(world["rt"], {"pnpm-lock.yaml": RT_LOCK.replace(old, new, 1)}, "not the registry")
+    refused_before_any_install(world, build(world), why)
+
+
+def test_a_workspace_link_may_not_shadow_an_sdk_package(world):
+    # canopy-charts is not in the runtime's fixed set, but the SDK holds it.
+    commit(
+        world["sdk"],
+        {"packages/charts/package.json": '{"name": "@slaclab/canopy-charts", "version": "0.3.0"}'},
+        "charts",
     )
-    commit(world["rt"], {"pnpm-lock.yaml": text}, "two")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert "more than one version" in proc.stderr and "@slaclab/canopy-client" in proc.stderr
-    built_nothing_after_the_installs(world)
+    lock = sdk_lock(*RT_PACKAGES, workspace=("charts",))
+    commit(world["rt"], {"pnpm-lock.yaml": lock}, "shadow")
+    refused_before_any_install(world, build(world), "neither in the fixed set nor a workspace package")
 
 
-def test_an_entry_without_integrity_is_refused(world):
-    text = RT_LOCK.replace(
-        f"resolution: {{integrity: {INTEGRITY['shell']}}}", "resolution: {tarball: https://example.org/x.tgz}"
-    )
-    commit(world["rt"], {"pnpm-lock.yaml": text}, "no integrity")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert "no integrity for @slaclab/canopy-shell" in proc.stderr
-    built_nothing_after_the_installs(world)
-
-
-def test_a_local_pack_in_a_lockfile_is_refused(world):
-    # The registry release is what this script builds; a file: resolution is no version SDK_SHA holds.
-    pack = "file:../packs/slaclab-canopy-client-0.3.0.tgz"
-    both = {"client": (pack, INTEGRITY["client"]), "shell": (SDK_VERSION, INTEGRITY["shell"])}
-    commit(world["rt"], {"pnpm-lock.yaml": lockfile(both)}, "pack")
-    commit(world["trace"], {"pnpm-lock.yaml": lockfile(both)}, "pack")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert f"@slaclab/canopy-client is resolved to {pack}" in proc.stderr
-    built_nothing_after_the_installs(world)
+def test_a_version_used_but_not_resolved_is_refused(world):
+    lock = RT_LOCK.replace(f"canopy-shell@{SDK_VERSION}(react@19.2.7)", "canopy-shell@0.2.0(react@19.2.7)")
+    commit(world["rt"], {"pnpm-lock.yaml": lock}, "snapshot")
+    refused_before_any_install(world, build(world), "uses @slaclab/canopy-shell@0.2.0")
 
 
 def bump_sdk(world: dict, version: str) -> str:
@@ -1253,11 +1356,9 @@ def bump_sdk(world: dict, version: str) -> str:
 
 def test_a_version_the_sdk_commit_does_not_hold_is_refused(world):
     other = bump_sdk(world, "0.4.0")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert f"SDK_SHA={other}" in proc.stderr and "holds 0.4.0" in proc.stderr
-    assert "@slaclab/canopy-client is resolved to 0.3.0" in proc.stderr
-    built_nothing_after_the_installs(world)
+    refused_before_any_install(
+        world, build(world), f"SDK_SHA={other}", "holds 0.4.0", "@slaclab/canopy-client is resolved to 0.3.0"
+    )
 
 
 def test_the_commit_holding_the_version_passes_when_the_head_has_moved(world):
@@ -1270,31 +1371,74 @@ def test_the_commit_holding_the_version_passes_when_the_head_has_moved(world):
 def test_a_package_the_sdk_commit_does_not_have_is_refused(world):
     git(world["sdk"], "rm", "-q", "packages/react/package.json")
     git(world["sdk"], "commit", "-q", "-m", "no react")
-    proc = build(world)
-    assert proc.returncode != 0
-    assert "@slaclab/canopy-react@0.3.0 is resolved" in proc.stderr and "no such package" in proc.stderr
-    built_nothing_after_the_installs(world)
+    refused_before_any_install(world, build(world), "@slaclab/canopy-react@0.3.0 is resolved", "no such package")
 
 
 def test_a_release_tag_on_another_commit_is_refused(world):
     git(world["sdk"], "tag", f"v{SDK_VERSION}", first(world["sdk"]))
-    proc = build(world)
-    assert proc.returncode != 0
-    assert f"tag v{SDK_VERSION} names {first(world['sdk'])}" in proc.stderr
-    built_nothing_after_the_installs(world)
+    refused_before_any_install(world, build(world, tag=False), f"tag v{SDK_VERSION} names {first(world['sdk'])}")
+
+
+def test_a_missing_release_tag_is_refused(world):
+    refused_before_any_install(world, build(world, tag=False), f"tag v{SDK_VERSION} is not in")
 
 
 def test_a_release_tag_on_the_sdk_commit_passes(world):
     git(world["sdk"], "tag", f"v{SDK_VERSION}")
-    proc = build(world)
-    ok(proc)
-    assert f"sdk tag v{SDK_VERSION} names SDK_SHA" in proc.stderr
+    ok(build(world, tag=False))
 
 
-def test_an_absent_release_tag_is_stated_not_refused(world):
-    proc = build(world)
-    ok(proc)
-    assert f"sdk tag v{SDK_VERSION} is not in SDK" in proc.stderr
+# --- the registry and its token ---------------------------------------------------
+
+
+def test_only_the_installs_see_the_token(world):
+    ok(build(world, NODE_AUTH_TOKEN="not-a-real-token"))
+    rows = calls(world)
+    installs = [r for r in rows if r[0] == "pnpm" and r[2].startswith("install")]
+    assert len(installs) == 2
+    assert all(r[3].endswith("TOKEN=set") for r in installs)
+    others = [r for r in rows if r not in installs]
+    assert {r[0] for r in others} == {"pnpm", "uv", "uvx"}
+    assert not [r for r in others if r[3].endswith("TOKEN=set")]
+    assert "not-a-real-token" not in world["log"].read_text()
+
+
+def test_no_token_is_invented_when_none_is_given(world):
+    ok(build(world))
+    assert not [r for r in calls(world) if r[3].endswith("TOKEN=set")]
+
+
+@pytest.mark.parametrize("repo,label", [("rt", "runtime"), ("trace", "Trace")])
+@pytest.mark.parametrize(
+    "npmrc,why",
+    [
+        pytest.param("@slaclab:registry=https://evil.example\n", "must point @slaclab at", id="other-host"),
+        pytest.param("@slaclab:registry=http://npm.pkg.github.com\n", "must point @slaclab at", id="http"),
+        pytest.param("registry=https://registry.npmjs.org\n", "must point @slaclab at", id="no-scope"),
+        pytest.param(
+            NPMRC + "//evil.example/:_authToken=${NODE_AUTH_TOKEN}\n",
+            "gives a token to another host",
+            id="token-elsewhere",
+        ),
+        pytest.param(
+            NPMRC + "@slaclab:registry=https://evil.example\n", "must point @slaclab at", id="second-scope-line"
+        ),
+    ],
+)
+def test_an_npmrc_pointing_elsewhere_is_refused(world, repo, label, npmrc, why):
+    commit(world[repo], {".npmrc": npmrc}, "elsewhere")
+    refused_before_any_install(world, build(world), f"the {label} ", why)
+
+
+def test_a_commit_without_an_npmrc_is_refused(world):
+    git(world["rt"], "rm", "-q", ".npmrc")
+    git(world["rt"], "commit", "-q", "-m", "no npmrc")
+    refused_before_any_install(world, build(world), "no readable .npmrc")
+
+
+def test_a_workspace_file_naming_a_registry_is_refused(world):
+    commit(world["trace"], {"pnpm-workspace.yaml": "registries:\n  '@slaclab': https://evil.example\n"}, "elsewhere")
+    refused_before_any_install(world, build(world), "pnpm-workspace.yaml names a registry")
 
 
 def test_help_names_the_one_sdk_check(world):

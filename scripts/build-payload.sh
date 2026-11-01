@@ -11,8 +11,8 @@
 # so nothing is built in a checkout and an uncommitted edit never enters the
 # build. Before anything is built, the fixtures Canopy shares with the runtime
 # and the SDK are compared at the recorded commits (check_shared_fixtures). The
-# runtime and Trace take the SDK from the registry through their lockfiles; after
-# the installs, what those resolved must be one SDK, the one at SDK_SHA
+# runtime and Trace take the SDK from the registry through their lockfiles; before
+# they install, those must resolve one SDK, the one tagged at SDK_SHA
 # (check_one_sdk).
 #
 # What the payload holds and how a host uses it: docs/deployment/appliance.md.
@@ -23,6 +23,9 @@ set -euo pipefail
 PROG=build-payload
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+# Only the installs read the registry token, so it leaves the environment here.
+SDK_INSTALL_TOKEN="${NODE_AUTH_TOKEN:-}"
+unset NODE_AUTH_TOKEN
 
 usage() {
     cat <<EOF
@@ -36,8 +39,8 @@ Required inputs (environment):
   PYDM        pydm-converter-tool checkout
   RT          canopy-screen-runtime checkout (pnpm workspace with apps/viewer)
   SDK         canopy-sdk-js checkout holding SDK_SHA
-  SDK_SHA     the commit of SDK released as the @slaclab/canopy-* version the
-              runtime and Trace lockfiles resolve; it has no default
+  SDK_SHA     the commit of SDK tagged v<version> for the @slaclab/canopy-* version
+              the runtime and Trace lockfiles resolve; it has no default
   TRACE       react-trace checkout (required unless --no-trace)
   TRACE_REF   git ref in TRACE to build (required unless --no-trace)
 
@@ -53,7 +56,7 @@ Optional inputs (environment):
                   SHA), copied to <out>/spec/ and recorded in STAGED.json as "spec"
                   (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
                   unset means no spec/ and both recorded as null
-  NODE_AUTH_TOKEN read through each repo's .npmrc to install @slaclab packages
+  NODE_AUTH_TOKEN read through each repo's .npmrc by the installs, and by nothing else
 
 Checks (before anything is built; each refuses the build on a mismatch):
   fixtures    when RT_SHA has apps/viewer/e2e/fixtures/collections/, its
@@ -74,14 +77,17 @@ Checks (before anything is built; each refuses the build on a mismatch):
               "vectors" as "compared", or "absent" when neither commit holds
               either
 
-Check after the installs (before the viewer and Trace are built):
-  one SDK     the lockfiles the frozen installs took: every package both the
-              runtime and Trace resolve must have the same version and integrity,
-              each lockfile must resolve at least one @slaclab/canopy-* package
-              and one version of each, each version must be the one
-              packages/*/package.json holds at SDK_SHA, and a tag v<version>, when
-              SDK holds one, must name SDK_SHA; STAGED.json records them as
-              "sdk_packages"
+  registry    the .npmrc at RT_SHA and TRACE_SHA must point @slaclab at
+              https://npm.pkg.github.com and give a token to no other host, and
+              pnpm-workspace.yaml must name no registry
+  one SDK     the pnpm-lock.yaml at RT_SHA and TRACE_SHA must resolve exactly
+              client, react, screen-ir and shell (runtime), client and shell (Trace),
+              as plain registry versions with an integrity and nothing else; any
+              lockfile line naming @slaclab that is not recognised is refused.
+              Every package both resolve must have the same version and integrity,
+              each version must be the one packages/*/package.json holds at
+              SDK_SHA, and SDK must hold the tag v<version> naming SDK_SHA;
+              STAGED.json records them as "sdk_packages"
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -358,6 +364,180 @@ PYDM_SRC="$(export_repo "$PYDM" "$PYDM_SHA" "$PYDM_NAME")"
 TRACE_SRC=""
 [ "$NO_TRACE" = 1 ] || TRACE_SRC="$(export_repo "$TRACE" "$TRACE_SHA" "$TRACE_NAME")"
 
+# --- one SDK per payload ------------------------------------------------------
+# The viewer and Trace take the SDK from the registry, as their lockfiles say. A
+# payload holds one SDK, the release tagged at SDK_SHA, so both lockfiles must
+# resolve it. This runs on the exports, before anything installs. The script's
+# Python has no YAML parser, so the lockfile is read by line and fails closed: a
+# line naming @slaclab in any form but the ones pnpm writes for a registry package
+# is refused. Prints the JSON recorded as "sdk_packages", or refuses on stderr.
+check_one_sdk() { # <runtime export> <Trace export, or "">
+    python3 -I -c '
+import json, os, re, subprocess, sys
+
+sdk, sha, rt_sha, trace_sha, rt_src, trace_src = sys.argv[1:]
+REGISTRY = "npm.pkg.github.com"
+RUNTIME_PACKAGES = {"@slaclab/canopy-" + p for p in ("client", "react", "screen-ir", "shell")}
+TRACE_PACKAGES = {"@slaclab/canopy-" + p for p in ("client", "shell")}
+NAME = r"@slaclab/canopy-[a-z-]+"
+VERSION = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?"
+PEERS = r"(?:\(.*\))?"
+ENTRY_FIELDS = {"peerDependencies", "peerDependenciesMeta", "engines", "hasBin", "os", "cpu", "libc"}
+
+def refuse(message):
+    sys.exit(f"build-payload: {message}")
+
+def git(*args):
+    return subprocess.run(["git", "-C", sdk, *args], capture_output=True, text=True)
+
+def read(label, directory, name):
+    try:
+        with open(os.path.join(directory, name), encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        refuse(f"the {label} has no readable {name}")
+
+def check_registry(label, directory):
+    scoped = []
+    for line in read(label, directory, ".npmrc").splitlines():
+        line = line.strip()
+        if line.startswith(("#", ";")):
+            continue
+        if line.startswith("@slaclab:registry"):
+            scoped.append(line.partition("=")[2].strip().rstrip("/"))
+        if ("_auth" in line or "NODE_AUTH_TOKEN" in line) and not line.startswith(f"//{REGISTRY}/:"):
+            refuse(f"the {label} .npmrc gives a token to another host than {REGISTRY}: {line.partition("=")[0]}")
+    if scoped != [f"https://{REGISTRY}"]:
+        refuse(f"the {label} .npmrc must point @slaclab at https://{REGISTRY}, and it says {scoped}")
+    if os.path.exists(os.path.join(directory, "pnpm-workspace.yaml")):
+        if "registr" in read(label, directory, "pnpm-workspace.yaml"):
+            refuse(f"the {label} pnpm-workspace.yaml names a registry")
+
+def resolved(label, directory, wanted, held):
+    text = read(label, directory, "pnpm-lock.yaml")
+    lines = text.splitlines()
+    if not lines or lines[0] != "lockfileVersion: \x279.0\x27":
+        refuse(f"the {label} pnpm-lock.yaml is not lockfile version 9.0, the only form this check reads")
+
+    def bad(number, line, why):
+        refuse(f"the {label} pnpm-lock.yaml, line {number}, {why}: {line.strip()}")
+
+    found, used, section, entry, importer = {}, [], None, None, None
+    for number, line in enumerate(lines, 1):
+        names_us = "slaclab" in line
+        if not line.strip():
+            continue
+        if not line.startswith(" "):
+            section, entry = line.partition(":")[0], None
+            if names_us or importer:
+                bad(number, line, "is not a form this check reads")
+        elif importer:
+            importer["fields"].append(line.strip())
+            if len(importer["fields"]) == 2:
+                name, (specifier, version) = importer["name"], importer["fields"]
+                if not (specifier.startswith("specifier: ") and version.startswith("version: ")):
+                    bad(number, line, f"is not a form this check reads for {name}")
+                specifier, version = specifier.partition(": ")[2], version.partition(": ")[2]
+                plain = re.fullmatch(f"({VERSION}){PEERS}", version)
+                if name in wanted:
+                    if not (re.fullmatch(rf"[\^~]?{VERSION}", specifier) and plain):
+                        bad(number, line, f"resolves {name} to something other than a registry version")
+                    used.append((name, plain.group(1)))
+                elif name in held or not (specifier.startswith("workspace:") and version.startswith("link:")):
+                    bad(number, line, f"{name} is neither in the fixed set nor a workspace package")
+                importer = None
+        elif section == "importers":
+            if names_us:
+                key = re.fullmatch(rf"      \x27({NAME})\x27:", line)
+                if not key:
+                    bad(number, line, "is not a form this check reads")
+                importer = {"name": key.group(1), "fields": []}
+        elif section == "packages":
+            if not line.startswith("   "):
+                entry = None
+                if names_us:
+                    key = re.fullmatch(rf"  \x27({NAME})@({VERSION})\x27:", line)
+                    if not key:
+                        bad(number, line, "does not resolve to a plain registry version")
+                    if key.group(1) not in wanted:
+                        bad(number, line, "is not in the fixed package set")
+                    entry = {"version": key.group(2), "integrity": None}
+                    found.setdefault(key.group(1), []).append(entry)
+            elif names_us:
+                bad(number, line, "is not a form this check reads")
+            elif entry and not line.startswith("     "):
+                field = re.match(r"    ([A-Za-z]+):", line)
+                integrity = re.fullmatch(r"    resolution: \{integrity: (sha512-[A-Za-z0-9+/=]+)\}", line)
+                if integrity:
+                    entry["integrity"] = integrity.group(1)
+                elif not field or field.group(1) not in ENTRY_FIELDS:
+                    bad(number, line, "has a field other than a registry integrity")
+        elif section == "snapshots":
+            if names_us:
+                key = re.fullmatch(rf"  \x27({NAME})@({VERSION}){PEERS}\x27:(?: \{{\}})?", line)
+                dependency = re.fullmatch(rf"      \x27({NAME})\x27: ({VERSION}){PEERS}", line)
+                if not (key or dependency):
+                    bad(number, line, "is not a form this check reads")
+                used.append((key or dependency).groups())
+        elif names_us:
+            bad(number, line, f"names the SDK in section {section}")
+
+    missing = sorted(wanted - set(found))
+    if missing:
+        absent = ", ".join(missing)
+        refuse(f"the {label} pnpm-lock.yaml does not resolve {absent}; run pnpm install there against the released SDK and commit the lockfile")
+    for name, entries in found.items():
+        if len(entries) > 1:
+            versions = ", ".join(e["version"] for e in entries)
+            refuse(f"the {label} pnpm-lock.yaml resolves {name} to more than one version ({versions}); a payload has one SDK")
+        if not entries[0]["integrity"]:
+            refuse(f"the {label} pnpm-lock.yaml has no registry integrity for {name}")
+    for name, version in used:
+        if name not in found or found[name][0]["version"] != version:
+            refuse(f"the {label} pnpm-lock.yaml uses {name}@{version}, which its packages section does not resolve")
+    return {name: entries[0] for name, entries in sorted(found.items())}
+
+def spec(entry):
+    return "{version} ({integrity})".format(**entry)
+
+# The release: the package metadata at SDK_SHA, and its tag.
+held = {}
+for directory in git("ls-tree", "--name-only", sha, "packages/").stdout.split():
+    shown = git("show", f"{sha}:{directory}/package.json")
+    if shown.returncode == 0:
+        meta = json.loads(shown.stdout)
+        held[meta.get("name")] = meta.get("version")
+
+check_registry(f"runtime (RT_SHA={rt_sha})", rt_src)
+if trace_src:
+    check_registry(f"Trace (TRACE_SHA={trace_sha})", trace_src)
+runtime = resolved(f"runtime (RT_SHA={rt_sha})", rt_src, RUNTIME_PACKAGES, held)
+trace = resolved(f"Trace (TRACE_SHA={trace_sha})", trace_src, TRACE_PACKAGES, held) if trace_src else None
+
+for name in sorted(set(runtime) & set(trace or {})):
+    if runtime[name] != trace[name]:
+        refuse(f"RT_SHA={rt_sha} resolves {name} to {spec(runtime[name])}, but TRACE_SHA={trace_sha} resolves it to {spec(trace[name])}; a payload has one SDK, so move one lockfile to match the other")
+
+both = {**(trace or {}), **runtime}
+for name, entry in both.items():
+    version = entry["version"]
+    if name not in held:
+        refuse(f"{name}@{version} is resolved, but SDK_SHA={sha} has no such package under packages/")
+    if held[name] != version:
+        refuse(f"{name} is resolved to {version}, but SDK_SHA={sha} holds {held[name]}; SDK_SHA must be the commit released as that version")
+for version in sorted({entry["version"] for entry in both.values()}):
+    tagged = git("rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}").stdout.strip()
+    if not tagged:
+        refuse(f"tag v{version} is not in {sdk}; SDK_SHA must be the commit released as that version (fetch its tags)")
+    if tagged != sha:
+        refuse(f"tag v{version} names {tagged} in {sdk}, but SDK_SHA={sha}; SDK_SHA must be the commit released as that version")
+
+print(json.dumps({"runtime": runtime, "trace": trace}, sort_keys=True))
+' "$SDK" "$SDK_SHA" "$RT_SHA" "$TRACE_SHA" "$1" "$2"
+}
+SDK_PACKAGES="$(check_one_sdk "$RT_SRC" "$TRACE_SRC")" || exit 1
+echo "$PROG: one sdk  resolved by the runtime and Trace, tagged at $SDK_SHA" >&2
+
 # --- wheels ------------------------------------------------------------------
 # hatch-vcs does not hand setuptools_scm the distribution name, so canopy's
 # build reads the generic variable; it is set for that command alone.
@@ -370,101 +550,22 @@ ls "$STAGE"/canopy-*.whl >/dev/null 2>&1 || die "no canopy wheel was built"
 [ "$(find "$STAGE" -maxdepth 1 -name '*.whl' | wc -l | tr -d ' ')" = 2 ] \
     || die "expected a canopy and a PyDMConverter wheel, got: $(cd "$STAGE" && ls)"
 
-# --- one SDK per payload ------------------------------------------------------
-# The viewer and Trace take the SDK from the registry, as their lockfiles say. A
-# payload holds one SDK, the one at SDK_SHA, so both must have resolved it. The
-# only install is --frozen-lockfile, so the lockfile in an export is what was
-# installed.
+# --- installs ------------------------------------------------------------------
 # TRACE is unset for pnpm (it and the bundler read it as a tracing filter) and
 # HUSKY=0 turns the `prepare: husky` hooks into no-ops (an export has no .git).
+# No install runs a package's scripts, and only an install sees the token; it is
+# exported inside the caller's subshell.
 js() { env -u TRACE HUSKY=0 "$@"; }
-FROZEN_HINT="the install is --frozen-lockfile, so the commit's lockfile must already resolve the released @slaclab/canopy-* packages"
-(cd "$RT_SRC" && js pnpm install --frozen-lockfile) \
-    || die "installing the runtime export of $RT_SHA failed ($FROZEN_HINT)"
-if [ "$NO_TRACE" = 0 ]; then
-    (cd "$TRACE_SRC" && js pnpm install --frozen-lockfile) \
-        || die "installing the Trace export of $TRACE_SHA failed ($FROZEN_HINT)"
-fi
-# Prints the JSON recorded as "sdk_packages", or refuses on stderr.
-check_one_sdk() { # <runtime lockfile> <Trace lockfile, or "">
-    python3 -I -c '
-import json, re, subprocess, sys
-
-sdk, sha, rt_sha, trace_sha, rt_lock, trace_lock = sys.argv[1:]
-
-def refuse(message):
-    sys.exit(f"build-payload: {message}")
-
-def git(*args):
-    return subprocess.run(["git", "-C", sdk, *args], capture_output=True, text=True)
-
-def spec(entry):
-    return "{version} ({integrity})".format(**entry)
-
-def resolved(label, path):
-    # The packages section of a pnpm lockfile, read by line: a two-space key, then
-    # its four-space fields. importers: and snapshots: name the same packages.
-    found, in_packages, name = {}, False, None
-    with open(path, encoding="utf-8") as lock:
-        for line in lock:
-            if not line.strip():
-                continue
-            if not line.startswith(" "):
-                in_packages = line.rstrip() == "packages:"
-            elif in_packages and not line.startswith("   "):
-                key = re.fullmatch(r"\s*\x27?(@slaclab/canopy-[^@\x27]+)@([^\x27]+)\x27?:\s*", line)
-                name = key.group(1) if key else None
-                if name:
-                    found.setdefault(name, []).append({"version": key.group(2), "integrity": None})
-            elif in_packages and name:
-                integrity = re.search(r"\bintegrity: ([^,}\s]+)", line)
-                if integrity:
-                    found[name][-1]["integrity"] = integrity.group(1)
-    if not found:
-        refuse(f"the {label} lockfile resolves no @slaclab/canopy-* package, so nothing shows which SDK it was built with; run pnpm install there against the released SDK and commit the lockfile")
-    for name, entries in found.items():
-        if len(entries) > 1:
-            versions = ", ".join(e["version"] for e in entries)
-            refuse(f"the {label} lockfile resolves {name} to more than one version ({versions}); a payload has one SDK")
-        if not entries[0]["integrity"]:
-            refuse(f"the {label} lockfile has no integrity for {name}")
-    return {name: entries[0] for name, entries in sorted(found.items())}
-
-runtime = resolved(f"runtime (RT_SHA={rt_sha})", rt_lock)
-trace = resolved(f"Trace (TRACE_SHA={trace_sha})", trace_lock) if trace_lock else None
-
-for name in sorted(set(runtime) & set(trace or {})):
-    if runtime[name] != trace[name]:
-        refuse(f"RT_SHA={rt_sha} resolves {name} to {spec(runtime[name])}, but TRACE_SHA={trace_sha} resolves it to {spec(trace[name])}; a payload has one SDK, so move one lockfile to match the other")
-
-# The release: the package metadata at SDK_SHA, and the tag when SDK holds it.
-held = {}
-for directory in git("ls-tree", "--name-only", sha, "packages/").stdout.split():
-    shown = git("show", f"{sha}:{directory}/package.json")
-    if shown.returncode == 0:
-        meta = json.loads(shown.stdout)
-        held[meta.get("name")] = meta.get("version")
-both = {**(trace or {}), **runtime}
-for name, entry in both.items():
-    version = entry["version"]
-    if name not in held:
-        refuse(f"{name}@{version} is resolved, but SDK_SHA={sha} has no such package under packages/")
-    if held[name] != version:
-        refuse(f"{name} is resolved to {version}, but SDK_SHA={sha} holds {held[name]}; SDK_SHA must be the commit released as that version")
-for version in sorted({entry["version"] for entry in both.values()}):
-    tagged = git("rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}").stdout.strip()
-    if tagged and tagged != sha:
-        refuse(f"tag v{version} names {tagged} in {sdk}, but SDK_SHA={sha}; SDK_SHA must be the commit released as that version")
-    found = "names SDK_SHA" if tagged else "is not in SDK (package metadata only)"
-    print(f"build-payload: sdk tag v{version} {found}", file=sys.stderr)
-
-print(json.dumps({"runtime": runtime, "trace": trace}, sort_keys=True))
-' "$SDK" "$SDK_SHA" "$RT_SHA" "$TRACE_SHA" "$1" "$2"
+js_install() { # in an export's directory, in a subshell
+    if [ -n "$SDK_INSTALL_TOKEN" ]; then export NODE_AUTH_TOKEN="$SDK_INSTALL_TOKEN"; fi
+    js pnpm install --frozen-lockfile --ignore-scripts
 }
-trace_lock=""
-[ "$NO_TRACE" = 1 ] || trace_lock="$TRACE_SRC/pnpm-lock.yaml"
-SDK_PACKAGES="$(check_one_sdk "$RT_SRC/pnpm-lock.yaml" "$trace_lock")" || exit 1
-echo "$PROG: one sdk  resolved by the runtime and Trace, at $SDK_SHA" >&2
+(cd "$RT_SRC" && js_install) \
+    || die "installing the runtime export of $RT_SHA failed (pnpm install --frozen-lockfile --ignore-scripts)"
+if [ "$NO_TRACE" = 0 ]; then
+    (cd "$TRACE_SRC" && js_install) \
+        || die "installing the Trace export of $TRACE_SHA failed (pnpm install --frozen-lockfile --ignore-scripts)"
+fi
 
 # --- viewer --------------------------------------------------------------------
 (cd "$RT_SRC" && js pnpm run build) \
