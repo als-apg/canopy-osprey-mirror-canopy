@@ -1,4 +1,4 @@
-"""The write-outcome vectors: ``canopy/contracts/wc6_vectors.json``.
+"""The write-outcome vectors: ``canopy/contracts/write_outcome_vectors.json``.
 
 The file is the table a client maps an answer to a PV write (or the lack of
 one) from: one row per outcome, with its status, code and toast text, plus the
@@ -11,28 +11,25 @@ from importlib import resources
 
 import pytest
 
-from canopy.contracts import WC6_VECTORS_FILE, load_wc6_vectors
+from canopy.contracts import WRITE_OUTCOME_VECTORS_FILE, load_write_outcome_vectors
 
 ROW_IDS = {
-    "6",
-    "6-readonly-run",
-    "7",
-    "8",
-    "9",
-    "10",
-    "11",
-    "12",
-    "13",
-    "14",
-    "14a",
-    "14b-401",
-    "14b-403",
-    "14b-404",
-    "14b-413",
-    "15",
-    "16",
-    "16a",
-    "16-coalesced",
+    "connector-refused",
+    "connector-refused-read-only",
+    "connector-limits",
+    "confirmed",
+    "mismatch",
+    "unconfirmed",
+    "connector-unknown",
+    "writes-not-enabled",
+    "front-refused-401",
+    "front-refused-403",
+    "front-refused-404",
+    "front-refused-413",
+    "client-unknown",
+    "target-changed",
+    "write-state-changed",
+    "coalesced",
 }
 
 ROW_FIELDS = {"source", "outcome", "status", "code", "audit", "detail", "toast", "dynamic", "default"}
@@ -44,26 +41,26 @@ OUTCOMES = {"refused", "target_changed", "confirmed", "mismatch", "unconfirmed",
 GENERIC_REFUSAL = "the write was refused; nothing written"
 UNKNOWN_TEXT = "outcome unknown — check the readback"
 FRONT_TEXT = "the panel server refused this write; nothing written"
-ROW_16_TEXT = "the control target or its write state changed; nothing written"
-ROW_16A_TEXT = "the write state of <label> changed; nothing written"
-ROW_16A_DEFAULT = "the write state of this target changed; nothing written"
+TARGET_CHANGED_TEXT = "the control target or its write state changed; nothing written"
+WRITE_STATE_TEXT = "the write state of <label> changed; nothing written"
+WRITE_STATE_DEFAULT = "the write state of this target changed; nothing written"
 
-CUT_CASES = load_wc6_vectors()["detail_cut_cases"]
+CUT_CASES = load_write_outcome_vectors()["detail_cut_cases"]
 
 
 @pytest.fixture(scope="module")
 def rows() -> dict:
-    return load_wc6_vectors()["rows"]
+    return load_write_outcome_vectors()["rows"]
 
 
 def test_vector_file_is_package_data():
-    ref = resources.files("canopy.contracts") / WC6_VECTORS_FILE
+    ref = resources.files("canopy.contracts") / WRITE_OUTCOME_VECTORS_FILE
     assert ref.is_file()
-    assert WC6_VECTORS_FILE == "wc6_vectors.json"
+    assert WRITE_OUTCOME_VECTORS_FILE == "write_outcome_vectors.json"
 
 
 def test_vector_top_level_keys_are_exactly_these():
-    assert set(load_wc6_vectors()) == TOP_LEVEL_KEYS
+    assert set(load_write_outcome_vectors()) == TOP_LEVEL_KEYS
 
 
 def test_vector_key_set_is_exactly_these_row_ids(rows):
@@ -98,7 +95,7 @@ def test_cut_cases_stay_within_their_limit():
 
 
 def test_cut_cases_cover_the_cap_and_a_whole_text():
-    cap = load_wc6_vectors()["detail_max_chars"]
+    cap = load_write_outcome_vectors()["detail_max_chars"]
     assert cap == 512
     assert any(case["limit"] == cap and len(case["text"]) > cap for case in CUT_CASES)
     assert any(case["expected"] == case["text"] for case in CUT_CASES)
@@ -106,7 +103,7 @@ def test_cut_cases_cover_the_cap_and_a_whole_text():
 
 def test_outcomes_are_the_closed_set(rows):
     for row_id, row in rows.items():
-        if row_id == "16-coalesced":
+        if row_id == "coalesced":
             assert row["outcome"] is None  # the winner's outcome
         else:
             assert row["outcome"] in OUTCOMES, row_id
@@ -114,38 +111,48 @@ def test_outcomes_are_the_closed_set(rows):
 
 def test_every_row_but_coalesced_has_its_detail_as_the_toast(rows):
     for row_id, row in rows.items():
-        if row_id == "16-coalesced":
+        if row_id == "coalesced":
             continue
         assert row["detail"] == row["toast"], row_id
         assert row["detail"], row_id
 
 
-def test_only_rows_6_to_9_11_and_16a_are_dynamic(rows):
-    assert {row_id for row_id, row in rows.items() if row["dynamic"]} == {"6", "7", "8", "9", "11", "16a"}
+def test_only_the_connector_message_mismatch_and_write_state_rows_are_dynamic(rows):
+    dynamic = {row_id for row_id, row in rows.items() if row["dynamic"]}
+    assert dynamic == {"connector-refused", "connector-limits", "mismatch", "write-state-changed"}
 
 
 def test_dynamic_rows_carry_a_placeholder_and_a_default(rows):
-    for row_id in ("6", "7", "8", "9"):
+    for row_id in ("connector-refused", "connector-limits"):
         assert rows[row_id]["detail"].startswith("<") and rows[row_id]["detail"].endswith(">")
         assert rows[row_id]["default"] == GENERIC_REFUSAL
-    assert rows["11"]["detail"] == "written; the channel holds <observed>"
-    assert rows["11"]["default"].startswith("written; the channel holds ")
-    assert rows["16a"]["detail"] == ROW_16A_TEXT
-    assert rows["16a"]["default"] == ROW_16A_DEFAULT
+    assert rows["mismatch"]["detail"] == "written; the channel holds <observed>"
+    assert rows["mismatch"]["default"].startswith("written; the channel holds ")
+    assert rows["write-state-changed"]["detail"] == WRITE_STATE_TEXT
+    assert rows["write-state-changed"]["default"] == WRITE_STATE_DEFAULT
 
 
 def test_static_rows_default_is_their_detail(rows):
     for row_id, row in rows.items():
-        if not row["dynamic"] and row_id != "16-coalesced":
+        if not row["dynamic"] and row_id != "coalesced":
             assert row["default"] == row["detail"], row_id
 
 
 @pytest.mark.parametrize(
     ("row_id", "source", "status", "code", "outcome", "decision", "reason", "text"),
     [
-        ("6", "connector", 403, "pv_write_refused", "refused", "refused", "channel_write_blocked", "<error_message>"),
         (
-            "6-readonly-run",
+            "connector-refused",
+            "connector",
+            403,
+            "pv_write_refused",
+            "refused",
+            "refused",
+            "channel_write_blocked",
+            "<error_message>",
+        ),
+        (
+            "connector-refused-read-only",
             "connector",
             403,
             "pv_write_refused",
@@ -155,7 +162,7 @@ def test_static_rows_default_is_their_detail(rows):
             "the whole deployment is running read-only; nothing written",
         ),
         (
-            "7",
+            "connector-limits",
             "connector",
             403,
             "pv_write_refused",
@@ -164,11 +171,9 @@ def test_static_rows_default_is_their_detail(rows):
             "channel_limits_violation",
             "<violation_reason>",
         ),
-        ("8", "connector", 403, "pv_write_refused", "refused", "refused", "channel_write_blocked", "<error_message>"),
-        ("9", "connector", 403, "pv_write_refused", "refused", "refused", "channel_write_blocked", "<error_message>"),
-        ("10", "connector", 200, None, "confirmed", "allowed", "write_landed", "written"),
+        ("confirmed", "connector", 200, None, "confirmed", "allowed", "write_landed", "written"),
         (
-            "11",
+            "mismatch",
             "connector",
             409,
             "pv_write_mismatch",
@@ -178,7 +183,7 @@ def test_static_rows_default_is_their_detail(rows):
             "written; the channel holds <observed>",
         ),
         (
-            "12",
+            "unconfirmed",
             "connector",
             502,
             "pv_write_unconfirmed",
@@ -187,16 +192,24 @@ def test_static_rows_default_is_their_detail(rows):
             "write_unconfirmed",
             "sent, not verified",
         ),
-        ("13", "connector", 502, "pv_write_unknown", "unknown", "allowed", "write_unconfirmed", UNKNOWN_TEXT),
-        ("14", "connector", 502, "pv_write_unknown", "unknown", "allowed", "write_unconfirmed", UNKNOWN_TEXT),
-        ("14a", "client", 405, None, "refused", None, None, "writes are not enabled on this server"),
-        ("14b-401", "front", 401, "invalid_access_credential", "refused", None, None, FRONT_TEXT),
-        ("14b-403", "front", 403, "pv_write_refused", "refused", None, None, FRONT_TEXT),
-        ("14b-404", "front", 404, "pv_write_refused", "refused", None, None, FRONT_TEXT),
-        ("14b-413", "front", 413, "pv_write_refused", "refused", None, None, FRONT_TEXT),
-        ("15", "client", None, None, "unknown", None, None, UNKNOWN_TEXT),
-        ("16", "client", None, None, "target_changed", None, None, ROW_16_TEXT),
-        ("16a", "client", None, None, "target_changed", None, None, ROW_16A_TEXT),
+        (
+            "connector-unknown",
+            "connector",
+            502,
+            "pv_write_unknown",
+            "unknown",
+            "allowed",
+            "write_unconfirmed",
+            UNKNOWN_TEXT,
+        ),
+        ("writes-not-enabled", "client", 405, None, "refused", None, None, "writes are not enabled on this server"),
+        ("front-refused-401", "front", 401, "invalid_access_credential", "refused", None, None, FRONT_TEXT),
+        ("front-refused-403", "front", 403, "pv_write_refused", "refused", None, None, FRONT_TEXT),
+        ("front-refused-404", "front", 404, "pv_write_refused", "refused", None, None, FRONT_TEXT),
+        ("front-refused-413", "front", 413, "pv_write_refused", "refused", None, None, FRONT_TEXT),
+        ("client-unknown", "client", None, None, "unknown", None, None, UNKNOWN_TEXT),
+        ("target-changed", "client", None, None, "target_changed", None, None, TARGET_CHANGED_TEXT),
+        ("write-state-changed", "client", None, None, "target_changed", None, None, WRITE_STATE_TEXT),
     ],
 )
 def test_row(rows, row_id, source, status, code, outcome, decision, reason, text):
@@ -210,14 +223,14 @@ def test_row(rows, row_id, source, status, code, outcome, decision, reason, text
     assert row["toast"] == text
 
 
-def test_row_16a_is_a_client_row_with_the_label_token(rows):
-    row = rows["16a"]
+def test_write_state_row_is_a_client_row_with_the_label_token(rows):
+    row = rows["write-state-changed"]
     assert row["status"] is None and row["code"] is None
     assert row["detail"].count("<label>") == 1
 
 
 def test_coalesced_row(rows):
-    row = rows["16-coalesced"]
+    row = rows["coalesced"]
     assert row["source"] == "client"
     assert row["status"] is None and row["code"] is None and row["detail"] is None
     assert row["toast"] == "a newer value replaced this one; nothing more sent"
@@ -225,7 +238,7 @@ def test_coalesced_row(rows):
 
 
 def test_static_texts_are_under_the_cap(rows):
-    cap = load_wc6_vectors()["detail_max_chars"]
+    cap = load_write_outcome_vectors()["detail_max_chars"]
     for row_id, row in rows.items():
         for key in ("detail", "toast", "default"):
             if row[key] is not None:
@@ -233,5 +246,5 @@ def test_static_texts_are_under_the_cap(rows):
 
 
 def test_vector_about_states_the_word_boundary_cut():
-    about = load_wc6_vectors()["about"]
+    about = load_write_outcome_vectors()["about"]
     assert "cut at the last whitespace before that limit" in about

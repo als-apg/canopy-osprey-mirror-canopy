@@ -1,6 +1,6 @@
 {
-  "contract": "WC6",
-  "about": "CANOPY write outcomes, one entry per row id. `source` names who decides the outcome: `connector` (the PV connector behind Hare, answering the PUT), `front` (canopy_mcp, before anything is sent upstream) or `client` (the viewer, with no response to go on). `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (rows 6-9: the connector's message, row 11: the observed value, row 16a: the heartbeat frame's `label`). A detail longer than `detail_max_chars` is cut at the last whitespace before that limit with … appended, so it never ends inside a word. `detail_cut_cases` are the cases that define that cut: `text` cut to `limit` characters is `expected`, a character being one Unicode code point. `default` is the detail used when a dynamic row has no message (16a: a null label). 6-readonly-run is row 6 when the whole deployment runs read-only. `status`/`code` null: no response or no envelope. 16-coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
+  "contract": "write outcomes",
+  "about": "CANOPY write outcomes, one entry per row id. `source` names who decides the outcome: `connector` (the PV connector behind Hare, answering the PUT), `front` (canopy_mcp, before anything is sent upstream) or `client` (the viewer, with no response to go on). `detail` is the envelope detail and equals the toast for every server row; `<...>` marks the dynamic part (connector-refused and connector-limits: the connector's message, mismatch: the observed value, write-state-changed: the heartbeat frame's `label`). A detail longer than `detail_max_chars` is cut at the last whitespace before that limit with … appended, so it never ends inside a word. `detail_cut_cases` are the cases that define that cut: `text` cut to `limit` characters is `expected`, a character being one Unicode code point. `default` is the detail used when a dynamic row has no message (write-state-changed: a null label). connector-refused-read-only is connector-refused when the whole deployment runs read-only. `status`/`code` null: no response or no envelope. coalesced: `outcome` is the winner's, no toast for the superseded value; `toast` is the viewer's text for a run stopped by it.",
   "detail_max_chars": 512,
   "detail_cut_cases": [
     {
@@ -71,7 +71,7 @@
     }
   ],
   "rows": {
-    "6": {
+    "connector-refused": {
       "source": "connector",
       "outcome": "refused",
       "status": 403,
@@ -85,7 +85,7 @@
       "dynamic": true,
       "default": "the write was refused; nothing written"
     },
-    "6-readonly-run": {
+    "connector-refused-read-only": {
       "source": "connector",
       "outcome": "refused",
       "status": 403,
@@ -99,7 +99,7 @@
       "dynamic": false,
       "default": "the whole deployment is running read-only; nothing written"
     },
-    "7": {
+    "connector-limits": {
       "source": "connector",
       "outcome": "refused",
       "status": 403,
@@ -113,35 +113,7 @@
       "dynamic": true,
       "default": "the write was refused; nothing written"
     },
-    "8": {
-      "source": "connector",
-      "outcome": "refused",
-      "status": 403,
-      "code": "pv_write_refused",
-      "audit": {
-        "decision": "refused",
-        "reason": "channel_write_blocked"
-      },
-      "detail": "<error_message>",
-      "toast": "<error_message>",
-      "dynamic": true,
-      "default": "the write was refused; nothing written"
-    },
-    "9": {
-      "source": "connector",
-      "outcome": "refused",
-      "status": 403,
-      "code": "pv_write_refused",
-      "audit": {
-        "decision": "refused",
-        "reason": "channel_write_blocked"
-      },
-      "detail": "<error_message>",
-      "toast": "<error_message>",
-      "dynamic": true,
-      "default": "the write was refused; nothing written"
-    },
-    "10": {
+    "confirmed": {
       "source": "connector",
       "outcome": "confirmed",
       "status": 200,
@@ -155,7 +127,7 @@
       "dynamic": false,
       "default": "written"
     },
-    "11": {
+    "mismatch": {
       "source": "connector",
       "outcome": "mismatch",
       "status": 409,
@@ -169,7 +141,7 @@
       "dynamic": true,
       "default": "written; the channel holds a different value"
     },
-    "12": {
+    "unconfirmed": {
       "source": "connector",
       "outcome": "unconfirmed",
       "status": 502,
@@ -183,7 +155,7 @@
       "dynamic": false,
       "default": "sent, not verified"
     },
-    "13": {
+    "connector-unknown": {
       "source": "connector",
       "outcome": "unknown",
       "status": 502,
@@ -197,21 +169,7 @@
       "dynamic": false,
       "default": "outcome unknown — check the readback"
     },
-    "14": {
-      "source": "connector",
-      "outcome": "unknown",
-      "status": 502,
-      "code": "pv_write_unknown",
-      "audit": {
-        "decision": "allowed",
-        "reason": "write_unconfirmed"
-      },
-      "detail": "outcome unknown — check the readback",
-      "toast": "outcome unknown — check the readback",
-      "dynamic": false,
-      "default": "outcome unknown — check the readback"
-    },
-    "14a": {
+    "writes-not-enabled": {
       "source": "client",
       "outcome": "refused",
       "status": 405,
@@ -225,7 +183,7 @@
       "dynamic": false,
       "default": "writes are not enabled on this server"
     },
-    "14b-401": {
+    "front-refused-401": {
       "source": "front",
       "outcome": "refused",
       "status": 401,
@@ -239,7 +197,7 @@
       "dynamic": false,
       "default": "the panel server refused this write; nothing written"
     },
-    "14b-403": {
+    "front-refused-403": {
       "source": "front",
       "outcome": "refused",
       "status": 403,
@@ -253,7 +211,7 @@
       "dynamic": false,
       "default": "the panel server refused this write; nothing written"
     },
-    "14b-404": {
+    "front-refused-404": {
       "source": "front",
       "outcome": "refused",
       "status": 404,
@@ -267,7 +225,7 @@
       "dynamic": false,
       "default": "the panel server refused this write; nothing written"
     },
-    "14b-413": {
+    "front-refused-413": {
       "source": "front",
       "outcome": "refused",
       "status": 413,
@@ -281,7 +239,7 @@
       "dynamic": false,
       "default": "the panel server refused this write; nothing written"
     },
-    "15": {
+    "client-unknown": {
       "source": "client",
       "outcome": "unknown",
       "status": null,
@@ -295,7 +253,7 @@
       "dynamic": false,
       "default": "outcome unknown — check the readback"
     },
-    "16": {
+    "target-changed": {
       "source": "client",
       "outcome": "target_changed",
       "status": null,
@@ -309,7 +267,7 @@
       "dynamic": false,
       "default": "the control target or its write state changed; nothing written"
     },
-    "16a": {
+    "write-state-changed": {
       "source": "client",
       "outcome": "target_changed",
       "status": null,
@@ -323,7 +281,7 @@
       "dynamic": true,
       "default": "the write state of this target changed; nothing written"
     },
-    "16-coalesced": {
+    "coalesced": {
       "source": "client",
       "outcome": null,
       "status": null,
