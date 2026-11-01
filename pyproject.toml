@@ -42,7 +42,7 @@ data = [
 ]
 # Legacy-screen conversion: needed by the converter module and its worker task.
 convert = [
-    "PyDMConverter>=1.0.7",
+    "PyDMConverter>=1.1.0",
 ]
 
 [dependency-groups]

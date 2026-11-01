@@ -143,12 +143,8 @@ class ConversionService:
             "calc_list_path": self._calc_list_path,
             "filename": filename,
             "search_paths": self._search_paths if kind == "edl" and self._search_paths else None,
+            "scheme": self._scheme.result if self._scheme is not None else None,
         }
-        # Pass the SchemeResult only when the loader produced one: with
-        # pydmconverter.scheme unavailable an older convert_bytes has no ``scheme``
-        # parameter, so the kwarg is omitted rather than sent as None.
-        if self._scheme is not None and self._scheme.flat_json is not None:
-            kwargs["scheme"] = self._scheme.result
         if self._color_def_path is not None:
             kwargs["color_def_path"] = self._color_def_path
         return kwargs

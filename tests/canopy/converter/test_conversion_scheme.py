@@ -126,10 +126,10 @@ def test_fields_settable_by_name():
 # --- service --------------------------------------------------------------------------------
 
 
-def test_scheme_free_service_passes_no_scheme_kwargs(spy):
+def test_scheme_free_service_passes_no_scheme(spy):
     service = ConversionService()
     result = service.convert(EDL, kind="edl")
-    assert "scheme" not in spy[0]
+    assert spy[0]["scheme"] is None
     assert "color_def_path" not in spy[0]
     assert service.scheme_meta is None
     assert result.scheme is None
@@ -186,7 +186,7 @@ def test_without_pydm_scheme_converts_scheme_free_with_degraded_warning(monkeypa
     loaded = get_color_scheme(None)
     assert loaded.result is None and loaded.flat_json is None
     result = ConversionService(scheme=loaded).convert(EDL, kind="edl")
-    assert "scheme" not in spy[0]
+    assert spy[0]["scheme"] is None
     warnings = _scheme_warnings(result.warnings)
     assert len(warnings) == 1
     assert "unavailable" in warnings[0]
