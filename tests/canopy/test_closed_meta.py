@@ -294,13 +294,29 @@ def test_the_query_parameter_does_not_open_an_http_route(closed_app):
 # --- Outside CORS ------------------------------------------------------------------
 
 
-def test_a_keyless_preflight_is_refused_before_cors_answers_it(closed_app):
+def test_a_keyless_preflight_is_answered_by_cors(closed_app):
     resp = TestClient(closed_app).options(
         "/hare/v1/health/summary",
         headers={"Origin": "https://example.org", "Access-Control-Request-Method": "GET"},
     )
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" in resp.headers
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Origin": "https://example.org"}, {"Access-Control-Request-Method": "GET"}],
+    ids=["bare", "origin-only", "method-only"],
+)
+def test_an_options_request_that_is_not_a_preflight_is_refused(closed_app, headers):
+    resp = TestClient(closed_app).options("/hare/v1/health/summary", headers=headers)
     assert resp.status_code == 401
     assert "access-control-allow-origin" not in resp.headers
+
+
+def test_the_request_after_a_preflight_still_needs_a_key(closed_app):
+    resp = TestClient(closed_app).get("/hare/v1/health/summary", headers={"Origin": "https://example.org"})
+    assert resp.status_code == 401
 
 
 def test_a_preflight_with_a_key_is_answered_by_cors(closed_app):

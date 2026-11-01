@@ -75,6 +75,16 @@ class _SelectedModules:
         await self.app(scope, receive, send)
 
 
+def _is_open(scope: Scope) -> bool:
+    """``GET /health`` and a CORS preflight pass the closed-meta gate."""
+    if scope["type"] != "http":
+        return False
+    if scope["method"] == "GET" and scope["path"] == "/health":
+        return True
+    headers = dict(scope["headers"])
+    return scope["method"] == "OPTIONS" and b"origin" in headers and b"access-control-request-method" in headers
+
+
 class _ClosedMeta:
     """Refuse every request whose key cannot read the module it targets, except ``GET /health``.
 
@@ -91,8 +101,9 @@ class _ClosedMeta:
     403 ``insufficient_module_access`` for a key scoped elsewhere and 403
     ``insufficient_read_access`` for a key in the module without read.
 
-    The gate is the outermost layer, so it also refuses a CORS preflight, which
-    a browser sends without the key: a closed app serves same-origin clients only.
+    A CORS preflight (``OPTIONS`` with ``Origin`` and
+    ``Access-Control-Request-Method``) passes: a browser sends it without the key,
+    CORS answers it without routing, and the real request is still gated.
     """
 
     _DETAIL = "A valid API key is required"
@@ -130,8 +141,7 @@ class _ClosedMeta:
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
-        is_health = scope["type"] == "http" and scope["method"] == "GET" and scope["path"] == "/health"
-        refused = None if is_health else await self._refusal(scope)
+        refused = None if _is_open(scope) else await self._refusal(scope)
         if refused is None:
             await self.app(scope, receive, send)
             return
@@ -212,8 +222,8 @@ def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) 
     )
     app.add_middleware(_SelectedModules, modules=frozenset(selected))
     if closed_meta:
-        # Added last, so it is the outermost layer: a keyless preflight is
-        # refused here and never reaches CORS (same-origin clients only).
+        # Added last, so it is the outermost layer; it lets a CORS preflight
+        # through to CORSMiddleware and gates everything else.
         app.add_middleware(_ClosedMeta, router_app=app)
 
     register_canopy_error_handler(app)
