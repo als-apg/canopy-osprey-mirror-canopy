@@ -2,15 +2,18 @@
 # Build the Canopy payload: the files a host image needs to run Canopy in
 # appliance mode, each built from one recorded commit per repository.
 #
-#   PYDM=<dir> RT=<dir> SDK=<dir> TRACE=<dir> TRACE_REF=<ref> scripts/build-payload.sh <out>
-#   PYDM=<dir> RT=<dir> SDK=<dir> scripts/build-payload.sh --no-trace <out>
+#   PYDM=<dir> RT=<dir> SDK=<dir> SDK_SHA=<commit> TRACE=<dir> TRACE_REF=<ref> scripts/build-payload.sh <out>
+#   PYDM=<dir> RT=<dir> SDK=<dir> SDK_SHA=<commit> scripts/build-payload.sh --no-trace <out>
 #
 # <out> receives the canopy and PyDMConverter wheels, viewer/, trace/, spec/
 # (only with SPEC set) and STAGED.json, written last: a directory without it is
 # not a payload. Every repository is exported with `git archive` at its commit,
 # so nothing is built in a checkout and an uncommitted edit never enters the
 # build. Before anything is built, the fixtures Canopy shares with the runtime
-# and the SDK are compared at the recorded commits (check_shared_fixtures).
+# and the SDK are compared at the recorded commits (check_shared_fixtures). The
+# runtime and Trace take the SDK from the registry through their lockfiles; after
+# the installs, what those resolved must be one SDK, the one at SDK_SHA
+# (check_one_sdk).
 #
 # What the payload holds and how a host uses it: docs/deployment/appliance.md.
 # Inputs and checks: --help. Needs git, tar, uv/uvx, pnpm, python3 and
@@ -20,12 +23,11 @@ set -euo pipefail
 PROG=build-payload
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-SDK_VENDOR="vendor/canopy-sdk-js"
 
 usage() {
     cat <<EOF
-Usage: PYDM=<dir> RT=<dir> SDK=<dir> TRACE=<dir> TRACE_REF=<ref> scripts/build-payload.sh <out>
-       PYDM=<dir> RT=<dir> SDK=<dir> scripts/build-payload.sh --no-trace <out>
+Usage: PYDM=<dir> RT=<dir> SDK=<dir> SDK_SHA=<commit> TRACE=<dir> TRACE_REF=<ref> scripts/build-payload.sh <out>
+       PYDM=<dir> RT=<dir> SDK=<dir> SDK_SHA=<commit> scripts/build-payload.sh --no-trace <out>
 
 Builds the CANOPY payload into <out> (created if absent; must be empty) from
 detached exports of one commit per repo. This canopy checkout is $ROOT.
@@ -33,16 +35,15 @@ detached exports of one commit per repo. This canopy checkout is $ROOT.
 Required inputs (environment):
   PYDM        pydm-converter-tool checkout
   RT          canopy-screen-runtime checkout (pnpm workspace with apps/viewer)
-  SDK         canopy-sdk-js checkout holding the commit the runtime pins
+  SDK         canopy-sdk-js checkout holding SDK_SHA
+  SDK_SHA     the commit of SDK released as the @slaclab/canopy-* version the
+              runtime and Trace lockfiles resolve; it has no default
   TRACE       react-trace checkout (required unless --no-trace)
-  TRACE_REF   git ref in TRACE to build (required unless --no-trace); it must
-              pin the same SDK commit at vendor/canopy-sdk-js as RT_SHA
+  TRACE_REF   git ref in TRACE to build (required unless --no-trace)
 
 Optional inputs (environment):
   CANOPY_SHA      commit of this checkout to build (default: its HEAD)
   RT_SHA          commit of RT to build (default: its HEAD)
-  SDK_SHA         commit of SDK to build; it must be the commit RT_SHA pins at
-                  vendor/canopy-sdk-js, which is also the default
   PYDM_SHA        commit of PYDM to build (default: its HEAD)
   CANOPY_VERSION  PEP 440 version of canopy (default: setuptools_scm on this checkout,
                   whose +g<node> must be a prefix of CANOPY_SHA)
@@ -52,6 +53,7 @@ Optional inputs (environment):
                   SHA), copied to <out>/spec/ and recorded in STAGED.json as "spec"
                   (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
                   unset means no spec/ and both recorded as null
+  NODE_AUTH_TOKEN read through each repo's .npmrc to install @slaclab packages
 
 Checks (before anything is built; each refuses the build on a mismatch):
   fixtures    when RT_SHA has apps/viewer/e2e/fixtures/collections/, its
@@ -71,6 +73,15 @@ Checks (before anything is built; each refuses the build on a mismatch):
               only one of the two commits is refused; STAGED.json records
               "vectors" as "compared", or "absent" when neither commit holds
               either
+
+Check after the installs (before the viewer and Trace are built):
+  one SDK     the lockfiles the frozen installs took: every package both the
+              runtime and Trace resolve must have the same version and integrity,
+              each lockfile must resolve at least one @slaclab/canopy-* package
+              and one version of each, each version must be the one
+              packages/*/package.json holds at SDK_SHA, and a tag v<version>, when
+              SDK holds one, must name SDK_SHA; STAGED.json records them as
+              "sdk_packages"
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -96,7 +107,7 @@ done
 [ -n "$OUT" ] || { echo "$PROG: missing output directory" >&2; usage >&2; exit 2; }
 
 # --- validate inputs ---------------------------------------------------------
-required=(PYDM RT SDK)
+required=(PYDM RT SDK SDK_SHA)
 [ "$NO_TRACE" = 1 ] || required+=(TRACE TRACE_REF)
 for var in "${required[@]}"; do
     [ -n "${!var:-}" ] || die "set $var (see --help)"
@@ -132,34 +143,11 @@ resolve() { # <var name> <checkout> <ref>
 }
 CANOPY_SHA="$(resolve CANOPY_SHA "$ROOT" "${CANOPY_SHA:-HEAD}")"
 RT_SHA="$(resolve RT_SHA "$RT" "${RT_SHA:-HEAD}")"
-# The SDK commit a commit pins at vendor/canopy-sdk-js (its gitlink); empty
-# when that commit has no submodule entry there.
-sdk_pin() { # <checkout> <sha>
-    git -C "$1" ls-tree "$2" -- "$SDK_VENDOR" | awk '$1 == "160000" && $2 == "commit" { print $3 }'
-}
-# One SDK commit per payload: the one the runtime commit pins, so the viewer
-# and Trace are built from the SDK the runtime was proven with.
-SDK_PIN="$(sdk_pin "$RT" "$RT_SHA")"
-[ -n "$SDK_PIN" ] \
-    || die "RT_SHA=$RT_SHA has no submodule entry at $SDK_VENDOR; the payload needs a runtime commit that vendors the SDK there"
-git -C "$SDK" rev-parse --verify --quiet "$SDK_PIN^{commit}" >/dev/null \
-    || die "the SDK commit $SDK_PIN that RT_SHA=$RT_SHA pins at $SDK_VENDOR is not in SDK=$SDK (fetch it there)"
-if [ -n "${SDK_SHA:-}" ]; then
-    SDK_SHA="$(resolve SDK_SHA "$SDK" "$SDK_SHA")"
-    [ "$SDK_SHA" = "$SDK_PIN" ] \
-        || die "SDK_SHA=$SDK_SHA is not the commit RT_SHA=$RT_SHA pins at $SDK_VENDOR ($SDK_PIN); leave SDK_SHA unset or move the pin"
-else
-    SDK_SHA="$SDK_PIN"
-fi
+SDK_SHA="$(resolve SDK_SHA "$SDK" "$SDK_SHA")"
 PYDM_SHA="$(resolve PYDM_SHA "$PYDM" "${PYDM_SHA:-HEAD}")"
 TRACE_SHA=""
 if [ "$NO_TRACE" = 0 ]; then
     TRACE_SHA="$(resolve TRACE_REF "$TRACE" "$TRACE_REF")"
-    TRACE_PIN="$(sdk_pin "$TRACE" "$TRACE_SHA")"
-    [ -n "$TRACE_PIN" ] \
-        || die "TRACE_REF=$TRACE_REF ($TRACE_SHA) has no submodule entry at $SDK_VENDOR: it predates the vendored SDK, and a payload needs a Trace commit that vendors the SDK there (build a later Trace commit, or use --no-trace)"
-    [ "$TRACE_PIN" = "$SDK_PIN" ] \
-        || die "TRACE_REF=$TRACE_REF ($TRACE_SHA) pins SDK $TRACE_PIN at $SDK_VENDOR, but RT_SHA=$RT_SHA pins SDK $SDK_PIN; a payload has one SDK commit, so move one gitlink to match the other"
 fi
 
 # --- shared fixtures: refuse drifted copies ----------------------------------
@@ -295,7 +283,7 @@ names="$(printf '%s\n' "$CANOPY_NAME" "$RT_NAME" "$PYDM_NAME" ${TRACE_NAME:+"$TR
 
 echo "$PROG: canopy  $CANOPY_SHA ($ROOT)" >&2
 echo "$PROG: runtime $RT_SHA ($RT)" >&2
-echo "$PROG: sdk     $SDK_SHA ($SDK, pinned by the runtime at $SDK_VENDOR)" >&2
+echo "$PROG: sdk     $SDK_SHA ($SDK)" >&2
 echo "$PROG: pydm    $PYDM_SHA ($PYDM)" >&2
 if [ -n "$SPEC_SHA" ]; then
     echo "$PROG: spec    $SPEC_SHA ($SPEC)" >&2
@@ -303,7 +291,7 @@ else
     echo "$PROG: spec    none (SPEC unset)" >&2
 fi
 if [ "$NO_TRACE" = 0 ]; then
-    echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE, pins the same sdk)" >&2
+    echo "$PROG: trace   $TRACE_SHA ($TRACE_REF in $TRACE)" >&2
 else
     echo "$PROG: trace   none (--no-trace)" >&2
 fi
@@ -364,21 +352,11 @@ export_repo() { # <checkout> <sha> <repo dir name>; prints the export's path
     git -C "$1" archive "$2" | tar -x -C "$dest"
     echo "$dest"
 }
-# An export of a repo that vendors the SDK: its submodule directory, which
-# `git archive` leaves empty, gets the tree of the payload's SDK commit (the one
-# both the runtime and Trace commits were checked to pin above).
-export_vendoring_sdk() { # <checkout> <sha> <repo dir name>; prints the export's path
-    local dest
-    dest="$(export_repo "$1" "$2" "$3")"
-    mkdir -p "$dest/$SDK_VENDOR"
-    git -C "$SDK" archive "$SDK_SHA" | tar -x -C "$dest/$SDK_VENDOR"
-    echo "$dest"
-}
 CANOPY_SRC="$(export_repo "$ROOT" "$CANOPY_SHA" "$CANOPY_NAME")"
-RT_SRC="$(export_vendoring_sdk "$RT" "$RT_SHA" "$RT_NAME")"
+RT_SRC="$(export_repo "$RT" "$RT_SHA" "$RT_NAME")"
 PYDM_SRC="$(export_repo "$PYDM" "$PYDM_SHA" "$PYDM_NAME")"
 TRACE_SRC=""
-[ "$NO_TRACE" = 1 ] || TRACE_SRC="$(export_vendoring_sdk "$TRACE" "$TRACE_SHA" "$TRACE_NAME")"
+[ "$NO_TRACE" = 1 ] || TRACE_SRC="$(export_repo "$TRACE" "$TRACE_SHA" "$TRACE_NAME")"
 
 # --- wheels ------------------------------------------------------------------
 # hatch-vcs does not hand setuptools_scm the distribution name, so canopy's
@@ -392,12 +370,104 @@ ls "$STAGE"/canopy-*.whl >/dev/null 2>&1 || die "no canopy wheel was built"
 [ "$(find "$STAGE" -maxdepth 1 -name '*.whl' | wc -l | tr -d ' ')" = 2 ] \
     || die "expected a canopy and a PyDMConverter wheel, got: $(cd "$STAGE" && ls)"
 
-# --- viewer --------------------------------------------------------------------
-# The runtime's install builds the SDK packages it vendors, then its own.
+# --- one SDK per payload ------------------------------------------------------
+# The viewer and Trace take the SDK from the registry, as their lockfiles say. A
+# payload holds one SDK, the one at SDK_SHA, so both must have resolved it. The
+# only install is --frozen-lockfile, so the lockfile in an export is what was
+# installed.
 # TRACE is unset for pnpm (it and the bundler read it as a tracing filter) and
 # HUSKY=0 turns the `prepare: husky` hooks into no-ops (an export has no .git).
 js() { env -u TRACE HUSKY=0 "$@"; }
-(cd "$RT_SRC" && js pnpm install --frozen-lockfile && js pnpm run build) \
+FROZEN_HINT="the install is --frozen-lockfile, so the commit's lockfile must already resolve the released @slaclab/canopy-* packages"
+(cd "$RT_SRC" && js pnpm install --frozen-lockfile) \
+    || die "installing the runtime export of $RT_SHA failed ($FROZEN_HINT)"
+if [ "$NO_TRACE" = 0 ]; then
+    (cd "$TRACE_SRC" && js pnpm install --frozen-lockfile) \
+        || die "installing the Trace export of $TRACE_SHA failed ($FROZEN_HINT)"
+fi
+# Prints the JSON recorded as "sdk_packages", or refuses on stderr.
+check_one_sdk() { # <runtime lockfile> <Trace lockfile, or "">
+    python3 -I -c '
+import json, re, subprocess, sys
+
+sdk, sha, rt_sha, trace_sha, rt_lock, trace_lock = sys.argv[1:]
+
+def refuse(message):
+    sys.exit(f"build-payload: {message}")
+
+def git(*args):
+    return subprocess.run(["git", "-C", sdk, *args], capture_output=True, text=True)
+
+def spec(entry):
+    return "{version} ({integrity})".format(**entry)
+
+def resolved(label, path):
+    # The packages section of a pnpm lockfile, read by line: a two-space key, then
+    # its four-space fields. importers: and snapshots: name the same packages.
+    found, in_packages, name = {}, False, None
+    with open(path, encoding="utf-8") as lock:
+        for line in lock:
+            if not line.strip():
+                continue
+            if not line.startswith(" "):
+                in_packages = line.rstrip() == "packages:"
+            elif in_packages and not line.startswith("   "):
+                key = re.fullmatch(r"\s*\x27?(@slaclab/canopy-[^@\x27]+)@([^\x27]+)\x27?:\s*", line)
+                name = key.group(1) if key else None
+                if name:
+                    found.setdefault(name, []).append({"version": key.group(2), "integrity": None})
+            elif in_packages and name:
+                integrity = re.search(r"\bintegrity: ([^,}\s]+)", line)
+                if integrity:
+                    found[name][-1]["integrity"] = integrity.group(1)
+    if not found:
+        refuse(f"the {label} lockfile resolves no @slaclab/canopy-* package, so nothing shows which SDK it was built with; run pnpm install there against the released SDK and commit the lockfile")
+    for name, entries in found.items():
+        if len(entries) > 1:
+            versions = ", ".join(e["version"] for e in entries)
+            refuse(f"the {label} lockfile resolves {name} to more than one version ({versions}); a payload has one SDK")
+        if not entries[0]["integrity"]:
+            refuse(f"the {label} lockfile has no integrity for {name}")
+    return {name: entries[0] for name, entries in sorted(found.items())}
+
+runtime = resolved(f"runtime (RT_SHA={rt_sha})", rt_lock)
+trace = resolved(f"Trace (TRACE_SHA={trace_sha})", trace_lock) if trace_lock else None
+
+for name in sorted(set(runtime) & set(trace or {})):
+    if runtime[name] != trace[name]:
+        refuse(f"RT_SHA={rt_sha} resolves {name} to {spec(runtime[name])}, but TRACE_SHA={trace_sha} resolves it to {spec(trace[name])}; a payload has one SDK, so move one lockfile to match the other")
+
+# The release: the package metadata at SDK_SHA, and the tag when SDK holds it.
+held = {}
+for directory in git("ls-tree", "--name-only", sha, "packages/").stdout.split():
+    shown = git("show", f"{sha}:{directory}/package.json")
+    if shown.returncode == 0:
+        meta = json.loads(shown.stdout)
+        held[meta.get("name")] = meta.get("version")
+both = {**(trace or {}), **runtime}
+for name, entry in both.items():
+    version = entry["version"]
+    if name not in held:
+        refuse(f"{name}@{version} is resolved, but SDK_SHA={sha} has no such package under packages/")
+    if held[name] != version:
+        refuse(f"{name} is resolved to {version}, but SDK_SHA={sha} holds {held[name]}; SDK_SHA must be the commit released as that version")
+for version in sorted({entry["version"] for entry in both.values()}):
+    tagged = git("rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}").stdout.strip()
+    if tagged and tagged != sha:
+        refuse(f"tag v{version} names {tagged} in {sdk}, but SDK_SHA={sha}; SDK_SHA must be the commit released as that version")
+    found = "names SDK_SHA" if tagged else "is not in SDK (package metadata only)"
+    print(f"build-payload: sdk tag v{version} {found}", file=sys.stderr)
+
+print(json.dumps({"runtime": runtime, "trace": trace}, sort_keys=True))
+' "$SDK" "$SDK_SHA" "$RT_SHA" "$TRACE_SHA" "$1" "$2"
+}
+trace_lock=""
+[ "$NO_TRACE" = 1 ] || trace_lock="$TRACE_SRC/pnpm-lock.yaml"
+SDK_PACKAGES="$(check_one_sdk "$RT_SRC/pnpm-lock.yaml" "$trace_lock")" || exit 1
+echo "$PROG: one sdk  resolved by the runtime and Trace, at $SDK_SHA" >&2
+
+# --- viewer --------------------------------------------------------------------
+(cd "$RT_SRC" && js pnpm run build) \
     || die "building the runtime export of $RT_SHA (SDK $SDK_SHA) failed"
 VIEWER_DIST="$RT_SRC/apps/viewer/dist"
 [ -s "$VIEWER_DIST/index.html" ] || die "viewer dist missing (apps/viewer/dist/index.html)"
@@ -413,9 +483,6 @@ cp -R "$VIEWER_DIST" "$STAGE/viewer"
 
 # --- trace -----------------------------------------------------------------------
 if [ "$NO_TRACE" = 0 ]; then
-    # Like the runtime's, Trace's install builds the SDK packages it vendors.
-    (cd "$TRACE_SRC" && js pnpm install --frozen-lockfile) \
-        || die "installing the Trace export of $TRACE_SHA (SDK $SDK_SHA) failed"
     (cd "$TRACE_SRC" && js pnpm exec tsc -b && js pnpm exec vite build --base=./) \
         || die "building the Trace export of $TRACE_SHA failed"
     [ -s "$TRACE_SRC/dist/index.html" ] || die "trace dist missing (dist/index.html)"
@@ -453,6 +520,7 @@ cat > "$OUT/STAGED.json.tmp" <<EOF
   "canopy": $(json_str "$CANOPY_SHA"),
   "runtime": $(json_str "$RT_SHA"),
   "sdk": $(json_str "$SDK_SHA"),
+  "sdk_packages": $SDK_PACKAGES,
   "pydm": $(json_str "$PYDM_SHA"),
   "trace": $(json_str "$TRACE_SHA"),
   "canopy_version": $(json_str "$CANOPY_VERSION"),
