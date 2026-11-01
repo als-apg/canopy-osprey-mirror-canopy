@@ -17,13 +17,13 @@
     {
       "name": "preset literal",
       "test": "parseTraceQuery > parses the preset literal",
-      "query": "pv=BTS:DIAG:BPM:01:POSITION:X&pv=BTS:DIAG:BPM:02:POSITION:X&pv=BTS:DIAG:BPM:03:POSITION:X&range=-1h",
+      "query": "pv=XFER:DIAG:BPM:01:POSITION:X&pv=XFER:DIAG:BPM:02:POSITION:X&pv=XFER:DIAG:BPM:03:POSITION:X&range=-1h",
       "verdict": "accepted"
     },
     {
       "name": "leading question mark",
       "test": "parseTraceQuery > tolerates a leading \"?\"",
-      "query": "?pv=BTS:DIAG:BPM:01:POSITION:X&pv=BTS:DIAG:BPM:02:POSITION:X&pv=BTS:DIAG:BPM:03:POSITION:X&range=-1h",
+      "query": "?pv=XFER:DIAG:BPM:01:POSITION:X&pv=XFER:DIAG:BPM:02:POSITION:X&pv=XFER:DIAG:BPM:03:POSITION:X&range=-1h",
       "verdict": "accepted"
     },
     {

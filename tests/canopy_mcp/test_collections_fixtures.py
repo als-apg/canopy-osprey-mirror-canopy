@@ -96,7 +96,14 @@ REFUSALS = {
 # Refused before the validator sees a document (file name, file kind, decoding).
 NOT_DOCUMENTS = {"bad.stem.json", "not-a-file.json", "not-utf8.json", "not-json.json"}
 # Screens a deployed library carries that the facility fixtures name.
-DEPLOYED_SCREENS = {"gtb/GTLView", "bts/BTSView", "sr/overview", "s3-promo/promotion", "common/KnobPanel", "dev/b1-dev"}
+DEPLOYED_SCREENS = {
+    "linac/LinacView",
+    "xfer/TransferView",
+    "sr/overview",
+    "s3-promo/promotion",
+    "common/KnobPanel",
+    "dev/b1-dev",
+}
 
 
 def _docs(directory: Path) -> dict[str, object]:
@@ -142,7 +149,7 @@ def test_the_template_collection_is_d14a():
 def test_the_deploy_trio_is_d14b():
     docs = _docs(FACILITY_DIR)
     shape = {
-        "injector.json": ("Injector", ["library/gtb/GTLView", "library/bts/BTSView"], "trace"),
+        "injector.json": ("Injector", ["library/linac/LinacView", "library/xfer/TransferView"], "trace"),
         "storage-ring.json": ("Storage ring", ["library/sr/overview", "library/s3-promo/promotion"], "correlation"),
         "diagnostics.json": ("Diagnostics", ["library/common/KnobPanel", "library/dev/b1-dev"], "waveform"),
     }
@@ -153,7 +160,7 @@ def test_the_deploy_trio_is_d14b():
         assert [m["screen"] for m in doc["members"] if "screen" in m] == screens
         tools = [m for m in doc["members"] if "tool" in m]
         assert len(tools) == 1 and tools[0]["tool"] == tool and tools[0]["name"]
-    # Trace over PVs bound in GTLView, Correlation over two PVs bound in sr/overview,
+    # Trace over PVs bound in LinacView, Correlation over two PVs bound in sr/overview,
     # Waveform at its config default.
     assert docs["injector.json"]["members"][2]["query"] == "pv=EG______HV_____AM00&pv=EG______HTR____AM00&range=-1h"
     assert (

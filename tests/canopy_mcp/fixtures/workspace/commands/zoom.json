@@ -24,7 +24,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/bts/BTSView",
+          "key": "library/xfer/TransferView",
           "step": "in"
         }
       },
@@ -39,7 +39,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/bts/BTSView",
+          "key": "library/xfer/TransferView",
           "step": "out"
         }
       },
@@ -54,7 +54,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/bts/BTSView",
+          "key": "library/xfer/TransferView",
           "percent": 150
         }
       },
@@ -69,7 +69,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/bts/BTSView",
+          "key": "library/xfer/TransferView",
           "step": "actual"
         }
       },
@@ -84,7 +84,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/bts/BTSView",
+          "key": "library/xfer/TransferView",
           "step": "fit"
         }
       },
@@ -99,7 +99,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/bts/BTSView",
+          "key": "library/xfer/TransferView",
           "percent": 75
         }
       },
@@ -114,7 +114,7 @@
       "command": {
         "cmd": "zoom",
         "args": {
-          "key": "library/gtb/GTLView?SR=1",
+          "key": "library/linac/LinacView?SR=1",
           "step": "fit"
         }
       },

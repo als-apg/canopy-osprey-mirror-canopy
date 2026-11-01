@@ -88,9 +88,9 @@ def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     dist.mkdir()
     for page in ("index.html", "correlation.html"):
         (dist / page).write_text("<!doctype html>", encoding="utf-8")
-    draft = tmp_path / "drafts" / "screens" / "bts" / "view.screen.json"
+    draft = tmp_path / "drafts" / "screens" / "xfer" / "view.screen.json"
     draft.parent.mkdir(parents=True)
-    draft.write_text(json.dumps({"metadata": {"title": "BTS draft"}}), encoding="utf-8")
+    draft.write_text(json.dumps({"metadata": {"title": "XFER draft"}}), encoding="utf-8")
     built = Settings(
         drafts_dir=tmp_path / "drafts",
         library_dir=COLLECTIONS / "library",
@@ -111,7 +111,7 @@ def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
 
 
 def test_draft_ref_prefixes_a_personal_draft_and_keeps_a_library_screen(settings: Settings) -> None:
-    assert draft_ref(settings, "bts/view") == "drafts/bts/view"
+    assert draft_ref(settings, "xfer/view") == "drafts/xfer/view"
     assert draft_ref(settings, "library/sr/overview") == "library/sr/overview"
 
 
@@ -123,7 +123,7 @@ def test_draft_ref_without_a_library_is_a_draft(settings: Settings) -> None:
 async def test_list_drafts_carries_a_ref_open_accepts(settings: Settings) -> None:
     listed = (await list_drafts())["drafts"]
     refs = {entry["draftId"]: entry["ref"] for entry in listed}
-    assert refs["bts/view"] == "drafts/bts/view"
+    assert refs["xfer/view"] == "drafts/xfer/view"
     assert refs["library/s3-promo/promotion"] == "library/s3-promo/promotion"
     assert refs["library/common/KnobPanel"] == "library/common/KnobPanel"
     for entry in listed:
@@ -136,11 +136,11 @@ async def test_list_drafts_carries_a_ref_open_accepts(settings: Settings) -> Non
 async def test_list_drafts_refs_match_the_vector_refs_for_the_same_screens(settings: Settings) -> None:
     listed = {entry["ref"] for entry in (await list_drafts())["drafts"]}
     shared = listed & _vector_screen_refs()
-    assert {"library/s3-promo/promotion", "library/common/KnobPanel", "library/bts/BTSView"} <= shared
+    assert {"library/s3-promo/promotion", "library/common/KnobPanel", "library/xfer/TransferView"} <= shared
 
 
 async def test_get_screen_carries_a_ref_open_accepts(settings: Settings) -> None:
-    for draft_id, ref in (("bts/view", "drafts/bts/view"), ("library/sr/overview", "library/sr/overview")):
+    for draft_id, ref in (("xfer/view", "drafts/xfer/view"), ("library/sr/overview", "library/sr/overview")):
         got = await get_screen(draft_id)
         assert got["ref"] == ref
         assert set(got) == {"draftId", "rev", "url", "ref", "screen"}
@@ -187,7 +187,7 @@ async def test_list_collections_refs_are_open_collection_args(settings: Settings
 async def test_list_collections_screen_members_carry_an_open_ref(settings: Settings) -> None:
     result = await collections_tool.list_collections()
     draft, with_macros, _ = _members(result, "personal:drafts")
-    assert draft["ref"] == "drafts/bts/view"
+    assert draft["ref"] == "drafts/xfer/view"
     assert "macros" not in draft
     assert with_macros["ref"] == "library/sr/overview"
     assert with_macros["macros"] == {"S": "SR01"}

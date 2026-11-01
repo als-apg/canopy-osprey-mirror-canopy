@@ -250,7 +250,7 @@ drag=pan             a left-drag pans (default: a zoom box)
 Neither `trig` nor `dt` means a 1 s timer. A `lookback` with a leading `-`
 is unusable and falls back to 1h.
 
-Example: `x=BTS:DIAG:BPM:01:POSITION:X&y=BTS:DIAG:BPM:02:POSITION:X`
+Example: `x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X`
 
 ### waveform
 

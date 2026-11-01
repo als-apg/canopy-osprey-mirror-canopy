@@ -434,10 +434,10 @@ uv run --project /path/to/canopy python -m canopy_mcp.skill install .
 claude
 ```
 
-Ask the agent to open `library/gtb/GTLView` and `library/bts/BTSView` side by
-side and fit both, then to open Trace on three PVs over the last hour. Each
-batch should come back `done` and each touched element highlights in the
-browser. Ask it to close the BTS screen: the toast offers Undo. Close the
+Ask the agent to open `library/linac/LinacView` and `library/xfer/TransferView`
+side by side and fit both, then to open Trace on three PVs over the last hour.
+Each batch should come back `done` and each touched element highlights in the
+browser. Ask it to close the transfer-line screen: the toast offers Undo. Close the
 browser tab and ask again: the batch comes back `refused` with `no_window`.
 
 ## Screenshots

@@ -33,14 +33,14 @@ def store(tmp_path: Path) -> ViewStore:
 
 
 async def test_round_trip(store: ViewStore) -> None:
-    view, created = await store.put("bts-orbit", "  BTS orbit  ", "pv=A:B&range=-1h")
+    view, created = await store.put("xfer-orbit", "  XFER orbit  ", "pv=A:B&range=-1h")
     assert created is True
-    assert view["id"] == "bts-orbit"
-    assert view["name"] == "BTS orbit"
+    assert view["id"] == "xfer-orbit"
+    assert view["name"] == "XFER orbit"
     assert view["query"] == "pv=A:B&range=-1h"
     assert datetime.fromisoformat(view["updated"]).utcoffset().total_seconds() == 0
-    assert store.get("bts-orbit") == view
-    on_disk = json.loads((store.root / "views" / "bts-orbit.json").read_text())
+    assert store.get("xfer-orbit") == view
+    on_disk = json.loads((store.root / "views" / "xfer-orbit.json").read_text())
     assert on_disk == view
 
 
@@ -223,14 +223,14 @@ def test_query_with_a_plot_config_is_stored_verbatim(client: TestClient, drafts:
     # Trace's axis and display settings ride in the query as `plot=<JSON>`;
     # the server stores the query as an opaque string and never parses it.
     query = (
-        "pv=GTL:BPM1:X&pv=GTL:QF1:I&range=-6h"
+        "pv=LINAC:BPM1:X&pv=LINAC:QF1:I&range=-6h"
         "&plot={%22v%22:1,%22axes%22:[{},{%22name%22:%22I%22,%22logScale%22:true}],"
         "%22traces%22:[{},{%22axis%22:1}]}"
     )
-    r = _put(client, "gtl", {"name": "GTL", "query": query})
+    r = _put(client, "linac", {"name": "LINAC", "query": query})
     assert r.status_code == 201
-    assert client.get("/views/gtl").json()["query"] == query
-    assert json.loads((drafts / "views" / "gtl.json").read_text())["query"] == query
+    assert client.get("/views/linac").json()["query"] == query
+    assert json.loads((drafts / "views" / "linac.json").read_text())["query"] == query
 
 
 @pytest.mark.parametrize("path", ["/views/a.b", "/views/x.screen", "/views/" + "a" * 65, "/views/a/b", "/views/"])

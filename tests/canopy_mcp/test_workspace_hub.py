@@ -268,14 +268,14 @@ def test_workspace_hub_keeps_the_sample_state_unchanged():
 @pytest.mark.parametrize(
     ("change", "why"),
     [
-        (lambda s: s["tabs"][0].update(key="library/gtb/GTLView?SR=%31"), "non-canonical macro encoding"),
-        (lambda s: s["tabs"][0].update(key="library/gtb/GTLView?b=1&a=2"), "macros out of order"),
-        (lambda s: s["tabs"][0].update(key="elsewhere/gtb/GTLView"), "unknown category"),
+        (lambda s: s["tabs"][0].update(key="library/linac/LinacView?SR=%31"), "non-canonical macro encoding"),
+        (lambda s: s["tabs"][0].update(key="library/linac/LinacView?b=1&a=2"), "macros out of order"),
+        (lambda s: s["tabs"][0].update(key="elsewhere/linac/LinacView"), "unknown category"),
         (lambda s: s["tabs"][2].update(key="@scope"), "unknown tool"),
         (lambda s: s["tabs"][2].update(kind="screen"), "kind disagrees with key"),
         (lambda s: s.update(active="library/nope"), "active not open"),
         (lambda s: s["zoom"].update({"library/nope": {"mode": "fit"}}), "zoom of a closed screen"),
-        (lambda s: s["zoom"].update({"library/gtb/GTLView": {"mode": "manual", "percent": 401}}), "zoom percent"),
+        (lambda s: s["zoom"].update({"library/linac/LinacView": {"mode": "manual", "percent": 401}}), "zoom percent"),
         (lambda s: s["instances"]["@trace"].update(query="pv=\u00e9"), "query outside ASCII"),
         (lambda s: s["instances"]["@trace"].update(n=2), "instance number disagrees with key"),
         (lambda s: s["instances"].pop("@trace"), "tool tab without instance"),
@@ -325,14 +325,14 @@ def test_workspace_hub_accepts_a_numbered_tool_and_a_drafts_screen():
 
 def _one_screen_state() -> dict[str, Any]:
     state = copy.deepcopy(EMPTY)
-    state["tabs"] = [{"key": "library/bts/BTSView", "kind": "screen", "canBack": False, "canForward": False}]
-    state["active"] = "library/bts/BTSView"
+    state["tabs"] = [{"key": "library/xfer/TransferView", "kind": "screen", "canBack": False, "canForward": False}]
+    state["active"] = "library/xfer/TransferView"
     return state
 
 
 def test_workspace_hub_takes_a_root_tile_and_keeps_the_layout_as_reported():
     state = _one_screen_state()
-    state["layout"] = {"tile": "t4", "tabs": ["library/bts/BTSView"], "showing": "library/bts/BTSView"}
+    state["layout"] = {"tile": "t4", "tabs": ["library/xfer/TransferView"], "showing": "library/xfer/TransferView"}
     assert normalise_state(state)["layout"] == state["layout"]
     state["layout"] = None
     with pytest.raises(WorkspaceError):
@@ -341,7 +341,7 @@ def test_workspace_hub_takes_a_root_tile_and_keeps_the_layout_as_reported():
 
 def test_workspace_hub_refuses_a_layout_while_no_tab_is_open():
     state = copy.deepcopy(EMPTY)
-    state["layout"] = {"tile": "t1", "tabs": ["library/bts/BTSView"], "showing": "library/bts/BTSView"}
+    state["layout"] = {"tile": "t1", "tabs": ["library/xfer/TransferView"], "showing": "library/xfer/TransferView"}
     with pytest.raises(WorkspaceError):
         normalise_state(state)
 
@@ -617,7 +617,7 @@ async def test_workspace_hub_lost_deadline_delivers_the_next_batch_on_the_stream
     stream.drain()
     hub.enqueue(FOCUS)
     clock.ms = 5000
-    hub.enqueue([{"cmd": "focus", "args": {"key": "library/bts/BTSView"}}])
+    hub.enqueue([{"cmd": "focus", "args": {"key": "library/xfer/TransferView"}}])
     assert [e["data"]["batch"] for e in stream.drain()] == ["b-e1-1"]
     clock.ms = 10000
     events = stream.drain()

@@ -3,7 +3,7 @@
   "name": "my drafts",
   "members": [
     {
-      "screen": "drafts/bts/view"
+      "screen": "drafts/xfer/view"
     },
     {
       "screen": "library/sr/overview",

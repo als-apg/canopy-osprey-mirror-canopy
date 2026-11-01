@@ -33,8 +33,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "library/s3-promo/promotion"
@@ -47,22 +47,22 @@
       "command": {
         "cmd": "open",
         "args": {
-          "ref": "library/bts/BTSView"
+          "ref": "library/xfer/TransferView"
         }
       },
       "result": {
         "status": "applied",
         "changed": true,
-        "key": "library/bts/BTSView"
+        "key": "library/xfer/TransferView"
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview"
         ],
-        "active": "library/bts/BTSView"
+        "active": "library/xfer/TransferView"
       }
     },
     {
@@ -70,7 +70,7 @@
       "command": {
         "cmd": "open",
         "args": {
-          "ref": "library/gtb/GTLView",
+          "ref": "library/linac/LinacView",
           "macros": {
             "SR": "1"
           }
@@ -79,16 +79,16 @@
       "result": {
         "status": "applied",
         "changed": false,
-        "key": "library/gtb/GTLView?SR=1"
+        "key": "library/linac/LinacView?SR=1"
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview"
         ],
-        "active": "library/gtb/GTLView?SR=1"
+        "active": "library/linac/LinacView?SR=1"
       }
     },
     {
@@ -96,7 +96,7 @@
       "command": {
         "cmd": "open",
         "args": {
-          "ref": "library/gtb/GTLView",
+          "ref": "library/linac/LinacView",
           "macros": {
             "SR": "2",
             "B": "1"
@@ -106,17 +106,17 @@
       "result": {
         "status": "applied",
         "changed": true,
-        "key": "library/gtb/GTLView?B=1&SR=2"
+        "key": "library/linac/LinacView?B=1&SR=2"
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
-          "library/gtb/GTLView?B=1&SR=2"
+          "library/linac/LinacView?B=1&SR=2"
         ],
-        "active": "library/gtb/GTLView?B=1&SR=2"
+        "active": "library/linac/LinacView?B=1&SR=2"
       }
     }
   ]

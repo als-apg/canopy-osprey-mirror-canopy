@@ -76,7 +76,7 @@
         {
           "cmd": "close_tab",
           "args": {
-            "key": "library/bts/BTSView"
+            "key": "library/xfer/TransferView"
           }
         }
       ],
@@ -119,7 +119,7 @@
                   "id": "c-e1-2",
                   "cmd": "close_tab",
                   "args": {
-                    "key": "library/bts/BTSView"
+                    "key": "library/xfer/TransferView"
                   }
                 }
               ]
@@ -163,7 +163,7 @@
         {
           "cmd": "close_tab",
           "args": {
-            "key": "library/bts/BTSView"
+            "key": "library/xfer/TransferView"
           }
         }
       ],

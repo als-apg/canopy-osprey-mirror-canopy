@@ -4,10 +4,10 @@
   "description": "Two tiles side by side; the left one holds two tabs and shows the second.",
   "members": [
     {
-      "screen": "library/gtb/GTLView"
+      "screen": "library/linac/LinacView"
     },
     {
-      "screen": "library/bts/BTSView"
+      "screen": "library/xfer/TransferView"
     },
     {
       "tool": "waveform",

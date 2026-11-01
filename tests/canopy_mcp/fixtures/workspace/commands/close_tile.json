@@ -7,7 +7,7 @@
     "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
     "after, when present: the open tab keys in strip order and the active key once the command is applied.",
     "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra.",
-    "A command that names a tile id (close_tile; drop from a tile, onto a tile or onto a border) runs in a batch with base {window, seq}; the hub refuses it without as invalid_command (refusals/invalid_command.json, bound base-required). The tile ids here are context.json's: t1 holds GTLView and overview, t2 BTSView, t3 @trace."
+    "A command that names a tile id (close_tile; drop from a tile, onto a tile or onto a border) runs in a batch with base {window, seq}; the hub refuses it without as invalid_command (refusals/invalid_command.json, bound base-required). The tile ids here are context.json's: t1 holds LinacView and overview, t2 TransferView, t3 @trace."
   ],
   "verb": "close_tile",
   "args": {
@@ -33,7 +33,7 @@
       },
       "after": {
         "tabs": [
-          "library/bts/BTSView",
+          "library/xfer/TransferView",
           "@trace"
         ]
       }

@@ -17,7 +17,7 @@
       "screen": "library/sr/overview"
     },
     {
-      "screen": "drafts/bts/view"
+      "screen": "drafts/xfer/view"
     }
   ]
 }

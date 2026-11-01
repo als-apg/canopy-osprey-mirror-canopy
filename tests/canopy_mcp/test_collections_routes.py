@@ -30,7 +30,7 @@ RESPONSES = Path(__file__).parent / "fixtures" / "collections" / "responses"
 JSON = {"content-type": "application/json"}
 CREATE = {"if-none-match": "*"}
 SCREEN = {"screen": "library/sr/overview"}
-DRAFT = {"screen": "drafts/bts/view"}
+DRAFT = {"screen": "drafts/xfer/view"}
 TOOL = {"tool": "trace", "query": "pv=A:B&range=-1h", "name": "Beam current"}
 BAD_IDS = ["has space", "a.b", "x" * 65, "a/b", "%2E%2E"]
 

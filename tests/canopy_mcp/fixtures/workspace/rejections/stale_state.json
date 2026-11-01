@@ -29,7 +29,7 @@
             "id": "c-e1-2",
             "cmd": "close_tab",
             "args": {
-              "key": "library/bts/BTSView"
+              "key": "library/xfer/TransferView"
             }
           }
         ]
@@ -66,14 +66,14 @@
             "id": "c-e1-2",
             "cmd": "close_tab",
             "args": {
-              "key": "library/bts/BTSView"
+              "key": "library/xfer/TransferView"
             }
           },
           {
             "id": "c-e1-3",
             "cmd": "focus",
             "args": {
-              "key": "library/gtb/GTLView?SR=1"
+              "key": "library/linac/LinacView?SR=1"
             }
           }
         ]

@@ -32,8 +32,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "library/common/KnobPanel"
@@ -58,8 +58,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "library/common/KnobPanel"

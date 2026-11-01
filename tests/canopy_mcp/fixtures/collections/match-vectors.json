@@ -4,7 +4,7 @@
     "Authored in canopy (tests/canopy_mcp/fixtures/collections/match-vectors.json); every other holder keeps a byte-identical copy.",
     "ASCII-only, no trailing whitespace, one final newline.",
     "Every case has a name, a kind and an expect array. A reader must fail on a kind it does not know; the kinds are rank and include.",
-    "Words: split the text on non-alphanumerics, then at lower->Upper, at Upper->Upper+lower and at letter<->digit boundaries, and lower-case each part (GTLView -> gtl, view; SR01C -> sr, 01, c).",
+    "Words: split the text on non-alphanumerics, then at lower->Upper, at Upper->Upper+lower and at letter<->digit boundaries, and lower-case each part (LinacView -> linac, view; SR01C -> sr, 01, c).",
     "rank {query, candidates:[{label, keywords[]}], expect:[labels]}: the query is lower-cased and split on whitespace into tokens; no tokens -> no matches. A candidate matches when every token is a prefix of some word of its label or a keyword, or of the joined lower-case words of that label or keyword.",
     "Matches are ordered by: all tokens matched in the label first; then the first token prefixing the first label word; then more label words prefixed by some token; then candidate list order. expect lists the labels of the matches in that order.",
     "include {manifest:[{id, category, kind}], showSubScreens, expect:[ids]}: a screen is searchable when kind is 'ir', category does not start with '@', and showSubScreens is true or the id is not a sub-screen. A sub-screen id has a path segment equal to 'embedded' or a basename starting with '_'. expect keeps manifest order."
@@ -16,9 +16,9 @@
       "query": "",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -34,9 +34,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -58,9 +58,9 @@
       "query": "   ",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -76,9 +76,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -100,9 +100,9 @@
       "query": "vac",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -118,9 +118,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -144,9 +144,9 @@
       "query": "view",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -162,9 +162,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -179,18 +179,18 @@
         }
       ],
       "expect": [
-        "GTLView"
+        "LinacView"
       ]
     },
     {
       "name": "camelCase split: acronym part",
       "kind": "rank",
-      "query": "gtl",
+      "query": "linac",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -206,9 +206,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -223,18 +223,18 @@
         }
       ],
       "expect": [
-        "GTLView"
+        "LinacView"
       ]
     },
     {
       "name": "tokens across the camelCase split",
       "kind": "rank",
-      "query": "gtl view",
+      "query": "linac view",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -250,9 +250,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -267,18 +267,18 @@
         }
       ],
       "expect": [
-        "GTLView"
+        "LinacView"
       ]
     },
     {
       "name": "prefix of the joined lowercase label",
       "kind": "rank",
-      "query": "gtlv",
+      "query": "linacv",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -294,9 +294,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -311,18 +311,18 @@
         }
       ],
       "expect": [
-        "GTLView"
+        "LinacView"
       ]
     },
     {
       "name": "query is case-insensitive",
       "kind": "rank",
-      "query": "GTLVIEW",
+      "query": "LINACVIEW",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -338,9 +338,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -355,7 +355,7 @@
         }
       ],
       "expect": [
-        "GTLView"
+        "LinacView"
       ]
     },
     {
@@ -364,9 +364,9 @@
       "query": "sr overview",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -382,9 +382,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -408,9 +408,9 @@
       "query": "sr magnets",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -426,9 +426,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -450,9 +450,9 @@
       "query": "xyz",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -468,9 +468,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -492,9 +492,9 @@
       "query": "sr 01",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -510,9 +510,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -536,9 +536,9 @@
       "query": "01 c",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -554,9 +554,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -580,9 +580,9 @@
       "query": "sr01c",
       "candidates": [
         {
-          "label": "GTLView",
+          "label": "LinacView",
           "keywords": [
-            "library/gtl/GTLView"
+            "library/linac/LinacView"
           ]
         },
         {
@@ -598,9 +598,9 @@
           ]
         },
         {
-          "label": "BTS Magnets",
+          "label": "XFER Magnets",
           "keywords": [
-            "library/bts/magnets"
+            "library/xfer/magnets"
           ]
         },
         {
@@ -794,7 +794,7 @@
           "kind": "ir"
         },
         {
-          "id": "gtl/GTLView",
+          "id": "linac/LinacView",
           "category": "library",
           "kind": "ir"
         },
@@ -817,7 +817,7 @@
       "showSubScreens": false,
       "expect": [
         "sr/overview",
-        "gtl/GTLView",
+        "linac/LinacView",
         "drafts/mine"
       ]
     },
@@ -841,7 +841,7 @@
           "kind": "ir"
         },
         {
-          "id": "gtl/GTLView",
+          "id": "linac/LinacView",
           "category": "library",
           "kind": "ir"
         },
@@ -866,7 +866,7 @@
         "sr/overview",
         "sr/embedded/bpm-row",
         "sr/_header",
-        "gtl/GTLView",
+        "linac/LinacView",
         "drafts/mine"
       ]
     },

@@ -25,7 +25,7 @@
             {
               "cmd": "focus",
               "args": {
-                "key": "library/gtb/GTLView?SR=1"
+                "key": "library/linac/LinacView?SR=1"
               }
             }
           ],
@@ -93,7 +93,7 @@
             {
               "cmd": "focus",
               "args": {
-                "key": "library/gtb/GTLView?SR=1"
+                "key": "library/linac/LinacView?SR=1"
               }
             }
           ],
@@ -139,7 +139,7 @@
             {
               "cmd": "focus",
               "args": {
-                "key": "library/gtb/GTLView?SR=1"
+                "key": "library/linac/LinacView?SR=1"
               }
             }
           ],
@@ -176,7 +176,7 @@
                       "id": "c-e1-1",
                       "cmd": "focus",
                       "args": {
-                        "key": "library/gtb/GTLView?SR=1"
+                        "key": "library/linac/LinacView?SR=1"
                       }
                     }
                   ]

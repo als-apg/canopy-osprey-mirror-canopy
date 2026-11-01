@@ -282,7 +282,7 @@
           "state": {
             "tabs": [
               {
-                "key": "library/gtb/GTLView?SR=1 2",
+                "key": "library/linac/LinacView?SR=1 2",
                 "kind": "screen",
                 "canBack": false,
                 "canForward": false
@@ -292,9 +292,9 @@
             "layout": {
               "tile": "t1",
               "tabs": [
-                "library/gtb/GTLView?SR=1 2"
+                "library/linac/LinacView?SR=1 2"
               ],
-              "showing": "library/gtb/GTLView?SR=1 2"
+              "showing": "library/linac/LinacView?SR=1 2"
             },
             "zoom": {},
             "instances": {},
@@ -323,22 +323,22 @@
           "state": {
             "tabs": [
               {
-                "key": "library/gtb/GTLView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v",
+                "key": "library/linac/LinacView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v",
                 "kind": "screen",
                 "canBack": false,
                 "canForward": false
               }
             ],
-            "active": "library/gtb/GTLView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v",
+            "active": "library/linac/LinacView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v",
             "layout": {
               "tile": "t1",
               "tabs": [
-                "library/gtb/GTLView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v"
+                "library/linac/LinacView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v"
               ],
-              "showing": "library/gtb/GTLView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v"
+              "showing": "library/linac/LinacView?M00=v&M01=v&M02=v&M03=v&M04=v&M05=v&M06=v&M07=v&M08=v&M09=v&M10=v&M11=v&M12=v&M13=v&M14=v&M15=v&M16=v"
             },
             "zoom": {
-              "library/gtb/GTLView": {
+              "library/linac/LinacView": {
                 "mode": "fit"
               }
             },

@@ -34,9 +34,9 @@ def _trace_dist(root: Path, *pages: str) -> Path:
 
 def _drafts(root: Path) -> Path:
     drafts = root / "drafts"
-    screen = drafts / "screens" / "bts" / "view.screen.json"
+    screen = drafts / "screens" / "xfer" / "view.screen.json"
     screen.parent.mkdir(parents=True)
-    screen.write_text(json.dumps({"metadata": {"title": "BTS draft"}}), encoding="utf-8")
+    screen.write_text(json.dumps({"metadata": {"title": "XFER draft"}}), encoding="utf-8")
     return drafts
 
 
@@ -136,11 +136,11 @@ async def test_a_draft_screen_member_is_available_when_the_draft_exists(settings
     members = _by_ref(result)["personal:drafts"]["members"]
     draft = members[0]
     assert draft == {
-        "key": "screen:drafts/bts/view",
+        "key": "screen:drafts/xfer/view",
         "available": True,
-        "title": "BTS draft",
-        "url": "http://127.0.0.1:8765/embed/drafts/bts/view",
-        "ref": "drafts/bts/view",
+        "title": "XFER draft",
+        "url": "http://127.0.0.1:8765/embed/drafts/xfer/view",
+        "ref": "drafts/xfer/view",
     }
     with_macros = members[1]
     assert with_macros["key"] == "screen:library/sr/overview?S=SR01"

@@ -43,7 +43,7 @@ from .test_workspace_hub import SAMPLE, REFUSALS, SCENARIOS, Replay, matches
 
 COLLECTIONS = Path(__file__).parent / "fixtures" / "collections" / "valid"
 PHRASE = "the CANOPY workspace: tabs and tiles inside the CANOPY panel"
-FOCUS = {"cmd": "focus", "args": {"key": "library/gtb/GTLView?SR=1"}}
+FOCUS = {"cmd": "focus", "args": {"key": "library/linac/LinacView?SR=1"}}
 
 
 def _names() -> set[str]:
@@ -161,7 +161,7 @@ async def test_workspace_tools_get_workspace_returns_the_document_with_the_sideb
                 "ticked": ["facility:injector", "personal:drafts", "facility:not-listed"],
                 "unticked": ["facility:diagnostics"],
                 "pinned": [
-                    {"screen": "library/gtb/GTLView", "macros": {"SR": "1"}},
+                    {"screen": "library/linac/LinacView", "macros": {"SR": "1"}},
                     {"tool": "trace", "query": "pv=SR:DCCT", "name": "Beam current"},
                 ],
                 "recent": [{"tool": "waveform"}, {"screen": "drafts/beam-tune"}],
@@ -180,7 +180,7 @@ async def test_workspace_tools_get_workspace_returns_the_document_with_the_sideb
     # (default control-assistant + ticked) minus unticked, in list order; an unlisted tick adds nothing.
     assert doc["collections"] == {"shown": ["facility:control-assistant", "facility:injector", "personal:drafts"]}
     assert doc["sidebar"] == {
-        "pinned": [{"ref": "library/gtb/GTLView", "macros": {"SR": "1"}}, {"tool": "trace", "query": "pv=SR:DCCT"}],
+        "pinned": [{"ref": "library/linac/LinacView", "macros": {"SR": "1"}}, {"tool": "trace", "query": "pv=SR:DCCT"}],
         "recent": [{"tool": "waveform"}, {"ref": "drafts/beam-tune"}],
     }
     assert "batch" not in doc

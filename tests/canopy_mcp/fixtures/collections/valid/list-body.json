@@ -47,16 +47,16 @@
     {
       "source": "facility",
       "ref": "facility:injector",
-      "rev": "bef7e44c18ef270a",
+      "rev": "8af50e46c8169541",
       "id": "injector",
       "name": "Injector",
       "description": "Gun-to-linac and booster-to-storage-ring transfer lines.",
       "members": [
         {
-          "screen": "library/gtb/GTLView"
+          "screen": "library/linac/LinacView"
         },
         {
-          "screen": "library/bts/BTSView"
+          "screen": "library/xfer/TransferView"
         },
         {
           "tool": "trace",
@@ -91,7 +91,7 @@
     {
       "source": "personal",
       "ref": "personal:deep",
-      "rev": "f38fe1ec8077c5a3",
+      "rev": "b8622a562e5a38dc",
       "id": "deep",
       "name": "Deep spiral",
       "description": "Eight splits deep, past the old depth cap: only the byte cap bounds a layout.",
@@ -103,10 +103,10 @@
           "screen": "library/s3-promo/promotion"
         },
         {
-          "screen": "library/gtb/GTLView"
+          "screen": "library/linac/LinacView"
         },
         {
-          "screen": "library/bts/BTSView"
+          "screen": "library/xfer/TransferView"
         },
         {
           "screen": "library/common/KnobPanel"
@@ -214,12 +214,12 @@
     {
       "source": "personal",
       "ref": "personal:drafts",
-      "rev": "9a2274c5450eb57c",
+      "rev": "fa254849b669c1d8",
       "id": "drafts",
       "name": "my drafts",
       "members": [
         {
-          "screen": "drafts/bts/view"
+          "screen": "drafts/xfer/view"
         },
         {
           "screen": "library/sr/overview",
@@ -324,16 +324,16 @@
     {
       "source": "personal",
       "ref": "personal:tabbed",
-      "rev": "79b1a8cbe05e9182",
+      "rev": "e947a01fcc227918",
       "id": "tabbed",
       "name": "Transfer lines",
       "description": "Two tiles side by side; the left one holds two tabs and shows the second.",
       "members": [
         {
-          "screen": "library/gtb/GTLView"
+          "screen": "library/linac/LinacView"
         },
         {
-          "screen": "library/bts/BTSView"
+          "screen": "library/xfer/TransferView"
         },
         {
           "tool": "waveform",

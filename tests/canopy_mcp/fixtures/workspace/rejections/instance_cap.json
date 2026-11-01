@@ -15,13 +15,13 @@
         "state": {
           "tabs": [
             {
-              "key": "library/gtb/GTLView?SR=1",
+              "key": "library/linac/LinacView?SR=1",
               "kind": "screen",
               "canBack": true,
               "canForward": false
             },
             {
-              "key": "library/bts/BTSView",
+              "key": "library/xfer/TransferView",
               "kind": "screen",
               "canBack": false,
               "canForward": false
@@ -93,14 +93,14 @@
               "canForward": false
             }
           ],
-          "active": "library/gtb/GTLView?SR=1",
+          "active": "library/linac/LinacView?SR=1",
           "layout": {
             "split": "row",
             "items": [
               {
                 "tile": "t1",
                 "tabs": [
-                  "library/gtb/GTLView?SR=1",
+                  "library/linac/LinacView?SR=1",
                   "library/sr/overview",
                   "@trace/2",
                   "@trace/3",
@@ -112,7 +112,7 @@
                   "@trace/9",
                   "@trace/10"
                 ],
-                "showing": "library/gtb/GTLView?SR=1",
+                "showing": "library/linac/LinacView?SR=1",
                 "size": 0.6
               },
               {
@@ -121,9 +121,9 @@
                   {
                     "tile": "t2",
                     "tabs": [
-                      "library/bts/BTSView"
+                      "library/xfer/TransferView"
                     ],
-                    "showing": "library/bts/BTSView"
+                    "showing": "library/xfer/TransferView"
                   },
                   {
                     "tile": "t3",
@@ -138,10 +138,10 @@
             ]
           },
           "zoom": {
-            "library/gtb/GTLView": {
+            "library/linac/LinacView": {
               "mode": "fit"
             },
-            "library/bts/BTSView": {
+            "library/xfer/TransferView": {
               "mode": "manual",
               "percent": 75
             },
@@ -224,8 +224,8 @@
             "@trace/10"
           ],
           "labels": {
-            "library/gtb/GTLView?SR=1": "GTL View",
-            "library/bts/BTSView": "BTS View",
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
             "@trace": "Data Browser",
             "library/sr/overview": "Storage Ring",
             "@trace/2": "Data Browser 2",

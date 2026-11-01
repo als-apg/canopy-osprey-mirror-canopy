@@ -33,8 +33,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "@waveform"
@@ -58,8 +58,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview"
         ],
@@ -82,8 +82,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "@trace/2"

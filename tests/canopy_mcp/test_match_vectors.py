@@ -54,10 +54,10 @@ def test_both_kinds_are_present() -> None:
 def test_the_vectors_cover_the_spec() -> None:
     rank = [case for case in VECTORS["cases"] if case["kind"] == "rank"]
     include = [case for case in VECTORS["cases"] if case["kind"] == "include"]
-    # empty query -> nothing; the camelCase forms all find GTLView; a multi-token query
+    # empty query -> nothing; the camelCase forms all find LinacView; a multi-token query
     assert any(case["query"].strip() == "" and case["expect"] == [] for case in rank)
-    for query in ("view", "gtl view", "gtlv"):
-        assert any(case["query"] == query and case["expect"] == ["GTLView"] for case in rank), query
+    for query in ("view", "linac view", "linacv"):
+        assert any(case["query"] == query and case["expect"] == ["LinacView"] for case in rank), query
     assert any(case["query"] == "sr overview" for case in rank)
     # a keyword-only match listed after a label match
     keyword_only = [

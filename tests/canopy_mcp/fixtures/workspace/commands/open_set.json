@@ -47,8 +47,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "library/s3-promo/promotion",
@@ -82,8 +82,8 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "library/s3-promo/promotion",
@@ -104,7 +104,7 @@
               "tool": "correlation"
             },
             {
-              "ref": "library/bts/BTSView"
+              "ref": "library/xfer/TransferView"
             }
           ],
           "as": "layout",
@@ -133,14 +133,14 @@
         "keys": [
           "library/s3-promo/promotion",
           "@correlation",
-          "library/bts/BTSView"
+          "library/xfer/TransferView"
         ],
         "group": "g-2"
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
-          "library/bts/BTSView",
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
           "@trace",
           "library/sr/overview",
           "library/s3-promo/promotion",

@@ -46,7 +46,7 @@
             "id": "c-e1-1",
             "cmd": "open",
             "args": {
-              "ref": "library/gtb/Missing"
+              "ref": "library/linac/Missing"
             }
           }
         ]
@@ -178,7 +178,7 @@
             "id": "c-e1-1",
             "cmd": "set_query",
             "args": {
-              "key": "library/bts/BTSView",
+              "key": "library/xfer/TransferView",
               "query": "pv=A"
             }
           }
@@ -267,14 +267,14 @@
             "id": "c-e1-2",
             "cmd": "close_tab",
             "args": {
-              "key": "library/gtb/Missing"
+              "key": "library/linac/Missing"
             }
           },
           {
             "id": "c-e1-3",
             "cmd": "focus",
             "args": {
-              "key": "library/gtb/GTLView?SR=1"
+              "key": "library/linac/LinacView?SR=1"
             }
           }
         ]

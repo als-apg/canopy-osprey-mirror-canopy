@@ -22,7 +22,7 @@
       "command": {
         "cmd": "close_tab",
         "args": {
-          "key": "library/bts/BTSView"
+          "key": "library/xfer/TransferView"
         }
       },
       "result": {
@@ -32,11 +32,11 @@
       },
       "after": {
         "tabs": [
-          "library/gtb/GTLView?SR=1",
+          "library/linac/LinacView?SR=1",
           "@trace",
           "library/sr/overview"
         ],
-        "active": "library/gtb/GTLView?SR=1"
+        "active": "library/linac/LinacView?SR=1"
       }
     }
   ]
