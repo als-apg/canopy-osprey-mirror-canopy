@@ -156,7 +156,7 @@ async def test_dead_inputs_never_hold_one_clients_subscribes(manager, branch, t0
         return send
 
     # One client's frames, served in order as the WS read loop serves them: every
-    # dead input first, then a live PV and a fox:// channel (a screen formula) behind them.
+    # dead input first, then a live PV and a formula:// channel (a screen formula) behind them.
     subs: list[tuple[str, FormulaSpec]] = [
         (f"dead-{i}", _scalar("{a}", {"a": f"ca://DEAD:{offset + i}"})) for i in range(N_DEAD)
     ]
