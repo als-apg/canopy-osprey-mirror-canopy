@@ -27,6 +27,7 @@ __all__ = [
     "is_cross_site_handshake",
     "LOOPBACK_HOSTS",
     "configured_origins",
+    "host_allowed",
     "host_name",
     "normal_origin",
     "is_json_request",
@@ -125,36 +126,42 @@ def configured_origins(*urls: str | None) -> frozenset[Origin]:
     return frozenset(o for o in map(normal_origin, urls) if o is not None)
 
 
-def is_cross_site_handshake(conn: HTTPConnection, configured: frozenset[Origin]) -> bool:
-    """Whether a WebSocket handshake must be refused as coming from another site.
+def host_allowed(conn: HTTPConnection, configured: frozenset[Origin]) -> bool:
+    """Whether ``Host`` names loopback or the host of a configured origin.
 
     ``configured`` holds the origins of the server's own URLs
     (:func:`configured_origins` of ``CANOPY_SELF_URL`` and ``CANOPY_PUBLIC_URL``).
-    The same-origin policy does not cover WebSockets, and under DNS rebinding a
-    page's ``Origin`` and ``Host`` both name the attacker's host, so neither is
-    trusted on its own. Refused:
+    A missing or unparsable ``Host`` is not allowed. This is the DNS-rebinding
+    defence: a rebound page's requests name the attacker's host.
+    """
+    name = host_name(conn.headers.get("host"))
+    return name in LOOPBACK_HOSTS or (name is not None and name in {o[1] for o in configured})
+
+
+def is_cross_site_handshake(conn: HTTPConnection, configured: frozenset[Origin]) -> bool:
+    """Whether a WebSocket handshake must be refused as coming from another site.
+
+    ``Host`` is already checked for every request by the app's ``HostGuard``
+    (:func:`host_allowed`). The same-origin policy does not cover WebSockets,
+    and under DNS rebinding a page's ``Origin`` and ``Host`` both name the
+    attacker's host, so ``Origin`` is never compared with ``Host`` alone. Refused:
 
     - a cross-site ``Sec-Fetch-Site`` (:func:`is_cross_site`);
-    - a ``Host`` that is missing, or names neither loopback nor the host of a
-      configured origin;
     - an ``Origin`` whose normalised origin (:func:`normal_origin`) is not a
       configured origin or, only when ``Host`` is loopback, the request's own
       origin (its scheme, the ``Host`` name and port). A loopback ``Origin`` is
       never accepted for a non-loopback ``Host``.
 
-    A handshake without ``Origin`` (a non-browser client) is judged on ``Host``
-    and ``Sec-Fetch-Site`` alone.
+    A handshake without ``Origin`` (a non-browser client) is judged on
+    ``Sec-Fetch-Site`` alone.
     """
     if is_cross_site(conn):
-        return True
-    host = conn.headers.get("host")
-    name = host_name(host)
-    loopback = name in LOOPBACK_HOSTS
-    if not loopback and name not in {o[1] for o in configured}:
         return True
     origin = conn.headers.get("origin")
     if origin is None:
         return False
+    host = conn.headers.get("host") or ""
+    loopback = host_name(host) in LOOPBACK_HOSTS
     # A configured loopback origin (the default self URL) counts only on a loopback Host.
     allowed = {o for o in configured if loopback or o[1] not in LOOPBACK_HOSTS}
     if loopback:

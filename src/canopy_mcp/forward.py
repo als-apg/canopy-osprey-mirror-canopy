@@ -9,10 +9,11 @@ nor substitute its own. An upstream that is not accepting connections yet is
 retried for ``CANOPY_RELAY_CONNECT_RETRY_S`` seconds (default 0: one attempt)
 before the browser's handshake is refused with close code 1011. A handshake from
 another site (:func:`canopy_mcp.http.is_cross_site_handshake`: a cross-site
-``Sec-Fetch-Site``; a ``Host`` naming neither loopback nor the host of
-``CANOPY_SELF_URL`` / ``CANOPY_PUBLIC_URL``; an ``Origin`` other than those URLs'
-origins or, on a loopback ``Host``, the request's own origin) is refused with
-close code 1008 before anything goes upstream.
+``Sec-Fetch-Site``, or an ``Origin`` other than the origins of
+``CANOPY_SELF_URL`` / ``CANOPY_PUBLIC_URL`` or, on a loopback ``Host``, the
+request's own origin) is refused with close code 1008 before anything goes
+upstream. The ``Host`` of every request, relays included, is checked before
+routing by the app's ``HostGuard``.
 
 ``GET /mole/v1/{path}`` (the Trace tab's archiver reads) is forwarded the same
 way over HTTP: only ``Accept`` and the server key go upstream, ``api_key`` is

@@ -6,6 +6,11 @@ mounted) so ``POST /mcp`` answers directly instead of redirecting to
 the API forward (two WebSocket relays, the Mole GET, the Fox POSTs and, with
 ``CANOPY_PUT_RELAY`` on, the one PV write) from :mod:`canopy_mcp.forward`.
 
+:class:`HostGuard` is the outermost layer: a request whose ``Host`` names neither
+loopback nor the host of ``CANOPY_SELF_URL`` / ``CANOPY_PUBLIC_URL`` is refused
+on every route but ``GET /health``, which defeats DNS rebinding with or without
+an access token.
+
 Who may reach ``/mcp`` is decided by one of two guards. Without an access token,
 :class:`ProxiedMcpGuard` refuses ``/mcp`` to any request that came through the
 embedding host's proxy, i.e. from a browser session; every other route stays
@@ -39,12 +44,25 @@ from contextlib import AsyncExitStack, AbstractAsyncContextManager, asynccontext
 from collections.abc import Callable, Iterable, AsyncIterator
 
 from starlette.types import Send, Scope, ASGIApp, Receive
+from starlette.requests import HTTPConnection
 from starlette.responses import PlainTextResponse
 from starlette.middleware import Middleware
+from starlette.websockets import WebSocket
 from starlette.applications import Starlette
 
+from canopy_mcp.http import (
+    Origin,
+    host_allowed,
+    configured_origins,
+    code_detail_response,
+)
 from canopy_mcp.store import open_stores
-from canopy_mcp.access import AccessGate, read_secret_file
+from canopy_mcp.access import (
+    OPEN_ROUTE,
+    WS_POLICY_VIOLATION,
+    AccessGate,
+    read_secret_file,
+)
 from canopy_mcp.client import make_client
 from canopy_mcp.config import DEFAULT_SELF_URL, Settings, get_settings
 from canopy_mcp.server import mcp, register_all, set_authoring
@@ -91,6 +109,40 @@ def chromium_hook(app: Starlette) -> AbstractAsyncContextManager[Any]:
 
 # Entered in order at startup, after the shared client exists.
 STARTUP_HOOKS: list[StartupHook] = [catalog_hook, chromium_hook]
+
+
+HOST_REFUSAL_CODE = "host_not_allowed"
+HOST_REFUSAL_STATUS = 421
+
+
+class HostGuard:
+    """Refuse a request whose ``Host`` is neither loopback nor a configured host, except ``GET /health``.
+
+    ``configured`` holds the origins of the server's own URLs; only their hosts
+    count here (:func:`~canopy_mcp.http.host_allowed`). Under DNS rebinding a
+    page on another site reaches this server under the attacker's host name, and
+    the browser then treats it as same-origin, so ``Sec-Fetch-Site`` cannot tell.
+    HTTP is refused with 421 ``{code, detail}`` and a WebSocket with close code
+    1008 before it is accepted. Always on, outside every other guard.
+    """
+
+    def __init__(self, app: ASGIApp, configured: frozenset[Origin]):
+        self.app = app
+        self.configured = configured
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        is_open = scope["type"] == "http" and (scope["method"], scope["path"]) == OPEN_ROUTE
+        if is_open or host_allowed(HTTPConnection(scope), self.configured):
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] == "http":
+            detail = "the Host header names neither loopback nor this server's configured URL"
+            await code_detail_response(HOST_REFUSAL_STATUS, HOST_REFUSAL_CODE, detail)(scope, receive, send)
+            return
+        await WebSocket(scope, receive, send).close(code=WS_POLICY_VIOLATION)
 
 
 class ProxiedMcpGuard:
@@ -143,6 +195,8 @@ def create_app(
     register_all()
     set_authoring(settings.authoring)
     store, library = open_stores(settings.drafts_dir, settings.library_dir)
+    resolved_self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
+    host_guard = Middleware(HostGuard, configured=configured_origins(resolved_self_url, settings.public_url))
     mcp_app = mcp.http_app(path=MCP_PATH)
 
     @asynccontextmanager
@@ -161,9 +215,10 @@ def create_app(
             *build_forward_routes(settings),
             *build_routes(settings, store, library),
         ],
-        # FastMCP's own middleware (request context, host/origin guard) must
-        # wrap its routes here too, since only the routes were lifted.
-        middleware=[guard, *mcp_app.user_middleware],
+        # FastMCP's own middleware (its request context) must wrap its routes
+        # here too, since only the routes were lifted. FastMCP's host/origin
+        # protection is off by default; HostGuard does that job for every route.
+        middleware=[host_guard, guard, *mcp_app.user_middleware],
         lifespan=lifespan,
     )
     for key in ("fastmcp_server", "path", "transport_type"):
@@ -172,5 +227,5 @@ def create_app(
     app.state.access_token = token
     app.state.store = store
     app.state.library = library
-    app.state.self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
+    app.state.self_url = resolved_self_url
     return app

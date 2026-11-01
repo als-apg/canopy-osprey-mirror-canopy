@@ -72,7 +72,7 @@ def _front(settings: Settings, data: Data) -> httpx.AsyncClient:
     """A client for a new app whose shared client reaches ``data``."""
     app = create_app(settings, startup_hooks=[])
     app.state.http = make_client(settings, transport=httpx.MockTransport(data))
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://front")
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1")
 
 
 async def test_concurrent_callers_of_both_routes_share_one_request(settings: Settings) -> None:

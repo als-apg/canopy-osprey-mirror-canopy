@@ -16,6 +16,11 @@ the default backend URL, where a developer's own stack may be listening, so
 test marked ``real_data_summary`` keeps the real reader and supplies its own
 ``app.state.http``; a summary body is built with ``summary()``.
 
+Starlette's test client names its server ``testserver``, a host the app's
+``HostGuard`` refuses, so ``loopback_test_client`` makes ``http://127.0.0.1``
+the default base URL of every test client; a test that passes ``base_url``
+keeps its own.
+
 ``CANOPY_SPEC_DIR`` is removed for every test, so a developer's staged spec
 never decides a result; the spec-present tests stage their own (``synthetic_spec``).
 """
@@ -25,6 +30,7 @@ from typing import Any
 from collections.abc import Iterator
 
 import pytest
+from starlette.testclient import TestClient
 
 pytest.importorskip("fastmcp")
 pytest.importorskip("fcntl", reason="the panel server is POSIX-only: its draft store takes fcntl file locks")
@@ -40,6 +46,7 @@ from canopy_mcp.server import (  # noqa: E402
 from canopy.contracts.health import HareHealthSummaryDTO  # noqa: E402
 
 LIVE_ENV = "CANOPY_LIVE"
+LOOPBACK_BASE_URL = "http://127.0.0.1"
 REAL_DATA_SUMMARY = "real_data_summary"
 
 
@@ -118,3 +125,16 @@ def no_ambient_spec(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def loopback_test_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ``TestClient`` built without a ``base_url`` addresses ``http://127.0.0.1``."""
+    original = TestClient.__init__
+
+    def init(self: TestClient, app: Any, *args: Any, **kwargs: Any) -> None:
+        if not args:
+            kwargs.setdefault("base_url", LOOPBACK_BASE_URL)
+        original(self, app, *args, **kwargs)
+
+    monkeypatch.setattr(TestClient, "__init__", init)

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import pytest
 from starlette.testclient import TestClient
 
-from canopy_mcp.app import ProxiedMcpGuard, create_app
+from canopy_mcp.app import HostGuard, ProxiedMcpGuard, create_app
 from canopy_mcp.store import DraftStore
 from canopy_mcp.access import AccessGate
 from canopy_mcp.config import Settings
@@ -98,9 +98,9 @@ def test_mcp_with_a_trailing_slash_is_refused_when_proxied(client: TestClient) -
     assert r.status_code == 403
 
 
-def test_without_an_access_token_the_proxy_guard_is_the_outermost_middleware(client: TestClient) -> None:
+def test_without_an_access_token_the_proxy_guard_sits_inside_the_host_guard(client: TestClient) -> None:
     classes = [m.cls for m in client.app.user_middleware]
-    assert classes[0] is ProxiedMcpGuard
+    assert classes[:2] == [HostGuard, ProxiedMcpGuard]
     assert AccessGate not in classes
 
 

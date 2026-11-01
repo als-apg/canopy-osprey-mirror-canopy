@@ -166,7 +166,7 @@ def test_asset_traversal_404(client: TestClient, path: str) -> None:
 def test_asset_traversal_plain(client: TestClient) -> None:
     # httpx would normalise a literal "..", so send the raw path directly.
     for raw in ("/trace/assets/../../secret.txt", "/trace/assets/../index.html"):
-        r = client.request("GET", "http://testserver" + raw)
+        r = client.request("GET", "http://127.0.0.1" + raw)
         assert r.status_code == 404
         assert "do not serve" not in r.text
     from canopy_mcp.static import _file_under

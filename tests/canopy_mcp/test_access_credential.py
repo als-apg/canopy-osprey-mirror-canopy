@@ -25,7 +25,7 @@ from starlette.testclient import TestClient, WebSocketDenialResponse
 from websockets.sync.server import serve
 
 from canopy_mcp import __main__ as entry
-from canopy_mcp.app import ProxiedMcpGuard, create_app
+from canopy_mcp.app import HostGuard, ProxiedMcpGuard, create_app
 from canopy_mcp.access import (
     ACCESS_HEADER,
     AccessGate,
@@ -155,7 +155,7 @@ def test_no_credential_is_asked_for_by_default(tmp_path):
     settings = _settings(tmp_path)
     assert settings.access_token_file is None
     app = create_app(settings, startup_hooks=[])
-    assert [m.cls for m in app.user_middleware][0] is ProxiedMcpGuard
+    assert [m.cls for m in app.user_middleware][:2] == [HostGuard, ProxiedMcpGuard]
     assert AccessGate not in [m.cls for m in app.user_middleware]
 
 
@@ -196,7 +196,7 @@ def test_the_gated_app_hands_its_credential_to_the_screenshot_browser(tmp_path):
 
 def test_the_gate_takes_the_place_of_the_proxy_guard(gated_app):
     classes = [m.cls for m in gated_app.user_middleware]
-    assert classes[0] is AccessGate
+    assert classes[:2] == [HostGuard, AccessGate]
     assert ProxiedMcpGuard not in classes
 
 
@@ -377,7 +377,13 @@ async def _handshake(app, **scope):
     async def send(message):
         sent.append(message)
 
-    base = {"type": "websocket", "path": "/hare/v1/ws/pvs", "headers": [], "query_string": b"", "subprotocols": []}
+    base = {
+        "type": "websocket",
+        "path": "/hare/v1/ws/pvs",
+        "headers": [(b"host", b"127.0.0.1")],
+        "query_string": b"",
+        "subprotocols": [],
+    }
     await app({**base, **scope}, receive, send)
     return sent
 

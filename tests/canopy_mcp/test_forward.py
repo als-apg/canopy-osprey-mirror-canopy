@@ -260,6 +260,7 @@ def public_client(tmp_path: Path, upstream: FakeUpstream) -> Iterator[TestClient
         # The configured origin is http://testserver (port 80): another port is another origin.
         {"Origin": "http://testserver:9000"},
         # DNS rebinding: the attacker's name resolves to this server, so Origin and Host agree.
+        # The app's HostGuard refuses these, and the missing Host below, before the relay runs.
         {"Host": "evil.example", "Origin": "http://evil.example"},
         {"Host": "evil.example:8765"},
         # A loopback page on another port is another origin.
