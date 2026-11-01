@@ -113,6 +113,34 @@
       "dynamic": true,
       "default": "the write was refused; nothing written"
     },
+    "connector-target-changed": {
+      "source": "connector",
+      "outcome": "target_changed",
+      "status": 409,
+      "code": "pv_target_changed",
+      "audit": {
+        "decision": "refused",
+        "reason": "control_target_changed"
+      },
+      "detail": "the control target changed; nothing written",
+      "toast": "the control target changed; nothing written",
+      "dynamic": false,
+      "default": "the control target changed; nothing written"
+    },
+    "connector-switch-in-progress": {
+      "source": "connector",
+      "outcome": "switch_in_progress",
+      "status": 409,
+      "code": "pv_switch_in_progress",
+      "audit": {
+        "decision": "refused",
+        "reason": "switch_in_progress"
+      },
+      "detail": "a target switch is in progress; nothing written",
+      "toast": "a target switch is in progress; nothing written",
+      "dynamic": false,
+      "default": "a target switch is in progress; nothing written"
+    },
     "confirmed": {
       "source": "connector",
       "outcome": "confirmed",

@@ -17,6 +17,8 @@ ROW_IDS = {
     "connector-refused",
     "connector-refused-read-only",
     "connector-limits",
+    "connector-target-changed",
+    "connector-switch-in-progress",
     "confirmed",
     "mismatch",
     "unconfirmed",
@@ -36,7 +38,7 @@ ROW_FIELDS = {"source", "outcome", "status", "code", "audit", "detail", "toast",
 TOP_LEVEL_KEYS = {"contract", "about", "detail_max_chars", "detail_cut_cases", "rows"}
 CUT_CASE_FIELDS = {"case", "text", "limit", "expected"}
 SOURCES = {"connector", "front", "client"}
-OUTCOMES = {"refused", "target_changed", "confirmed", "mismatch", "unconfirmed", "unknown"}
+OUTCOMES = {"refused", "target_changed", "switch_in_progress", "confirmed", "mismatch", "unconfirmed", "unknown"}
 
 GENERIC_REFUSAL = "the write was refused; nothing written"
 UNKNOWN_TEXT = "outcome unknown — check the readback"
@@ -170,6 +172,26 @@ def test_static_rows_default_is_their_detail(rows):
             "refused",
             "channel_limits_violation",
             "<violation_reason>",
+        ),
+        (
+            "connector-target-changed",
+            "connector",
+            409,
+            "pv_target_changed",
+            "target_changed",
+            "refused",
+            "control_target_changed",
+            "the control target changed; nothing written",
+        ),
+        (
+            "connector-switch-in-progress",
+            "connector",
+            409,
+            "pv_switch_in_progress",
+            "switch_in_progress",
+            "refused",
+            "switch_in_progress",
+            "a target switch is in progress; nothing written",
         ),
         ("confirmed", "connector", 200, None, "confirmed", "allowed", "write_landed", "written"),
         (
