@@ -264,14 +264,9 @@ copy of the schemas is bundled with Canopy as a stand-in, and there is no
 second source the server falls back to.
 
 The state ends without a code change: build a payload with `SPEC=<dir>` set,
-or point `CANOPY_SPEC_DIR` at a staged directory, and restart FRONT. For the
-checks to cover every screen Canopy writes, the staged specification has to
-carry:
-
-- version 1.1 of the screen format;
-- the property schemas for colour roles;
-- the property schemas for a button's image and transparency;
-- the property schemas of the `xy-plot` and `pv-array-plot` widgets.
+or point `CANOPY_SPEC_DIR` at a staged directory, and restart FRONT. Stage the
+specification that matches the viewer build; the server names what is missing
+from it (`spec_unavailable`, `undocumented_type`).
 
 ## Example: a per-user host
 
