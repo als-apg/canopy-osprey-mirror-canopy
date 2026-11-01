@@ -505,17 +505,19 @@ def test_kill_process_tree_tolerates_processes_that_are_already_gone() -> None:
             alive.wait(timeout=5)
 
 
-# --- Playwright internals the module reads ---------------------------------------------
+# --- The driver process and the Playwright internal the module patches ---------------------------------------------
 
 
-async def test_the_driver_pid_is_still_reachable() -> None:
-    """``driver_pid`` reads private attributes; an upgrade that moves them must fail here, not leak drivers."""
+async def test_the_driver_pid_is_the_new_driver_child() -> None:
+    """``driver_pid`` finds the driver Playwright started among this process's children."""
     from playwright.async_api import async_playwright
 
+    before = browser_mod.driver_children()
     playwright = await async_playwright().start()
     try:
-        pid = browser_mod.driver_pid(playwright)
+        pid = browser_mod.driver_pid(before)
         assert isinstance(pid, int) and psutil.pid_exists(pid)
+        assert pid not in before
     finally:
         await playwright.stop()
 

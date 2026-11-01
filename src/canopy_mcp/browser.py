@@ -32,11 +32,11 @@ them (a desktop, or a container run with the namespaces allowed) should set
 the switch. Without it the origin lock and the GET/HEAD/OPTIONS limit above
 are what confine the page.
 
-**Playwright internals.** Two helpers reach into Playwright's private objects
-(:func:`_tolerate_codeless_close`, :func:`driver_pid`). They were written for
-Playwright 1.61 to 1.63; both degrade to doing nothing when the attributes
-are gone, and ``tests/canopy_mcp/test_browser_lifecycle.py`` fails loudly when
-an upgrade moves them.
+**Playwright internals.** :func:`_tolerate_codeless_close` reaches into
+Playwright's private objects to work around a Playwright bug. It does nothing
+when the attributes are gone, and ``tests/canopy_mcp/test_browser_lifecycle.py``
+fails loudly when an upgrade moves them. :func:`driver_pid` finds the driver
+through public process information only.
 """
 
 import asyncio
@@ -44,6 +44,7 @@ import inspect
 import logging
 from time import monotonic
 from typing import TYPE_CHECKING, Any
+from pathlib import Path
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -159,11 +160,13 @@ class _PageClosed:
 
 
 def _tolerate_codeless_close(ws: "WebSocketRoute") -> None:
-    """Work around Playwright (1.61 to 1.63) reading ``event["code"]`` on a page-close event that carries none.
+    """Work around Playwright reading ``event["code"]`` on a page-close event that carries none.
 
-    Once a ``WebSocketRoute`` has an ``on_close`` handler, every closure of
-    the page's socket reaches ``_channel_close_page``, which indexes ``code``
-    and ``reason`` that Chromium does not always send; pyee then prints a
+    No upstream Playwright issue for this was found (checked 2026-10-31); the
+    bug is present from 1.61 through 1.64.1. Once a ``WebSocketRoute`` has an
+    ``on_close`` handler, every closure of the page's socket reaches
+    ``_channel_close_page``, which indexes ``code`` and ``reason`` that
+    Chromium does not always send; pyee then prints a
     traceback for every relayed socket. The listener is swapped for one that
     defaults both. Guarded on every private attribute, so a Playwright that
     changed shape is left alone (and keeps its own behaviour).
@@ -189,15 +192,40 @@ def _tolerate_codeless_close(ws: "WebSocketRoute") -> None:
 # --- Driver process -----------------------------------------------------------------
 
 
-def driver_pid(playwright: Any) -> int | None:
-    """The pid of the Playwright driver behind ``playwright``, or ``None`` when it cannot be found.
-
-    Read through private attributes (Playwright 1.61 to 1.63); a test pins them.
-    """
+def _driver_dir() -> Path | None:
+    """The ``driver`` directory of the installed ``playwright`` package, where its node driver lives."""
     try:
-        return int(playwright._impl_obj._connection._transport._proc.pid)
-    except (AttributeError, TypeError, ValueError):
+        import playwright
+    except ImportError:
         return None
+    return Path(playwright.__file__).resolve().parent / "driver"
+
+
+def driver_children() -> frozenset[int]:
+    """The pids of this process's children that run the Playwright driver."""
+    driver_dir = _driver_dir()
+    if driver_dir is None:
+        return frozenset()
+    found = set()
+    for child in psutil.Process().children():
+        try:
+            exe = Path(child.exe()).resolve()
+        except (psutil.Error, OSError, ValueError):
+            continue
+        if exe.is_relative_to(driver_dir):
+            found.add(child.pid)
+    return frozenset(found)
+
+
+def driver_pid(before: frozenset[int]) -> int | None:
+    """The pid of the driver Playwright just started, or ``None`` when it cannot be told apart.
+
+    ``before`` is :func:`driver_children` taken just before ``async_playwright().start()``;
+    the driver is the one new child running from the ``playwright`` package's
+    ``driver`` directory.
+    """
+    started = driver_children() - before
+    return next(iter(started)) if len(started) == 1 else None
 
 
 def driver_descendants(pid: int | None) -> list[psutil.Process]:
@@ -399,7 +427,7 @@ class _Session:
         """Close every relayed page socket, cancel every pump and close every upstream socket.
 
         The page sockets go first: a context closed over an open routed socket
-        makes Playwright 1.63 report the closure without a code and trip over
+        makes Playwright report the closure without a code and trip over
         its own listener.
         """
         for ws in list(self.sockets):
@@ -494,6 +522,7 @@ class Browser:
             raise self._unavailable(
                 "the installed websockets client cannot refuse redirects (needs websockets>=14)", None
             )
+        drivers_before = driver_children()
         playwright = await async_playwright().start()
         try:
             browser = await _launch_chromium(playwright, sandbox=self.sandbox)
@@ -503,7 +532,7 @@ class Browser:
             if self.sandbox:
                 reason += f" (launched with {SANDBOX_SWITCH}=1; unset it to launch without the Chromium sandbox)"
             raise self._unavailable(reason, exc) from exc
-        self._driver_pid = driver_pid(playwright)
+        self._driver_pid = driver_pid(drivers_before)
         self._driver_children = driver_descendants(self._driver_pid)
         self._playwright, self._browser = playwright, browser
         self._last_used = monotonic()
