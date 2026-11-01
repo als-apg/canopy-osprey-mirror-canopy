@@ -1,4 +1,4 @@
 {
-  "error": "not_found",
+  "code": "not_found",
   "detail": "no personal collection 'ghost'"
 }

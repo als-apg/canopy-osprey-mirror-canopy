@@ -1,10 +1,7 @@
 """HTTP helpers the server's routes share: request bodies, the cross-site guard, JSON replies, ETags.
 
-Each route keeps its own error envelope, since the viewer reads them as they are:
-the API forward answers ``{"code", "detail"}`` (:func:`code_detail_response`), the
-collections and workspace routes ``{"error": <code>, "detail"?}``
-(:func:`error_response`), and the saved views ``{"error": <message>}`` (through
-:func:`json_response`).
+Every route's error reply is ``{"code", "detail"}`` (:func:`code_detail_response`),
+the canopy API's own shape.
 """
 
 from __future__ import annotations
@@ -21,7 +18,6 @@ __all__ = [
     "ALL_METHODS",
     "NO_CACHE",
     "code_detail_response",
-    "error_response",
     "etag",
     "is_cross_site",
     "is_cross_site_handshake",
@@ -186,17 +182,9 @@ def json_response(
     return JSONResponse(body, status_code=status_code, headers=merged)
 
 
-def error_response(
-    status_code: int, code: str, detail: str | None = None, headers: dict[str, str] | None = None
-) -> Response:
-    """``{"error": code, "detail"?: detail}`` with ``Cache-Control: no-cache``."""
-    body = {"error": code} if detail is None else {"error": code, "detail": detail}
-    return json_response(body, status_code, headers)
-
-
-def code_detail_response(status_code: int, code: str, detail: str) -> Response:
-    """``{"code": code, "detail": detail}``, the canopy API's own error shape, without cache headers."""
-    return JSONResponse({"code": str(code), "detail": detail}, status_code=status_code)
+def code_detail_response(status_code: int, code: str, detail: str, headers: dict[str, str] | None = None) -> Response:
+    """``{"code": code, "detail": detail}``, the canopy API's error shape, with ``Cache-Control: no-cache``."""
+    return json_response({"code": str(code), "detail": detail}, status_code, headers)
 
 
 def etag(rev: str) -> str:

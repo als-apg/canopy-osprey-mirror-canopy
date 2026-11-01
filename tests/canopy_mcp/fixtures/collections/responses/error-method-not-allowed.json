@@ -1,4 +1,4 @@
 {
-  "error": "method_not_allowed",
+  "code": "method_not_allowed",
   "detail": "allowed: GET, HEAD"
 }

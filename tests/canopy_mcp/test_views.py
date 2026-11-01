@@ -213,7 +213,7 @@ def test_crud_over_http(client: TestClient) -> None:
     r = client.get("/views/orbit")
     assert r.status_code == 404
     assert r.headers["cache-control"] == "no-cache"
-    assert "error" in r.json()
+    assert r.json()["code"] == "not_found"
     r = client.delete("/views/orbit")
     assert r.status_code == 404
     assert r.headers["cache-control"] == "no-cache"
@@ -240,7 +240,7 @@ def test_invalid_id_is_400(client: TestClient, path: str, method: str) -> None:
     r = client.request(method, path, content=body, headers=JSON if body else None)
     assert r.status_code == 400
     assert r.headers["cache-control"] == "no-cache"
-    assert "error" in r.json()
+    assert r.json()["code"] == "invalid_id"
 
 
 def test_dot_dot_id_never_escapes(client: TestClient, drafts: Path) -> None:
@@ -271,7 +271,7 @@ def test_invalid_body_is_400(client: TestClient, body: str, drafts: Path) -> Non
     r = client.put("/views/v", content=body, headers=JSON)
     assert r.status_code == 400
     assert r.headers["cache-control"] == "no-cache"
-    assert isinstance(r.json()["error"], str)
+    assert r.json()["code"] in {"invalid_json", "invalid_view"} and r.json()["detail"]
     assert not (drafts / "views" / "v.json").exists()
 
 
@@ -345,8 +345,7 @@ def test_put_on_an_unwritable_views_dir_is_403_read_only_store(
         assert r.headers["cache-control"] == "no-cache"
         body = r.json()
         assert body["code"] == "read_only_store"
-        assert body["error"].startswith("read_only_store")
-        assert str(drafts) not in body["error"]
+        assert str(drafts) not in body["detail"]
     assert sorted(p.name for p in (drafts / "views").iterdir()) == ["keep.json"]
     assert (drafts / "views" / "keep.json").read_bytes() == kept
 
@@ -360,8 +359,7 @@ def test_delete_on_an_unwritable_views_dir_is_403_read_only_store(
     r = client.delete("/views/keep")
     assert r.status_code == 403
     assert r.headers["cache-control"] == "no-cache"
-    assert r.json()["code"] == "read_only_store"
-    assert r.json()["error"].startswith("read_only_store")
+    assert r.json() == {"code": "read_only_store", "detail": "saved views cannot be changed here"}
     assert (drafts / "views" / "keep.json").exists()
     # Reads still answer.
     assert client.get("/views/keep").status_code == 200
@@ -397,7 +395,7 @@ def test_a_cross_site_write_is_refused_before_the_store_is_asked(
 ) -> None:
     monkeypatch.setattr("canopy_mcp.store.os.replace", _refuse(errno.EROFS))
     r = _put(client, "v", {"name": "n", "query": ""}, {"sec-fetch-site": "cross-site"})
-    assert (r.status_code, r.json()) == (403, {"error": "cross-site writes are refused"})
+    assert (r.status_code, r.json()) == (403, {"code": "cross_site", "detail": "cross-site writes are refused"})
 
 
 @pytest.mark.parametrize("site", ["same-origin", "none"])

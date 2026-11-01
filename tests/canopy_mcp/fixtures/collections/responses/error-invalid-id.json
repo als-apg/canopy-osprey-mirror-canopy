@@ -1,4 +1,4 @@
 {
-  "error": "invalid_id",
+  "code": "invalid_id",
   "detail": "invalid collection id: 'a/b'"
 }

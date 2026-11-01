@@ -203,7 +203,7 @@ query, for example `pv=A:B&range=-1h`, which may also carry Trace's axis and
 display settings as `plot=<JSON>`. The server stores it as an opaque string;
 it may be empty and is limited to 4096 UTF-8 bytes. A `PUT` answers 415 unless `Content-Type` is
 `application/json` and 413 when the body is larger than 16 KiB. Any other
-invalid body is a 400. Error bodies are `{"error": "..."}`.
+invalid body is a 400. Error bodies are `{"code": "...", "detail": "..."}`.
 
 Every response carries `Cache-Control: no-cache`. The routes are reachable
 behind the embedding host's proxy in the same way as the drafts and carry no

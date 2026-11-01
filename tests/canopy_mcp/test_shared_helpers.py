@@ -67,13 +67,11 @@ def test_the_cross_site_guard(site: str | None, cross: bool) -> None:
     assert (refused is not None) is cross
 
 
-def test_the_error_envelopes_keep_their_shapes() -> None:
-    response = http.error_response(409, "stale", "changed")
-    assert (response.status_code, response.body) == (409, b'{"error":"stale","detail":"changed"}')
+def test_the_error_envelope_is_code_and_detail() -> None:
+    response = http.code_detail_response(409, "stale", "changed", {"Allow": "GET"})
+    assert (response.status_code, response.body) == (409, b'{"code":"stale","detail":"changed"}')
     assert response.headers["cache-control"] == "no-cache"
-    assert http.error_response(404, "not_found").body == b'{"error":"not_found"}'
-    coded = http.code_detail_response(502, "unreachable", "down")
-    assert coded.body == b'{"code":"unreachable","detail":"down"}' and "cache-control" not in coded.headers
+    assert response.headers["allow"] == "GET"
 
 
 @pytest.mark.parametrize(

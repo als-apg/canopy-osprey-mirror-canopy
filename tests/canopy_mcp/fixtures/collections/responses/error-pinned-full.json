@@ -1,4 +1,4 @@
 {
-  "error": "pinned_full",
+  "code": "pinned_full",
   "detail": "pinned holds 50 members (MAX_PINNED)"
 }

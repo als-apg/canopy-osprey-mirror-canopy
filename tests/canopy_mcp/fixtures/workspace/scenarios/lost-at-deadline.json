@@ -201,7 +201,7 @@
       "expect": {
         "status": 409,
         "body": {
-          "error": "batch_closed"
+          "code": "batch_closed"
         }
       }
     },

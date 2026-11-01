@@ -195,7 +195,7 @@ collection prunes `personal:<id>` from both ref lists under the same lock.
   `invalid_op`, 409 `pinned_full` / `selection_full`, 413 `too_large`
 
 `PUT`, `DELETE` and `POST` act on the personal store only. Every error body is
-`{"error": "<code>", "detail"?: "<text>"}`; besides the codes above: 400
+`{"code": "<code>", "detail": "<text>"}`; besides the codes above: 400
 `invalid_id` (also an id with a slash), 400 `invalid_json`, 403 `read_only_store`
 (the personal directory may not be written; the detail is fixed text, never a server
 path), 403 `cross_site` (a write whose `Sec-Fetch-Site` is present and is neither

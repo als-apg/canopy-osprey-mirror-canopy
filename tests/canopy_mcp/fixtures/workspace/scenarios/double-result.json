@@ -105,7 +105,7 @@
       "expect": {
         "status": 409,
         "body": {
-          "error": "not_claimed"
+          "code": "not_claimed"
         }
       }
     },
@@ -142,7 +142,7 @@
       "expect": {
         "status": 409,
         "body": {
-          "error": "batch_closed"
+          "code": "batch_closed"
         }
       }
     },

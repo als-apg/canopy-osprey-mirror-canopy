@@ -31,7 +31,7 @@ reads the body or touches the hub (the rule the views and collections writes app
 it is what protects the hub when no access token is configured). A body is JSON of
 at most :data:`MAX_BODY_BYTES` (``413 too_large``, ``415`` for another media type,
 ``400 invalid_json``); a hub refusal is its :class:`~canopy_mcp.workspace.WorkspaceError`
-code and status. Errors are ``{error, detail?}`` with ``Cache-Control: no-cache``.
+code and status. Errors are ``{code, detail}`` with ``Cache-Control: no-cache``.
 
 The hub is resolved per request (:func:`~canopy_mcp.workspace.get_hub`), so the
 lifespan's reset swaps in a fresh one. Shutdown: open streams end on the server's exit
@@ -59,10 +59,10 @@ from canopy_mcp.http import (
     NO_CACHE,
     ALL_METHODS,
     json_response,
-    error_response,
     is_json_request,
     read_capped_body,
     refuse_cross_site,
+    code_detail_response,
 )
 from canopy_mcp.workspace import Hub, Stream, StreamEnded, WorkspaceError, get_hub
 
@@ -85,11 +85,13 @@ def _no_content() -> Response:
 
 
 def _not_allowed(allow: str) -> Response:
-    return error_response(405, "method_not_allowed", f"allowed: {allow}", {"Allow": allow})
+    return code_detail_response(405, "method_not_allowed", f"allowed: {allow}", {"Allow": allow})
 
 
 def _cross_site(request: Request) -> Response | None:
-    return refuse_cross_site(request, lambda: error_response(403, "cross_site", "cross-site requests are refused"))
+    return refuse_cross_site(
+        request, lambda: code_detail_response(403, "cross_site", "cross-site requests are refused")
+    )
 
 
 def _refused(exc: WorkspaceError) -> Response:
@@ -99,16 +101,16 @@ def _refused(exc: WorkspaceError) -> Response:
 async def _json_object(request: Request) -> tuple[dict[str, Any], Response | None]:
     """The JSON object body, or an error response (415, 413 over the cap, 400, 422 not an object)."""
     if not is_json_request(request):
-        return {}, error_response(415, "unsupported_media_type", "Content-Type must be application/json")
+        return {}, code_detail_response(415, "unsupported_media_type", "Content-Type must be application/json")
     raw = await read_capped_body(request, MAX_BODY_BYTES)
     if raw is None:
-        return {}, error_response(413, "too_large", f"the body exceeds {MAX_BODY_BYTES} bytes")
+        return {}, code_detail_response(413, "too_large", f"the body exceeds {MAX_BODY_BYTES} bytes")
     try:
         body = json.loads(raw)
     except ValueError:
-        return {}, error_response(400, "invalid_json", "the body is not valid JSON")
+        return {}, code_detail_response(400, "invalid_json", "the body is not valid JSON")
     if not isinstance(body, dict):
-        return {}, error_response(422, "invalid_state", "the body must be a JSON object")
+        return {}, code_detail_response(422, "invalid_state", "the body must be a JSON object")
     return body, None
 
 

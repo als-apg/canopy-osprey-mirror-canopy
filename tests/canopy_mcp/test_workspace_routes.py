@@ -94,7 +94,7 @@ class Exchange:
 
     def __init__(self, app, method: str, url: str, headers: dict[str, str] | None, body: bytes | None) -> None:
         path, _, query = url.partition("?")
-        raw_headers = [(b"host", b"testserver")]
+        raw_headers = [(b"host", b"127.0.0.1")]
         for name, value in (headers or {}).items():
             raw_headers.append((name.lower().encode("latin-1"), value.encode("latin-1")))
         if body is not None:
@@ -112,7 +112,7 @@ class Exchange:
             "root_path": "",
             "headers": raw_headers,
             "client": ("testclient", 50000),
-            "server": ("testserver", 80),
+            "server": ("127.0.0.1", 80),
         }
         self.body = body or b""
         self.status: int | None = None
@@ -286,7 +286,7 @@ def test_workspace_routes_refuse_cross_site_before_the_hub(tmp_path: Path, metho
     with TestClient(_app(tmp_path)) as client:
         r = client.request(method, _url(path), content=b"not json", headers={"Sec-Fetch-Site": site})
     assert r.status_code == 403
-    assert r.json()["error"] == "cross_site"
+    assert r.json()["code"] == "cross_site"
     assert r.headers["cache-control"] == "no-cache"
     assert hubs.get_hub() is not hub or hub.document() == before
 
@@ -310,21 +310,21 @@ def test_workspace_routes_answer_405_with_allow(tmp_path: Path):
             r = client.request(method, _url(path))
             assert r.status_code == 405, (method, path)
             assert r.headers["allow"] == allow
-            assert r.json()["error"] == "method_not_allowed"
+            assert r.json()["code"] == "method_not_allowed"
 
 
 def test_workspace_routes_refuse_bad_bodies(tmp_path: Path):
     with TestClient(_app(tmp_path)) as client:
         assert client.post(_url("claim"), content=b"{}", headers={"Content-Type": "text/plain"}).status_code == 415
         r = client.post(_url("claim"), content=b"{not json", headers={"Content-Type": "application/json"})
-        assert (r.status_code, r.json()["error"]) == (400, "invalid_json")
+        assert (r.status_code, r.json()["code"]) == (400, "invalid_json")
         r = client.post(_url("claim"), json=[1, 2])
-        assert (r.status_code, r.json()["error"]) == (422, "invalid_state")
+        assert (r.status_code, r.json()["code"]) == (422, "invalid_state")
         r = client.post(_url("claim"), json={"seq": 1})
-        assert (r.status_code, r.json()["error"]) == (422, "invalid_state")
+        assert (r.status_code, r.json()["code"]) == (422, "invalid_state")
         big = b'{"windowId":"w-A"' + b" " * MAX_BODY_BYTES + b"}"
         r = client.put(_url("active"), content=big, headers={"Content-Type": "application/json"})
-        assert (r.status_code, r.json()["error"]) == (413, "too_large")
+        assert (r.status_code, r.json()["code"]) == (413, "too_large")
 
 
 def test_workspace_routes_stream_without_window_is_204(tmp_path: Path):

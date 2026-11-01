@@ -6,7 +6,7 @@
     "Route vectors for the workspace's HTTP surface on FRONT. path is relative to the advertised workspace path (config.json workspace.path); there is no route that accepts commands.",
     "Each case: setup steps (the scenarios' step grammar, on a fresh hub with epoch e1 and the clock at 0), one request {method, path, headers?, body?, padTo?}, expect {status, body?, events?}, then optional follow-up steps.",
     "A body {'$file': <name>} is that fixture file's body (state.sample.json, state.oversize.json, state.reduced.json); state '$sample' / '$empty' as in the scenarios. padTo: once those are resolved, the body's compact JSON followed by spaces up to that many bytes.",
-    "A claim or report body is {windowId, seq, shown, state, truncated?}; truncated is true when the window reduced an oversize state. An error body is {error: <code>, detail?}; expect names the code only.",
+    "A claim or report body is {windowId, seq, shown, state, truncated?}; truncated is true when the window reduced an oversize state. An error body is {code, detail}; expect names the code only.",
     "Every workspace route, the event stream included, refuses a Sec-Fetch-Site that is present and neither same-origin nor none with 403 cross_site, before it reads the body or the hub.",
     "Bodies are at most 131072 bytes (413 too_large); a state that breaks the hub's normalisation is 422 invalid_state."
   ],
@@ -151,7 +151,7 @@
       "expect": {
         "status": 409,
         "body": {
-          "error": "not_vacant"
+          "code": "not_vacant"
         }
       }
     },
@@ -174,7 +174,7 @@
       "expect": {
         "status": 403,
         "body": {
-          "error": "cross_site"
+          "code": "cross_site"
         }
       },
       "then": [
@@ -206,7 +206,7 @@
       "expect": {
         "status": 403,
         "body": {
-          "error": "cross_site"
+          "code": "cross_site"
         }
       }
     },
@@ -247,7 +247,7 @@
       "expect": {
         "status": 413,
         "body": {
-          "error": "too_large"
+          "code": "too_large"
         }
       }
     },
@@ -306,7 +306,7 @@
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_state"
+          "code": "invalid_state"
         }
       }
     },
@@ -351,7 +351,7 @@
       "expect": {
         "status": 422,
         "body": {
-          "error": "invalid_state"
+          "code": "invalid_state"
         }
       }
     }
