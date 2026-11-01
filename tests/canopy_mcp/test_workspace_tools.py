@@ -294,7 +294,7 @@ async def test_workspace_tools_results_after_a_window_post(tmp_path: Path, monke
     commands = [FOCUS, {"cmd": "focus", "args": {"key": "library/nope/Gone"}}]
     async with (
         Client(mcp) as client,
-        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://canopy") as window,
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as window,
     ):
         call = asyncio.create_task(_call(client, "set_workspace", commands=commands, base={"window": "w-A", "seq": 41}))
         event = await stream.next(2)

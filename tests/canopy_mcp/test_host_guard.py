@@ -47,6 +47,9 @@ REFUSED_ROUTES = [
     pytest.param("PUT", "/hare/v1/pvs/SIM:X", id="put-relay"),
     pytest.param("GET", "/mole/v1/history", id="mole-get"),
     pytest.param("GET", "/no/such/route", id="unrouted"),
+    pytest.param("GET", "/collections", id="collections"),
+    pytest.param("PUT", "/collections/mine", id="collection-write"),
+    pytest.param("PUT", "/views/v", id="saved-view-write"),
 ]
 
 
