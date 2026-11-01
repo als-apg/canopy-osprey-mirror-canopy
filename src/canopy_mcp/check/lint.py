@@ -23,7 +23,7 @@ Four passes, each tolerant of malformed input (the schema pass reports it):
   actions. Nodes under an ``embedded-display``, an ``unknown-widget`` or an
   unmapped type are not read; such a node's own props name no channel, its rule
   PVs and ``write_pv`` actions are read. Statically hidden nodes are read.
-  Names with macros (``${``) or ``loc://``/``fox://`` are not machine PVs and are
+  Names with macros (``${``) or ``loc://``/``formula://`` are not machine PVs and are
   dropped; ``ca://``/``pva://`` are stripped; names containing any of
   ``% * ? ( | [`` are warning ``pv_not_checkable`` and never sent (one such name
   makes Raccoon reject the whole batch). A name Raccoon lists in ``unknown`` is
@@ -52,8 +52,8 @@ from canopy_mcp.client import error_reason, borrowed_client
 from canopy_mcp.config import Settings
 from canopy_mcp.catalog import Catalog
 from canopy_mcp.channels import (
-    FOX_PREFIX,
     LOC_PREFIX,
+    FORMULA_PREFIX,
     WRITE_PV_ACTION,
     iter_channels,
     mounts_children,
@@ -67,7 +67,7 @@ RACCOON_TIMEOUT_S = 1.5
 RACCOON_BATCH = 10_000
 
 _DROP_CONTAINS = ("${",)
-_DROP_PREFIXES = (LOC_PREFIX, FOX_PREFIX)
+_DROP_PREFIXES = (LOC_PREFIX, FORMULA_PREFIX)
 _STRIP_PREFIXES = ("ca://", "pva://")
 _NOT_CHECKABLE_CHARS = frozenset("%*?(|[")
 

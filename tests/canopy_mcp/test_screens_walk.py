@@ -195,13 +195,13 @@ def test_no_store_dir_still_expands_the_top(tmp_path):
 
 def test_formula_bindings_only_from_used_formulas(tmp_path):
     formulas = [
-        {"name": "used", "expression": "{a} + {b}", "bindings": {"a": "${P}:A", "b": "fox://chained"}},
+        {"name": "used", "expression": "{a} + {b}", "bindings": {"a": "${P}:A", "b": "formula://chained"}},
         {"name": "chained", "expression": "{c}", "bindings": {"c": "C"}},
         {"name": "unused", "expression": "{d}", "bindings": {"d": "D"}},
     ]
     top = _screen(
         "top",
-        _w("l", "pv-label", pv="fox://used"),
+        _w("l", "pv-label", pv="formula://used"),
         macros=[{"name": "P", "default": "SYS"}],
         formulas=formulas,
     )

@@ -66,8 +66,8 @@ _MAPPED = frozenset(MAPPED_TYPES)
 
 EMBED_TYPE = "embedded-display"
 UNKNOWN_TYPE = "unknown-widget"
-# Channel-name prefixes: a Fox formula, and a local (in-browser) variable.
-FOX_PREFIX = "fox://"
+# Channel-name prefixes: a formula, and a local (in-browser) variable.
+FORMULA_PREFIX = "formula://"
 LOC_PREFIX = "loc://"
 # Action types: a PV write, and opening another screen.
 WRITE_PV_ACTION = "write_pv"

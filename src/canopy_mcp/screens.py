@@ -53,8 +53,8 @@ from collections.abc import Iterator, Collection
 from canopy_mcp.store import DraftStore
 from canopy_mcp.channels import (
     EMBED_TYPE,
-    FOX_PREFIX,
     LOC_PREFIX,
+    FORMULA_PREFIX,
     iter_channels,
     mounts_children,
 )
@@ -264,8 +264,8 @@ class _Group:
         name = raw.strip()
         if not name or name.startswith(LOC_PREFIX) or has_macro(name):
             return
-        if name.startswith(FOX_PREFIX):
-            self.use_formula(name[len(FOX_PREFIX) :])
+        if name.startswith(FORMULA_PREFIX):
+            self.use_formula(name[len(FORMULA_PREFIX) :])
             return
         self.pvs.add(name)
 
@@ -548,7 +548,7 @@ def expanded_pvs(
     """The PVs the runtime's collector lists for ``doc``, sorted (as JavaScript sorts) and unique.
 
     Prop channels of mounted, mapped nodes and rule PVs, trimmed; ``loc://``
-    names, names with an unresolved macro and blanks dropped; a ``fox://`` name
+    names, names with an unresolved macro and blanks dropped; a ``formula://`` name
     stands for the inputs of the formula it names (and of formulas those use),
     read from the declaring screen's formulas. Actions are not read, and a
     statically hidden node opens no subscription, so its channels are left out.

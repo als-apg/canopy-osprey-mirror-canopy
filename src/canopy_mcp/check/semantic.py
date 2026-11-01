@@ -28,7 +28,7 @@ other controls is a screen.
 A write-capable control or a ``write_pv`` action is ``write_not_relayed`` while
 the server relays no writes (``relay_on=False``). With the PUT relay on it is
 ``writes_to_machine`` when it names at least one machine channel, that is a
-non-blank channel that is neither ``loc://`` nor ``fox://`` (those stay in the
+non-blank channel that is neither ``loc://`` nor ``formula://`` (those stay in the
 browser, so a control that names only them keeps ``write_not_relayed``).
 
 This module is the one home of the node vocabulary the checks, the screen walk
@@ -43,8 +43,8 @@ from typing import Any, Literal, overload
 from collections.abc import Iterator, Collection
 
 from canopy_mcp.channels import (
-    FOX_PREFIX,
     LOC_PREFIX,
+    FORMULA_PREFIX,
     WRITE_PV_ACTION,
     WRITE_CAPABLE_TYPES,
     iter_channels,
@@ -202,7 +202,7 @@ def _duplicate_ids(nodes: list[tuple[Path, dict[str, Any]]]) -> list[Finding]:
 
 
 def _fox_name(ref: str) -> str:
-    return ref[len(FOX_PREFIX) :] if ref.startswith(FOX_PREFIX) else ref
+    return ref[len(FORMULA_PREFIX) :] if ref.startswith(FORMULA_PREFIX) else ref
 
 
 def _fox_refs(doc: dict[str, Any], nodes: list[tuple[Path, dict[str, Any]]]) -> list[Finding]:
@@ -232,7 +232,7 @@ def _fox_refs(doc: dict[str, Any], nodes: list[tuple[Path, dict[str, Any]]]) -> 
         props = node.get("props")
         if isinstance(props, dict):
             for key, value in props.items():
-                if isinstance(value, str) and value.startswith(FOX_PREFIX):
+                if isinstance(value, str) and value.startswith(FORMULA_PREFIX):
                     require(value, nid, (*path, "props", key), f"prop '{key}'")
         rules = node.get("rules")
         if not isinstance(rules, list):
@@ -246,17 +246,17 @@ def _fox_refs(doc: dict[str, Any], nodes: list[tuple[Path, dict[str, Any]]]) -> 
             pvs = rule.get("pvs")
             for p, pv in enumerate(pvs if isinstance(pvs, list) else []):
                 name = pv.get("name") if isinstance(pv, dict) else None
-                if isinstance(name, str) and name.startswith(FOX_PREFIX):
+                if isinstance(name, str) and name.startswith(FORMULA_PREFIX):
                     require(name, nid, (*rpath, "pvs", p, "name"), f"rule '{rule.get('id')}' pv")
     return out
 
 
 def is_machine_channel(name: Any) -> bool:
-    """Whether ``name`` is a channel a write would reach the machine on (not blank, ``loc://`` or ``fox://``)."""
+    """Whether ``name`` is a channel a write would reach the machine on (not blank, ``loc://`` or ``formula://``)."""
     if not isinstance(name, str):
         return False
     name = name.strip()
-    return bool(name) and not name.startswith((LOC_PREFIX, FOX_PREFIX))
+    return bool(name) and not name.startswith((LOC_PREFIX, FORMULA_PREFIX))
 
 
 def _node_checks(path: Path, node: dict[str, Any], relay_on: bool = False) -> list[Finding]:

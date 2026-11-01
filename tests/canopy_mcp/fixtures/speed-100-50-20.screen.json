@@ -224,7 +224,7 @@
             "name": "rule 0",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f00"
+            "formula": "formula://f00"
           }
         ]
       },
@@ -246,7 +246,7 @@
             "name": "rule 1",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f01"
+            "formula": "formula://f01"
           }
         ]
       },
@@ -266,7 +266,7 @@
             "name": "rule 2",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f02"
+            "formula": "formula://f02"
           }
         ]
       },
@@ -288,7 +288,7 @@
             "name": "rule 3",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f03"
+            "formula": "formula://f03"
           }
         ]
       },
@@ -310,7 +310,7 @@
             "name": "rule 4",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f04"
+            "formula": "formula://f04"
           }
         ]
       },
@@ -330,7 +330,7 @@
             "name": "rule 5",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f05"
+            "formula": "formula://f05"
           }
         ]
       },
@@ -352,7 +352,7 @@
             "name": "rule 6",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f06"
+            "formula": "formula://f06"
           }
         ]
       },
@@ -374,7 +374,7 @@
             "name": "rule 7",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f07"
+            "formula": "formula://f07"
           }
         ]
       },
@@ -394,7 +394,7 @@
             "name": "rule 8",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f08"
+            "formula": "formula://f08"
           }
         ]
       },
@@ -416,7 +416,7 @@
             "name": "rule 9",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f09"
+            "formula": "formula://f09"
           }
         ]
       },
@@ -438,7 +438,7 @@
             "name": "rule 10",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f10"
+            "formula": "formula://f10"
           }
         ]
       },
@@ -458,7 +458,7 @@
             "name": "rule 11",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f11"
+            "formula": "formula://f11"
           }
         ]
       },
@@ -480,7 +480,7 @@
             "name": "rule 12",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f12"
+            "formula": "formula://f12"
           }
         ]
       },
@@ -502,7 +502,7 @@
             "name": "rule 13",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f13"
+            "formula": "formula://f13"
           }
         ]
       },
@@ -522,7 +522,7 @@
             "name": "rule 14",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f14"
+            "formula": "formula://f14"
           }
         ]
       },
@@ -544,7 +544,7 @@
             "name": "rule 15",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f15"
+            "formula": "formula://f15"
           }
         ]
       },
@@ -566,7 +566,7 @@
             "name": "rule 16",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f16"
+            "formula": "formula://f16"
           }
         ]
       },
@@ -586,7 +586,7 @@
             "name": "rule 17",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f17"
+            "formula": "formula://f17"
           }
         ]
       },
@@ -608,7 +608,7 @@
             "name": "rule 18",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f18"
+            "formula": "formula://f18"
           }
         ]
       },
@@ -630,7 +630,7 @@
             "name": "rule 19",
             "targetProperty": "visible",
             "default": true,
-            "formula": "fox://f19"
+            "formula": "formula://f19"
           }
         ]
       },

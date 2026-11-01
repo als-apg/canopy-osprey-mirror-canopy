@@ -88,18 +88,18 @@ def test_macro_default_null_counts_as_missing() -> None:
 
 def test_unresolved_formula_in_prop_rule_formula_and_rule_pv() -> None:
     rules = [
-        {"id": "r1", "name": "n", "targetProperty": "t", "default": 0, "formula": "fox://missing_a"},
+        {"id": "r1", "name": "n", "targetProperty": "t", "default": 0, "formula": "formula://missing_a"},
         {"id": "r2", "name": "n", "targetProperty": "t", "default": 0, "formula": "ok"},
         {
             "id": "r3",
             "name": "n",
             "targetProperty": "t",
             "default": 0,
-            "pvs": [{"name": "SR:PV", "trigger": True}, {"name": "fox://missing_c", "trigger": True}],
+            "pvs": [{"name": "SR:PV", "trigger": True}, {"name": "formula://missing_c", "trigger": True}],
             "conditions": [],
         },
     ]
-    node = _node("w-1", props={"pvName": "fox://missing_p", "other": "fox://ok"}, rules=rules)
+    node = _node("w-1", props={"pvName": "formula://missing_p", "other": "formula://ok"}, rules=rules)
     doc = _doc(node, formulas=[{"name": "ok", "expression": "1"}])
     findings = check_semantic(doc)
     assert all(f.code == "unresolved_formula" and f.severity == "error" for f in findings)
@@ -203,8 +203,8 @@ def test_relay_on_control_with_a_machine_channel_writes_to_the_machine(ntype: st
     "props",
     [
         {"pv": "loc://flag"},
-        {"pv": "fox://calc"},
-        {"pv": "loc://a", "readbackPV": "fox://b"},
+        {"pv": "formula://calc"},
+        {"pv": "loc://a", "readbackPV": "formula://b"},
         {"pv": "  "},
         {},
     ],
@@ -234,7 +234,7 @@ def test_relay_on_write_pv_action_with_a_machine_pv_writes_to_the_machine() -> N
     actions = [
         {"type": "write_pv", "pvName": "loc://x", "value": 1},
         {"type": "write_pv", "pvName": "SR:X", "value": 1},
-        {"type": "write_pv", "pvName": "fox://f", "value": 1},
+        {"type": "write_pv", "pvName": "formula://f", "value": 1},
     ]
     doc = _doc(_node("w-1", "action-button", props={"actions": actions}), formulas=[{"name": "f", "expression": "1"}])
     found = [(f.code, f.path) for f in check_semantic(doc, relay_on=True)]

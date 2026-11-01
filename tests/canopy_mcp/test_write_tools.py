@@ -241,7 +241,7 @@ async def test_macro_without_default_refused(settings, store):
 
 
 async def test_missing_fox_formula_refused(settings, store):
-    rule = {"id": "r1", "name": "colour", "targetProperty": "color", "default": "red", "formula": "fox://missing"}
+    rule = {"id": "r1", "name": "colour", "targetProperty": "color", "default": "red", "formula": "formula://missing"}
     out = await new_screen("x/f", _doc(_node("lbl", rules=[rule])))
     assert out["refused"] is True
     assert "unresolved_formula" in {e["code"] for e in out["errors"]}

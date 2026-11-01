@@ -147,7 +147,7 @@ def test_normalize_pv():
     assert normalize_pv("ca://A:B") == "A:B"
     assert normalize_pv("pva://A:B") == "A:B"
     assert normalize_pv("loc://x") is None
-    assert normalize_pv("fox://f") is None
+    assert normalize_pv("formula://f") is None
     assert normalize_pv("${P}:X") is None
     assert normalize_pv("A:B") == "A:B"
 

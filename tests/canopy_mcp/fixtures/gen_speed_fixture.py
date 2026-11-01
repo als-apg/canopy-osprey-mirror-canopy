@@ -41,7 +41,7 @@ def _formula(i: int) -> dict[str, Any]:
 def _rule(i: int) -> dict[str, Any]:
     base = {"id": f"r{i:02d}", "name": f"rule {i}", "targetProperty": "visible", "default": True}
     if i < FORMULAS:
-        return {**base, "formula": f"fox://f{i:02d}"}
+        return {**base, "formula": f"formula://f{i:02d}"}
     return {
         **base,
         "pvs": [{"name": _pv(i), "trigger": True}],
