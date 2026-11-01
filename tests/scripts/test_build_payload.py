@@ -28,6 +28,7 @@ INTEGRITY = {
     "shell": "sha512-shell==",
 }
 NPMRC = "@slaclab:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n"
+INSTALL = "install --frozen-lockfile --ignore-scripts --ignore-pnpmfile"
 
 
 def lockfile(entries: dict[str, tuple[str, str]], workspace: tuple[str, ...] = ()) -> str:
@@ -111,9 +112,10 @@ if grep -q PyDMConverter pyproject.toml; then echo "4.5.6+g$node"; else echo "1.
 """
 
 PNPM_STUB = r"""#!/bin/sh
-printf 'pnpm\t%s\t%s\tTRACE=%s HUSKY=%s TOKEN=%s\n' "$PWD" "$*" "${TRACE:-unset}" "${HUSKY:-unset}" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
+printf 'pnpm\t%s\t%s\tTRACE=%s HUSKY=%s PM=%s TOKEN=%s\n' "$PWD" "$*" "${TRACE:-unset}" "${HUSKY:-unset}" "${pnpm_config_manage_package_manager_versions:-unset}" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
 case "$*" in
-    "install --frozen-lockfile --ignore-scripts")
+    "install --frozen-lockfile --ignore-scripts --ignore-pnpmfile")
+        cat .npmrc >> "$STUB_LOG.npmrc" || exit 94
         case "${STUB_FAIL_INSTALL:-}" in "$(basename "$PWD")") exit 1 ;; esac
         ;;
     "run build")
@@ -238,12 +240,11 @@ def world(tmp_path: Path) -> dict:
     rt_files = {
         "package.json": "{}\n",
         "pnpm-lock.yaml": RT_LOCK,
-        ".npmrc": NPMRC,
         "apps/viewer/package.json": "{}\n",
         "packages/runtime/ir-map.json": IR_MAP,
     }
     rt = make_repo(src / "canopy-screen-runtime", rt_files)
-    trace = make_repo(src / "react-trace", {"package.json": "{}\n", "pnpm-lock.yaml": TRACE_LOCK, ".npmrc": NPMRC})
+    trace = make_repo(src / "react-trace", {"package.json": "{}\n", "pnpm-lock.yaml": TRACE_LOCK})
     git(trace, "branch", "feature", "HEAD~1")
 
     bin_dir = tmp_path / "bin"
@@ -419,14 +420,14 @@ def test_builds_run_only_in_exports_under_one_root(world):
 def test_the_runtime_installs_its_lockfile_then_builds(world):
     ok(build(world))
     runtime = [argv for tool, cwd, argv, _ in calls(world) if tool == "pnpm" and cwd.name == "canopy-screen-runtime"]
-    assert runtime == ["install --frozen-lockfile --ignore-scripts", "run build"]
+    assert runtime == [INSTALL, "run build"]
 
 
 def test_trace_is_built_with_its_own_build_steps(world):
     ok(build(world))
     trace = [argv for tool, cwd, argv, _ in calls(world) if tool == "pnpm" and cwd.name == "react-trace"]
     assert trace == [
-        "install --frozen-lockfile --ignore-scripts",
+        INSTALL,
         "exec tsc -b",
         "exec vite build --base=./",
         "run check-dist",
@@ -436,7 +437,7 @@ def test_trace_is_built_with_its_own_build_steps(world):
 def test_pnpm_never_sees_trace_and_husky_is_off(world):
     ok(build(world))
     notes = {note for tool, _, _, note in calls(world) if tool == "pnpm"}
-    assert {note.rsplit(" ", 1)[0] for note in notes} == {"TRACE=unset HUSKY=0"}
+    assert {note.rsplit(" ", 1)[0] for note in notes} == {"TRACE=unset HUSKY=0 PM=false"}
 
 
 def test_uncommitted_edits_are_absent_from_the_payload(world):
@@ -1238,7 +1239,7 @@ def test_a_failed_install_stops_the_build(world, name, label):
 def test_every_install_is_frozen_and_runs_no_scripts(world):
     ok(build(world))
     installs = {argv for tool, _, argv, _ in calls(world) if tool == "pnpm" and argv.startswith("install")}
-    assert installs == {"install --frozen-lockfile --ignore-scripts"}
+    assert installs == {INSTALL}
 
 
 def test_the_check_runs_on_the_commit_before_either_install(world):
@@ -1408,37 +1409,21 @@ def test_no_token_is_invented_when_none_is_given(world):
     assert not [r for r in calls(world) if r[3].endswith("TOKEN=set")]
 
 
-@pytest.mark.parametrize("repo,label", [("rt", "runtime"), ("trace", "Trace")])
-@pytest.mark.parametrize(
-    "npmrc,why",
-    [
-        pytest.param("@slaclab:registry=https://evil.example\n", "must point @slaclab at", id="other-host"),
-        pytest.param("@slaclab:registry=http://npm.pkg.github.com\n", "must point @slaclab at", id="http"),
-        pytest.param("registry=https://registry.npmjs.org\n", "must point @slaclab at", id="no-scope"),
-        pytest.param(
-            NPMRC + "//evil.example/:_authToken=${NODE_AUTH_TOKEN}\n",
-            "gives a token to another host",
-            id="token-elsewhere",
-        ),
-        pytest.param(
-            NPMRC + "@slaclab:registry=https://evil.example\n", "must point @slaclab at", id="second-scope-line"
-        ),
-    ],
-)
-def test_an_npmrc_pointing_elsewhere_is_refused(world, repo, label, npmrc, why):
-    commit(world[repo], {".npmrc": npmrc}, "elsewhere")
-    refused_before_any_install(world, build(world), f"the {label} ", why)
+@pytest.mark.parametrize("repo", ["rt", "trace"])
+def test_the_install_reads_the_scripts_npmrc_not_the_commits(world, repo):
+    commit(world[repo], {".npmrc": "//evil.example/:_authToken=${NODE_AUTH_TOKEN}\n"}, "elsewhere")
+    ok(build(world))
+    assert Path(f"{world['log']}.npmrc").read_text() == NPMRC * 2
 
 
-def test_a_commit_without_an_npmrc_is_refused(world):
-    git(world["rt"], "rm", "-q", ".npmrc")
-    git(world["rt"], "commit", "-q", "-m", "no npmrc")
-    refused_before_any_install(world, build(world), "no readable .npmrc")
-
-
-def test_a_workspace_file_naming_a_registry_is_refused(world):
-    commit(world["trace"], {"pnpm-workspace.yaml": "registries:\n  '@slaclab': https://evil.example\n"}, "elsewhere")
-    refused_before_any_install(world, build(world), "pnpm-workspace.yaml names a registry")
+def test_an_npmrc_symlink_in_a_commit_is_not_written_through(world, tmp_path):
+    outside = tmp_path / "outside"
+    outside.write_text("untouched\n")
+    (world["rt"] / ".npmrc").symlink_to(outside)
+    commit(world["rt"], {}, "symlink")
+    ok(build(world))
+    assert outside.read_text() == "untouched\n"
+    assert Path(f"{world['log']}.npmrc").read_text() == NPMRC * 2
 
 
 def test_help_names_the_one_sdk_check(world):

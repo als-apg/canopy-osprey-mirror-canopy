@@ -17,7 +17,8 @@
 #
 # What the payload holds and how a host uses it: docs/deployment/appliance.md.
 # Inputs and checks: --help. Needs git, tar, uv/uvx, pnpm, python3 and
-# sha256sum or shasum.
+# sha256sum or shasum. Put the pnpm the commits' packageManager names on PATH: a
+# commit cannot switch it here.
 set -euo pipefail
 
 PROG=build-payload
@@ -56,7 +57,9 @@ Optional inputs (environment):
                   SHA), copied to <out>/spec/ and recorded in STAGED.json as "spec"
                   (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
                   unset means no spec/ and both recorded as null
-  NODE_AUTH_TOKEN read through each repo's .npmrc by the installs, and by nothing else
+  NODE_AUTH_TOKEN the token for https://npm.pkg.github.com; only the installs see it
+
+pnpm runs as found on PATH, whatever a commit's packageManager names: use that version.
 
 Checks (before anything is built; each refuses the build on a mismatch):
   fixtures    when RT_SHA has apps/viewer/e2e/fixtures/collections/, its
@@ -77,9 +80,6 @@ Checks (before anything is built; each refuses the build on a mismatch):
               "vectors" as "compared", or "absent" when neither commit holds
               either
 
-  registry    the .npmrc at RT_SHA and TRACE_SHA must point @slaclab at
-              https://npm.pkg.github.com and give a token to no other host, and
-              pnpm-workspace.yaml must name no registry
   one SDK     the pnpm-lock.yaml at RT_SHA and TRACE_SHA must resolve exactly
               client, react, screen-ir and shell (runtime), client and shell (Trace),
               as plain registry versions with an integrity and nothing else; any
@@ -368,15 +368,15 @@ TRACE_SRC=""
 # The viewer and Trace take the SDK from the registry, as their lockfiles say. A
 # payload holds one SDK, the release tagged at SDK_SHA, so both lockfiles must
 # resolve it. This runs on the exports, before anything installs. The script's
-# Python has no YAML parser, so the lockfile is read by line and fails closed: a
-# line naming @slaclab in any form but the ones pnpm writes for a registry package
-# is refused. Prints the JSON recorded as "sdk_packages", or refuses on stderr.
+# Python has no YAML parser, so the lockfile is read by line: a line naming
+# @slaclab in any form but the ones pnpm writes for a registry package is refused.
+# This checks consistency and is not a security boundary: whoever controls a commit
+# controls its build. Prints the JSON recorded as "sdk_packages", or refuses on stderr.
 check_one_sdk() { # <runtime export> <Trace export, or "">
     python3 -I -c '
 import json, os, re, subprocess, sys
 
 sdk, sha, rt_sha, trace_sha, rt_src, trace_src = sys.argv[1:]
-REGISTRY = "npm.pkg.github.com"
 RUNTIME_PACKAGES = {"@slaclab/canopy-" + p for p in ("client", "react", "screen-ir", "shell")}
 TRACE_PACKAGES = {"@slaclab/canopy-" + p for p in ("client", "shell")}
 NAME = r"@slaclab/canopy-[a-z-]+"
@@ -396,22 +396,6 @@ def read(label, directory, name):
             return f.read()
     except OSError:
         refuse(f"the {label} has no readable {name}")
-
-def check_registry(label, directory):
-    scoped = []
-    for line in read(label, directory, ".npmrc").splitlines():
-        line = line.strip()
-        if line.startswith(("#", ";")):
-            continue
-        if line.startswith("@slaclab:registry"):
-            scoped.append(line.partition("=")[2].strip().rstrip("/"))
-        if ("_auth" in line or "NODE_AUTH_TOKEN" in line) and not line.startswith(f"//{REGISTRY}/:"):
-            refuse(f"the {label} .npmrc gives a token to another host than {REGISTRY}: {line.partition("=")[0]}")
-    if scoped != [f"https://{REGISTRY}"]:
-        refuse(f"the {label} .npmrc must point @slaclab at https://{REGISTRY}, and it says {scoped}")
-    if os.path.exists(os.path.join(directory, "pnpm-workspace.yaml")):
-        if "registr" in read(label, directory, "pnpm-workspace.yaml"):
-            refuse(f"the {label} pnpm-workspace.yaml names a registry")
 
 def resolved(label, directory, wanted, held):
     text = read(label, directory, "pnpm-lock.yaml")
@@ -508,9 +492,6 @@ for directory in git("ls-tree", "--name-only", sha, "packages/").stdout.split():
         meta = json.loads(shown.stdout)
         held[meta.get("name")] = meta.get("version")
 
-check_registry(f"runtime (RT_SHA={rt_sha})", rt_src)
-if trace_src:
-    check_registry(f"Trace (TRACE_SHA={trace_sha})", trace_src)
 runtime = resolved(f"runtime (RT_SHA={rt_sha})", rt_src, RUNTIME_PACKAGES, held)
 trace = resolved(f"Trace (TRACE_SHA={trace_sha})", trace_src, TRACE_PACKAGES, held) if trace_src else None
 
@@ -553,18 +534,24 @@ ls "$STAGE"/canopy-*.whl >/dev/null 2>&1 || die "no canopy wheel was built"
 # --- installs ------------------------------------------------------------------
 # TRACE is unset for pnpm (it and the bundler read it as a tracing filter) and
 # HUSKY=0 turns the `prepare: husky` hooks into no-ops (an export has no .git).
-# No install runs a package's scripts, and only an install sees the token; it is
-# exported inside the caller's subshell.
-js() { env -u TRACE HUSKY=0 "$@"; }
+# The commits run in the build but must not reach the registry token, so the
+# install reads an .npmrc written here, runs no package scripts or pnpmfile, and
+# no commit picks the pnpm that runs. The token is exported in the caller's subshell.
+js() { env -u TRACE HUSKY=0 pnpm_config_manage_package_manager_versions=false "$@"; }
 js_install() { # in an export's directory, in a subshell
+    rm -f .npmrc
+    cat > .npmrc <<'NPMRC'
+@slaclab:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+NPMRC
     if [ -n "$SDK_INSTALL_TOKEN" ]; then export NODE_AUTH_TOKEN="$SDK_INSTALL_TOKEN"; fi
-    js pnpm install --frozen-lockfile --ignore-scripts
+    js pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 }
 (cd "$RT_SRC" && js_install) \
-    || die "installing the runtime export of $RT_SHA failed (pnpm install --frozen-lockfile --ignore-scripts)"
+    || die "installing the runtime export of $RT_SHA failed (pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile)"
 if [ "$NO_TRACE" = 0 ]; then
     (cd "$TRACE_SRC" && js_install) \
-        || die "installing the Trace export of $TRACE_SHA failed (pnpm install --frozen-lockfile --ignore-scripts)"
+        || die "installing the Trace export of $TRACE_SHA failed (pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile)"
 fi
 
 # --- viewer --------------------------------------------------------------------
