@@ -1,6 +1,7 @@
 {
   "name": "validate-dock-not-object",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": 42,
-  "reason": "not_layout"
+  "reason": "not_layout",
+  "where": "layout"
 }

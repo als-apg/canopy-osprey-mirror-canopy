@@ -1,6 +1,6 @@
 {
   "name": "normalize-clears-stale-from",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [

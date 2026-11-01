@@ -1,10 +1,11 @@
 {
   "name": "validate-dock-empty-tabs",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "tile": "t1",
     "tabs": [],
     "showing": "a"
   },
-  "reason": "empty_tabs"
+  "reason": "empty_tabs",
+  "where": "layout.tabs"
 }

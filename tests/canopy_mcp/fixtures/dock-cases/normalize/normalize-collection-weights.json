@@ -1,6 +1,6 @@
 {
   "name": "normalize-collection-weights",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "form": "collection",
   "input": {
     "split": "row",

@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-array",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": [
     {
       "tile": "t1",
@@ -8,5 +8,6 @@
       "showing": "a"
     }
   ],
-  "reason": "not_layout"
+  "reason": "not_layout",
+  "where": "layout"
 }

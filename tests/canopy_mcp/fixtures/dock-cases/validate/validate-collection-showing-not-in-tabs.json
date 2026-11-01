@@ -1,6 +1,6 @@
 {
   "name": "validate-collection-showing-not-in-tabs",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "tabs": [0],
     "showing": 1
@@ -9,5 +9,6 @@
     "form": "collection",
     "members": 2
   },
-  "reason": "showing_not_in_tabs"
+  "reason": "showing_not_in_tabs",
+  "where": "layout.showing"
 }

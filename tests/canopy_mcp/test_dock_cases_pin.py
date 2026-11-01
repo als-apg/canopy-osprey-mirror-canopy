@@ -1,11 +1,10 @@
 """The copied ``validate`` and ``normalize`` dock-layout cases match their pins.
 
-``fixtures/dock-cases/`` is a frozen copy of the dock-layout cases canopy-screen-runtime
-carried at one commit, minus the cases for layout shapes no reader takes any more.
-``pin.json`` records, per copy, that commit, the path the case had in the runtime repo
-and the git blob of the bytes. This test recomputes each copy's git blob, so an edited,
-missing or extra copy fails here. The runtime no longer carries these files, so the copy
-is the reference :mod:`canopy_mcp.layout` is held to; never edit a copy by hand.
+``fixtures/dock-cases/`` is a copy of the dock-layout cases of canopy-screen-runtime's
+dock engine (``packages/dock-engine/cases``) at one commit. ``pin.json`` records, per
+copy, that commit, the path the case has in the runtime repo and the git blob of the
+bytes. This test recomputes each copy's git blob, so an edited, missing or extra copy
+fails here; never edit a copy by hand, re-copy and re-pin.
 
 The cases themselves are replayed against :func:`canopy_mcp.collections.layout_refusal`
 and :func:`canopy_mcp.collections.normalize_layout` in ``test_collections_validate.py``.
@@ -21,7 +20,7 @@ import pytest
 CASES = Path(__file__).parent / "fixtures" / "dock-cases"
 PIN = CASES / "pin.json"
 KINDS = ("validate", "normalize")
-RUNTIME_DIR = "apps/viewer/src/workspace/dock/model/cases"
+RUNTIME_DIR = "packages/dock-engine/cases"
 
 
 def git_blob(data: bytes) -> str:

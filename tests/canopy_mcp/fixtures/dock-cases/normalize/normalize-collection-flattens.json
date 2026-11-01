@@ -1,6 +1,6 @@
 {
   "name": "normalize-collection-flattens",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "form": "collection",
   "input": {
     "split": "column",

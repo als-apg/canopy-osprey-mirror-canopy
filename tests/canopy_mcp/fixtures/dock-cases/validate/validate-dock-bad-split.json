@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-bad-split",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "diagonal",
     "items": [
@@ -16,5 +16,6 @@
       }
     ]
   },
-  "reason": "bad_split"
+  "reason": "bad_split",
+  "where": "layout.split"
 }

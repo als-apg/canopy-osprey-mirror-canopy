@@ -1,6 +1,6 @@
 {
   "name": "validate-collection-index-out-of-range",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "tabs": [0, 5]
   },
@@ -8,5 +8,6 @@
     "form": "collection",
     "members": 2
   },
-  "reason": "bad_key"
+  "reason": "bad_key",
+  "where": "layout.tabs[1]"
 }

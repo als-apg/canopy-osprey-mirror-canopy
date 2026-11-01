@@ -1,261 +1,261 @@
 {
   "about": [
-    "Byte-identical copies of runtime's C-CASES validate and normalize cases.",
+    "Byte-identical copies of canopy-screen-runtime's dock-engine validate and normalize cases.",
     "Each file is pinned with {runtime commit, path, git blob}; test_dock_cases_pin.py",
     "fails when a copy no longer hashes to its blob. Re-copy and re-pin, never edit."
   ],
   "files": [
     {
       "copy": "validate/validate-collection-duplicate-member.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-duplicate-member.json",
-      "blob": "0802dba1fb52058c92908fa73e46b757187abaeb"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-duplicate-member.json",
+      "blob": "618a7aa0d45985488f947e2be0f079ff0f40b0ee"
     },
     {
       "copy": "validate/validate-collection-from-refused.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-from-refused.json",
-      "blob": "cf4c0209b0cf2d5ba3909a363d226a01965eee16"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-from-refused.json",
+      "blob": "0f668cd5e49aaa01421fd673ad0abf6efec0c004"
     },
     {
       "copy": "validate/validate-collection-index-out-of-range.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-index-out-of-range.json",
-      "blob": "b11067cff0525d3e5516e25ae7e91290799b6fbf"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-index-out-of-range.json",
+      "blob": "26f199a6c2cd8668fce7d8e88e72a198b6a4fa22"
     },
     {
       "copy": "validate/validate-collection-member-missing.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-member-missing.json",
-      "blob": "bd21a280b5bec05e6ff27fe299de9b3f9990460d"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-member-missing.json",
+      "blob": "578bf9d152af62ad56de0e59c756da08a7582854"
     },
     {
       "copy": "validate/validate-collection-panel-ids.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-panel-ids.json",
-      "blob": "d6ff574e8e9d0fe4ee68010f56a4bca8cd675c65"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-panel-ids.json",
+      "blob": "48ba796975cf39457d5842e7bdb5873554ccfb5f"
     },
     {
       "copy": "validate/validate-collection-root-tile.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-root-tile.json",
-      "blob": "64cb4aaa73563d9b7edfb5f7ea75993cbfbc34c5"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-root-tile.json",
+      "blob": "2e04061e4460a59aaf54acd3482522f2ef2f8c70"
     },
     {
       "copy": "validate/validate-collection-showing-not-in-tabs.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-showing-not-in-tabs.json",
-      "blob": "4c9af045c7456846c46bb75ba396fe3801d3e799"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-showing-not-in-tabs.json",
+      "blob": "9174e5876374f56b3d9399eaa757e7b0ba0eb098"
     },
     {
       "copy": "validate/validate-collection-tile-id-refused.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-tile-id-refused.json",
-      "blob": "5a46c147e81593a1c82c9af19d1a914ea346c548"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-tile-id-refused.json",
+      "blob": "ee7b0275fc17c2bd306739eeebc5a683b6eaa707"
     },
     {
       "copy": "validate/validate-collection-weights.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-weights.json",
-      "blob": "3f3ef5e2e9a5a8feae367b4872bda183ec232de4"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-weights.json",
+      "blob": "f3cb28c2fea9a7557b9fddcea6dbd4bdd910d14a"
     },
     {
       "copy": "validate/validate-collection-zero-weight.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-collection-zero-weight.json",
-      "blob": "94923186382ddc3bfbb12558c420b00841bbb069"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-collection-zero-weight.json",
+      "blob": "8ebec74e110747485245d03442e15c62c7b0f91f"
     },
     {
       "copy": "validate/validate-dock-array.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-array.json",
-      "blob": "36cb7835867d41e2712fff3c459d6c38cc25aa3c"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-array.json",
+      "blob": "f362b7b575b1ff71007c6ad83e79a3a96c576ceb"
     },
     {
       "copy": "validate/validate-dock-bad-key.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-bad-key.json",
-      "blob": "369695c36c6fc6da32b9a7358a1d68a4b3057c17"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-bad-key.json",
+      "blob": "c39e965898b0850beaca8fce055c1ac14c204d39"
     },
     {
       "copy": "validate/validate-dock-bad-split.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-bad-split.json",
-      "blob": "92dd5b494ab612d71ced9559b9510bdd70270798"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-bad-split.json",
+      "blob": "4273b5fc012fd178edb2da9d02050a16dc66203d"
     },
     {
       "copy": "validate/validate-dock-bad-tile-id.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-bad-tile-id.json",
-      "blob": "12ccfd3ceead243612e4eec1d82a61b5b7119f32"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-bad-tile-id.json",
+      "blob": "268c0658cc83ecf225623375e41c90b4d11f3541"
     },
     {
       "copy": "validate/validate-dock-deep-no-cap.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-deep-no-cap.json",
-      "blob": "22837f2fa3ffe87be6380ac537aa954812ae2bb0"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-deep-no-cap.json",
+      "blob": "1cc12d7410a263b4fb504c23e09fad3c4bf2f86c"
     },
     {
       "copy": "validate/validate-dock-duplicate-key.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-duplicate-key.json",
-      "blob": "a132296a942adda32bd293bb035531a2308aa8e8"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-duplicate-key.json",
+      "blob": "7f7df8211dfb299fac2226cac58e4e9977dc9ed2"
     },
     {
       "copy": "validate/validate-dock-duplicate-tile.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-duplicate-tile.json",
-      "blob": "ec5046ceb9e590a6ffc7cd2c8b52b1111d15d8c1"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-duplicate-tile.json",
+      "blob": "aaac578bc21105381a068098013c1517c7d45841"
     },
     {
       "copy": "validate/validate-dock-empty-tabs.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-empty-tabs.json",
-      "blob": "c89ddb4341b175e191ef0f0886d310cea4e76cee"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-empty-tabs.json",
+      "blob": "5a48fa5839d28db577fe1dfc9fb71c4e47678595"
     },
     {
       "copy": "validate/validate-dock-from.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-from.json",
-      "blob": "9aa55f8194fbed41a71065c17fa182e9af3bcfd8"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-from.json",
+      "blob": "d6cd8742f05e5a4bd85691ee820d4ecb49411482"
     },
     {
       "copy": "validate/validate-dock-missing-showing.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-missing-showing.json",
-      "blob": "766e0b8872b6e4b072a3ceea7cfc3a83e2b14500"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-missing-showing.json",
+      "blob": "39d8501058ed4121660b8fb8a62988959089ea19"
     },
     {
       "copy": "validate/validate-dock-missing-tile-id.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-missing-tile-id.json",
-      "blob": "5e11acaf35644606c0843347407a725b2a99784b"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-missing-tile-id.json",
+      "blob": "7900d34619eed2e044c8f6b46d83626c0b28e5b3"
     },
     {
       "copy": "validate/validate-dock-negative-size.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-negative-size.json",
-      "blob": "303f201df94bad365639bd3c5873e846e896ca47"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-negative-size.json",
+      "blob": "845b33adf38e8f77ab6eeef158ac1fb8bc5c6e7a"
     },
     {
       "copy": "validate/validate-dock-not-object.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-not-object.json",
-      "blob": "1036c97fa61d550c6b9dca2751f4a2bfef4e38dd"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-not-object.json",
+      "blob": "8ba44a775a3b376d08a4a4f343ca619a733f0603"
     },
     {
       "copy": "validate/validate-dock-partial-sizes.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-partial-sizes.json",
-      "blob": "5bad64dc1ced6b5d55d50fa3e25c01d44f84b5f4"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-partial-sizes.json",
+      "blob": "a7054a7ffd17a90a5715a17052f60bf3304dc3e0"
     },
     {
       "copy": "validate/validate-dock-root-tile.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-root-tile.json",
-      "blob": "730495b254ed7d36c6744ba8a08826e2d0f32539"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-root-tile.json",
+      "blob": "7b855c99c0d773c9af5c241d0c04ef0c86df0ffb"
     },
     {
       "copy": "validate/validate-dock-showing-not-in-tabs.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-showing-not-in-tabs.json",
-      "blob": "e352987c0ed3f4b2d44ade1d872f1fa9e5e13d99"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-showing-not-in-tabs.json",
+      "blob": "68f13b39205b7f6bcf7151c33607adb01896aa25"
     },
     {
       "copy": "validate/validate-dock-sizes-over-one.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-sizes-over-one.json",
-      "blob": "010ce083cf35a27806fe6d7f2c563387ff835420"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-sizes-over-one.json",
+      "blob": "002feaa29589e48533ab8bfe530324b0fb3ca7e9"
     },
     {
       "copy": "validate/validate-dock-split-one-item.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-split-one-item.json",
-      "blob": "bb090bc00c25e82fc5931b3e119158a40ba08c1f"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-split-one-item.json",
+      "blob": "380040cb78cefb7ae976d91c50cfd7740aa11252"
     },
     {
       "copy": "validate/validate-dock-split.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-split.json",
-      "blob": "781770b1291232d46864fb30409bd505dae9b219"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-split.json",
+      "blob": "30119a68d4c471dda891ee16f662965abf333dc7"
     },
     {
       "copy": "validate/validate-dock-unknown-field.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-unknown-field.json",
-      "blob": "f567981a189f46e3fe17eb023718e9528bc2437c"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-unknown-field.json",
+      "blob": "e920601e7f93b81f8a2410e34691a80770719c78"
     },
     {
       "copy": "validate/validate-dock-unknown-from.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/validate/validate-dock-unknown-from.json",
-      "blob": "817951e6f06d36ccf2d4dff7ae597b00bfedeb1e"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/validate/validate-dock-unknown-from.json",
+      "blob": "f7bdb040a87dd78230685eddc4ad0cdada9e9aa5"
     },
     {
       "copy": "normalize/normalize-clears-stale-from.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-clears-stale-from.json",
-      "blob": "cd0e9190cd4bb4b173fe308cd9be65e6cca8ce72"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-clears-stale-from.json",
+      "blob": "873a1d4b4315f705e1e7d97122ebb06789a90157"
     },
     {
       "copy": "normalize/normalize-collapses-one-item-split.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-collapses-one-item-split.json",
-      "blob": "3ca78b3ff9adbfc3a4958eab2e3d1331208a7330"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-collapses-one-item-split.json",
+      "blob": "6a812d11470d651cbb9057f8308e34b6483aa404"
     },
     {
       "copy": "normalize/normalize-collapses-to-root-tile.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-collapses-to-root-tile.json",
-      "blob": "59496600ad232f79e88cce64739d3f1a391d8137"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-collapses-to-root-tile.json",
+      "blob": "bd88994bb59cd72a3b2d29f145e1ac873fee3494"
     },
     {
       "copy": "normalize/normalize-collection-flattens.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-collection-flattens.json",
-      "blob": "c34e340d1a503f2bc85df180c0971b9acc28dd97"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-collection-flattens.json",
+      "blob": "2b421b79e7b260ef0540e4cb720e7a4acf91875f"
     },
     {
       "copy": "normalize/normalize-collection-root-tile-showing.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-collection-root-tile-showing.json",
-      "blob": "544d1f1fd43aad436282b6e3f2a102de9408fd8c"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-collection-root-tile-showing.json",
+      "blob": "8bed136f2eacc90de14f5238accb432a77f56bbd"
     },
     {
       "copy": "normalize/normalize-collection-weights.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-collection-weights.json",
-      "blob": "3ec265101d7c788baea5345e59eebaf31a64dea3"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-collection-weights.json",
+      "blob": "331da7fb8a6987dbf6605d385296411b1c0d26ee"
     },
     {
       "copy": "normalize/normalize-drops-root-size.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-drops-root-size.json",
-      "blob": "5c5ddef39cb0d7557ecf8ebfad0454188dc8b296"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-drops-root-size.json",
+      "blob": "33522dbaed12027ce6431d036e68cf5e7fc00d81"
     },
     {
       "copy": "normalize/normalize-fills-missing-sizes.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-fills-missing-sizes.json",
-      "blob": "2e9baf6883c35207fb1dfd1fefe7a33dec709b39"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-fills-missing-sizes.json",
+      "blob": "30babd5f5bbdcfe831b9126ffc8b702c90bd5b8d"
     },
     {
       "copy": "normalize/normalize-flattens-same-direction.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-flattens-same-direction.json",
-      "blob": "b34c5cf06cebdefa6c9d2aa519cc2a3f599ccf56"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-flattens-same-direction.json",
+      "blob": "aa0aa40cb8e95e252177951db3d747a07f2458e6"
     },
     {
       "copy": "normalize/normalize-keeps-live-from.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-keeps-live-from.json",
-      "blob": "7f2821aac95ba5255cb3107ceaf4594adb5a8c97"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-keeps-live-from.json",
+      "blob": "1e39be2034d7e5491f7e573f8ccebf9e46877d9f"
     },
     {
       "copy": "normalize/normalize-renormalises-sizes.json",
-      "commit": "02c48aecdf52a164f615e6a1cc37e6b40cc6930c",
-      "path": "apps/viewer/src/workspace/dock/model/cases/normalize/normalize-renormalises-sizes.json",
-      "blob": "cf84ab5a476c9741654382ad19e62e7a7178c6d5"
+      "commit": "73f941b1fdc30d68351906fc96bade9e5e69e7a7",
+      "path": "packages/dock-engine/cases/normalize/normalize-renormalises-sizes.json",
+      "blob": "3db0229071511f6a54fceaf485e610d27b0cde1f"
     }
   ]
 }

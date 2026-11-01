@@ -1,6 +1,6 @@
 {
   "name": "normalize-collapses-one-item-split",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [

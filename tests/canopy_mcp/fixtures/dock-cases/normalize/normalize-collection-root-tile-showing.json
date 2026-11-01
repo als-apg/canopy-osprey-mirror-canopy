@@ -1,6 +1,6 @@
 {
   "name": "normalize-collection-root-tile-showing",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "form": "collection",
   "input": {
     "tabs": [0, 1]

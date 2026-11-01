@@ -1,6 +1,6 @@
 {
   "name": "validate-collection-duplicate-member",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
@@ -16,5 +16,6 @@
     "form": "collection",
     "members": 1
   },
-  "reason": "duplicate_key"
+  "reason": "duplicate_key",
+  "where": "layout.items[1].tabs[0]"
 }

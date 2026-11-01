@@ -1,6 +1,6 @@
 {
   "name": "validate-collection-zero-weight",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
@@ -17,5 +17,6 @@
     "form": "collection",
     "members": 2
   },
-  "reason": "bad_size"
+  "reason": "bad_size",
+  "where": "layout.items[0].size"
 }

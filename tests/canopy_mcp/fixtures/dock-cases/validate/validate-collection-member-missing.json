@@ -1,6 +1,6 @@
 {
   "name": "validate-collection-member-missing",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "tabs": [0, 1]
   },
@@ -8,5 +8,6 @@
     "form": "collection",
     "members": 3
   },
-  "reason": "member_missing"
+  "reason": "member_missing",
+  "where": "layout"
 }

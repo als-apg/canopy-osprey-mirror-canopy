@@ -1,6 +1,6 @@
 {
   "name": "normalize-keeps-live-from",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [

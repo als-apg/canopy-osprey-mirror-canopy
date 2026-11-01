@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-sizes-over-one",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
@@ -18,5 +18,6 @@
       }
     ]
   },
-  "reason": "bad_size"
+  "reason": "bad_size",
+  "where": "layout.items"
 }

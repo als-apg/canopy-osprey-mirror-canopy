@@ -1,6 +1,6 @@
 {
   "name": "normalize-collapses-to-root-tile",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "column",
     "items": [

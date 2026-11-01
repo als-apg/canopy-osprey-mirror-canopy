@@ -1,6 +1,6 @@
 {
   "name": "validate-collection-root-tile",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "tabs": [0, 1]
   },

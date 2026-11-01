@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-duplicate-tile",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
@@ -16,5 +16,6 @@
       }
     ]
   },
-  "reason": "duplicate_tile"
+  "reason": "duplicate_tile",
+  "where": "layout.items[1].tile"
 }

@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-split",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [

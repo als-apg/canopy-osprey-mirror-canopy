@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-unknown-from",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
@@ -17,5 +17,6 @@
       }
     ]
   },
-  "reason": "unknown_from"
+  "reason": "unknown_from",
+  "where": "layout.items[1].from"
 }

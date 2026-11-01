@@ -1,6 +1,6 @@
 {
   "name": "validate-dock-split-one-item",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
@@ -11,5 +11,6 @@
       }
     ]
   },
-  "reason": "split_too_few_items"
+  "reason": "split_too_few_items",
+  "where": "layout.items"
 }

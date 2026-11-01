@@ -1,6 +1,6 @@
 {
   "name": "normalize-renormalises-sizes",
-  "rule": "C-LAYOUT",
+  "rule": "layout-grammar",
   "input": {
     "split": "row",
     "items": [
