@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from canopy.main import app
 from tests.conftest import READ_HEADERS
+from canopy.contracts import load_heartbeat_vectors
 from canopy.hare.api.v1 import health as health_module
 from canopy.hare.config import HareConfig
 from canopy.core.security import require_read_access
@@ -181,6 +182,14 @@ def test_the_summary_copies_both_statements_from_the_frame():
     assert body["writes"] == WRITES_LOCKED
     parsed = HareHealthSummaryDTO.model_validate_json(json.dumps(body), strict=True)
     assert parsed.model_dump(by_alias=True, mode="json") == body
+
+
+@pytest.mark.parametrize("case", load_heartbeat_vectors()["summaries"], ids=lambda c: c["case"])
+def test_the_dto_reads_every_vector_summary(case):
+    parsed = HareHealthSummaryDTO.model_validate_json(json.dumps(case["summary"]), strict=True)
+    dumped = parsed.model_dump(mode="json")
+    for key, expected in case["expected"].items():
+        assert dumped[key] == expected
 
 
 MALFORMED = [

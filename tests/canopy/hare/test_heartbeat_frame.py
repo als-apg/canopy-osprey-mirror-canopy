@@ -15,9 +15,11 @@ keep-alive loop never calls it.
 import asyncio
 from dataclasses import field, dataclass
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from canopy.contracts import load_heartbeat_vectors
 from canopy.epics.base import ConnectorStatement
 from canopy.hare.api.v1 import ws as ws_module
 from canopy.hare.config import HareConfig
@@ -156,6 +158,32 @@ def test_add_client_alone_sends_nothing():
     channel = FakeWebSocket()
     broker.add_client("in-process", channel)
     assert channel.sent == []
+
+
+# --- the machine-statement vectors -------------------------------------------- #
+
+_VECTORS = load_heartbeat_vectors()
+_FRAME_CASES = [_VECTORS["legacy_frame"], *_VECTORS["reachable_frames"], *_VECTORS["writes_frames"]]
+
+
+@pytest.mark.parametrize("case", _FRAME_CASES, ids=[c["case"] for c in _FRAME_CASES])
+def test_frame_matches_the_vector(case):
+    """Every frame case is what ``heartbeat_frame()`` builds; the legacy frame,
+    which has neither statement key, is a connector stating no claim."""
+    vector = case["frame"]
+    connector = StatementConnector(
+        backend_name=vector["backend"],
+        label=vector["label"],
+        notice=vector["notice"],
+        binding=vector["binding"],
+        reachable=vector.get("reachable"),
+        writes=vector.get("writes"),
+    )
+    frame = PVBroker(connector, _config()).heartbeat_frame()
+    assert set(frame) == FRAME_KEYS
+    for key in FRAME_KEYS - {"timestamp"}:
+        assert frame[key] == vector.get(key), key
+    assert (frame["reachable"], frame["writes"]) == (case["expected"]["reachable"], case["expected"]["writes"])
 
 
 # --- the keep-alive loop ------------------------------------------------------ #
