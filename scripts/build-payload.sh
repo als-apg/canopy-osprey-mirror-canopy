@@ -65,11 +65,12 @@ Checks (before anything is built; each refuses the build on a mismatch):
               for byte, every file, and a copy on one side only is refused;
               STAGED.json records "workspace" as "compared", or "absent" when
               CANOPY_SHA has no such directory (and RT_SHA has none either)
-  vectors     src/canopy/contracts/wc6_vectors.json at CANOPY_SHA must equal
-              packages/client/test-vectors/wc6_vectors.json at SDK_SHA byte for
-              byte; a file at only one of the two commits is refused;
-              STAGED.json records "vectors" as "compared", or "absent" when
-              neither commit holds it
+  vectors     heartbeat_vectors.json and write_outcome_vectors.json in
+              src/canopy/contracts/ at CANOPY_SHA must each equal their copy in
+              packages/client/test-vectors/ at SDK_SHA byte for byte; a file at
+              only one of the two commits is refused; STAGED.json records
+              "vectors" as "compared", or "absent" when neither commit holds
+              either
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -177,9 +178,9 @@ fi
 #   workspace    tests/canopy_mcp/fixtures/workspace/ at canopy and
 #                apps/viewer/e2e/fixtures/workspace/ at the runtime: every
 #                file, both ways; compared when either commit has the directory.
-#   vectors      src/canopy/contracts/wc6_vectors.json at canopy and
-#                packages/client/test-vectors/wc6_vectors.json at the SDK
-#                commit; compared when either commit holds the file.
+#   vectors      each of VECTOR_FILES in src/canopy/contracts/ at canopy and
+#                packages/client/test-vectors/ at the SDK commit; compared when
+#                either commit holds the file.
 #
 # check_shared_fixtures sets FIXTURES, WORKSPACE and VECTORS to "compared" or
 # "absent" (recorded in STAGED.json), or dies naming the first differing path.
@@ -189,7 +190,7 @@ WS_CANOPY="tests/canopy_mcp/fixtures/workspace"
 WS_RT="apps/viewer/e2e/fixtures/workspace"
 VEC_CANOPY="src/canopy/contracts"
 VEC_SDK="packages/client/test-vectors"
-VECTOR_FILES="wc6_vectors.json" # C-sorted: the first refused is the first differing
+VECTOR_FILES="heartbeat_vectors.json write_outcome_vectors.json" # C-sorted: the first refused is the first differing
 
 # "<path below dir><TAB><type> <object>" per entry below <dir>, C-sorted.
 # With <subset> set, only the compared collections set.
