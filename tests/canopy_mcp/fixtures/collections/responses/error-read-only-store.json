@@ -1,4 +1,4 @@
 {
-  "error": "read_only_store",
+  "code": "read_only_store",
   "detail": "collections cannot be changed here"
 }

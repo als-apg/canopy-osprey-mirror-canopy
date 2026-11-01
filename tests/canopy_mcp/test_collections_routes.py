@@ -101,7 +101,7 @@ def _is_error(r, status: int, fixture: str) -> dict:
     assert r.status_code == status, r.text
     assert r.headers["cache-control"] == "no-cache"
     body = r.json()
-    assert set(body) <= {"error", "detail"} and isinstance(body["error"], str)
+    assert set(body) <= {"code", "detail"} and isinstance(body["code"], str)
     assert body == _fixture(fixture)
     return body
 
@@ -214,7 +214,7 @@ def test_put_with_default_is_400(client: TestClient, personal: Path) -> None:
 def test_put_with_a_broken_rule_is_400_invalid_collection(client: TestClient, personal: Path, doc) -> None:
     r = _create(client, "mine", doc)
     assert r.status_code == 400
-    assert r.json()["error"] == "invalid_collection" and r.json()["detail"]
+    assert r.json()["code"] == "invalid_collection" and r.json()["detail"]
     assert not (personal / "mine.json").exists()
 
 
@@ -222,7 +222,7 @@ def test_aggregate_size_over_the_limit_is_400_naming_the_total(client: TestClien
     members = [{"tool": "trace", "query": "q" * 4000, "name": f"m{i}"} for i in range(MAX_COLLECTION_BYTES // 4000)]
     r = _create(client, "big", _collection("Big", members[:50], description="d" * (MAX_COLLECTION_BYTES - 50 * 4000)))
     assert r.status_code == 400
-    assert r.json()["error"] == "invalid_collection"
+    assert r.json()["code"] == "invalid_collection"
     assert "MAX_COLLECTION_BYTES" in r.json()["detail"]
 
 
@@ -342,7 +342,7 @@ def test_bad_ids_are_400(client: TestClient, bad: str) -> None:
     for method in ("GET", "PUT", "DELETE"):
         r = client.request(method, f"/collections/{bad}", content=json.dumps(_collection()), headers=JSON)
         assert r.status_code == 400, (method, bad)
-        assert r.json()["error"] == "invalid_id"
+        assert r.json()["code"] == "invalid_id"
         assert r.headers["cache-control"] == "no-cache"
 
 
@@ -402,7 +402,7 @@ def test_item_answers_405_with_allow(client: TestClient) -> None:
         assert r.status_code == 405
         assert r.headers["allow"] == "GET, HEAD, PUT, DELETE"
         assert r.headers["cache-control"] == "no-cache"
-        assert r.json()["error"] == "method_not_allowed"
+        assert r.json()["code"] == "method_not_allowed"
 
 
 # --- /collections-state ----------------------------------------------------------
@@ -469,7 +469,7 @@ def test_recent_many_lands_members_first_in_order(client: TestClient) -> None:
 def test_recent_clear_with_a_member_is_400_invalid_op(client: TestClient, personal: Path) -> None:
     r = _op(client, {"op": "recent-clear", "member": SCREEN})
     assert r.status_code == 400
-    assert r.json() == {"error": "invalid_op", "detail": "a recent-clear op is exactly {op}"}
+    assert r.json() == {"code": "invalid_op", "detail": "a recent-clear op is exactly {op}"}
     assert not (personal / STATE_FILE).exists()
 
 
@@ -477,7 +477,7 @@ def test_recent_many_over_max_recent_is_400_invalid_op(client: TestClient, perso
     members = [{"tool": "trace", "query": f"pv=M{i}"} for i in range(MAX_RECENT + 1)]
     r = _op(client, {"op": "recent-many", "members": members})
     assert r.status_code == 400
-    assert r.json()["error"] == "invalid_op" and "MAX_RECENT" in r.json()["detail"]
+    assert r.json()["code"] == "invalid_op" and "MAX_RECENT" in r.json()["detail"]
     assert not (personal / STATE_FILE).exists()
 
 
@@ -488,12 +488,12 @@ def test_recent_many_op_cap_is_48_kib(client: TestClient, personal: Path) -> Non
     big = [{"tool": "trace", "query": f"pv=C{i}&" + "q" * 5000} for i in range(MAX_RECENT)]
     r = _op(client, {"op": "recent-many", "members": big})
     assert r.status_code == 413
-    assert r.json()["error"] == "too_large" and "MAX_RECENT_MANY_OP_BYTES" in r.json()["detail"]
+    assert r.json()["code"] == "too_large" and "MAX_RECENT_MANY_OP_BYTES" in r.json()["detail"]
 
 
 def test_invalid_op_detail_lists_every_state_op(client: TestClient) -> None:
     r = _op(client, {"op": "bogus"})
-    assert r.json() == {"error": "invalid_op", "detail": f"op must be one of {', '.join(STATE_OPS)}"}
+    assert r.json() == {"code": "invalid_op", "detail": f"op must be one of {', '.join(STATE_OPS)}"}
     assert "recent-many" in r.json()["detail"]
 
 
@@ -515,7 +515,7 @@ def test_invalid_op_detail_lists_every_state_op(client: TestClient) -> None:
 def test_bad_ops_are_400_invalid_op(client: TestClient, personal: Path, op) -> None:
     r = _op(client, op)
     assert r.status_code == 400
-    assert r.json()["error"] == "invalid_op" and r.json()["detail"]
+    assert r.json()["code"] == "invalid_op" and r.json()["detail"]
     assert not (personal / STATE_FILE).exists()
 
 
@@ -528,11 +528,11 @@ def test_op_over_its_limit_is_413(client: TestClient, personal: Path) -> None:
     op = {"op": "recent", "member": {"tool": "trace", "query": "q" * 100, "name": "n" * MAX_STATE_OP_BYTES}}
     r = _op(client, op)
     assert r.status_code == 413
-    assert r.json()["error"] == "too_large" and "MAX_STATE_OP_BYTES" in r.json()["detail"]
+    assert r.json()["code"] == "too_large" and "MAX_STATE_OP_BYTES" in r.json()["detail"]
     # Over the transport cap.
     body = json.dumps({"op": "recent", "member": {"tool": "trace", "name": "n" * MAX_POST_BODY_BYTES}})
     r = client.post("/collections-state", content=body, headers=JSON)
-    assert r.status_code == 413 and r.json()["error"] == "too_large"
+    assert r.status_code == 413 and r.json()["code"] == "too_large"
     assert not (personal / STATE_FILE).exists()
 
 
@@ -696,7 +696,7 @@ def test_every_response_fixture_is_an_error_body_or_a_state_document() -> None:
             assert set(body) == {"collections"}
         else:
             assert name.startswith("error-")
-            assert set(body) <= {"error", "detail"} and body["error"] == name[len("error-") : -5].replace("-", "_")
+            assert set(body) <= {"code", "detail"} and body["code"] == name[len("error-") : -5].replace("-", "_")
 
 
 # --- conditional GET (ETag) on the list and the state ---------------------------
@@ -777,12 +777,12 @@ def test_a_stored_file_with_a_slot_member_is_skipped_and_never_opened(client: Te
     _write(personal, "slotted.json", {"name": "Slotted", "members": [{**SCREEN, "slot": "a"}]})
     assert client.get("/collections").json()["collections"] == []
     r = client.get("/collections/slotted")
-    assert r.status_code == 404 and r.json()["error"] == "not_found"
+    assert r.status_code == 404 and r.json()["code"] == "not_found"
 
 
 def test_a_put_with_a_slot_member_is_400(client: TestClient) -> None:
     r = _create(client, "slotted", {"name": "Slotted", "members": [{**SCREEN, "slot": "a"}]})
-    assert r.status_code == 400 and r.json()["error"] == "invalid_collection"
+    assert r.status_code == 400 and r.json()["code"] == "invalid_collection"
     assert "unknown key(s): slot" in r.json()["detail"]
 
 

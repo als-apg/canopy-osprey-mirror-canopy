@@ -27,10 +27,9 @@ HTTP surface (:func:`build_view_routes`), every response ``Cache-Control: no-cac
   id is stored under another kind (a PUT without ``kind`` counts as ``trace``), 415 unless
   ``Content-Type: application/json``, 413 over :data:`MAX_BODY_BYTES`
 * ``DELETE /views/{id}`` -> 204, 404, 400
-* ``PUT`` and ``DELETE`` -> 403 ``{"error": "read_only_store: ...", "code": "read_only_store"}``
-  when the views directory may not be written
+* ``PUT`` and ``DELETE`` -> 403 ``read_only_store`` when the views directory may not be written
 
-Errors are ``{"error": "..."}``. The routes sit behind the embedding host's
+Errors are ``{"code", "detail"}``. The routes sit behind the embedding host's
 proxy like the drafts routes and carry no auth of their own; as a CSRF guard,
 PUT and DELETE answer 403 when ``Sec-Fetch-Site`` is present and is neither
 ``same-origin`` nor ``none``. Ids, names and queries follow :mod:`canopy_mcp.validate`.
@@ -54,6 +53,7 @@ from canopy_mcp.http import (
     json_response,
     is_json_request,
     read_capped_body,
+    code_detail_response,
 )
 from canopy_mcp.store import (
     ReadOnlyStore,
@@ -222,14 +222,13 @@ def _json(body: Any, status_code: int = 200, headers: dict[str, str] | None = No
     return json_response(body, status_code, headers)
 
 
-def _error(status_code: int, message: str, headers: dict[str, str] | None = None) -> Response:
-    return _json({"error": message}, status_code, headers)
+def _error(status_code: int, code: str, detail: str, headers: dict[str, str] | None = None) -> Response:
+    return code_detail_response(status_code, code, detail, headers)
 
 
 def _read_only() -> Response:
     # A fixed text: the exception names a server path, which a browser has no use for.
-    message = f"{ReadOnlyStore.code}: saved views cannot be changed here"
-    return _json({"error": message, "code": ReadOnlyStore.code}, 403)
+    return _error(403, ReadOnlyStore.code, "saved views cannot be changed here")
 
 
 def build_view_routes(views: ViewStore) -> list[Route]:
@@ -237,27 +236,29 @@ def build_view_routes(views: ViewStore) -> list[Route]:
 
     async def collection(request: Request) -> Response:
         if request.method not in ("GET", "HEAD"):
-            return _error(405, "method not allowed", {"Allow": "GET, HEAD"})
+            return _error(405, "method_not_allowed", "allowed: GET, HEAD", {"Allow": "GET, HEAD"})
         return _json({"views": views.list()})
 
     async def put(request: Request, view_id: str) -> Response:
         if not is_json_request(request):
-            return _error(415, "Content-Type must be application/json")
+            return _error(415, "unsupported_media_type", "Content-Type must be application/json")
         raw = await read_capped_body(request, MAX_BODY_BYTES)
         if raw is None:
-            return _error(413, f"body exceeds {MAX_BODY_BYTES} bytes")
+            return _error(413, "too_large", f"the body exceeds {MAX_BODY_BYTES} bytes")
         try:
             body = json.loads(raw)
         except ValueError:
-            return _error(400, "body is not valid JSON")
+            return _error(400, "invalid_json", "the body is not valid JSON")
         if not isinstance(body, dict) or not {"name", "query"} <= set(body) <= {"name", "query", "kind"}:
-            return _error(400, 'body must be a JSON object with "name" and "query" and optionally "kind"')
+            return _error(
+                400, "invalid_view", 'the body must be a JSON object with "name" and "query" and optionally "kind"'
+            )
         try:
             view, created = await views.put(view_id, body["name"], body["query"], body.get("kind"))
         except InvalidView as exc:
-            return _error(400, str(exc))
+            return _error(400, "invalid_view", str(exc))
         except ViewKindConflict as exc:
-            return _error(409, str(exc))
+            return _error(409, "kind_conflict", str(exc))
         except ReadOnlyStore:
             return _read_only()
         return _json(view, 201 if created else 200)
@@ -265,13 +266,15 @@ def build_view_routes(views: ViewStore) -> list[Route]:
     async def item(request: Request) -> Response:
         method = request.method
         if method not in ("GET", "HEAD", "PUT", "DELETE"):
-            return _error(405, "method not allowed", {"Allow": "GET, HEAD, PUT, DELETE"})
+            return _error(
+                405, "method_not_allowed", "allowed: GET, HEAD, PUT, DELETE", {"Allow": "GET, HEAD, PUT, DELETE"}
+            )
         if method in ("PUT", "DELETE") and is_cross_site(request):
-            return _error(403, "cross-site writes are refused")
+            return _error(403, "cross_site", "cross-site writes are refused")
         try:
             view_id = validate_view_id(request.path_params["view_id"])
         except InvalidViewId as exc:
-            return _error(400, str(exc))
+            return _error(400, "invalid_id", str(exc))
         if method == "PUT":
             return await put(request, view_id)
         try:
@@ -280,7 +283,7 @@ def build_view_routes(views: ViewStore) -> list[Route]:
                 return Response(status_code=204, headers={"Cache-Control": VIEWS_CACHE_CONTROL})
             return _json(views.get(view_id))
         except ViewNotFound:
-            return _error(404, f"no view {view_id!r}")
+            return _error(404, "not_found", f"no view {view_id!r}")
         except ReadOnlyStore:
             return _read_only()
 

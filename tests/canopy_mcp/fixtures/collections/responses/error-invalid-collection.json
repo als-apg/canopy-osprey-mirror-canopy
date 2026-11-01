@@ -1,4 +1,4 @@
 {
-  "error": "invalid_collection",
+  "code": "invalid_collection",
   "detail": "default is legal only in a facility collection"
 }

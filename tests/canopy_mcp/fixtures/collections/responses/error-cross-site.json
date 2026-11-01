@@ -1,4 +1,4 @@
 {
-  "error": "cross_site",
+  "code": "cross_site",
   "detail": "cross-site writes are refused"
 }

@@ -749,12 +749,12 @@ def test_workspace_fixtures_routes_are_the_planned_set_and_every_route_refuses_c
             if c["request"].get("headers", {}).get("Sec-Fetch-Site") not in (None, "same-origin", "none")
         ]
         assert crosses, name
-        assert all(c["expect"] == {"status": 403, "body": {"error": "cross_site"}} for c in crosses), name
+        assert all(c["expect"] == {"status": 403, "body": {"code": "cross_site"}} for c in crosses), name
 
 
 def test_workspace_fixtures_routes_cover_the_statuses():
     pairs = {
-        (c["expect"]["status"], c["expect"].get("body", {}).get("error"))
+        (c["expect"]["status"], c["expect"].get("body", {}).get("code"))
         for doc in ROUTE_DOCS.values()
         for c in doc["cases"]
     }

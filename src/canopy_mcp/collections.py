@@ -34,9 +34,9 @@ from canopy_mcp.http import (
     not_modified,
     is_cross_site,
     json_response,
-    error_response,
     is_json_request,
     read_capped_body,
+    code_detail_response,
 )
 from canopy_mcp.store import (
     DRAFTS,
@@ -893,7 +893,7 @@ _READ_ONLY_DETAIL = "collections cannot be changed here"
 
 
 _json = json_response
-_error = error_response
+_error = code_detail_response
 
 
 def _conditional(request: Request, response: Response) -> Response:

@@ -80,7 +80,7 @@
       "expect": {
         "status": 409,
         "body": {
-          "error": "not_active"
+          "code": "not_active"
         }
       }
     },
