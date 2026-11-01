@@ -152,8 +152,9 @@ warm with no subscriber left. `label`, `notice`, `binding`, `reachable` and
 `status` is `degraded` when the broker is not running, or when the connector
 says the control system does not answer (`reachable.state` is `no`). Without a
 `reachable` claim it is `degraded` when monitors are active and none of them is
-connected. A malformed statement counts as no claim; `writes` is reported, never
-judged.
+connected, so during a fresh subscribe's seed window it may read `degraded` until
+a channel connects. A malformed statement counts as no claim; `writes` is
+reported, never judged.
 
 ## Error codes
 
