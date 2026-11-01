@@ -138,5 +138,6 @@ async def test_zero_grace_releases_at_once(fake_connector):
     assert not broker._grace
 
 
-def test_the_default_keeps_monitors_warm_for_a_minute():
+def test_the_default_keeps_monitors_warm_for_a_minute(monkeypatch):
+    monkeypatch.delenv("CANOPY_HARE__MONITOR_GRACE_SECONDS")
     assert HareConfig().monitor_grace_seconds == 60.0

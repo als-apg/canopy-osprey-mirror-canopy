@@ -3,8 +3,8 @@
 Driven deterministically via FakeConnector (emit on demand) + FakeWebSocket,
 without starting the background loops — tests call `_drain_nowait` / `_flush`,
 and `settle` to ingest the monitor's first update and wait for the describe it
-starts. The keep-warm grace is off (``monitor_grace_seconds=0``), so a PV is
-released the moment its last subscriber leaves; test_broker_grace.py covers it.
+starts. The keep-warm grace is off (conftest), so a PV is released the moment
+its last subscriber leaves; test_broker_grace.py covers the grace.
 """
 
 import asyncio
@@ -435,7 +435,7 @@ def _uncancellable(gate: asyncio.Event):
 
 async def test_subscribe_returns_before_the_describe_answers(fake_connector):
     """``subscribe`` returns while the PV's describe is pending; value and metadata arrive later in one ``initial``."""
-    broker = PVBroker(fake_connector, HareConfig(monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig())
     gate, describes = _gate_describe(fake_connector, {"PV:SLOW"})
     ws = FakeWebSocket()
     broker.add_client("c1", ws)
@@ -459,7 +459,7 @@ async def test_dead_pv_in_a_batch_does_not_delay_the_live_pvs(fake_connector):
     The dead PV follows in its own frame as ``connected: false`` without
     metadata once its connect timer fires, and is never described.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.5, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.5))
     fake_connector.dead.add("PV:DEAD")
     describes = _record_calls(fake_connector, "describe")
     ws = FakeWebSocket()
@@ -479,7 +479,7 @@ async def test_dead_pv_in_a_batch_does_not_delay_the_live_pvs(fake_connector):
 
 async def test_dead_pv_in_an_earlier_subscribe_does_not_delay_a_later_one(fake_connector):
     """A client's later subscribe is answered while a dead PV from an earlier one is still waiting on its channel."""
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.5, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.5))
     fake_connector.dead.add("PV:DEAD")
     ws = FakeWebSocket()
     broker.add_client("c1", ws)
@@ -498,7 +498,7 @@ async def test_more_dead_pvs_than_slots_do_not_delay_a_live_pv_in_the_batch(fake
     Dead channels wait on a timer, not on a seed slot, so only the live PV's
     describe takes one.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_concurrency=1, seed_timeout_s=0.5, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_concurrency=1, seed_timeout_s=0.5))
     dead = [f"PV:DEAD{i}" for i in range(4)]
     fake_connector.dead.update(dead)
     describes = _record_calls(fake_connector, "describe")
@@ -517,7 +517,7 @@ async def test_more_dead_pvs_than_slots_do_not_delay_a_live_pv_in_the_batch(fake
 
 async def test_dead_pvs_on_one_client_do_not_delay_another_clients_metadata(fake_connector):
     """Another client's live PV is described at once while a first client's dead PVs outnumber the seed slots."""
-    broker = PVBroker(fake_connector, HareConfig(seed_concurrency=1, seed_timeout_s=0.5, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_concurrency=1, seed_timeout_s=0.5))
     dead = [f"PV:DEAD{i}" for i in range(4)]
     fake_connector.dead.update(dead)
     first, second = FakeWebSocket(), FakeWebSocket()
@@ -541,7 +541,7 @@ async def test_channel_with_no_value_within_the_timeout_is_reported_disconnected
     The placeholder is cached, so a later subscriber sees it at once without
     another timer, and nothing is described.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05))
     fake_connector.dead.add("PV:DEAD")
     describes = _record_calls(fake_connector, "describe")
     ws = FakeWebSocket()
@@ -568,7 +568,7 @@ async def test_channel_with_no_value_within_the_timeout_is_reported_disconnected
 
 async def test_subscribers_waiting_on_the_same_channel_share_one_timer(fake_connector):
     """Two clients subscribing a PV with no value yet share one connect timer and both get its report."""
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05))
     fake_connector.dead.add("PV:DEAD")
     first, second = FakeWebSocket(), FakeWebSocket()
     broker.add_client("c1", first)
@@ -586,7 +586,7 @@ async def test_subscribers_waiting_on_the_same_channel_share_one_timer(fake_conn
 
 async def test_channel_connecting_after_the_timeout_gets_value_and_metadata(fake_connector):
     """The first connected update of a PV reported disconnected starts its describe; subscribers get value and metadata."""
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05))
     fake_connector.dead.add("PV:DEAD")
     describes = _record_calls(fake_connector, "describe")
     ws = FakeWebSocket()
@@ -606,7 +606,7 @@ async def test_channel_connecting_after_the_timeout_gets_value_and_metadata(fake
 
 async def test_first_value_cancels_the_connect_timer(fake_connector):
     """A value arriving before the timeout cancels the timer, so no ``connected: false`` frame follows."""
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=0.05))
     fake_connector.dead.add("PV:LATE")
     ws = FakeWebSocket()
     broker.add_client("c1", ws)
@@ -630,7 +630,7 @@ async def test_connect_edge_during_a_pending_initial_send_is_not_lost(fake_conne
     send is pending the channel drops and reconnects. The running task cannot
     be started again, so it runs once more after the send instead.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
     describes = _record_calls(fake_connector, "describe", failures=1)
     ws = _GatedWebSocket()
     broker.add_client("c1", ws)
@@ -654,7 +654,7 @@ async def test_connect_edge_during_a_pending_initial_send_is_not_lost(fake_conne
 
 async def test_client_unsubscribing_during_fan_out_receives_no_initial(fake_connector):
     """A client that unsubscribes while an earlier client's send is pending gets nothing from that fan-out."""
-    broker = PVBroker(fake_connector, HareConfig(monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig())
     first, second = _GatedWebSocket(), _GatedWebSocket()
     broker.add_client("c1", first)
     broker.add_client("c2", second)
@@ -676,7 +676,7 @@ async def test_client_unsubscribing_during_fan_out_receives_no_initial(fake_conn
 
 async def test_connected_updates_do_not_repeat_a_failed_describe(fake_connector):
     """Only the connect edge starts a describe; further connected updates inside the backoff window do not."""
-    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
     describes = _record_calls(fake_connector, "describe", failures=5)
     broker.add_client("c1", FakeWebSocket())
     await broker.subscribe("c1", ["PV:A"])
@@ -702,7 +702,7 @@ async def test_failed_describe_is_retried_by_a_later_subscribe_only_after_backof
     Inside the window the late subscriber gets the cached value without
     metadata; after it, the describe runs again and succeeds.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=backoff_s, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=backoff_s))
     describes = _record_calls(fake_connector, "describe", failures=1)
 
     broker.add_client("c1", FakeWebSocket())
@@ -723,7 +723,7 @@ async def test_failed_describe_is_retried_by_a_later_subscribe_only_after_backof
 
 async def test_stop_monitors_clears_describe_retry_deadline(fake_connector):
     """Releasing a PV drops its retry deadline and seed lock, so re-subscribing describes it at once despite the window."""
-    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
     describes = _record_calls(fake_connector, "describe", failures=1)
 
     broker.add_client("c1", FakeWebSocket())
@@ -747,7 +747,7 @@ async def test_stop_monitors_clears_describe_retry_deadline(fake_connector):
 
 async def test_concurrent_subscribes_share_one_describe(fake_connector):
     """Two clients subscribing a PV while its describe is pending share one call, and both receive the result."""
-    broker = PVBroker(fake_connector, HareConfig(monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig())
     gate, describes = _gate_describe(fake_connector, {"PV:SEED"})
     first, second = FakeWebSocket(), FakeWebSocket()
     broker.add_client("c1", first)
@@ -770,7 +770,7 @@ async def test_concurrent_subscribes_share_one_describe(fake_connector):
 
 async def test_unsubscribe_during_a_pending_describe_leaves_the_leaver_nothing(fake_connector):
     """A client that unsubscribes while the describe is pending gets no frame when it completes; the other does."""
-    broker = PVBroker(fake_connector, HareConfig(monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig())
     gate, _ = _gate_describe(fake_connector, {"PV:SEED"})
     stayer, leaver = FakeWebSocket(), FakeWebSocket()
     broker.add_client("c1", stayer)
@@ -790,7 +790,7 @@ async def test_unsubscribe_during_a_pending_describe_leaves_the_leaver_nothing(f
 
 async def test_release_cancels_the_pending_timer_and_describe(fake_connector):
     """Releasing PVs cancels their connect timer and pending describe, so nothing is cached and the next subscriber starts afresh."""
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=60, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=60))
     gate, describes = _gate_describe(fake_connector, {"PV:SLOW"})
     fake_connector.dead.add("PV:DEAD")
 
@@ -827,7 +827,7 @@ async def test_describe_finishing_after_release_leaves_no_cached_state(fake_conn
     connector call that cannot be aborted; the stale seed lock keeps its late
     result out of the cache, and the next subscriber describes the PV afresh.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
     original = fake_connector.describe
     release = asyncio.Event()
     describes: list[str] = []
@@ -867,7 +867,7 @@ async def test_orphaned_describe_finishing_last_keeps_the_newer_metadata(fake_co
     second has completed, so the orphaned attempt finishes last; the cache
     keeps the second result.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_retry_backoff_s=3600))
     gates = [asyncio.Event(), asyncio.Event()]
     calls = 0
 
@@ -907,7 +907,7 @@ async def test_describe_queued_for_a_slot_skips_a_pv_released_meanwhile(fake_con
     With one slot, PV:B's describe queues behind PV:A's pending one and PV:B is
     released before the slot frees, so the next subscriber of PV:B describes it afresh.
     """
-    broker = PVBroker(fake_connector, HareConfig(seed_concurrency=1, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_concurrency=1))
     gate, describes = _gate_describe(fake_connector, {"PV:A"})
 
     broker.add_client("c1", FakeWebSocket())
@@ -935,7 +935,7 @@ async def test_describe_queued_for_a_slot_skips_a_pv_released_meanwhile(fake_con
 
 async def test_stop_cancels_pending_timers_and_describes(fake_connector):
     """``stop`` cancels connect timers and describes still in flight rather than waiting for them."""
-    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=60, monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig(seed_timeout_s=60))
     _gate_describe(fake_connector, {"PV:SLOW"})
     fake_connector.dead.add("PV:DEAD")
     broker.add_client("c1", FakeWebSocket())

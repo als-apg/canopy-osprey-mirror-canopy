@@ -269,7 +269,7 @@ def test_summary_carries_the_frame_identity(connector, expected):
 
 
 async def test_status_counts_connected_monitors(fake_connector):
-    broker = PVBroker(fake_connector, HareConfig(monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig())
     broker.add_client("c1", FakeWebSocket())
     assert broker.status()["connected"] == 0
     await broker.subscribe("c1", ["PV:A", "PV:B"])
@@ -288,7 +288,7 @@ async def test_status_counts_connected_monitors(fake_connector):
 
 async def test_a_monitor_with_no_value_yet_is_not_connected(fake_connector):
     fake_connector.dead.add("PV:SILENT")
-    broker = PVBroker(fake_connector, HareConfig(monitor_grace_seconds=0))
+    broker = PVBroker(fake_connector, HareConfig())
     broker.add_client("c1", FakeWebSocket())
     await broker.subscribe("c1", ["PV:SILENT"])
     await broker._drain_nowait()

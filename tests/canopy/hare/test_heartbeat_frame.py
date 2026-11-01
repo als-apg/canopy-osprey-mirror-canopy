@@ -81,7 +81,7 @@ TICKS_PER_KEEP_ALIVE = round(KEEP_ALIVE / TICK)
 
 
 def _config(**overrides) -> HareConfig:
-    base = {"ws_batch_interval_ms": 10, "heartbeat_interval_s": 100.0, "monitor_grace_seconds": 0.0}
+    base = {"ws_batch_interval_ms": 10, "heartbeat_interval_s": 100.0}
     base.update(overrides)
     return HareConfig(**base)
 
