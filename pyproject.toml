@@ -43,6 +43,8 @@ mcp = [
     "playwright>=1.61",
     # Kills a Playwright driver that will not stop, with its process tree.
     "psutil>=6",
+    # canopy_mcp serves the color scheme the converter's flattener builds.
+    "PyDMConverter>=1.1.0",
 ]
 # Postgres and the Redis job queue: needed by squirrel, magpie, jobs and the
 # canopy-worker. A deployment that selects none of them (CANOPY_MODULES) runs
