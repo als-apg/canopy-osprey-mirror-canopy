@@ -7,7 +7,7 @@ lifespan has started, for a client over an ``httpx.MockTransport`` whose
 handler records every upstream request. Nothing reaches a network.
 
 The relay's own refusals and its timeout/transport answers are checked against
-the PV-write vector file (``canopy/contracts/wc6_vectors.json``), the one source
+the PV-write vector file (``canopy/contracts/write_outcome_vectors.json``), the one source
 of their codes and texts.
 """
 
@@ -21,7 +21,7 @@ from starlette.testclient import TestClient
 
 from canopy_mcp.app import create_app
 from canopy_mcp.http import ALLOWED_FETCH_SITES
-from canopy.contracts import load_wc6_vectors
+from canopy.contracts import load_write_outcome_vectors
 from canopy_mcp.access import ACCESS_HEADER, CredentialFileError
 from canopy_mcp.client import make_client
 from canopy_mcp.config import Settings, RelayConfigError, get_settings
@@ -38,7 +38,7 @@ WRITE_KEY = "server-write-key"
 CLIENT_KEY = "client-supplied-key"
 ACCESS = "access-credential"
 BASE = "http://canopy-api:8000"
-ROWS = load_wc6_vectors()["rows"]
+ROWS = load_write_outcome_vectors()["rows"]
 BODY = b'{"value": 1.5}'
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -289,7 +289,7 @@ def test_escaping_or_empty_pv_is_refused_404_without_upstream_request(
     client: TestClient, upstream: Upstream, path: str
 ) -> None:
     r = client.put(path, content=BODY)
-    _assert_row(r, "14b-404")
+    _assert_row(r, "front-refused-404")
     assert upstream.requests == []
 
 
@@ -328,7 +328,7 @@ def test_body_at_the_cap_is_forwarded(client: TestClient, upstream: Upstream) ->
 
 def test_declared_oversized_body_is_refused_413(client: TestClient, upstream: Upstream) -> None:
     r = client.put("/hare/v1/pvs/X", content=b"x" * (PUT_BODY_MAX_BYTES + 1))
-    _assert_row(r, "14b-413")
+    _assert_row(r, "front-refused-413")
     assert upstream.requests == []
 
 
@@ -338,7 +338,7 @@ def test_streamed_oversized_body_without_length_is_refused_413(client: TestClien
             yield b"x" * 4096
 
     r = client.put("/hare/v1/pvs/X", content=chunks())
-    _assert_row(r, "14b-413")
+    _assert_row(r, "front-refused-413")
     assert upstream.requests == []
 
 
@@ -359,7 +359,7 @@ def test_allowed_or_absent_fetch_site_is_forwarded(client: TestClient, upstream:
 @pytest.mark.parametrize("site", ["same-site", "cross-site", "Cross-Site", "", "bogus"])
 def test_other_fetch_site_is_refused_403(client: TestClient, upstream: Upstream, site: str) -> None:
     r = client.put("/hare/v1/pvs/X", content=BODY, headers={"Sec-Fetch-Site": site})
-    _assert_row(r, "14b-403")
+    _assert_row(r, "front-refused-403")
     assert upstream.requests == []
 
 
@@ -368,8 +368,8 @@ def test_without_the_access_credential_the_gate_refuses_first(tmp_path: Path, up
     with TestClient(app) as c:
         app.state.http = make_client(_settings(tmp_path), transport=httpx.MockTransport(upstream))
         r = c.put("/hare/v1/pvs/X", content=BODY)
-    assert r.status_code == ROWS["14b-401"]["status"]
-    assert r.json()["code"] == ROWS["14b-401"]["code"]
+    assert r.status_code == ROWS["front-refused-401"]["status"]
+    assert r.json()["code"] == ROWS["front-refused-401"]["code"]
     assert upstream.requests == []
 
 
@@ -397,7 +397,7 @@ def test_timeout_is_504_pv_write_unknown_with_row_13_text(client: TestClient, up
 
     upstream.respond = slow
     r = client.put("/hare/v1/pvs/X", content=BODY)
-    _assert_row(r, "13", 504)
+    _assert_row(r, "connector-unknown", 504)
     assert r.json()["code"] == "pv_write_unknown"
     [request] = upstream.requests
     assert request.extensions["timeout"]["read"] == 27.0
@@ -416,7 +416,7 @@ def test_transport_error_is_502_pv_write_unknown_with_row_13_text(client: TestCl
 
     upstream.respond = down
     r = client.put("/hare/v1/pvs/X", content=BODY)
-    _assert_row(r, "13", 502)
+    _assert_row(r, "connector-unknown", 502)
 
 
 # --- settings and the start refusal ----------------------------------------------

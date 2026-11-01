@@ -35,7 +35,7 @@ check under ``/hare/v1/pvs/`` with a non-empty PV, only ``Content-Type`` and the
 write key (``CANOPY_WRITE_API_KEY_FILE``) as headers, a body of at most
 :data:`PUT_BODY_MAX_BYTES`, and upstream's status, body and content type
 returned verbatim. The replies the relay makes itself are the PV-write replies of
-``canopy/contracts/wc6_vectors.json``: a cross-site request 403, an escaping or
+``canopy/contracts/write_outcome_vectors.json``: a cross-site request 403, an escaping or
 empty PV path 404 and an oversized body 413 are the server's own refusals
 (``pv_write_refused``, nothing was sent); an upstream that does not answer within
 ``CANOPY_PUT_RELAY_TIMEOUT_S`` is 504 and one that cannot be reached 502, both
@@ -70,7 +70,7 @@ from canopy_mcp.http import (
     is_cross_site_handshake,
 )
 from canopy_mcp.text import fully_unquoted
-from canopy.contracts import load_wc6_vectors
+from canopy.contracts import load_write_outcome_vectors
 from canopy_mcp.client import API_KEY_HEADER, auth_headers
 from canopy_mcp.config import Settings
 from canopy.core.errors import ErrorCode
@@ -344,11 +344,11 @@ def make_put_relay(settings: Settings) -> Callable[[Request], Awaitable[Response
     base, base_path = _upstream_base(settings)
     write_key = settings.write_api_key
     timeout = httpx.Timeout(settings.put_relay_timeout_s)
-    rows = load_wc6_vectors()["rows"]
+    rows = load_write_outcome_vectors()["rows"]
     # The relay's own refusals, made before anything is sent upstream.
-    cross_site, escaping, oversized = (_vector_reply(rows, f"14b-{status}") for status in (403, 404, 413))
+    cross_site, escaping, oversized = (_vector_reply(rows, f"front-refused-{status}") for status in (403, 404, 413))
     # The write went out and no answer came back, so its outcome is unknown.
-    timed_out, unknown = _vector_reply(rows, "13", 504), _vector_reply(rows, "13", 502)
+    timed_out, unknown = _vector_reply(rows, "connector-unknown", 504), _vector_reply(rows, "connector-unknown", 502)
 
     async def relay(request: Request) -> Response:
         if is_cross_site(request):
