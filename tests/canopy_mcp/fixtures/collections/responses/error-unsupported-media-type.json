@@ -1,4 +1,4 @@
 {
-  "error": "unsupported_media_type",
+  "code": "unsupported_media_type",
   "detail": "Content-Type must be application/json"
 }

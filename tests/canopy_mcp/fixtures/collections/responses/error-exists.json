@@ -1,4 +1,4 @@
 {
-  "error": "exists",
+  "code": "exists",
   "detail": "collection 'mine' exists"
 }

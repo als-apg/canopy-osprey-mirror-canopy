@@ -151,7 +151,7 @@ class WorkspaceError(Exception):
         self.status = self.STATUS[code]
 
     def body(self) -> dict[str, str]:
-        return {"error": self.code, **({"detail": self.detail} if self.detail else {})}
+        return {"code": self.code, "detail": self.detail or self.code}
 
 
 class StreamEnded(Exception):

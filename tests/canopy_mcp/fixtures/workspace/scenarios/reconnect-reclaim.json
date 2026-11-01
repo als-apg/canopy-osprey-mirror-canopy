@@ -152,7 +152,7 @@
       "expect": {
         "status": 409,
         "body": {
-          "error": "not_vacant"
+          "code": "not_vacant"
         }
       }
     },

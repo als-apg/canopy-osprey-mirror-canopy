@@ -1,4 +1,4 @@
 {
-  "error": "too_large",
+  "code": "too_large",
   "detail": "the body exceeds 1048576 bytes"
 }

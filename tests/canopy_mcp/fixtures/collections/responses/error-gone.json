@@ -1,4 +1,4 @@
 {
-  "error": "gone",
+  "code": "gone",
   "detail": "collection 'mine' is gone"
 }
