@@ -298,7 +298,7 @@ requires-dist = [
     { name = "prometheus-client", specifier = ">=0.20" },
     { name = "psutil", marker = "extra == 'mcp'", specifier = ">=6" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "pydantic-settings", specifier = ">=2.11" },
     { name = "pydmconverter", marker = "extra == 'convert'", specifier = ">=1.0.7" },
     { name = "pydmconverter", marker = "extra == 'mcp'", specifier = ">=1.0.7" },
     { name = "python-multipart", specifier = ">=0.0.32" },

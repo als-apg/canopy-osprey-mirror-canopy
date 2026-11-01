@@ -9,7 +9,10 @@ dependencies = [
     # started under a served app can spawn; proven by the floors job.
     "uvicorn[standard]>=0.36",
     "pydantic>=2.7",
-    "pydantic-settings>=2.14.2",
+    # Hosts that embed CANOPY pin pydantic-settings below 2.12 (tiled caps it
+    # at <2.12.0); nothing here needs a later release, so the floor stays
+    # where those hosts can satisfy it.
+    "pydantic-settings>=2.11",
     "httpx>=0.27",
     "aioca>=1.7",
     # The oldest release with a Python 3.12 wheel: every 4.1 release needs an EPICS
