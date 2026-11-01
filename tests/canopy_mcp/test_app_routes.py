@@ -35,9 +35,9 @@ def _screen(title: str) -> dict:
 @pytest.fixture
 def drafts(tmp_path: Path) -> Path:
     root = tmp_path / "drafts"
-    (root / "screens" / "bts").mkdir(parents=True)
-    (root / "screens" / "bts" / "view.screen.json").write_text(json.dumps(_screen("BTS")))
-    (root / "screens" / "bts" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    (root / "screens" / "xfer").mkdir(parents=True)
+    (root / "screens" / "xfer" / "view.screen.json").write_text(json.dumps(_screen("XFER")))
+    (root / "screens" / "xfer" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
     # Outside the drafts root: must never be served.
     (tmp_path / "secret.screen.json").write_text('{"secret": true}')
     return root
@@ -123,14 +123,14 @@ def test_without_an_access_token_no_route_asks_for_a_credential(client: TestClie
 
 
 def test_proxy_headers_do_not_block_viewer(client: TestClient) -> None:
-    r = client.get("/embed/drafts/bts/view", headers={"x-forwarded-prefix": "/panel/canopy"})
+    r = client.get("/embed/drafts/xfer/view", headers={"x-forwarded-prefix": "/panel/canopy"})
     assert r.status_code == 200
 
 
 # --- index.html and <base href> -------------------------------------------------
 
 
-@pytest.mark.parametrize("path", ["/", "/s/drafts/bts/view", "/embed/drafts/bts/view"])
+@pytest.mark.parametrize("path", ["/", "/s/drafts/xfer/view", "/embed/drafts/xfer/view"])
 def test_index_without_prefix_has_root_base(client: TestClient, path: str) -> None:
     r = client.get(path)
     assert r.status_code == 200
@@ -140,7 +140,7 @@ def test_index_without_prefix_has_root_base(client: TestClient, path: str) -> No
 
 
 def test_index_under_prefix(client: TestClient) -> None:
-    r = client.get("/embed/drafts/bts/view", headers={"x-forwarded-prefix": "/panel/canopy/u-1.a~b"})
+    r = client.get("/embed/drafts/xfer/view", headers={"x-forwarded-prefix": "/panel/canopy/u-1.a~b"})
     assert _bases(r.text) == ['<base href="/panel/canopy/u-1.a~b/">']
 
 
@@ -228,12 +228,12 @@ def test_manifest_lists_drafts_with_etag(client: TestClient, drafts: Path) -> No
     assert r.headers["cache-control"] == "no-cache"
     etag = r.headers["etag"]
     screens = r.json()["screens"]
-    assert [s["id"] for s in screens] == ["bts/view"]
-    assert screens[0]["path"] == "screens/bts/view.screen.json"
+    assert [s["id"] for s in screens] == ["xfer/view"]
+    assert screens[0]["path"] == "screens/xfer/view.screen.json"
 
     assert client.get("/drafts/manifest.json", headers={"if-none-match": etag}).status_code == 304
 
-    DraftStore(drafts).path_for("bts/other").write_text(json.dumps(_screen("Other")))
+    DraftStore(drafts).path_for("xfer/other").write_text(json.dumps(_screen("Other")))
     r2 = client.get("/drafts/manifest.json", headers={"if-none-match": etag})
     assert r2.status_code == 200
     assert r2.headers["etag"] != etag
@@ -241,29 +241,29 @@ def test_manifest_lists_drafts_with_etag(client: TestClient, drafts: Path) -> No
 
 def test_draft_screen_etag_is_rev_and_304(client: TestClient, drafts: Path) -> None:
     store = DraftStore(drafts)
-    rev = store.rev("bts/view")
-    r = client.get("/drafts/screens/bts/view.screen.json")
+    rev = store.rev("xfer/view")
+    r = client.get("/drafts/screens/xfer/view.screen.json")
     assert r.status_code == 200
     assert r.headers["etag"] == f'"{rev}"'
     assert r.headers["cache-control"] == "no-cache"
-    assert r.json()["metadata"]["title"] == "BTS"
+    assert r.json()["metadata"]["title"] == "XFER"
 
-    r304 = client.get("/drafts/screens/bts/view.screen.json", headers={"if-none-match": f'"{rev}"'})
+    r304 = client.get("/drafts/screens/xfer/view.screen.json", headers={"if-none-match": f'"{rev}"'})
     assert r304.status_code == 304
     assert r304.headers["etag"] == f'"{rev}"'
     assert r304.content == b""
 
-    store.path_for("bts/view").write_text(json.dumps(_screen("BTS v2")))
-    r2 = client.get("/drafts/screens/bts/view.screen.json", headers={"if-none-match": f'"{rev}"'})
+    store.path_for("xfer/view").write_text(json.dumps(_screen("XFER v2")))
+    r2 = client.get("/drafts/screens/xfer/view.screen.json", headers={"if-none-match": f'"{rev}"'})
     assert r2.status_code == 200
-    assert r2.json()["metadata"]["title"] == "BTS v2"
+    assert r2.json()["metadata"]["title"] == "XFER v2"
 
 
 def test_draft_image_served_with_etag(client: TestClient) -> None:
-    r = client.get("/drafts/screens/bts/logo.png")
+    r = client.get("/drafts/screens/xfer/logo.png")
     assert r.status_code == 200
     assert r.content.startswith(b"\x89PNG")
-    assert client.get("/drafts/screens/bts/logo.png", headers={"if-none-match": r.headers["etag"]}).status_code == 304
+    assert client.get("/drafts/screens/xfer/logo.png", headers={"if-none-match": r.headers["etag"]}).status_code == 304
 
 
 @pytest.mark.parametrize(

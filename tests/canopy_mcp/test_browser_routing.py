@@ -571,9 +571,9 @@ def test_brief_redacts_the_credential_and_keeps_one_line() -> None:
 
 def _viewer(tmp: Path) -> Settings:
     drafts = tmp / "drafts"
-    (drafts / "screens" / "bts").mkdir(parents=True)
-    (drafts / "screens" / "bts" / "view.screen.json").write_text(
-        '{"metadata": {"title": "BTS"}, "root": {"id": "root", "type": "absolute-canvas", "children": []}}'
+    (drafts / "screens" / "xfer").mkdir(parents=True)
+    (drafts / "screens" / "xfer" / "view.screen.json").write_text(
+        '{"metadata": {"title": "XFER"}, "root": {"id": "root", "type": "absolute-canvas", "children": []}}'
     )
     dist = tmp / "dist"
     (dist / "assets").mkdir(parents=True)
@@ -611,7 +611,7 @@ async def test_a_gated_server_serves_its_own_screenshot_browser(chromium: None, 
     with _GatedServer(_viewer(tmp_path)) as server:
         browser = Browser(server.base_url, access_token=TOKEN)
         try:
-            data, info = await capture(browser, "bts/view", settle_timeout_s=0.5)
+            data, info = await capture(browser, "xfer/view", settle_timeout_s=0.5)
         finally:
             await browser.shutdown()
         assert data.startswith(PNG_SIGNATURE)
@@ -620,7 +620,7 @@ async def test_a_gated_server_serves_its_own_screenshot_browser(chromium: None, 
         unauthenticated = Browser(server.base_url)
         try:
             with pytest.raises(ToolError, match="HTTP 401"):
-                await capture(unauthenticated, "bts/view", settle_timeout_s=0.5)
+                await capture(unauthenticated, "xfer/view", settle_timeout_s=0.5)
         finally:
             await unauthenticated.shutdown()
 

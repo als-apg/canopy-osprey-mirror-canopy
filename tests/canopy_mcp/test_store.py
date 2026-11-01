@@ -556,9 +556,9 @@ async def test_write_asset_intermediate_symlinked_outside_is_conflict(store, tmp
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     store.screens.mkdir(parents=True)
-    (store.screens / "bts").symlink_to(elsewhere)
+    (store.screens / "xfer").symlink_to(elsewhere)
     with pytest.raises(AssetRefused) as e:
-        await store.write_asset("bts/sub/x.png", PNG)
+        await store.write_asset("xfer/sub/x.png", PNG)
     assert e.value.reason == "conflict"
     assert list(elsewhere.iterdir()) == []
 
@@ -577,9 +577,9 @@ async def test_write_asset_symlinked_root_writes_and_serves(tmp_path) -> None:
     link = tmp_path / "link"
     link.symlink_to(real)
     store = DraftStore(link)
-    assert await store.write_asset("bts/logo.png", PNG) == "written"
-    assert (real / "screens" / "bts" / "logo.png").read_bytes() == PNG
-    served = store.resolve_static("screens/bts/logo.png")
+    assert await store.write_asset("xfer/logo.png", PNG) == "written"
+    assert (real / "screens" / "xfer" / "logo.png").read_bytes() == PNG
+    served = store.resolve_static("screens/xfer/logo.png")
     assert served is not None and served.read_bytes() == PNG
 
 

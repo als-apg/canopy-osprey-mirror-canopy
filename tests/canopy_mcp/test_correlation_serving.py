@@ -25,8 +25,8 @@ TRACE_CSP = (
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
 PREFIX = "/panel/canopy/u-1.a~b"
-CORR_QUERY = "x=SR:DCCT&y=BTS:DIAG:BPM:01:POSITION:X&range=-1h"
-TRACE_QUERY = "pv=BTS:DIAG:BPM:01:POSITION:X&range=-1h"
+CORR_QUERY = "x=SR:DCCT&y=XFER:DIAG:BPM:01:POSITION:X&range=-1h"
+TRACE_QUERY = "pv=XFER:DIAG:BPM:01:POSITION:X&range=-1h"
 
 PAGE = (
     '<!doctype html><html><head><base href="/"><script type="module" src="./assets/correlation.js"></script>'

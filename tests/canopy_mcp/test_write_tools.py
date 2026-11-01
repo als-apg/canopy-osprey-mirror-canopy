@@ -155,11 +155,11 @@ async def test_new_screen_title_is_listed_in_manifest_and_list_drafts(settings, 
 
 
 async def test_list_drafts_carries_the_first_sentence_of_the_description(settings, store):
-    long = "Shows the RF stations, e.g. SR and BTS. Second sentence is left out."
+    long = "Shows the RF stations, e.g. SR and XFER. Second sentence is left out."
     await new_screen("rf", _doc(title="RF", metadata={"title": "RF", "description": long}))
     await new_screen("plain", _doc(title="Plain"))
     listed = {d["draftId"]: d["description"] for d in (await list_drafts())["drafts"]}
-    assert listed == {"plain": "", "rf": "Shows the RF stations, e.g. SR and BTS."}
+    assert listed == {"plain": "", "rf": "Shows the RF stations, e.g. SR and XFER."}
     # The viewer's manifest does not carry it.
     assert all("description" not in entry for entry in store.manifest()["screens"])
 

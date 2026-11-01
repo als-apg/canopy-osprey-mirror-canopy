@@ -443,7 +443,7 @@ def test_image_refs_at_store_root_use_drafts_root_wording(store: DraftStore) -> 
         # viewer mode: relative to the top document's directory, which the loader joins
         (None, [], "sub/mid.screen.json", "sub/mid.screen.json"),
         (None, ["sub/mid.screen.json"], "../parts/inner.v1.screen.json", "parts/inner.v1.screen.json"),
-        (None, ["B.screen.json"], "../gtb/B.screen.json", "../gtb/B.screen.json"),
+        (None, ["B.screen.json"], "../linac/B.screen.json", "../linac/B.screen.json"),
         (None, [], "/sub/leaf.screen.json", "sub/leaf.screen.json"),
         (None, ["a/b.screen.json", "./c/d.screen.json"], "e.screen.json", "a/c/e.screen.json"),
     ],

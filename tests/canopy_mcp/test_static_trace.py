@@ -16,7 +16,7 @@ TRACE_CSP = (
     "worker-src 'none'; form-action 'none'; frame-ancestors 'self'"
 )
 PREFIX = "/panel/canopy/u-1.a~b"
-QUERY = "pv=BTS:DIAG:BPM:01:POSITION:X&range=-1h"
+QUERY = "pv=XFER:DIAG:BPM:01:POSITION:X&range=-1h"
 HOST_LINKS = Path(__file__).parent / "fixtures" / "host_links.html"
 HOST_PATHS = ["design-system/css/tokens.css", "static/fonts/fonts.css", "design-system/css/canopy-host.css"]
 TRACE_PAGES = ["/trace/", "/trace/correlation.html"]

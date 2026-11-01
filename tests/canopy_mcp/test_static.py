@@ -18,22 +18,22 @@ CSP = "default-src 'none'; sandbox"
 HOST_LINKS = Path(__file__).parent / "fixtures" / "host_links.html"
 HOST_PATHS = ["design-system/css/tokens.css", "static/fonts/fonts.css", "design-system/css/canopy-host.css"]
 PREFIX = "/u/alice/panel/canopy"
-ENTRY_PAGES = ["/", "/embed/bts/view", "/s/bts/view"]
+ENTRY_PAGES = ["/", "/embed/xfer/view", "/s/xfer/view"]
 
 
 @pytest.fixture
 def client(tmp_path: Path):
     root = tmp_path / "drafts"
-    (root / "screens" / "bts").mkdir(parents=True)
-    (root / "screens" / "bts" / "view.screen.json").write_text(json.dumps({"metadata": {"title": "BTS"}}))
-    (root / "screens" / "bts" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
-    (root / "screens" / "bts" / "icon.svg").write_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>")
+    (root / "screens" / "xfer").mkdir(parents=True)
+    (root / "screens" / "xfer" / "view.screen.json").write_text(json.dumps({"metadata": {"title": "XFER"}}))
+    (root / "screens" / "xfer" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    (root / "screens" / "xfer" / "icon.svg").write_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>")
     settings = Settings(drafts_dir=root, viewer_dist=FIXTURE_DIST, pv_mode="hare", api_key="k")
     with TestClient(create_app(settings, startup_hooks=[])) as c:
         yield c
 
 
-@pytest.mark.parametrize("path", ["/drafts/screens/bts/logo.png", "/drafts/screens/bts/icon.svg"])
+@pytest.mark.parametrize("path", ["/drafts/screens/xfer/logo.png", "/drafts/screens/xfer/icon.svg"])
 def test_image_responses_carry_csp_and_nosniff(client: TestClient, path: str) -> None:
     r = client.get(path)
     assert r.status_code == 200
@@ -47,7 +47,7 @@ def test_image_responses_carry_csp_and_nosniff(client: TestClient, path: str) ->
 
 
 def test_screen_responses_carry_no_csp(client: TestClient) -> None:
-    r = client.get("/drafts/screens/bts/view.screen.json")
+    r = client.get("/drafts/screens/xfer/view.screen.json")
     assert r.status_code == 200
     assert "content-security-policy" not in r.headers
     assert "x-content-type-options" not in r.headers

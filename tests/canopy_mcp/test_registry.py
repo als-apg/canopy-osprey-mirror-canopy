@@ -161,7 +161,7 @@ def test_chromium_hook_launches_nothing_and_a_failed_launch_does_not_block_start
 
         async def call() -> None:
             async with Client(mcp) as mcp_client:
-                await mcp_client.call_tool("screenshot", {"id": "bts/view"})
+                await mcp_client.call_tool("screenshot", {"id": "xfer/view"})
 
         with pytest.raises(ToolError, match="unavailable"):
             client.portal.call(call)
