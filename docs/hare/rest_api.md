@@ -110,6 +110,7 @@ curl -X PUT -H "X-API-Key: dev" -H "Content-Type: application/json" \
 | `timeout` | number \| null | `null` | Per-write timeout in seconds (must be positive); `null` uses the connector default |
 | `binding` | string \| null | `null` | The connector binding the issuing screen was shown (the heartbeat's `binding`). A connector that can switch what it is connected to may refuse a write naming another; the built-in backends ignore it |
 | `origin` | object \| null | `null` | Where the write came from, for the connector's audit record: `{"screen": "<id>", "rev": "<revision or null>"}`; `screen` is required. The built-in backends ignore it |
+| `confirmed` | bool | `false` | `true` when a person confirmed the write in the viewer's dialog. A connector whose heartbeat `writes` state is `asked` refuses a write without it; the built-in backends ignore it |
 
 ### Response
 

@@ -1,8 +1,9 @@
-"""A PV write's ``binding`` and ``origin``: the PUT body, the broker, the connectors.
+"""A PV write's ``binding``, ``origin`` and ``confirmed``: the PUT body, the broker, the connectors.
 
-The client may name the connector binding its screen was shown and the screen
-that issued the write. `PVConnector.put` takes both as keywords; the shipped
-backends accept and ignore them, and the broker passes them on as given.
+The client may name the connector binding its screen was shown, the screen
+that issued the write, and whether a person confirmed it. `PVConnector.put`
+takes all three as keywords; the shipped backends accept and ignore them, and
+the broker passes them on as given.
 """
 
 import pytest
@@ -42,6 +43,11 @@ def test_dto_origin_needs_a_screen():
         PVWriteDTO.model_validate({"value": 1.0, "origin": {"rev": "abc"}})
 
 
+def test_dto_confirmed_defaults_to_false():
+    assert PVWriteDTO.model_validate({"value": 1.0}).confirmed is False
+    assert PVWriteDTO.model_validate({"value": 1.0, "confirmed": True}).confirmed is True
+
+
 # --- PVBroker.put ------------------------------------------------------------ #
 
 
@@ -49,15 +55,19 @@ def _broker(connector) -> PVBroker:
     return PVBroker(connector, HareConfig(heartbeat_interval_s=100.0))
 
 
-async def test_broker_passes_binding_and_origin_to_the_connector(fake_connector):
-    await _broker(fake_connector).put("SIM:A", 1.0, wait=True, timeout=2.0, binding="b-1", origin=ORIGIN)
+async def test_broker_passes_binding_origin_and_confirmed_to_the_connector(fake_connector):
+    await _broker(fake_connector).put(
+        "SIM:A", 1.0, wait=True, timeout=2.0, binding="b-1", origin=ORIGIN, confirmed=True
+    )
     assert fake_connector.puts == [("SIM:A", 1.0, True, 2.0)]
     assert fake_connector.put_contexts == [("b-1", ORIGIN)]
+    assert fake_connector.put_confirmed == [True]
 
 
 async def test_broker_passes_none_when_the_write_named_neither(fake_connector):
     await _broker(fake_connector).put("SIM:A", 1.0)
     assert fake_connector.put_contexts == [(None, None)]
+    assert fake_connector.put_confirmed == [False]
 
 
 async def test_origin_reaches_the_connector_as_a_plain_dict(fake_connector):
@@ -70,7 +80,7 @@ async def test_origin_reaches_the_connector_as_a_plain_dict(fake_connector):
     assert passed == ORIGIN
 
 
-async def test_the_simulation_backend_ignores_binding_and_origin():
+async def test_the_simulation_backend_ignores_binding_origin_and_confirmed():
     conn = SimulationConnector.from_config(EpicsConfig())
-    await conn.put("SIM:CTX", 4.0, binding="b-1", origin=ORIGIN)
+    await conn.put("SIM:CTX", 4.0, binding="b-1", origin=ORIGIN, confirmed=True)
     assert (await conn.get("SIM:CTX")).value == 4.0

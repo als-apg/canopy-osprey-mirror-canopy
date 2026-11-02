@@ -39,6 +39,7 @@ class FakeConnector:
     # the broker/endpoint write-failure paths).
     puts: list = field(default_factory=list)
     put_contexts: list = field(default_factory=list)
+    put_confirmed: list = field(default_factory=list)
     put_error: Exception | None = None
     # PVs whose monitor never delivers a value: channels that never connect.
     dead: set[str] = field(default_factory=set)
@@ -58,10 +59,19 @@ class FakeConnector:
         return PVValue(pv=pv, value=0.0, severity=AlarmSeverity.NO_ALARM, ts_ns=1, connected=True)
 
     async def put(
-        self, pv: str, value, *, timeout: float | None = None, wait: bool = True, binding=None, origin=None
+        self,
+        pv: str,
+        value,
+        *,
+        timeout: float | None = None,
+        wait: bool = True,
+        binding=None,
+        origin=None,
+        confirmed: bool = False,
     ) -> None:
         self.puts.append((pv, value, wait, timeout))
         self.put_contexts.append((binding, origin))
+        self.put_confirmed.append(confirmed)
         if self.put_error is not None:
             raise self.put_error
 

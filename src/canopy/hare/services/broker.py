@@ -950,6 +950,7 @@ class PVBroker:
         timeout: float | None = None,
         binding: str | None = None,
         origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
     ) -> None:
         """Write a value to a PV (one-shot, independent of any subscription).
 
@@ -957,8 +958,8 @@ class PVBroker:
         `PVWriteFailed` on failure or timeout. On success the cached latest value
         is dropped so an immediate `get_value` reflects the write instead of the
         pre-write cache. The monitor path repopulates the cache on its next tick.
-        ``binding`` and ``origin`` are passed on as `PVConnector.put` describes
-        them, ``origin`` as a plain dict.
+        ``binding``, ``origin`` and ``confirmed`` are passed on as
+        `PVConnector.put` describes them, ``origin`` as a plain dict.
         """
         validate_pv_name(pv)
         await self._connector.put(
@@ -968,6 +969,7 @@ class PVBroker:
             timeout=timeout,
             binding=binding,
             origin=dict(origin) if origin is not None else None,
+            confirmed=confirmed,
         )
         self._latest.pop(pv, None)
 

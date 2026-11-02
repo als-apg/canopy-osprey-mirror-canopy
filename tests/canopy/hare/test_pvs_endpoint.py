@@ -105,11 +105,11 @@ def test_put_pv_forwards_binding_and_origin_to_the_broker(monkeypatch):
 
     seen: dict = {}
 
-    async def fake_put(self, pv, value, *, wait=True, timeout=None, binding=None, origin=None):
-        seen.update(pv=pv, value=value, binding=binding, origin=origin)
+    async def fake_put(self, pv, value, *, wait=True, timeout=None, binding=None, origin=None, confirmed=False):
+        seen.update(pv=pv, value=value, binding=binding, origin=origin, confirmed=confirmed)
 
     monkeypatch.setattr(PVBroker, "put", fake_put)
-    body = {"value": 5.0, "binding": "b-9", "origin": {"screen": "ring/overview"}}
+    body = {"value": 5.0, "binding": "b-9", "origin": {"screen": "ring/overview"}, "confirmed": True}
     with TestClient(app) as client:
         resp = client.put("/hare/v1/pvs/SIM:TEMP", json=body, headers=WRITE_HEADERS)
     assert resp.status_code == 200
@@ -118,5 +118,21 @@ def test_put_pv_forwards_binding_and_origin_to_the_broker(monkeypatch):
         "value": 5.0,
         "binding": "b-9",
         "origin": {"screen": "ring/overview", "rev": None},
+        "confirmed": True,
     }
     assert type(seen["origin"]) is dict
+
+
+def test_put_pv_without_confirmed_reaches_the_broker_unconfirmed(monkeypatch):
+    from canopy.hare.services.broker import PVBroker
+
+    seen: dict = {}
+
+    async def fake_put(self, pv, value, *, wait=True, timeout=None, binding=None, origin=None, confirmed=False):
+        seen.update(confirmed=confirmed)
+
+    monkeypatch.setattr(PVBroker, "put", fake_put)
+    with TestClient(app) as client:
+        resp = client.put("/hare/v1/pvs/SIM:TEMP", json={"value": 5.0}, headers=WRITE_HEADERS)
+    assert resp.status_code == 200
+    assert seen == {"confirmed": False}

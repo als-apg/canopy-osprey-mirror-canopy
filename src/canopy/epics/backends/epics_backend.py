@@ -489,8 +489,9 @@ class EpicsConnector:
         wait: bool = True,
         binding: str | None = None,
         origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
     ) -> None:
-        """Write `value` to `pv`, routed by protocol prefix. `binding` and `origin` are accepted and ignored."""
+        """Write `value` to `pv`, routed by protocol prefix. `binding`, `origin` and `confirmed` are accepted and ignored."""
         validate_pv_name(pv)
         protocol, stripped = parse_pv_name(pv)
         if protocol == "pva":

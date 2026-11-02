@@ -28,6 +28,10 @@ class PVWriteDTO(CanopyModel):
     binding: str | None = None
     # The screen and revision that issued the write, for the connector's audit record.
     origin: PVWriteOrigin | None = None
+    # True when a person confirmed this write in the viewer's dialog. A
+    # connector whose write state is ``asked`` refuses a write without it; the
+    # shipped backends ignore it.
+    confirmed: bool = False
 
 
 class PVWriteResultDTO(CanopyModel):

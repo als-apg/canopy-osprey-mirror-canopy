@@ -182,18 +182,22 @@ class PVConnector(Protocol):
         wait: bool = True,
         binding: str | None = None,
         origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
     ) -> None:
         """Write `value` to `pv`. When `wait=True`, block until the write
         completes (put-with-callback) so the caller knows it landed. The
         protocol is taken from the PV name prefix (``ca://`` / ``pva://``).
 
-        `binding` and `origin` describe the write, as the client sent them;
-        both are ``None`` when it sent none. `binding` is the connector binding
-        the issuing screen was shown (the heartbeat's ``binding``), so a
-        connector that can switch what it is connected to may refuse a write
-        aimed at another one. `origin` is where the write came from, a plain
-        ``{"screen": ..., "rev": ...}`` mapping, for the connector's own audit
-        record. A connector that has no use for either ignores them."""
+        `binding`, `origin` and `confirmed` describe the write, as the client
+        sent them; the first two are ``None`` when it sent none. `binding` is
+        the connector binding the issuing screen was shown (the heartbeat's
+        ``binding``), so a connector that can switch what it is connected to
+        may refuse a write aimed at another one. `origin` is where the write
+        came from, a plain ``{"screen": ..., "rev": ...}`` mapping, for the
+        connector's own audit record. `confirmed` is true when a person
+        confirmed the write in the viewer's dialog; a connector whose
+        ``writes`` statement says ``asked`` refuses a write without it. A
+        connector that has no use for any of them ignores them."""
         ...
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:

@@ -318,6 +318,7 @@ class SimulationConnector:
         wait: bool = True,
         binding: str | None = None,
         origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
     ) -> None:
         """Pin a PV's value so subsequent reads and monitor ticks return it.
 
@@ -335,7 +336,7 @@ class SimulationConnector:
             Accepted for protocol compatibility; the write completes immediately.
         wait : bool, optional
             Accepted for protocol compatibility; the write completes immediately.
-        binding, origin : optional
+        binding, origin, confirmed : optional
             Accepted for protocol compatibility and ignored.
 
         Raises
