@@ -219,8 +219,10 @@ connector is connected to and a remark to show next to it; `binding` identifies
 that connection and is sent back with a write (see the `PUT` body's `binding`).
 `reachable` says whether the control system answers
 (`{"state": "yes" | "no" | "unknown", "since", "reason"}`) and `writes` whether
-screens may write (`{"state": "on" | "off" | "locked" | "applying", "reason",
-"cause"}`); treat a `state` you do not know as `unknown` and as not writable.
+screens may write (`{"state": "on" | "asked" | "off" | "locked" | "applying" |
+"held", "reason", "cause"}`): `asked` asks a person before each write, which the
+`PUT` then sends with `confirmed: true`; `held` is a watchdog's hold on the
+session. Treat a `state` you do not know as `unknown` and as not writable.
 When any of these change, a heartbeat is sent at once, within one batching
 window, without waiting for the next keep-alive.
 

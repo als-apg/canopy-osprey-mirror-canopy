@@ -62,7 +62,7 @@ unset.
 | `CANOPY_COLLECTIONS_DIR` | `<CANOPY_DRAFTS_DIR>/collections` | Where the user's own collections and their selection state are stored. |
 | `CANOPY_FACILITY_COLLECTIONS_DIR` | unset | A read-only directory of facility collections shipped with the deployment. Unset means no facility collections. |
 | `CANOPY_LIBRARY_IGNORED_NAMES` | unset | Names, whitespace-separated and compared case-insensitively, that a library path may not use besides the built-in rules, such as the files a deployment's own build leaves out. The library listing refuses them and so does `request_push`. |
-| `CANOPY_CONFIRM_WRITES` | `0` | `1` makes every write the viewer sends ask for one confirmation per click first. |
+| `CANOPY_CONFIRM_WRITES` | `0` | `1` makes every write the viewer sends ask for one confirmation per click first. A backend whose heartbeat `writes` state is `asked` is asked whatever this says. |
 | `CANOPY_WORKSPACE` | `0` | `1` lets an agent read and change the operator's workspace. Only for one server process serving one operator. See *The workspace* below. |
 | `CANOPY_PV_MODE` | `hare` | `mock` makes the served viewer draw PVs from the mock service instead of the backend. |
 | `CANOPY_PUT_RELAY` | `0` | `1` relays the one write route, `PUT /hare/v1/pvs/{pv}`, to the backend; every other mutating path stays 405. It needs `CANOPY_ACCESS_TOKEN_FILE` and `CANOPY_WRITE_API_KEY_FILE`; without either the server does not start. |
@@ -389,11 +389,13 @@ ids carry the epoch. Refusals and rejections are answers, not errors.
    already started completes.
 4. **Macros, and one accepted gap.** Macros are bounded by their grammar only;
    the write gate is the defence at write time. With `CANOPY_CONFIRM_WRITES`
-   off, a write widget on a screen the agent opened (with any macros, or one
-   of its drafts) sends without showing its PV, so an operator who presses it
-   actuates a target the agent chose. This is accepted. The `canopy-operator`
-   skill tells the agent to name the screen and its macros to the operator.
-   Set `CANOPY_CONFIRM_WRITES=1` to have every write confirmed.
+   off and the backend's write state `on`, a write widget on a screen the
+   agent opened (with any macros, or one of its drafts) sends without showing
+   its PV, so an operator who presses it actuates a target the agent chose.
+   This is accepted. The `canopy-operator` skill tells the agent to name the
+   screen and its macros to the operator. Set `CANOPY_CONFIRM_WRITES=1` to
+   have every write confirmed; a backend that says `asked` is confirmed
+   either way.
 5. **Attribution and undo.** The element a command touched highlights.
    Destructive commands push their tabs onto the one closed-tabs stack and
    raise the closed-tabs toast; one toast at a time, the newest wins. Undo

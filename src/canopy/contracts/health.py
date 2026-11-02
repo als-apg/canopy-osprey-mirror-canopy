@@ -33,9 +33,11 @@ class ReachableDTO(CanopyModel):
 class WritesDTO(CanopyModel):
     """The connector's statement of whether screens may write, as in the heartbeat frame.
 
-    ``state`` is ``on``, ``off``, ``locked`` or ``applying``; only ``on`` accepts
-    writes, and a reader treats a word it does not know as inert. ``cause`` is a
-    connector-defined id of the rule that decided it.
+    ``state`` is ``on``, ``asked``, ``off``, ``locked``, ``applying`` or ``held``;
+    only ``on`` and ``asked`` accept writes (``asked``: each one confirmed by a
+    person first, sent with ``confirmed`` in the PUT body), ``held`` is a
+    watchdog's hold on the session, and a reader treats a word it does not know
+    as inert. ``cause`` is a connector-defined id of the rule that decided it.
     """
 
     state: str

@@ -167,7 +167,7 @@ def test_a_null_reachable_falls_back_to_the_count_rule(monitored, connected, sta
     assert body["writes"] is None
 
 
-@pytest.mark.parametrize("state", ["on", "off", "locked", "applying"])
+@pytest.mark.parametrize("state", ["on", "asked", "off", "locked", "applying", "held"])
 def test_writes_never_enters_the_verdict(state):
     writes = {"state": state, "reason": None, "cause": None}
     assert _summary(_Rollup(53, 53, statement={"reachable": None, "writes": writes}))["status"] == "ok"

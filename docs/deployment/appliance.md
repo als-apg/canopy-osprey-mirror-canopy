@@ -182,7 +182,7 @@ directory is missing is described under
 | `CANOPY_PUT_RELAY` | `0` | `1` relays `PUT /hare/v1/pvs/{pv}` to DATA. It is the one write route FRONT has. |
 | `CANOPY_WRITE_API_KEY_FILE` | unset | File holding the write-scope key the relay sends upstream. There is no environment form of this key. |
 | `CANOPY_PUT_RELAY_TIMEOUT_S` | `27` | Seconds one relayed write may take upstream before FRONT answers 504. |
-| `CANOPY_CONFIRM_WRITES` | `0` | `1` makes the viewer ask for one confirmation per click before each write (`confirmWrites` in `config.json`). |
+| `CANOPY_CONFIRM_WRITES` | `0` | `1` makes the viewer ask for one confirmation per click before each write (`confirmWrites` in `config.json`). A backend whose heartbeat `writes` state is `asked` is asked whatever this says. |
 
 With `CANOPY_PUT_RELAY` off, a `PUT` to a PV answers 405 like every other
 mutating request under the backend's paths, so a write from a screen is
@@ -287,8 +287,8 @@ container, launches FRONT with:
 - `CANOPY_PUT_RELAY=1` with `CANOPY_WRITE_API_KEY_FILE` when its proxy puts a
   write policy on the path that answers each relayed request and refuses the
   ones it does not allow (see the warning under [Writes](#writes));
-- `CANOPY_CONFIRM_WRITES=1` exactly when the deployment asks a person before
-  an agent writes;
+- `CANOPY_CONFIRM_WRITES=1` only to confirm every write under a backend that
+  says `on`; a backend that says `asked` is confirmed without it;
 - `CANOPY_BROWSER_SANDBOX=0`, since the browser runs inside the user's
   container.
 

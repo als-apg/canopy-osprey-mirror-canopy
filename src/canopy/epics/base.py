@@ -231,7 +231,9 @@ class ConnectorStatement(Protocol):
     - ``reachable``: whether the control system answers, as
       ``{"state": "yes" | "no" | "unknown", "since": <epoch s> | None, "reason": str | None}``.
     - ``writes``: whether screens may write, as
-      ``{"state": "on" | "off" | "locked" | "applying", "reason": str | None, "cause": str | None}``.
+      ``{"state": "on" | "asked" | "off" | "locked" | "applying" | "held", "reason": str | None, "cause": str | None}``;
+      ``asked`` asks a person before each write (the PUT then carries
+      ``confirmed``), ``held`` is a watchdog's hold on the session.
 
     The broker compares (label, notice, binding, reachable, writes) on every
     flush tick and sends the heartbeat at once when it changed, then calls
