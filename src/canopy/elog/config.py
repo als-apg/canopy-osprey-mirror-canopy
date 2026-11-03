@@ -61,7 +61,8 @@ class ElogConfig(BaseSettings):
     elog_plus: ElogPlusConfig = ElogPlusConfig()
     apps: dict[str, ElogAppConfig] = {}
     # Outbound HTTP(S) proxy for e-log calls. Process proxy env vars are
-    # deliberately ignored (the client is built with trust_env=False).
+    # deliberately ignored (the client is built with trust_env=False), but
+    # SSL_CERT_FILE and SSL_CERT_DIR are still honored for a custom CA bundle.
     proxy_url: str | None = None
     timeout_s: float = 15.0
     # Reject attachment uploads larger than this (bytes) with 413.

@@ -18,6 +18,8 @@ Each instance holds one app's application token, so elog-plus records that
 app as the author of everything it posts.
 """
 
+import os
+import ssl
 import time
 import logging
 from typing import Any
@@ -74,6 +76,20 @@ def render_markdown(md: str) -> str:
     """
     html = markdown_lib.markdown(md, extensions=_MARKDOWN_EXTENSIONS, output_format="html")
     return nh3.clean(html, tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRIBUTES, url_schemes=_ALLOWED_URL_SCHEMES)
+
+
+def _ssl_verify() -> ssl.SSLContext | bool:
+    """The ``verify=`` httpx would use with ``trust_env=True``.
+
+    The client turns ``trust_env`` off to ignore the process's proxy variables,
+    which also turns off ``SSL_CERT_FILE`` and ``SSL_CERT_DIR``. Read those two
+    here so a deployment that trusts its own CA through them still works.
+    """
+    if cafile := os.environ.get("SSL_CERT_FILE"):
+        return ssl.create_default_context(cafile=cafile)
+    if capath := os.environ.get("SSL_CERT_DIR"):
+        return ssl.create_default_context(capath=capath)
+    return True
 
 
 def _unwrap(body: Any) -> Any:
@@ -161,6 +177,7 @@ class ElogPlusAdapter:
             # Ignore HTTP(S)_PROXY and friends: the e-log route is set by
             # CANOPY_ELOG__PROXY_URL alone, not by whatever the process inherited.
             trust_env=False,
+            verify=_ssl_verify(),
         )
         # The token's own email, from /v1/users/me. Filters recent entries.
         self._email: str | None = None

@@ -30,7 +30,7 @@ routes (env names are case-insensitive, so `APPS__SQUIRREL__` serves
 | `CANOPY_ELOG__ELOG_PLUS__AUTH_HEADER` | `x-vouch-idp-accesstoken` | Header the token travels in; matches `ELOG_PLUS_AUTH_HEADER` on the elog-plus service. |
 | `CANOPY_ELOG__APPS__<APP>__TOKEN` | — | The app's elog-plus application token. An app without one reports `enabled: false`. |
 | `CANOPY_ELOG__APPS__<APP>__DEFAULT_LOGBOOK_IDS` | `[]` | JSON list of logbook ids the client preselects, e.g. `["<id>"]`. |
-| `CANOPY_ELOG__PROXY_URL` | unset | Outbound HTTP(S) proxy for e-log calls. Process proxy variables (`HTTPS_PROXY`, ...) are ignored. |
+| `CANOPY_ELOG__PROXY_URL` | unset | Outbound HTTP(S) proxy for e-log calls. Process proxy variables (`HTTPS_PROXY`, ...) are ignored, but `SSL_CERT_FILE` and `SSL_CERT_DIR` still set the CA bundle. |
 | `CANOPY_ELOG__TIMEOUT_S` | `15` | Per-request timeout to the e-log, in seconds. |
 | `CANOPY_ELOG__MAX_ATTACHMENT_BYTES` | `20971520` (20 MiB) | Larger attachment uploads are rejected with 413. |
 

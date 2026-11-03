@@ -1,5 +1,6 @@
 """`ElogPlusAdapter` against a mocked elog-plus (pytest-httpx)."""
 
+import ssl
 import json
 import logging
 import traceback
@@ -7,13 +8,14 @@ from datetime import UTC, datetime, timezone, timedelta
 
 import httpx
 import pytest
+import certifi
 from pytest_httpx import HTTPXMock
 
 from canopy.core.errors import BadRequest
 from canopy.elog.config import ElogConfig, ElogAppConfig, ElogPlusConfig
 from canopy.elog.errors import ElogNotConfigured, ElogUpstreamError, ElogUpstreamTimeout
 from canopy.elog.schemas.elog import ElogEntryCreateDTO
-from canopy.elog.adapters.elog_plus import ElogPlusAdapter
+from canopy.elog.adapters.elog_plus import ElogPlusAdapter, _ssl_verify
 
 BASE = "http://elog.test"
 
@@ -57,6 +59,43 @@ class TestRequests:
 
     def test_client_ignores_process_proxy_env(self, adapter):
         assert adapter._client.trust_env is False
+
+
+class TestSSLVerify:
+    """trust_env=False also stops httpx reading the CA variables, so the adapter reads them itself."""
+
+    @pytest.fixture(autouse=True)
+    def _no_ca_env(self, monkeypatch):
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+
+    def test_default_is_httpx_own_bundle(self):
+        assert _ssl_verify() is True
+
+    @pytest.mark.parametrize(
+        "variable, keyword",
+        [("SSL_CERT_FILE", "cafile"), ("SSL_CERT_DIR", "capath")],
+    )
+    def test_ca_variables_build_the_context(self, monkeypatch, variable, keyword):
+        calls = []
+        monkeypatch.setattr(ssl, "create_default_context", lambda **kwargs: calls.append(kwargs) or "ctx")
+        monkeypatch.setenv(variable, "/etc/ca")
+
+        assert _ssl_verify() == "ctx"
+        assert calls == [{keyword: "/etc/ca"}]
+
+    async def test_a_real_ca_file_builds_an_adapter(self, monkeypatch):
+        monkeypatch.setenv("SSL_CERT_FILE", certifi.where())
+
+        assert isinstance(_ssl_verify(), ssl.SSLContext)
+        await ElogPlusAdapter("squirrel", base_url=BASE, token="t").close()
+
+    def test_a_missing_ca_file_fails_adapter_construction(self, monkeypatch, tmp_path):
+        # The registry turns this into a disabled module rather than a failed startup.
+        monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "missing.pem"))
+
+        with pytest.raises(OSError):
+            ElogPlusAdapter("squirrel", base_url=BASE, token="t")
 
     async def test_proxy_url_is_accepted(self):
         adapter = ElogPlusAdapter("squirrel", base_url=BASE, token="t", proxy_url="http://proxy.example.test:3128")
