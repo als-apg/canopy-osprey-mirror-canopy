@@ -7,9 +7,11 @@ from importlib import import_module
 from contextlib import AsyncExitStack, asynccontextmanager
 from collections.abc import Iterable
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, status
 from starlette.types import Send, Scope, ASGIApp, Receive
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from starlette.routing import Match, Mount
+from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from canopy import __version__
@@ -19,11 +21,20 @@ from canopy.core.config import (
     parse_modules,
     resolve_modules,
 )
-from canopy.core.errors import register_canopy_error_handler
+from canopy.core.errors import (
+    CanopyError,
+    InvalidAPIKey,
+    KeyStoreUnavailable,
+    InsufficientReadAccess,
+    InsufficientModuleAccess,
+    register_canopy_error_handler,
+)
 from canopy.core.logging import configure_logging
 from canopy.core.metrics import HTTPMetricsMiddleware, render_latest
-from canopy.core.modules import tag_module
+from canopy.core.modules import tag_module, module_for_app
 from canopy.core.security import (
+    get_registry,
+    token_from_scope,
     bind_key_registry,
     has_database_tier,
     build_key_registry,
@@ -66,6 +77,108 @@ class _SelectedModules:
         await self.app(scope, receive, send)
 
 
+def _is_open(scope: Scope) -> bool:
+    """``GET /health`` and a CORS preflight pass the closed-meta gate."""
+    if scope["type"] != "http":
+        return False
+    if scope["method"] == "GET" and scope["path"] == "/health":
+        return True
+    headers = dict(scope["headers"])
+    return scope["method"] == "OPTIONS" and b"origin" in headers and b"access-control-request-method" in headers
+
+
+# Parent routes whose own dependency admits an admin-only key.
+_ADMIN_PATHS = ("/v1/api-keys", "/v1/facilities")
+
+
+def _is_admin_path(path: str) -> bool:
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in _ADMIN_PATHS)
+
+
+class _ClosedMeta:
+    """Refuse every request whose key cannot read the module it targets, except ``GET /health``.
+
+    Per-route dependencies cannot do this: the docs and OpenAPI pages of the
+    parent and of each mounted sub-app, the root document and the per-module
+    watchdogs have none, and a CORS preflight is answered before routing.
+
+    The target module is the one the router would dispatch to: the first route
+    that fully matches the scope, its sub-app's tag for a mount and ``core`` for
+    a parent route (or none). A key is admitted iff it is scoped to that module
+    and reads it. The key and facility management routes (``/v1/api-keys``,
+    ``/v1/facilities``) also admit an admin-only key, because their own
+    dependencies do (``require_admin_access``, ``require_read_or_admin_access``):
+    a provisioning key carries no read scope. Every other route, ``/metrics`` and
+    the docs among them, needs read. Each route still checks the scope it needs.
+    Refusals are the
+    route dependencies' own errors: 401 ``invalid_api_key`` for a missing or
+    unknown key, 503 ``key_store_unavailable`` when the key store cannot answer,
+    403 ``insufficient_module_access`` for a key scoped elsewhere and 403
+    ``insufficient_read_access`` for a key in the module without read.
+
+    A CORS preflight (``OPTIONS`` with ``Origin`` and
+    ``Access-Control-Request-Method``) passes: a browser sends it without the key,
+    CORS answers it without routing, and the real request is still gated.
+    """
+
+    _DETAIL = "A valid API key is required"
+
+    def __init__(self, app: ASGIApp, *, router_app: FastAPI) -> None:
+        self.app = app
+        self.router_app = router_app
+
+    def _module_for(self, scope: Scope) -> str:
+        for route in self.router_app.router.routes:
+            match, _ = route.matches(scope)
+            if match == Match.FULL:
+                return module_for_app(route.app) if isinstance(route, Mount) else "core"
+        return "core"
+
+    async def _refusal(self, scope: Scope) -> CanopyError | None:
+        """The error this scope is refused with, or ``None`` to admit it."""
+        token = token_from_scope(scope)
+        if token is None:
+            return InvalidAPIKey(self._DETAIL)
+        try:
+            key = await get_registry().get(token)
+        except KeyStoreUnavailable as exc:
+            return exc
+        if key is None:
+            return InvalidAPIKey(self._DETAIL)
+        module = self._module_for(scope)
+        if not key.allows_module(module):
+            return InsufficientModuleAccess(f"API key is not scoped to '{module}'")
+        if key.read or (key.admin and module == "core" and _is_admin_path(scope["path"])):
+            return None
+        return InsufficientReadAccess("API key does not have read access")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        refused = None if _is_open(scope) else await self._refusal(scope)
+        if refused is None:
+            await self.app(scope, receive, send)
+            return
+
+        status_code, code, detail = refused.status_code, refused.error_code.value, refused.detail
+        refusal = JSONResponse({"code": code, "detail": detail}, status_code=status_code)
+        if scope["type"] == "http":
+            await refusal(scope, receive, send)
+            return
+        websocket = WebSocket(scope, receive, send)
+        if "websocket.http.response" in scope.get("extensions", {}):
+            await websocket.send_denial_response(refusal)
+        else:
+            # A server that cannot answer a handshake with an HTTP response.
+            close_code = (
+                status.WS_1011_INTERNAL_ERROR
+                if status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+                else status.WS_1008_POLICY_VIOLATION
+            )
+            await websocket.close(code=close_code, reason=f"{code}: {detail}")
+
+
 async def _facility_granted_to_key(facility_id: str, slug: str) -> bool:
     """Is any active API key's facility grant still naming this facility?
 
@@ -81,7 +194,7 @@ async def _facility_granted_to_key(facility_id: str, slug: str) -> bool:
         return await ApiKeyRepository(session).count_granting(slug) > 0
 
 
-def build_app(modules: Iterable[str] | str) -> FastAPI:
+def build_app(modules: Iterable[str] | str, *, closed_meta: bool | None = None) -> FastAPI:
     """Compose the Canopy API from the named modules.
 
     ``modules`` is an iterable of module names or one comma-separated string;
@@ -89,11 +202,15 @@ def build_app(modules: Iterable[str] | str) -> FastAPI:
     ``ValueError``. Only the selected modules are imported, so a module whose
     dependencies are not installed costs nothing as long as it is left out.
 
-    The key registry is bound by the lifespan, before anything is served.
+    ``closed_meta`` puts the whole app behind the key registry except
+    ``GET /health``; ``None`` takes the ``CANOPY_CLOSED_META`` setting. The key
+    registry is bound by the lifespan, before anything is served.
     ``/v1/api-keys`` and ``/v1/facilities`` are mounted only on an install with
     the database key tier (``has_database_tier``).
     """
     database_tier = has_database_tier()
+    if closed_meta is None:
+        closed_meta = get_settings().closed_meta
 
     selected = parse_modules(modules) if isinstance(modules, str) else resolve_modules(modules)
 
@@ -105,11 +222,11 @@ def build_app(modules: Iterable[str] | str) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Compose per-module lifespans. Mounted sub-apps don't run their own."""
-        # Env keys first, then the database when the install has it: the
-        # long-lived credentials keep working when Postgres is unreachable,
+        # The static key tier first, then the database when the install has it:
+        # the long-lived credentials keep working when Postgres is unreachable,
         # including on a cold start when the cache has nothing stale to serve.
-        # Built before anything can serve, so a bad CANOPY_API_KEYS surfaces in
-        # the startup log instead of as an unexplained 401.
+        # Built before anything can serve, so a bad CANOPY_API_KEYS or keys file
+        # surfaces in the startup log instead of as an unexplained 401.
         bind_key_registry(build_key_registry(get_settings()))
         if database_tier:
             from canopy.core.facilities import gateway as facilities_gateway
@@ -146,6 +263,10 @@ def build_app(modules: Iterable[str] | str) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(_SelectedModules, modules=frozenset(selected))
+    if closed_meta:
+        # Added last, so it is the outermost layer; it lets a CORS preflight
+        # through to CORSMiddleware and gates everything else.
+        app.add_middleware(_ClosedMeta, router_app=app)
 
     register_canopy_error_handler(app)
 

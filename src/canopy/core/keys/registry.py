@@ -3,7 +3,7 @@
 Three small pieces, composed in ``canopy.main``'s lifespan:
 
     ChainedKeyRegistry(
-        EnvKeyRegistry(settings.api_keys),          # statically stable floor
+        static_key_registry(settings),              # statically stable floor: env or keys file
         CachingKeyRegistry(DbKeyRegistry()),        # revocable, DB-backed
     )
 
@@ -25,7 +25,7 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 from canopy.core.db import session_scope
 from canopy.core.config import Settings
 from canopy.core.errors import KeyStoreUnavailable
-from canopy.core.security import APIKey, KeyRegistry, EnvKeyRegistry
+from canopy.core.security import APIKey, KeyRegistry, static_key_registry
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import TOKEN_PREFIX, MINTED_TOKEN_LEN, hash_token
 from canopy.core.keys.repositories import ApiKeyRepository
@@ -260,10 +260,13 @@ class ChainedKeyRegistry:
 
 
 def build_key_registry(settings: Settings) -> KeyRegistry:
-    """The one place that assembles the env + database chain, shared by
-    `canopy.main`'s lifespan and `security.get_registry`'s lazy fallback."""
+    """The one place that assembles the static + database chain, shared by
+    `canopy.main`'s lifespan and `security.get_registry`'s lazy fallback.
+
+    The static tier is the keys file when ``CANOPY_API_KEYS_FILE`` is set, else
+    ``CANOPY_API_KEYS`` (`security.static_key_registry`)."""
     return ChainedKeyRegistry(
-        EnvKeyRegistry(settings.api_keys),
+        static_key_registry(settings),
         CachingKeyRegistry(
             DbKeyRegistry(),
             ttl_s=settings.api_key_cache_ttl_s,

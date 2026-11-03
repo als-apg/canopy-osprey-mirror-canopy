@@ -1,9 +1,12 @@
 import logging
 import importlib.util
 from typing import Protocol, Annotated
+from pathlib import Path
 from dataclasses import field, dataclass
+from urllib.parse import parse_qs
 
 from fastapi import Request, Security, WebSocket, status
+from starlette.types import Scope
 from fastapi.security import APIKeyHeader
 from fastapi.exceptions import WebSocketException
 
@@ -28,7 +31,7 @@ class APIKey:
     """A resolved key. `name` identifies the holding client class — it is what
     request logs and analytics may record; the `token` never is.
 
-    `token` is only populated by ``EnvKeyRegistry``; ``DbKeyRegistry`` leaves it
+    `token` is only populated by ``EnvKeyRegistry`` and ``load_keys_file``; ``DbKeyRegistry`` leaves it
     empty since nothing downstream reads it back. Excluded from `repr` regardless,
     so a stray ``logger.debug("%s", key)`` can never print it.
 
@@ -76,7 +79,16 @@ class KeyRegistry(Protocol):
     async def get(self, token: str) -> APIKey | None: ...
 
 
-class EnvKeyRegistry:
+class _DictRegistry:
+    """A fixed in-memory token -> key map; subclasses only decide how it is filled."""
+
+    _keys: dict[str, APIKey]
+
+    async def get(self, token: str) -> APIKey | None:
+        return self._keys.get(token)
+
+
+class EnvKeyRegistry(_DictRegistry):
     """In-memory registry built from a comma-separated env-var entry list.
 
     Format: ``"<token>:<scope>[+<scope>]*[@<module>[+<module>]*][,...]"``.
@@ -186,24 +198,140 @@ class EnvKeyRegistry:
         else:
             logger.info("No API keys registered from CANOPY_API_KEYS; relying on the database registry")
 
-    async def get(self, token: str) -> APIKey | None:
-        return self._keys.get(token)
+
+class KeysFileError(RuntimeError):
+    """The configured keys file cannot supply a registry. Never carries file content."""
+
+
+KEYS_FILE_SCOPES = frozenset({"read", "write", "admin"})
+
+
+class FileKeyRegistry(_DictRegistry):
+    """In-memory registry holding exactly the keys of a keys file.
+
+    Built only by ``load_keys_file``, which has already refused anything the
+    file does not spell out in full; nothing here parses or defaults.
+    """
+
+    def __init__(self, keys: dict[str, APIKey]) -> None:
+        self._keys = dict(keys)
+
+
+class _BadFileEntry(ValueError):
+    """A keys-file entry breaks the grammar; the message names the rule broken."""
+
+
+def _parse_file_entry(entry: str) -> tuple[str, frozenset[str], frozenset[str]]:
+    """``entry`` as ``(token, scopes, recognized modules)``, or `_BadFileEntry` saying why not.
+
+    The reason names the rule broken, never a part of the entry: the token is
+    the secret, and a scope or module typo sits right next to it.
+    """
+    if entry.startswith("#"):
+        # A commented-out key would otherwise become a live key whose token starts with "#".
+        raise _BadFileEntry("starts with # (a keys file has no comments)")
+    if any(char.isspace() for char in entry):
+        raise _BadFileEntry("contains whitespace")
+    token, separator, rest = entry.partition(":")
+    if not separator or not token:
+        raise _BadFileEntry("is not <token>:<scope>[+<scope>]@<module>[+<module>]")
+    scopes, at, modules = rest.partition("@")
+    if not at:
+        raise _BadFileEntry("has no @<module>[+<module>] suffix")
+    scope_list = scopes.split("+")
+    if not all(scope_list) or not set(scope_list) <= KEYS_FILE_SCOPES:
+        raise _BadFileEntry("names a scope other than read, write or admin")
+    if "read" not in scope_list:
+        raise _BadFileEntry("grants no read scope")
+    module_list = modules.split("+")
+    if not all(module_list):
+        raise _BadFileEntry("has an empty module in its @<module>[+<module>] suffix")
+    known, unknown = split_modules(set(module_list))
+    if unknown:
+        raise _BadFileEntry("names an unknown module")
+    return token, frozenset(scope_list), known
+
+
+def load_keys_file(path: str | Path) -> FileKeyRegistry:
+    """Build the registry from a keys file.
+
+    Each entry is ``<token>:<scope>[+<scope>]@<module>[+<module>]``: scopes
+    ``read``, ``write`` and ``admin``, ``read`` always among them, and modules
+    from ``canopy.core.modules`` (``*`` for every module). Entries are separated
+    by commas or line breaks. Unlike ``CANOPY_API_KEYS`` the file is read
+    strictly: a file that cannot be read, holds no key, or holds one entry that
+    breaks the grammar raises ``KeysFileError`` naming the entry's position, and
+    there is no default module scope. The file has no comment syntax: an entry
+    starting with ``#`` is refused rather than read as a token. A deployment that names a
+    file never falls back to ``CANOPY_API_KEYS``; an empty ``CANOPY_API_KEYS_FILE``
+    names no file and counts as unset.
+
+    Like an env key, a file key grants every facility: the static tier has no
+    facility syntax (see ``EnvKeyRegistry``). Imports nothing from
+    ``canopy.core.keys``, so a lean install can read a keys file.
+    """
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else type(exc).__name__
+        raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: cannot be read ({reason})") from None
+    entries = [entry.strip() for entry in raw.replace("\r", "\n").replace("\n", ",").split(",") if entry.strip()]
+    if not entries:
+        raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: holds no API key")
+    keys: dict[str, APIKey] = {}
+    for number, entry in enumerate(entries, start=1):
+        try:
+            token, scopes, modules = _parse_file_entry(entry)
+        except _BadFileEntry as problem:
+            raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: entry {number} {problem}") from None
+        if token in keys:
+            raise KeysFileError(f"CANOPY_API_KEYS_FILE {path}: entry {number} repeats an earlier token")
+        keys[token] = APIKey(
+            read=True,
+            write="write" in scopes,
+            admin="admin" in scopes,
+            modules=modules,
+            # Position identifies a file key in logs without revealing its token.
+            name=f"file:{number}",
+            token=token,
+            # Every facility, as for an env key: the static tier has no facility syntax.
+            facilities=frozenset({WILDCARD}),
+        )
+    logger.info(
+        "Registered %d API key(s) from CANOPY_API_KEYS_FILE (%d write, %d admin, %d module-scoped)",
+        len(keys),
+        sum(1 for key in keys.values() if key.write),
+        sum(1 for key in keys.values() if key.admin),
+        sum(1 for key in keys.values() if WILDCARD not in key.modules),
+    )
+    return FileKeyRegistry(keys)
+
+
+def static_key_registry(settings: Settings) -> KeyRegistry:
+    """The static key tier: the keys file when one is set, else ``CANOPY_API_KEYS``.
+
+    The file replaces the env value as the tier's source; it is never merged
+    with it, and a file that cannot supply a registry raises ``KeysFileError``.
+    """
+    if settings.api_keys_file:
+        return load_keys_file(settings.api_keys_file)
+    return EnvKeyRegistry(settings.api_keys)
 
 
 def has_database_tier() -> bool:
     """Whether this install has the database key tier, which also serves ``/v1/api-keys``.
 
-    The tier needs SQLAlchemy (the ``data`` extra). Without it the env keys stand
-    alone, and ``canopy.core.keys`` must never be imported.
+    The tier needs SQLAlchemy (the ``data`` extra). Without it the static tier
+    stands alone, and ``canopy.core.keys`` must never be imported.
     """
     return importlib.util.find_spec("sqlalchemy") is not None
 
 
 def build_key_registry(settings: Settings) -> KeyRegistry:
-    """The registry these settings describe: the env keys, with the database chained behind them.
+    """The registry these settings describe: the static tier, with the database chained behind it.
 
     The database chain of ``canopy.core.keys.registry`` is used when the install
-    has it (``has_database_tier``); otherwise the env keys stand alone, so an
+    has it (``has_database_tier``); otherwise the static tier stands alone, so an
     install without the ``data`` extra can still import ``canopy.main``.
     """
     if has_database_tier():
@@ -211,7 +339,7 @@ def build_key_registry(settings: Settings) -> KeyRegistry:
         from canopy.core.keys.registry import build_key_registry as build_database_chain
 
         return build_database_chain(settings)
-    return EnvKeyRegistry(settings.api_keys)
+    return static_key_registry(settings)
 
 
 _registry: KeyRegistry | None = None
@@ -378,6 +506,23 @@ async def ws_get_api_key(websocket: WebSocket) -> APIKey:
             reason=f"{ErrorCode.INSUFFICIENT_MODULE_ACCESS.value}: API key is not scoped to '{module}'",
         )
     return key
+
+
+def token_from_scope(scope: Scope) -> str | None:
+    """The API key token carried by a raw ASGI scope, or ``None``.
+
+    For code that runs outside dependency injection. Reads what the route
+    dependencies read: the ``X-API-Key`` header, and for a WebSocket also the
+    ``api_key`` query parameter (browsers cannot set headers on a handshake).
+    """
+    token = next(
+        (value.decode("latin-1") for name, value in scope.get("headers", ()) if name.lower() == b"x-api-key"),
+        None,
+    )
+    if not token and scope["type"] == "websocket":
+        query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+        token = next(iter(query.get("api_key", ())), None)
+    return token or None
 
 
 def ws_require_read_access(key: Annotated[APIKey, Security(ws_get_api_key)]) -> APIKey:
