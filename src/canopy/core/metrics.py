@@ -19,6 +19,7 @@ import asyncio
 
 from starlette.types import Send, Scope, ASGIApp, Message, Receive
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from starlette.routing import Mount
 
 from canopy.core.modules import module_for_app
 
@@ -129,7 +130,9 @@ def _method_label(scope: Scope) -> str:
 
 def _route_label(scope: Scope) -> str:
     route = scope.get("route")
-    if route is None:
+    # Starlette 1.7 (unlike 1.0) leaves the Mount itself here when no route
+    # inside the sub-app matched; for the route label that request is unmatched.
+    if route is None or isinstance(route, Mount):
         return UNMATCHED
     return getattr(route, "path_format", None) or getattr(route, "path", UNMATCHED)
 

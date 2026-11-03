@@ -1,4 +1,5 @@
 import logging
+import importlib.util
 from typing import Protocol, Annotated
 from dataclasses import field, dataclass
 
@@ -6,7 +7,7 @@ from fastapi import Request, Security, WebSocket, status
 from fastapi.security import APIKeyHeader
 from fastapi.exceptions import WebSocketException
 
-from canopy.core.config import get_settings
+from canopy.core.config import Settings, get_settings
 from canopy.core.errors import (
     ErrorCode,
     InvalidAPIKey,
@@ -189,6 +190,30 @@ class EnvKeyRegistry:
         return self._keys.get(token)
 
 
+def has_database_tier() -> bool:
+    """Whether this install has the database key tier, which also serves ``/v1/api-keys``.
+
+    The tier needs SQLAlchemy (the ``data`` extra). Without it the env keys stand
+    alone, and ``canopy.core.keys`` must never be imported.
+    """
+    return importlib.util.find_spec("sqlalchemy") is not None
+
+
+def build_key_registry(settings: Settings) -> KeyRegistry:
+    """The registry these settings describe: the env keys, with the database chained behind them.
+
+    The database chain of ``canopy.core.keys.registry`` is used when the install
+    has it (``has_database_tier``); otherwise the env keys stand alone, so an
+    install without the ``data`` extra can still import ``canopy.main``.
+    """
+    if has_database_tier():
+        # Imported here: the database chain must never load on a lean install.
+        from canopy.core.keys.registry import build_key_registry as build_database_chain
+
+        return build_database_chain(settings)
+    return EnvKeyRegistry(settings.api_keys)
+
+
 _registry: KeyRegistry | None = None
 
 
@@ -199,18 +224,14 @@ def bind_key_registry(registry: KeyRegistry) -> None:
 
 
 def get_registry() -> KeyRegistry:
-    """Return the bound registry, building the default from settings on first use.
+    """Return the bound registry, building it from settings on first use.
 
-    Shares `build_key_registry` with `canopy.main`'s lifespan (imported locally to
-    avoid a cycle: that module imports `APIKey`/`KeyRegistry` from here) so a
-    sub-app served without the lifespan running — a standalone mount, a
-    `TestClient` used without its context manager — still gets the full env +
-    database chain.
+    Shares `build_key_registry` with `canopy.main`'s lifespan, so a sub-app
+    served without the lifespan running (a standalone mount, a `TestClient` used
+    without its context manager) still gets the registry the settings describe.
     """
     global _registry
     if _registry is None:
-        from canopy.core.keys.registry import build_key_registry
-
         _registry = build_key_registry(get_settings())
     return _registry
 

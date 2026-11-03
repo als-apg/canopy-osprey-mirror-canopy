@@ -15,16 +15,27 @@ dependencies = [
     "numexpr>=2.8",
     "asteval>=1.0",
     "jsonschema>=4.21,<5",
+    "python-multipart>=0.0.32",
+    "markdown>=3.5",
+    # GET /metrics and the per-route HTTP middleware (canopy.core.metrics) run in every process.
+    "prometheus-client>=0.20",
+    "nh3>=0.2.18",
+]
+
+[project.optional-dependencies]
+# Postgres and the Redis job queue: needed by squirrel, magpie, jobs and the
+# canopy-worker. A deployment that selects none of them (CANOPY_MODULES) runs
+# without this extra.
+data = [
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.29",
     "alembic>=1.13",
     "arq>=0.26",
     "redis>=5.0",
+]
+# Legacy-screen conversion: needed by the converter module and its worker task.
+convert = [
     "PyDMConverter>=1.0.8",
-    "python-multipart>=0.0.32",
-    "markdown>=3.5",
-    "prometheus-client>=0.20",
-    "nh3>=0.2.18",
 ]
 
 [dependency-groups]
@@ -63,7 +74,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "UP"]
-ignore = ["E402", "E501"]
+# isinstance takes a tuple of types; the union form is slower and ruff has since removed the rule.
+ignore = ["E402", "E501", "UP038"]
 
 [tool.isort]
 profile = "black"
@@ -74,6 +86,9 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "perf: asserts timing bounds that hold on operator-class hardware; deselected on shared CI runners",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

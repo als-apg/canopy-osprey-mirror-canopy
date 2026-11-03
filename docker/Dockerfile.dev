@@ -13,13 +13,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-install-project
+# This image runs both the API with every module and the arq worker, so it
+# needs the database/queue packages (data) and the screen converter (convert).
+RUN uv sync --frozen --extra data --extra convert --no-install-project
 
 COPY src/ ./src/
 COPY .git/ ./.git/
 COPY scripts/ ./scripts/
 
-RUN uv sync --frozen
+RUN uv sync --frozen --extra data --extra convert
 
 ENV PATH="/app/.venv/bin:$PATH"
 

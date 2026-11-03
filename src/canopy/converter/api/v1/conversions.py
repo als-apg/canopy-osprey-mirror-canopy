@@ -3,9 +3,11 @@ from uuid import uuid4
 from typing import Literal, Annotated
 from pathlib import Path
 
-from fastapi import File, Form, Security, APIRouter, UploadFile
+from fastapi import File, Form, Request, Security, APIRouter, UploadFile
 from starlette.concurrency import run_in_threadpool
 
+from canopy.core.config import module_selected
+from canopy.core.errors import ModuleUnavailable
 from canopy.core.security import require_read_access
 from canopy.contracts.jobs import JobCreatedDTO
 from canopy.converter.errors import (
@@ -133,8 +135,27 @@ def _looks_like_archive(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04" or data[:2] == b"\x1f\x8b"
 
 
-@router.post("/conversions/batch", dependencies=[Security(require_read_access)])
+def _require_jobs(request: Request) -> None:
+    """Raise ``ModuleUnavailable`` (503) when this deployment runs without Jobs.
+
+    Batch conversion queues its work through the Jobs module. Where Jobs is not
+    mounted its gateway has no pool (and may not be importable at all), so the
+    batch routes refuse here, before touching it.
+    """
+    if not module_selected(request.scope, "jobs"):
+        raise ModuleUnavailable("Batch conversion needs the jobs module, which this deployment does not run")
+
+
+_MODULE_UNAVAILABLE_RESPONSE = {503: {"description": "The jobs module is not part of this deployment"}}
+
+
+@router.post(
+    "/conversions/batch",
+    dependencies=[Security(require_read_access)],
+    responses=_MODULE_UNAVAILABLE_RESPONSE,
+)
 async def create_batch_conversion(
+    request: Request,
     config: ConverterConfigDep,
     file: Annotated[UploadFile, File(description="A .zip or .tar.gz of legacy .edl/.ui screens")],
 ) -> JobCreatedDTO:
@@ -145,6 +166,8 @@ async def create_batch_conversion(
     ``succeeded`` rows carry an ``index``; fetch each screen's IR from
     ``GET /conversions/batch/{jobId}/screens/{index}``.
     """
+    _require_jobs(request)
+
     # Lazy import: keeps the converter loadable without Jobs and routes the
     # cross-module call through the public gateway only (mirrors get_formula_engine_validate).
     from canopy.jobs import gateway as jobs_gateway
@@ -161,13 +184,19 @@ async def create_batch_conversion(
     return JobCreatedDTO(job_id=job_id, status_url=f"/jobs/v1/{job_id}")
 
 
-@router.get("/conversions/batch/{job_id}/screens/{index}", dependencies=[Security(require_read_access)])
-async def get_batch_screen(job_id: str, index: int) -> BatchScreenDTO:
+@router.get(
+    "/conversions/batch/{job_id}/screens/{index}",
+    dependencies=[Security(require_read_access)],
+    responses=_MODULE_UNAVAILABLE_RESPONSE,
+)
+async def get_batch_screen(request: Request, job_id: str, index: int) -> BatchScreenDTO:
     """Fetch one converted screen's IR from a finished batch by its manifest ``index``.
 
     Diagnostics (warnings, unknown widgets) live in the batch manifest row; this
     returns just the Screen IR document the editor loads.
     """
+    _require_jobs(request)
+
     from canopy.jobs import gateway as jobs_gateway
     from canopy.converter.tasks import result_key
 

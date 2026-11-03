@@ -88,6 +88,23 @@ def _resolve_level(name: str) -> int | None:
     return logging.getLevelNamesMapping().get(name.strip().upper())
 
 
+def configured_level() -> int:
+    """The root level ``CANOPY_LOG_LEVEL`` names (``INFO`` when unset or unknown)."""
+    resolved = _resolve_level(get_settings().log_level)
+    return logging.INFO if resolved is None else resolved
+
+
+def make_formatter() -> logging.Formatter:
+    """The formatter ``CANOPY_LOG_FORMAT`` selects: JSON lines, or the text format.
+
+    Shared with processes that attach their own handler (the canopy_mcp server
+    logs to stderr) so every CANOPY process renders a record the same way.
+    """
+    if get_settings().log_format == "json":
+        return JsonFormatter()
+    return logging.Formatter(_TEXT_FORMAT)
+
+
 def configure_logging(level: int | None = None) -> None:
     """Configure application logging. Idempotent, safe to call repeatedly.
 
@@ -106,16 +123,11 @@ def configure_logging(level: int | None = None) -> None:
     settings = get_settings()
     unknown_level: str | None = None
     if level is None:
-        resolved = _resolve_level(settings.log_level)
-        if resolved is None:
+        level = configured_level()
+        if _resolve_level(settings.log_level) is None:
             unknown_level = settings.log_level
-        level = logging.INFO if resolved is None else resolved
 
-    formatter: logging.Formatter
-    if settings.log_format == "json":
-        formatter = JsonFormatter()
-    else:
-        formatter = logging.Formatter(_TEXT_FORMAT)
+    formatter = make_formatter()
 
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     file_error: OSError | None = None
