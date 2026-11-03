@@ -112,6 +112,7 @@ nav:
     - Custom archiver adapter: how_to/custom_archiver_adapter.md
     - Custom directory adapter: how_to/custom_directory_adapter.md
     - Custom EPICS backend: how_to/custom_epics_backend.md
+    - Panel-builder skill: how_to/panel_builder_skill.md
   - Observability:
     - observability/index.md
     - Setup guide: observability/setup_guide.md
