@@ -1,0 +1,191 @@
+{
+  "about": [
+    "Batch refusal vectors for no_window: the hub, at enqueue (set_workspace).",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Replay: a fresh hub minted with epoch e1 and an injectable clock at 0 ms; steps run in order. Window X's windowId is w-X.",
+    "Actors: window:A, window:B (a viewer window: its HTTP calls and its event stream), agent (the MCP tools, in process), clock.",
+    "window actions: claim {seq, shown, state, ifVacant?} (POST <ws>/claim; ifVacant = ?if_vacant=1); report {seq, shown, state} (PUT <ws>/active); goodbye (DELETE <ws>/active?window=w-X); connect (GET <ws>/events?window=w-X: status and the events delivered at once); receive (the events the open stream got since the last connect or receive, pings left out); disconnect (the stream ends); result {batch, seq, state, results} (POST <ws>/active/w-X/result).",
+    "agent actions: get_workspace; set_workspace {commands, base?, batch_id?, wait_s}. wait_s 0 returns at once. clock: advance {ms}.",
+    "state '$sample' is state.sample.json's state, '$empty' the empty state (tabs [], active null, layout null, zoom {}, instances {}, toolMru [], labels {}).",
+    "expect matches partially: an object matches when every key it names matches (recursively); a list matches element by element and has the same length; other values are equal. An absent expect asserts nothing.",
+    "Hub rules the steps pin: ids b-e1-<n> and c-e1-<n> count from 1 and only an accepted batch mints them; a refused batch has id null and results []; a pending batch reports results []; a window holds at most one delivered, unresolved batch and the next is delivered when it resolves; a delivered batch's deadline is delivery + 10 s, after which its unresolved commands are lost; an undelivered batch is delivered only before enqueue + 10 s and is expired from then on; window_gone 3 s after the stream ends without a new one, or at once when another window claims; a window's new stream replaces its old one, without window_gone and without delivering a delivered batch again; the hub checks base.window, never base.seq.",
+    "Each case runs on a fresh hub; its steps start with the setup they need (most: window A claims, shown, and connects).",
+    "A refused batch returns the current document beside batch {id: null, status: refused, reason, results: []}."
+  ],
+  "reason": "no_window",
+  "cases": [
+    {
+      "name": "no window has claimed",
+      "steps": [
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "no_window",
+              "results": []
+            },
+            "activeWindow": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "the active window's stream ended 3 s ago",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "disconnect"
+        },
+        {
+          "actor": "clock",
+          "do": "advance",
+          "ms": 3000
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "no_window",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a fresh claim binds inside 3 s before its stream opens",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "clock",
+          "do": "advance",
+          "ms": 2000
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              },
+              {
+                "event": "batch",
+                "data": {
+                  "batch": "b-e1-1",
+                  "window": "w-A",
+                  "commands": [
+                    {
+                      "id": "c-e1-1",
+                      "cmd": "focus",
+                      "args": {
+                        "key": "library/linac/LinacView?SR=1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "about": [
+    "Query vectors for the trace tool.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Every query is copied verbatim from react-trace's query tests at d52a7b9 (test: '<describe> > <it>'); a query a test builds from constants or a template is written out as the string the test builds.",
+    "verdict is what a command carrying the query as open_tool.query or set_query.query gets:",
+    "invalid_command: the hub refuses the batch (the query is over 4096 UTF-8 bytes; the hub's only query bound).",
+    "invalid_args: the viewer rejects the command (the tool's query grammar, its PV cap, or Trace's range).",
+    "accepted: the command is applied; the tool's page falls back to its default for any key it cannot read.",
+    "The viewer's rules: the query is decodable (every '&'-separated key and value survives decodeURIComponent); the distinct values of the tool's PV key (trace pv, correlation y, waveform pv; read as URLSearchParams does, '+' a space), blank ones not counted, number at most maxPvs.",
+    "Trace: maxPvs 12; at least one key is pv or range; a range, when present, is one react-trace reads: -<n><m|h|d|w|M> or custom with a local from (YYYY-MM-DDTHH:MM[:SS], no zone), an optional to of the same form, from not after to."
+  ],
+  "tool": "trace",
+  "source": "react-trace d52a7b9 src/embed/query.test.ts",
+  "cases": [
+    {
+      "name": "preset literal",
+      "test": "parseTraceQuery > parses the preset literal",
+      "query": "pv=XFER:DIAG:BPM:01:POSITION:X&pv=XFER:DIAG:BPM:02:POSITION:X&pv=XFER:DIAG:BPM:03:POSITION:X&range=-1h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "leading question mark",
+      "test": "parseTraceQuery > tolerates a leading \"?\"",
+      "query": "?pv=XFER:DIAG:BPM:01:POSITION:X&pv=XFER:DIAG:BPM:02:POSITION:X&pv=XFER:DIAG:BPM:03:POSITION:X&range=-1h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "url-encoded pv names",
+      "test": "parseTraceQuery > decodes URL-encoded PV names",
+      "query": "pv=A%20B%26C&pv=D%3DE&range=-4h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "relative range -30m",
+      "test": "parseTraceQuery > accepts any relative range resolveTimeWindow understands",
+      "query": "pv=A&range=-30m",
+      "verdict": "accepted"
+    },
+    {
+      "name": "relative range -1.5h",
+      "test": "parseTraceQuery > accepts any relative range resolveTimeWindow understands",
+      "query": "pv=A&range=-1.5h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "relative range -2d",
+      "test": "parseTraceQuery > accepts any relative range resolveTimeWindow understands",
+      "query": "pv=A&range=-2d",
+      "verdict": "accepted"
+    },
+    {
+      "name": "relative range -1w",
+      "test": "parseTraceQuery > accepts any relative range resolveTimeWindow understands",
+      "query": "pv=A&range=-1w",
+      "verdict": "accepted"
+    },
+    {
+      "name": "relative range -1M",
+      "test": "parseTraceQuery > accepts any relative range resolveTimeWindow understands",
+      "query": "pv=A&range=-1M",
+      "verdict": "accepted"
+    },
+    {
+      "name": "empty and whitespace pv names",
+      "test": "parseTraceQuery > skips empty and whitespace PV names",
+      "query": "pv=&pv=%20%20&pv=A&pv=+&range=-1h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "missing range",
+      "test": "parseTraceQuery > defaults a missing range to -1h without warning",
+      "query": "pv=A",
+      "verdict": "accepted"
+    },
+    {
+      "name": "empty query",
+      "test": "parseTraceQuery > defaults a missing range to -1h without warning",
+      "query": "",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "custom window with from and to",
+      "test": "parseTraceQuery > reads a custom window with from and to verbatim",
+      "query": "pv=A&range=custom&from=2026-09-30T10:00&to=2026-09-30T11:30",
+      "verdict": "accepted"
+    },
+    {
+      "name": "custom window without to",
+      "test": "parseTraceQuery > reads a custom window without to as \"until now\"",
+      "query": "pv=A&range=custom&from=2026-09-30T10:00",
+      "verdict": "accepted"
+    },
+    {
+      "name": "custom window with an empty to",
+      "test": "parseTraceQuery > treats an empty to as absent",
+      "query": "range=custom&from=2026-09-30T10:00&to=",
+      "verdict": "accepted"
+    },
+    {
+      "name": "from on a relative range",
+      "test": "parseTraceQuery > ignores from/to on a relative range",
+      "query": "range=-4h&from=2026-09-30T10:00",
+      "verdict": "accepted"
+    },
+    {
+      "name": "bad range: unknown preset",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=yesterday",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: missing minus",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=1h",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: empty range",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: custom without from",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=custom",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: custom with unparsable from",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=custom&from=soon",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: custom with a zone",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=custom&from=2026-09-30T10:00Z",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: custom with unparsable to",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=custom&from=2026-09-30T10:00&to=later",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "bad range: custom with from after to",
+      "test": "parseTraceQuery > bad range (%s) warns once and yields -1h",
+      "query": "pv=A&range=custom&from=2026-09-30T12:00&to=2026-09-30T11:00",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "over 4 KB",
+      "test": "parseTraceQuery > rejects a query over 4 KB",
+      "query": "pv=SR:BPM:000:X&pv=SR:BPM:001:X&pv=SR:BPM:002:X&pv=SR:BPM:003:X&pv=SR:BPM:004:X&pv=SR:BPM:005:X&pv=SR:BPM:006:X&pv=SR:BPM:007:X&pv=SR:BPM:008:X&pv=SR:BPM:009:X&pv=SR:BPM:010:X&pv=SR:BPM:011:X&pv=SR:BPM:012:X&pv=SR:BPM:013:X&pv=SR:BPM:014:X&pv=SR:BPM:015:X&pv=SR:BPM:016:X&pv=SR:BPM:017:X&pv=SR:BPM:018:X&pv=SR:BPM:019:X&pv=SR:BPM:020:X&pv=SR:BPM:021:X&pv=SR:BPM:022:X&pv=SR:BPM:023:X&pv=SR:BPM:024:X&pv=SR:BPM:025:X&pv=SR:BPM:026:X&pv=SR:BPM:027:X&pv=SR:BPM:028:X&pv=SR:BPM:029:X&pv=SR:BPM:030:X&pv=SR:BPM:031:X&pv=SR:BPM:032:X&pv=SR:BPM:033:X&pv=SR:BPM:034:X&pv=SR:BPM:035:X&pv=SR:BPM:036:X&pv=SR:BPM:037:X&pv=SR:BPM:038:X&pv=SR:BPM:039:X&pv=SR:BPM:040:X&pv=SR:BPM:041:X&pv=SR:BPM:042:X&pv=SR:BPM:043:X&pv=SR:BPM:044:X&pv=SR:BPM:045:X&pv=SR:BPM:046:X&pv=SR:BPM:047:X&pv=SR:BPM:048:X&pv=SR:BPM:049:X&pv=SR:BPM:050:X&pv=SR:BPM:051:X&pv=SR:BPM:052:X&pv=SR:BPM:053:X&pv=SR:BPM:054:X&pv=SR:BPM:055:X&pv=SR:BPM:056:X&pv=SR:BPM:057:X&pv=SR:BPM:058:X&pv=SR:BPM:059:X&pv=SR:BPM:060:X&pv=SR:BPM:061:X&pv=SR:BPM:062:X&pv=SR:BPM:063:X&pv=SR:BPM:064:X&pv=SR:BPM:065:X&pv=SR:BPM:066:X&pv=SR:BPM:067:X&pv=SR:BPM:068:X&pv=SR:BPM:069:X&pv=SR:BPM:070:X&pv=SR:BPM:071:X&pv=SR:BPM:072:X&pv=SR:BPM:073:X&pv=SR:BPM:074:X&pv=SR:BPM:075:X&pv=SR:BPM:076:X&pv=SR:BPM:077:X&pv=SR:BPM:078:X&pv=SR:BPM:079:X&pv=SR:BPM:080:X&pv=SR:BPM:081:X&pv=SR:BPM:082:X&pv=SR:BPM:083:X&pv=SR:BPM:084:X&pv=SR:BPM:085:X&pv=SR:BPM:086:X&pv=SR:BPM:087:X&pv=SR:BPM:088:X&pv=SR:BPM:089:X&pv=SR:BPM:090:X&pv=SR:BPM:091:X&pv=SR:BPM:092:X&pv=SR:BPM:093:X&pv=SR:BPM:094:X&pv=SR:BPM:095:X&pv=SR:BPM:096:X&pv=SR:BPM:097:X&pv=SR:BPM:098:X&pv=SR:BPM:099:X&pv=SR:BPM:100:X&pv=SR:BPM:101:X&pv=SR:BPM:102:X&pv=SR:BPM:103:X&pv=SR:BPM:104:X&pv=SR:BPM:105:X&pv=SR:BPM:106:X&pv=SR:BPM:107:X&pv=SR:BPM:108:X&pv=SR:BPM:109:X&pv=SR:BPM:110:X&pv=SR:BPM:111:X&pv=SR:BPM:112:X&pv=SR:BPM:113:X&pv=SR:BPM:114:X&pv=SR:BPM:115:X&pv=SR:BPM:116:X&pv=SR:BPM:117:X&pv=SR:BPM:118:X&pv=SR:BPM:119:X&pv=SR:BPM:120:X&pv=SR:BPM:121:X&pv=SR:BPM:122:X&pv=SR:BPM:123:X&pv=SR:BPM:124:X&pv=SR:BPM:125:X&pv=SR:BPM:126:X&pv=SR:BPM:127:X&pv=SR:BPM:128:X&pv=SR:BPM:129:X&pv=SR:BPM:130:X&pv=SR:BPM:131:X&pv=SR:BPM:132:X&pv=SR:BPM:133:X&pv=SR:BPM:134:X&pv=SR:BPM:135:X&pv=SR:BPM:136:X&pv=SR:BPM:137:X&pv=SR:BPM:138:X&pv=SR:BPM:139:X&pv=SR:BPM:140:X&pv=SR:BPM:141:X&pv=SR:BPM:142:X&pv=SR:BPM:143:X&pv=SR:BPM:144:X&pv=SR:BPM:145:X&pv=SR:BPM:146:X&pv=SR:BPM:147:X&pv=SR:BPM:148:X&pv=SR:BPM:149:X&pv=SR:BPM:150:X&pv=SR:BPM:151:X&pv=SR:BPM:152:X&pv=SR:BPM:153:X&pv=SR:BPM:154:X&pv=SR:BPM:155:X&pv=SR:BPM:156:X&pv=SR:BPM:157:X&pv=SR:BPM:158:X&pv=SR:BPM:159:X&pv=SR:BPM:160:X&pv=SR:BPM:161:X&pv=SR:BPM:162:X&pv=SR:BPM:163:X&pv=SR:BPM:164:X&pv=SR:BPM:165:X&pv=SR:BPM:166:X&pv=SR:BPM:167:X&pv=SR:BPM:168:X&pv=SR:BPM:169:X&pv=SR:BPM:170:X&pv=SR:BPM:171:X&pv=SR:BPM:172:X&pv=SR:BPM:173:X&pv=SR:BPM:174:X&pv=SR:BPM:175:X&pv=SR:BPM:176:X&pv=SR:BPM:177:X&pv=SR:BPM:178:X&pv=SR:BPM:179:X&pv=SR:BPM:180:X&pv=SR:BPM:181:X&pv=SR:BPM:182:X&pv=SR:BPM:183:X&pv=SR:BPM:184:X&pv=SR:BPM:185:X&pv=SR:BPM:186:X&pv=SR:BPM:187:X&pv=SR:BPM:188:X&pv=SR:BPM:189:X&pv=SR:BPM:190:X&pv=SR:BPM:191:X&pv=SR:BPM:192:X&pv=SR:BPM:193:X&pv=SR:BPM:194:X&pv=SR:BPM:195:X&pv=SR:BPM:196:X&pv=SR:BPM:197:X&pv=SR:BPM:198:X&pv=SR:BPM:199:X&pv=SR:BPM:200:X&pv=SR:BPM:201:X&pv=SR:BPM:202:X&pv=SR:BPM:203:X&pv=SR:BPM:204:X&pv=SR:BPM:205:X&pv=SR:BPM:206:X&pv=SR:BPM:207:X&pv=SR:BPM:208:X&pv=SR:BPM:209:X&pv=SR:BPM:210:X&pv=SR:BPM:211:X&pv=SR:BPM:212:X&pv=SR:BPM:213:X&pv=SR:BPM:214:X&pv=SR:BPM:215:X&pv=SR:BPM:216:X&pv=SR:BPM:217:X&pv=SR:BPM:218:X&pv=SR:BPM:219:X&pv=SR:BPM:220:X&pv=SR:BPM:221:X&pv=SR:BPM:222:X&pv=SR:BPM:223:X&pv=SR:BPM:224:X&pv=SR:BPM:225:X&pv=SR:BPM:226:X&pv=SR:BPM:227:X&pv=SR:BPM:228:X&pv=SR:BPM:229:X&pv=SR:BPM:230:X&pv=SR:BPM:231:X&pv=SR:BPM:232:X&pv=SR:BPM:233:X&pv=SR:BPM:234:X&pv=SR:BPM:235:X&pv=SR:BPM:236:X&pv=SR:BPM:237:X&pv=SR:BPM:238:X&pv=SR:BPM:239:X&pv=SR:BPM:240:X&pv=SR:BPM:241:X&pv=SR:BPM:242:X&pv=SR:BPM:243:X&pv=SR:BPM:244:X&pv=SR:BPM:245:X&pv=SR:BPM:246:X&pv=SR:BPM:247:X&pv=SR:BPM:248:X&pv=SR:BPM:249:X&pv=SR:BPM:250:X&pv=SR:BPM:251:X&pv=SR:BPM:252:X&pv=SR:BPM:253:X&pv=SR:BPM:254:X&pv=SR:BPM:255:X&pv=SR:BPM:256:X&pv=SR:BPM:257:X&pv=SR:BPM:258:X&pv=SR:BPM:259:X&pv=SR:BPM:260:X&pv=SR:BPM:261:X&pv=SR:BPM:262:X&pv=SR:BPM:263:X&pv=SR:BPM:264:X&pv=SR:BPM:265:X&pv=SR:BPM:266:X&pv=SR:BPM:267:X&pv=SR:BPM:268:X&pv=SR:BPM:269:X&pv=SR:BPM:270:X&pv=SR:BPM:271:X&pv=SR:BPM:272:X&pv=SR:BPM:273:X&pv=SR:BPM:274:X&pv=SR:BPM:275:X&pv=SR:BPM:276:X&pv=SR:BPM:277:X&pv=SR:BPM:278:X&pv=SR:BPM:279:X&pv=SR:BPM:280:X&pv=SR:BPM:281:X&pv=SR:BPM:282:X&pv=SR:BPM:283:X&pv=SR:BPM:284:X&pv=SR:BPM:285:X&pv=SR:BPM:286:X&pv=SR:BPM:287:X&pv=SR:BPM:288:X&pv=SR:BPM:289:X&pv=SR:BPM:290:X&pv=SR:BPM:291:X&pv=SR:BPM:292:X&pv=SR:BPM:293:X&pv=SR:BPM:294:X&pv=SR:BPM:295:X&pv=SR:BPM:296:X&pv=SR:BPM:297:X&pv=SR:BPM:298:X&pv=SR:BPM:299:X&pv=SR:BPM:300:X&pv=SR:BPM:301:X&pv=SR:BPM:302:X&pv=SR:BPM:303:X&pv=SR:BPM:304:X&pv=SR:BPM:305:X&pv=SR:BPM:306:X&pv=SR:BPM:307:X&pv=SR:BPM:308:X&pv=SR:BPM:309:X&pv=SR:BPM:310:X&pv=SR:BPM:311:X&pv=SR:BPM:312:X&pv=SR:BPM:313:X&pv=SR:BPM:314:X&pv=SR:BPM:315:X&pv=SR:BPM:316:X&pv=SR:BPM:317:X&pv=SR:BPM:318:X&pv=SR:BPM:319:X&pv=SR:BPM:320:X&pv=SR:BPM:321:X&pv=SR:BPM:322:X&pv=SR:BPM:323:X&pv=SR:BPM:324:X&pv=SR:BPM:325:X&pv=SR:BPM:326:X&pv=SR:BPM:327:X&pv=SR:BPM:328:X&pv=SR:BPM:329:X&pv=SR:BPM:330:X&pv=SR:BPM:331:X&pv=SR:BPM:332:X&pv=SR:BPM:333:X&pv=SR:BPM:334:X&pv=SR:BPM:335:X&pv=SR:BPM:336:X&pv=SR:BPM:337:X&pv=SR:BPM:338:X&pv=SR:BPM:339:X&pv=SR:BPM:340:X&pv=SR:BPM:341:X&pv=SR:BPM:342:X&pv=SR:BPM:343:X&pv=SR:BPM:344:X&pv=SR:BPM:345:X&pv=SR:BPM:346:X&pv=SR:BPM:347:X&pv=SR:BPM:348:X&pv=SR:BPM:349:X&pv=SR:BPM:350:X&pv=SR:BPM:351:X&pv=SR:BPM:352:X&pv=SR:BPM:353:X&pv=SR:BPM:354:X&pv=SR:BPM:355:X&pv=SR:BPM:356:X&pv=SR:BPM:357:X&pv=SR:BPM:358:X&pv=SR:BPM:359:X&pv=SR:BPM:360:X&pv=SR:BPM:361:X&pv=SR:BPM:362:X&pv=SR:BPM:363:X&pv=SR:BPM:364:X&pv=SR:BPM:365:X&pv=SR:BPM:366:X&pv=SR:BPM:367:X&pv=SR:BPM:368:X&pv=SR:BPM:369:X&pv=SR:BPM:370:X&pv=SR:BPM:371:X&pv=SR:BPM:372:X&pv=SR:BPM:373:X&pv=SR:BPM:374:X&pv=SR:BPM:375:X&pv=SR:BPM:376:X&pv=SR:BPM:377:X&pv=SR:BPM:378:X&pv=SR:BPM:379:X&pv=SR:BPM:380:X&pv=SR:BPM:381:X&pv=SR:BPM:382:X&pv=SR:BPM:383:X&pv=SR:BPM:384:X&pv=SR:BPM:385:X&pv=SR:BPM:386:X&pv=SR:BPM:387:X&pv=SR:BPM:388:X&pv=SR:BPM:389:X&pv=SR:BPM:390:X&pv=SR:BPM:391:X&pv=SR:BPM:392:X&pv=SR:BPM:393:X&pv=SR:BPM:394:X&pv=SR:BPM:395:X&pv=SR:BPM:396:X&pv=SR:BPM:397:X&pv=SR:BPM:398:X&pv=SR:BPM:399:X&range=-4h",
+      "verdict": "invalid_command"
+    },
+    {
+      "name": "exactly 4 KB",
+      "test": "parseTraceQuery > accepts a query of exactly 4 KB",
+      "query": "pv=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&range=-1h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "round trip: custom with to",
+      "test": "round trip parse(serialize(parse(x))) === parse(x) > custom with to",
+      "query": "pv=A&pv=B&range=custom&from=2026-09-30T10:00&to=2026-09-30T11:30",
+      "verdict": "accepted"
+    },
+    {
+      "name": "round trip: custom with seconds",
+      "test": "round trip parse(serialize(parse(x))) === parse(x) > custom with seconds",
+      "query": "pv=A&range=custom&from=2026-09-30T10:00:15&to=2026-09-30T10:05:45",
+      "verdict": "accepted"
+    },
+    {
+      "name": "round trip: encoded names",
+      "test": "round trip parse(serialize(parse(x))) === parse(x) > encoded names",
+      "query": "pv=A%20B%26C&pv=%E2%9C%93&range=-1.5h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "round trip: blanks skipped",
+      "test": "round trip parse(serialize(parse(x))) === parse(x) > blanks skipped",
+      "query": "pv=&pv=A&pv=%20&range=-30m",
+      "verdict": "accepted"
+    },
+    {
+      "name": "round trip: bad range",
+      "test": "round trip parse(serialize(parse(x))) === parse(x) > bad range",
+      "query": "pv=A&range=bogus",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "unreadable plot",
+      "test": "the plot key > is ignored with one warning when unreadable, keeping PVs and range",
+      "query": "pv=A&range=-2h&plot=%7Bnope",
+      "verdict": "accepted"
+    }
+  ]
+}

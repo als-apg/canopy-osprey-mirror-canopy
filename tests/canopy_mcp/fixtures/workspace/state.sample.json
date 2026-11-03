@@ -1,0 +1,97 @@
+{
+  "windowId": "w-A",
+  "seq": 41,
+  "shown": true,
+  "state": {
+    "tabs": [
+      {
+        "key": "library/linac/LinacView?SR=1",
+        "kind": "screen",
+        "canBack": true,
+        "canForward": false
+      },
+      {
+        "key": "library/xfer/TransferView",
+        "kind": "screen",
+        "canBack": false,
+        "canForward": false
+      },
+      {
+        "key": "@trace",
+        "kind": "tool",
+        "canBack": false,
+        "canForward": false
+      },
+      {
+        "key": "library/sr/overview",
+        "kind": "screen",
+        "canBack": false,
+        "canForward": false
+      }
+    ],
+    "active": "library/linac/LinacView?SR=1",
+    "layout": {
+      "split": "row",
+      "items": [
+        {
+          "tile": "t1",
+          "tabs": [
+            "library/linac/LinacView?SR=1",
+            "library/sr/overview"
+          ],
+          "showing": "library/linac/LinacView?SR=1",
+          "size": 0.6
+        },
+        {
+          "split": "column",
+          "items": [
+            {
+              "tile": "t2",
+              "tabs": [
+                "library/xfer/TransferView"
+              ],
+              "showing": "library/xfer/TransferView"
+            },
+            {
+              "tile": "t3",
+              "tabs": [
+                "@trace"
+              ],
+              "showing": "@trace"
+            }
+          ],
+          "size": 0.4
+        }
+      ]
+    },
+    "zoom": {
+      "library/linac/LinacView": {
+        "mode": "fit"
+      },
+      "library/xfer/TransferView": {
+        "mode": "manual",
+        "percent": 75
+      },
+      "library/sr/overview": {
+        "mode": "fit"
+      }
+    },
+    "instances": {
+      "@trace": {
+        "tool": "trace",
+        "n": 1,
+        "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+        "view": null
+      }
+    },
+    "toolMru": [
+      "@trace"
+    ],
+    "labels": {
+      "library/linac/LinacView?SR=1": "LINAC View",
+      "library/xfer/TransferView": "XFER View",
+      "@trace": "Data Browser",
+      "library/sr/overview": "Storage Ring"
+    }
+  }
+}

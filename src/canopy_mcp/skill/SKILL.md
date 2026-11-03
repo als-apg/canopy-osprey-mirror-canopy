@@ -166,8 +166,20 @@ No tool writes to a PV. `read_pv` and `search_pvs` only read.
    clipped text.
 6. Make small changes with `patch_node`, `add_node` and `remove_node`. Take a
    screenshot after each round of edits.
-7. Show the user the screen: give the user the `url` from the result. It
-   opens the screen in the viewer.
+7. Show the user the screen. With a `set_workspace` tool, send
+   `set_workspace` with `[{"cmd": "open", "args": {"ref": <ref>}}]`, the
+   `ref` from the result; the `canopy-operator` skill says how. On
+   `no_window` or `window_hidden`, open the host's Canopy panel without a
+   url and send it again, once; with no host, ask the user to open or focus
+   the Canopy viewer. Without a `set_workspace` tool, or when that did not
+   work, give the user the `url` from the result. It opens the screen in the
+   viewer.
+
+When the user wants several screens shown together in a given arrangement
+(two screens side by side, one screen as tabs with several macro sets, a
+Trace below a screen), open them with one `open_set` command with
+`as: "layout"` instead of one `open` each; "Load an arrangement in one call"
+in the `canopy-operator` skill gives the form.
 
 A finding has `nodeId`, `code`, `path` (a JSON pointer into the document),
 `severity` and `message`. A finding inside an embedded screen also has

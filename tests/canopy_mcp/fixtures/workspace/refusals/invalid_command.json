@@ -1,0 +1,5034 @@
+{
+  "about": [
+    "Batch refusal vectors for invalid_command: the hub, at enqueue (set_workspace).",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Replay: a fresh hub minted with epoch e1 and an injectable clock at 0 ms; steps run in order. Window X's windowId is w-X.",
+    "Actors: window:A, window:B (a viewer window: its HTTP calls and its event stream), agent (the MCP tools, in process), clock.",
+    "window actions: claim {seq, shown, state, ifVacant?} (POST <ws>/claim; ifVacant = ?if_vacant=1); report {seq, shown, state} (PUT <ws>/active); goodbye (DELETE <ws>/active?window=w-X); connect (GET <ws>/events?window=w-X: status and the events delivered at once); receive (the events the open stream got since the last connect or receive, pings left out); disconnect (the stream ends); result {batch, seq, state, results} (POST <ws>/active/w-X/result).",
+    "agent actions: get_workspace; set_workspace {commands, base?, batch_id?, wait_s}. wait_s 0 returns at once. clock: advance {ms}.",
+    "state '$sample' is state.sample.json's state, '$empty' the empty state (tabs [], active null, layout null, zoom {}, instances {}, toolMru [], labels {}).",
+    "expect matches partially: an object matches when every key it names matches (recursively); a list matches element by element and has the same length; other values are equal. An absent expect asserts nothing.",
+    "Hub rules the steps pin: ids b-e1-<n> and c-e1-<n> count from 1 and only an accepted batch mints them; a refused batch has id null and results []; a pending batch reports results []; a window holds at most one delivered, unresolved batch and the next is delivered when it resolves; a delivered batch's deadline is delivery + 10 s, after which its unresolved commands are lost; an undelivered batch is delivered only before enqueue + 10 s and is expired from then on; window_gone 3 s after the stream ends without a new one, or at once when another window claims; a window's new stream replaces its old one, without window_gone and without delivering a delivered batch again; the hub checks base.window, never base.seq.",
+    "Each case runs on a fresh hub; its steps start with the setup they need (most: window A claims, shown, and connects).",
+    "A refused batch returns the current document beside batch {id: null, status: refused, reason, results: []}.",
+    "The hub owns every syntactic bound, one case or more per bound (bound names it): command-count (1..20), command-shape ({cmd, args?} only, args an object), verb-enum, as-enum, step-enum, tool-enum, arg-type, arg-required, arg-unknown, arg-exclusive (zoom: one of step and percent; open_set: layout exactly with as layout), source-shape ({new: {ref, macros?} | {tool, query?}} | {tab: key} | {tile: id}), target-shape ({tile, zone: centre} | {tile, zone: tab, index >= 0} | {tile, edge: left|right|top|bottom} | {border: {tile, side}} | {outer: side}), members-shape (1..50 members, each {ref, macros?} or {tool, query?}), layout-shape (C-LAYOUT collection form over the member indexes, every member placed once, no depth cap, at most 32 KiB), macro-count (<= 16), macro-length (values <= 64), macro-charset (values printable ASCII 0x21-0x7E, names non-empty), query-bytes (<= 4096 UTF-8 bytes), zoom-percent (integer 10..400), base-shape ({window: string, seq: integer}), base-required (a batch with close_tile, or a drop from a tile, onto a tile or onto a border, carries base), batch-id-type. A case whose expect is pending is the accepted side of its bound."
+  ],
+  "reason": "invalid_command",
+  "cases": [
+    {
+      "name": "no commands",
+      "bound": "command-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 commands",
+      "bound": "command-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 commands are accepted",
+      "bound": "command-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            },
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unknown verb",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "navigate",
+              "args": {
+                "url": "https://example.org/"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a command without cmd",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the retired verb place",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "place",
+              "args": {
+                "key": "library/sr/overview",
+                "edge": "below"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the retired verb remove_tile",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "remove_tile",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the retired verb close (now close_tab)",
+      "bound": "verb-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "close",
+              "args": {
+                "key": "library/xfer/TransferView"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a command with a key beside cmd and args",
+      "bound": "command-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              },
+              "id": "c-x"
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "args that are not an object",
+      "bound": "command-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": [
+                "library/linac/LinacView?SR=1"
+              ]
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an as outside tabs/side/layout",
+      "bound": "as-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_collection",
+              "args": {
+                "ref": "facility:injector",
+                "as": "grid"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the retired mode argument",
+      "bound": "arg-unknown",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "mode": "polite"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the retired boolean layout argument of open_collection",
+      "bound": "arg-unknown",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_collection",
+              "args": {
+                "ref": "facility:injector",
+                "layout": true
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an argument the verb does not take",
+      "bound": "arg-unknown",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1",
+                "url": "https://example.org/"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a zoom step outside in/out/fit/actual",
+      "bound": "step-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "step": "sideways"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a tool outside trace/correlation/waveform",
+      "bound": "tool-enum",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_tool",
+              "args": {
+                "tool": "scope"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a key that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": 42
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ref that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": [
+                  "library/linac/LinacView"
+                ]
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "macros that are not an object",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": [
+                  "SR=1"
+                ]
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": 1
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a query that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "set_query",
+              "args": {
+                "key": "@trace",
+                "query": {
+                  "pv": "A"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a reopen id that is not a string",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "reopen",
+              "args": {
+                "id": 1
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a percent that is not an integer",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "percent": 12.5
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a percent that is a boolean",
+      "bound": "arg-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "percent": true
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "focus without key",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {}
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open without ref",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "macros": {
+                  "SR": "1"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "drop without target",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "zoom without step or percent",
+      "bound": "arg-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "zoom with both step and percent",
+      "bound": "arg-exclusive",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "step": "in",
+                "percent": 150
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open_set with a layout but as tabs",
+      "bound": "arg-exclusive",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/s3-promo/promotion"
+                  }
+                ],
+                "as": "tabs",
+                "layout": {
+                  "tabs": [
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open_set as layout without a layout",
+      "bound": "arg-exclusive",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/s3-promo/promotion"
+                  }
+                ],
+                "as": "layout"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 macros",
+      "bound": "macro-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "M00": "v",
+                  "M01": "v",
+                  "M02": "v",
+                  "M03": "v",
+                  "M04": "v",
+                  "M05": "v",
+                  "M06": "v",
+                  "M07": "v",
+                  "M08": "v",
+                  "M09": "v",
+                  "M10": "v",
+                  "M11": "v",
+                  "M12": "v",
+                  "M13": "v",
+                  "M14": "v",
+                  "M15": "v",
+                  "M16": "v"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 macros are accepted",
+      "bound": "macro-count",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "M00": "v",
+                  "M01": "v",
+                  "M02": "v",
+                  "M03": "v",
+                  "M04": "v",
+                  "M05": "v",
+                  "M06": "v",
+                  "M07": "v",
+                  "M08": "v",
+                  "M09": "v",
+                  "M10": "v",
+                  "M11": "v",
+                  "M12": "v",
+                  "M13": "v",
+                  "M14": "v",
+                  "M15": "v"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value of 65 characters",
+      "bound": "macro-length",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value of 64 characters is accepted",
+      "bound": "macro-length",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value with a space",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "1 2"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value with a control character",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "1\u0007"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a macro value outside ASCII",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "SR": "\u00e9"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an empty macro name",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "": "1"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "printable punctuation in a macro value is accepted",
+      "bound": "macro-charset",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open",
+              "args": {
+                "ref": "library/s3-promo/promotion",
+                "macros": {
+                  "PV": "SR01C:BPM1:X&y=1"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a query of 4097 bytes",
+      "bound": "query-bytes",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_tool",
+              "args": {
+                "tool": "trace",
+                "query": "pv=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a query of 4096 bytes is accepted",
+      "bound": "query-bytes",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_tool",
+              "args": {
+                "tool": "trace",
+                "query": "pv=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a multi-byte query over 4096 bytes",
+      "bound": "query-bytes",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "set_query",
+              "args": {
+                "key": "@trace",
+                "query": "pv=\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 9",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "percent": 9
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 401",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "percent": 401
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 10 is accepted",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "percent": 10
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "percent 400 is accepted",
+      "bound": "zoom-percent",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "zoom",
+              "args": {
+                "key": "library/xfer/TransferView",
+                "percent": 400
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "base without seq",
+      "bound": "base-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A"
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "base with a seq that is not an integer",
+      "bound": "base-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": "41"
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a batch_id that is not a string",
+      "bound": "batch-id-type",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "library/linac/LinacView?SR=1"
+              }
+            }
+          ],
+          "batch_id": 7,
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a new source that is a bare key",
+      "bound": "source-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "new": "library/s3-promo/promotion"
+                },
+                "target": {
+                  "outer": "left"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a source naming two kinds",
+      "bound": "source-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace",
+                  "tile": "t3"
+                },
+                "target": {
+                  "outer": "left"
+                }
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a new member with both ref and tool",
+      "bound": "source-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "new": {
+                    "ref": "library/s3-promo/promotion",
+                    "tool": "trace"
+                  }
+                },
+                "target": {
+                  "outer": "left"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an empty tab key",
+      "bound": "source-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": ""
+                },
+                "target": {
+                  "outer": "left"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a zone outside centre/tab",
+      "bound": "target-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "tile": "t1",
+                  "zone": "middle"
+                }
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a tab zone without an integer index",
+      "bound": "target-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "tile": "t1",
+                  "zone": "tab",
+                  "index": "1"
+                }
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an edge from the retired place vocabulary",
+      "bound": "target-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "tile": "t1",
+                  "edge": "above"
+                }
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a border without its side",
+      "bound": "target-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "border": {
+                    "tile": "t2"
+                  }
+                }
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an outer edge with a tile",
+      "bound": "target-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "outer": "top",
+                  "tile": "t1"
+                }
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an outer edge needs no tile and no base",
+      "bound": "target-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "outer": "top"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an empty member list",
+      "bound": "members-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [],
+                "as": "tabs"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a member that is a bare key",
+      "bound": "members-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  "library/s3-promo/promotion"
+                ],
+                "as": "side"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a member with an unknown tool",
+      "bound": "members-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "tool": "scope"
+                  }
+                ],
+                "as": "side"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a layout in the old slot shape",
+      "bound": "layout-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/s3-promo/promotion"
+                  },
+                  {
+                    "ref": "library/xfer/TransferView"
+                  }
+                ],
+                "as": "layout",
+                "layout": {
+                  "split": "row",
+                  "items": [
+                    {
+                      "slot": "a"
+                    },
+                    {
+                      "slot": "b"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a layout that leaves a member out",
+      "bound": "layout-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/s3-promo/promotion"
+                  },
+                  {
+                    "ref": "library/xfer/TransferView"
+                  }
+                ],
+                "as": "layout",
+                "layout": {
+                  "tabs": [
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a layout naming an index past the members",
+      "bound": "layout-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/s3-promo/promotion"
+                  }
+                ],
+                "as": "layout",
+                "layout": {
+                  "tabs": [
+                    0,
+                    1
+                  ]
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a layout with tile ids",
+      "bound": "layout-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/s3-promo/promotion"
+                  }
+                ],
+                "as": "layout",
+                "layout": {
+                  "tile": "t1",
+                  "tabs": [
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a layout nested deeper than the retired depth cap is accepted",
+      "bound": "layout-shape",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "open_set",
+              "args": {
+                "members": [
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "1"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "2"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "3"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "4"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "5"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "6"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "7"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "8"
+                    }
+                  },
+                  {
+                    "ref": "library/common/KnobPanel",
+                    "macros": {
+                      "N": "9"
+                    }
+                  }
+                ],
+                "as": "layout",
+                "layout": {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tabs": [
+                        0
+                      ]
+                    },
+                    {
+                      "split": "row",
+                      "items": [
+                        {
+                          "tabs": [
+                            1
+                          ]
+                        },
+                        {
+                          "split": "column",
+                          "items": [
+                            {
+                              "tabs": [
+                                2
+                              ]
+                            },
+                            {
+                              "split": "row",
+                              "items": [
+                                {
+                                  "tabs": [
+                                    3
+                                  ]
+                                },
+                                {
+                                  "split": "column",
+                                  "items": [
+                                    {
+                                      "tabs": [
+                                        4
+                                      ]
+                                    },
+                                    {
+                                      "split": "row",
+                                      "items": [
+                                        {
+                                          "tabs": [
+                                            5
+                                          ]
+                                        },
+                                        {
+                                          "split": "column",
+                                          "items": [
+                                            {
+                                              "tabs": [
+                                                6
+                                              ]
+                                            },
+                                            {
+                                              "split": "row",
+                                              "items": [
+                                                {
+                                                  "tabs": [
+                                                    7
+                                                  ]
+                                                },
+                                                {
+                                                  "tabs": [
+                                                    8
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_tile without base",
+      "bound": "base-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "close_tile",
+              "args": {
+                "tile": "t1"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "drop from a tile without base",
+      "bound": "base-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tile": "t3"
+                },
+                "target": {
+                  "outer": "bottom"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "drop onto a tile without base",
+      "bound": "base-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "tab": "@trace"
+                },
+                "target": {
+                  "tile": "t1",
+                  "zone": "centre"
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "drop onto a border without base",
+      "bound": "base-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "drop",
+              "args": {
+                "source": {
+                  "new": {
+                    "tool": "trace"
+                  }
+                },
+                "target": {
+                  "border": {
+                    "tile": "t2",
+                    "side": "bottom"
+                  }
+                }
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a tile command later in the batch without base",
+      "bound": "base-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            },
+            {
+              "cmd": "close_tile",
+              "args": {
+                "tile": "t3"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": null,
+              "status": "refused",
+              "reason": "invalid_command",
+              "results": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_tile with base is accepted",
+      "bound": "base-required",
+      "steps": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "close_tile",
+              "args": {
+                "tile": "t1"
+              }
+            }
+          ],
+          "base": {
+            "window": "w-A",
+            "seq": 41
+          },
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

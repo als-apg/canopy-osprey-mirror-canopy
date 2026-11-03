@@ -1,0 +1,123 @@
+{
+  "about": [
+    "Command vectors for open.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "open",
+  "args": {
+    "ref": "string, required",
+    "macros": "object of string values, optional"
+  },
+  "extras": [
+    "key"
+  ],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "open places a screen that is not open by rule 7",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/s3-promo/promotion"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/s3-promo/promotion"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion"
+        ],
+        "active": "library/s3-promo/promotion"
+      }
+    },
+    {
+      "name": "open focuses the tab already showing the ref and macros",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/xfer/TransferView"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/xfer/TransferView"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/xfer/TransferView"
+      }
+    },
+    {
+      "name": "open on the active tab is a no-op",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/linac/LinacView",
+          "macros": {
+            "SR": "1"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": false,
+        "key": "library/linac/LinacView?SR=1"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/linac/LinacView?SR=1"
+      }
+    },
+    {
+      "name": "the key carries the macros sorted by name",
+      "command": {
+        "cmd": "open",
+        "args": {
+          "ref": "library/linac/LinacView",
+          "macros": {
+            "SR": "2",
+            "B": "1"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/linac/LinacView?B=1&SR=2"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/linac/LinacView?B=1&SR=2"
+        ],
+        "active": "library/linac/LinacView?B=1&SR=2"
+      }
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "about": [
+    "Command vectors for zoom.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "zoom",
+  "args": {
+    "key": "string, required",
+    "step": "in | out | fit | actual",
+    "percent": "integer 10..400; exactly one of step and percent"
+  },
+  "extras": [
+    "percent"
+  ],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "step in moves to the next ladder rung",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/xfer/TransferView",
+          "step": "in"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "percent": 80
+      }
+    },
+    {
+      "name": "step out moves to the previous ladder rung",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/xfer/TransferView",
+          "step": "out"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "percent": 67
+      }
+    },
+    {
+      "name": "percent sets a manual zoom",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/xfer/TransferView",
+          "percent": 150
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "percent": 150
+      }
+    },
+    {
+      "name": "actual is 100 percent",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/xfer/TransferView",
+          "step": "actual"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "percent": 100
+      }
+    },
+    {
+      "name": "fit has no manual percent",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/xfer/TransferView",
+          "step": "fit"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "percent": null
+      }
+    },
+    {
+      "name": "the same percent is a no-op",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/xfer/TransferView",
+          "percent": 75
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": false,
+        "percent": 75
+      }
+    },
+    {
+      "name": "zoom is per screen: a key with macros zooms its screen",
+      "command": {
+        "cmd": "zoom",
+        "args": {
+          "key": "library/linac/LinacView?SR=1",
+          "step": "fit"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": false,
+        "percent": null
+      }
+    }
+  ]
+}

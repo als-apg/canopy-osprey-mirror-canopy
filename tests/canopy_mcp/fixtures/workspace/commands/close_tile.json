@@ -1,0 +1,42 @@
+{
+  "about": [
+    "Command vectors for close_tile.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra.",
+    "A command that names a tile id (close_tile; drop from a tile, onto a tile or onto a border) runs in a batch with base {window, seq}; the hub refuses it without as invalid_command (refusals/invalid_command.json, bound base-required). The tile ids here are context.json's: t1 holds LinacView and overview, t2 TransferView, t3 @trace."
+  ],
+  "verb": "close_tile",
+  "args": {
+    "tile": "string, required (a tile id of the layout the batch's base read)"
+  },
+  "extras": [
+    "group"
+  ],
+  "destructive": true,
+  "cases": [
+    {
+      "name": "close_tile closes every tab of the tile as one group",
+      "command": {
+        "cmd": "close_tile",
+        "args": {
+          "tile": "t1"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "group": "g-2"
+      },
+      "after": {
+        "tabs": [
+          "library/xfer/TransferView",
+          "@trace"
+        ]
+      }
+    }
+  ]
+}

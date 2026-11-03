@@ -1,0 +1,152 @@
+{
+  "about": [
+    "Command vectors for open_set.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra.",
+    "as: tabs = one new tile beside the focused tile; side = one tile per member in a row after the focused tile; layout = the given layout (C-LAYOUT collection form, member indexes as keys, every member placed once) replaces the dock's layout and pushes a layout group. layout is given exactly when as is layout."
+  ],
+  "verb": "open_set",
+  "args": {
+    "members": "list of 1 to 50 members {ref, macros?} | {tool, query?}, required",
+    "as": "tabs | side | layout, required",
+    "layout": "C-LAYOUT collection form over the member indexes, required exactly with as layout"
+  },
+  "extras": [
+    "keys",
+    "group"
+  ],
+  "destructive": "with layout",
+  "cases": [
+    {
+      "name": "open_set as tabs opens the members as tabs of one new tile",
+      "command": {
+        "cmd": "open_set",
+        "args": {
+          "members": [
+            {
+              "ref": "library/s3-promo/promotion"
+            },
+            {
+              "tool": "correlation"
+            }
+          ],
+          "as": "tabs"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/s3-promo/promotion",
+          "@correlation"
+        ]
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion",
+          "@correlation"
+        ]
+      }
+    },
+    {
+      "name": "open_set as side opens one tile per member",
+      "command": {
+        "cmd": "open_set",
+        "args": {
+          "members": [
+            {
+              "ref": "library/s3-promo/promotion"
+            },
+            {
+              "ref": "library/common/KnobPanel"
+            }
+          ],
+          "as": "side"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/s3-promo/promotion",
+          "library/common/KnobPanel"
+        ]
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion",
+          "library/common/KnobPanel"
+        ]
+      }
+    },
+    {
+      "name": "open_set as layout replaces the layout and pushes a layout group",
+      "command": {
+        "cmd": "open_set",
+        "args": {
+          "members": [
+            {
+              "ref": "library/s3-promo/promotion"
+            },
+            {
+              "tool": "correlation"
+            },
+            {
+              "ref": "library/xfer/TransferView"
+            }
+          ],
+          "as": "layout",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tabs": [
+                  0,
+                  2
+                ],
+                "size": 2
+              },
+              {
+                "tabs": [
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/s3-promo/promotion",
+          "@correlation",
+          "library/xfer/TransferView"
+        ],
+        "group": "g-2"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion",
+          "@correlation"
+        ]
+      }
+    }
+  ]
+}

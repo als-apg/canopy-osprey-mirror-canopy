@@ -6,9 +6,12 @@ keeps ``import canopy_mcp.server`` cheap and free of side effects.
 
 ``mcp`` is one instance per process, so the set of tools it offers is too.
 :func:`set_authoring` takes the :data:`AUTHORING_TOOLS` off it or puts them
-back; the app calls it with ``CANOPY_AUTHORING``. Every tool registers at
-import, so the full set is known without building an app; the last app built in
-a process decides which of them it offers.
+back; the app calls it with ``CANOPY_AUTHORING``. :func:`set_workspace_tools`
+does the same for the :data:`WORKSPACE_TOOLS`, which read and change the
+CANOPY workspace (not drafts, so they are not authoring tools); the app calls it
+with ``CANOPY_WORKSPACE``. Every tool registers at import, so the full set is
+known without building an app; the last app built in a process decides which of
+them it offers.
 """
 
 import asyncio
@@ -20,8 +23,9 @@ from fastmcp.tools import Tool
 
 mcp = FastMCP(
     "canopy",
-    instructions="Build Canopy screens by the canopy-panel-builder skill (.claude/skills/<name>/SKILL.md; "
-    "`python -m canopy_mcp.skill install <project dir>` writes it).",
+    instructions="Build Canopy screens by the canopy-panel-builder skill and operate the workspace by the "
+    "canopy-operator skill (.claude/skills/<name>/SKILL.md; `python -m canopy_mcp.skill install <project dir>` "
+    "writes both).",
 )
 
 _TOOLS_PACKAGE = "canopy_mcp.tools"
@@ -36,9 +40,16 @@ AUTHORING_TOOLS = (
     "convert_legacy",
 )
 
+# The tools that read and change the CANOPY workspace through the in-process hub
+# (canopy_mcp.workspace). They neither read nor write drafts.
+WORKSPACE_TOOLS = (
+    "get_workspace",
+    "set_workspace",
+)
+
 # The Tool objects taken off ``mcp``, by group and name, kept from the first removal
 # on: the tool modules are imported once, so nothing else can put a removed tool back.
-_removed: dict[str, dict[str, Tool]] = {"authoring": {}}
+_removed: dict[str, dict[str, Tool]] = {"authoring": {}, "workspace": {}}
 
 
 def register_all() -> FastMCP:
@@ -67,6 +78,11 @@ def authoring_snapshot() -> dict[str, Tool]:
     return dict(_removed["authoring"])
 
 
+def workspace_snapshot() -> dict[str, Tool]:
+    """The workspace tools removed so far, by name (empty until they were first turned off)."""
+    return dict(_removed["workspace"])
+
+
 def _offer(group: str, names: tuple[str, ...], enabled: bool) -> None:
     """Put the tools ``names`` on :data:`mcp` (``True``) or take them off it (``False``).
 
@@ -92,3 +108,12 @@ def _offer(group: str, names: tuple[str, ...], enabled: bool) -> None:
 def set_authoring(enabled: bool) -> None:
     """Offer :data:`AUTHORING_TOOLS` on :data:`mcp` (``True``) or take them off it (``False``)."""
     _offer("authoring", AUTHORING_TOOLS, enabled)
+
+
+def set_workspace_tools(enabled: bool) -> None:
+    """Offer :data:`WORKSPACE_TOOLS` on :data:`mcp` (``True``) or take them off it (``False``).
+
+    The same rules as :func:`set_authoring`, over its own group, so either switch
+    leaves the other's tools alone.
+    """
+    _offer("workspace", WORKSPACE_TOOLS, enabled)

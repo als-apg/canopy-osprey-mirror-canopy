@@ -34,7 +34,7 @@ SOURCE = PACKAGE / "SKILL.md"
 INSTALLED = Path(".claude") / "skills" / "canopy-panel-builder" / "SKILL.md"
 
 # Every skill: its source file in the repository and where it lands in a project.
-SOURCES = {"canopy-panel-builder": SOURCE}
+SOURCES = {"canopy-panel-builder": SOURCE, "canopy-operator": PACKAGE / "operator" / "SKILL.md"}
 INSTALLED_AS = {name: Path(".claude") / "skills" / name / "SKILL.md" for name in SOURCES}
 NAMES = list(SOURCES)
 
@@ -51,7 +51,7 @@ async def _tool_names() -> set[str]:
 
 
 def test_the_registry_names_every_skill_and_its_source() -> None:
-    assert skill.SKILLS == {"canopy-panel-builder": "SKILL.md"}
+    assert skill.SKILLS == {"canopy-panel-builder": "SKILL.md", "canopy-operator": "operator/SKILL.md"}
     for name, relative in skill.SKILLS.items():
         assert PACKAGE / relative == SOURCES[name]
 
@@ -77,7 +77,7 @@ def test_the_skill_is_named_after_the_directory_it_installs_into(name: str) -> N
 
 
 def test_an_unknown_skill_name_is_refused() -> None:
-    with pytest.raises(KeyError, match="canopy-panel-builder"):
+    with pytest.raises(KeyError, match="canopy-operator"):
         skill.skill_bytes("canopy-nothing")
     with pytest.raises(KeyError, match="canopy-panel-builder"):
         skill.skill_path(Path("project"), "canopy-nothing")

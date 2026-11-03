@@ -1,0 +1,2959 @@
+{
+  "about": [
+    "Command rejection vectors for tab_limit: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted.",
+    "tab_limit: the open tabs after the command would exceed 50. One case per verb that opens tabs (bound names it)."
+  ],
+  "reason": "tab_limit",
+  "cases": [
+    {
+      "name": "open past 50 tabs",
+      "bound": "open",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=2",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=3",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=4",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=5",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=6",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=7",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=8",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=9",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=10",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=11",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=12",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=13",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=14",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=15",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=16",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=17",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=18",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=19",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=20",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=21",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=22",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=23",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=24",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=25",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=26",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=27",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=28",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=29",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=30",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=31",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=32",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=33",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=34",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=35",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=36",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=37",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=38",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=39",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=40",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=41",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=42",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=43",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=44",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=45",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=46",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "library/common/KnobPanel?N=1",
+                  "library/common/KnobPanel?N=2",
+                  "library/common/KnobPanel?N=3",
+                  "library/common/KnobPanel?N=4",
+                  "library/common/KnobPanel?N=5",
+                  "library/common/KnobPanel?N=6",
+                  "library/common/KnobPanel?N=7",
+                  "library/common/KnobPanel?N=8",
+                  "library/common/KnobPanel?N=9",
+                  "library/common/KnobPanel?N=10",
+                  "library/common/KnobPanel?N=11",
+                  "library/common/KnobPanel?N=12",
+                  "library/common/KnobPanel?N=13",
+                  "library/common/KnobPanel?N=14",
+                  "library/common/KnobPanel?N=15",
+                  "library/common/KnobPanel?N=16",
+                  "library/common/KnobPanel?N=17",
+                  "library/common/KnobPanel?N=18",
+                  "library/common/KnobPanel?N=19",
+                  "library/common/KnobPanel?N=20",
+                  "library/common/KnobPanel?N=21",
+                  "library/common/KnobPanel?N=22",
+                  "library/common/KnobPanel?N=23",
+                  "library/common/KnobPanel?N=24",
+                  "library/common/KnobPanel?N=25",
+                  "library/common/KnobPanel?N=26",
+                  "library/common/KnobPanel?N=27",
+                  "library/common/KnobPanel?N=28",
+                  "library/common/KnobPanel?N=29",
+                  "library/common/KnobPanel?N=30",
+                  "library/common/KnobPanel?N=31",
+                  "library/common/KnobPanel?N=32",
+                  "library/common/KnobPanel?N=33",
+                  "library/common/KnobPanel?N=34",
+                  "library/common/KnobPanel?N=35",
+                  "library/common/KnobPanel?N=36",
+                  "library/common/KnobPanel?N=37",
+                  "library/common/KnobPanel?N=38",
+                  "library/common/KnobPanel?N=39",
+                  "library/common/KnobPanel?N=40",
+                  "library/common/KnobPanel?N=41",
+                  "library/common/KnobPanel?N=42",
+                  "library/common/KnobPanel?N=43",
+                  "library/common/KnobPanel?N=44",
+                  "library/common/KnobPanel?N=45",
+                  "library/common/KnobPanel?N=46"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            },
+            "library/common/KnobPanel": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "library/common/KnobPanel?N=1": "Knob 1",
+            "library/common/KnobPanel?N=2": "Knob 2",
+            "library/common/KnobPanel?N=3": "Knob 3",
+            "library/common/KnobPanel?N=4": "Knob 4",
+            "library/common/KnobPanel?N=5": "Knob 5",
+            "library/common/KnobPanel?N=6": "Knob 6",
+            "library/common/KnobPanel?N=7": "Knob 7",
+            "library/common/KnobPanel?N=8": "Knob 8",
+            "library/common/KnobPanel?N=9": "Knob 9",
+            "library/common/KnobPanel?N=10": "Knob 10",
+            "library/common/KnobPanel?N=11": "Knob 11",
+            "library/common/KnobPanel?N=12": "Knob 12",
+            "library/common/KnobPanel?N=13": "Knob 13",
+            "library/common/KnobPanel?N=14": "Knob 14",
+            "library/common/KnobPanel?N=15": "Knob 15",
+            "library/common/KnobPanel?N=16": "Knob 16",
+            "library/common/KnobPanel?N=17": "Knob 17",
+            "library/common/KnobPanel?N=18": "Knob 18",
+            "library/common/KnobPanel?N=19": "Knob 19",
+            "library/common/KnobPanel?N=20": "Knob 20",
+            "library/common/KnobPanel?N=21": "Knob 21",
+            "library/common/KnobPanel?N=22": "Knob 22",
+            "library/common/KnobPanel?N=23": "Knob 23",
+            "library/common/KnobPanel?N=24": "Knob 24",
+            "library/common/KnobPanel?N=25": "Knob 25",
+            "library/common/KnobPanel?N=26": "Knob 26",
+            "library/common/KnobPanel?N=27": "Knob 27",
+            "library/common/KnobPanel?N=28": "Knob 28",
+            "library/common/KnobPanel?N=29": "Knob 29",
+            "library/common/KnobPanel?N=30": "Knob 30",
+            "library/common/KnobPanel?N=31": "Knob 31",
+            "library/common/KnobPanel?N=32": "Knob 32",
+            "library/common/KnobPanel?N=33": "Knob 33",
+            "library/common/KnobPanel?N=34": "Knob 34",
+            "library/common/KnobPanel?N=35": "Knob 35",
+            "library/common/KnobPanel?N=36": "Knob 36",
+            "library/common/KnobPanel?N=37": "Knob 37",
+            "library/common/KnobPanel?N=38": "Knob 38",
+            "library/common/KnobPanel?N=39": "Knob 39",
+            "library/common/KnobPanel?N=40": "Knob 40",
+            "library/common/KnobPanel?N=41": "Knob 41",
+            "library/common/KnobPanel?N=42": "Knob 42",
+            "library/common/KnobPanel?N=43": "Knob 43",
+            "library/common/KnobPanel?N=44": "Knob 44",
+            "library/common/KnobPanel?N=45": "Knob 45",
+            "library/common/KnobPanel?N=46": "Knob 46"
+          }
+        }
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open",
+            "args": {
+              "ref": "library/s3-promo/promotion"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "tab_limit"
+        }
+      ]
+    },
+    {
+      "name": "open_tool past 50 tabs",
+      "bound": "open_tool",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=2",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=3",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=4",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=5",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=6",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=7",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=8",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=9",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=10",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=11",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=12",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=13",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=14",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=15",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=16",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=17",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=18",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=19",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=20",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=21",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=22",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=23",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=24",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=25",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=26",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=27",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=28",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=29",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=30",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=31",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=32",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=33",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=34",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=35",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=36",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=37",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=38",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=39",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=40",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=41",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=42",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=43",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=44",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=45",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=46",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "library/common/KnobPanel?N=1",
+                  "library/common/KnobPanel?N=2",
+                  "library/common/KnobPanel?N=3",
+                  "library/common/KnobPanel?N=4",
+                  "library/common/KnobPanel?N=5",
+                  "library/common/KnobPanel?N=6",
+                  "library/common/KnobPanel?N=7",
+                  "library/common/KnobPanel?N=8",
+                  "library/common/KnobPanel?N=9",
+                  "library/common/KnobPanel?N=10",
+                  "library/common/KnobPanel?N=11",
+                  "library/common/KnobPanel?N=12",
+                  "library/common/KnobPanel?N=13",
+                  "library/common/KnobPanel?N=14",
+                  "library/common/KnobPanel?N=15",
+                  "library/common/KnobPanel?N=16",
+                  "library/common/KnobPanel?N=17",
+                  "library/common/KnobPanel?N=18",
+                  "library/common/KnobPanel?N=19",
+                  "library/common/KnobPanel?N=20",
+                  "library/common/KnobPanel?N=21",
+                  "library/common/KnobPanel?N=22",
+                  "library/common/KnobPanel?N=23",
+                  "library/common/KnobPanel?N=24",
+                  "library/common/KnobPanel?N=25",
+                  "library/common/KnobPanel?N=26",
+                  "library/common/KnobPanel?N=27",
+                  "library/common/KnobPanel?N=28",
+                  "library/common/KnobPanel?N=29",
+                  "library/common/KnobPanel?N=30",
+                  "library/common/KnobPanel?N=31",
+                  "library/common/KnobPanel?N=32",
+                  "library/common/KnobPanel?N=33",
+                  "library/common/KnobPanel?N=34",
+                  "library/common/KnobPanel?N=35",
+                  "library/common/KnobPanel?N=36",
+                  "library/common/KnobPanel?N=37",
+                  "library/common/KnobPanel?N=38",
+                  "library/common/KnobPanel?N=39",
+                  "library/common/KnobPanel?N=40",
+                  "library/common/KnobPanel?N=41",
+                  "library/common/KnobPanel?N=42",
+                  "library/common/KnobPanel?N=43",
+                  "library/common/KnobPanel?N=44",
+                  "library/common/KnobPanel?N=45",
+                  "library/common/KnobPanel?N=46"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            },
+            "library/common/KnobPanel": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "library/common/KnobPanel?N=1": "Knob 1",
+            "library/common/KnobPanel?N=2": "Knob 2",
+            "library/common/KnobPanel?N=3": "Knob 3",
+            "library/common/KnobPanel?N=4": "Knob 4",
+            "library/common/KnobPanel?N=5": "Knob 5",
+            "library/common/KnobPanel?N=6": "Knob 6",
+            "library/common/KnobPanel?N=7": "Knob 7",
+            "library/common/KnobPanel?N=8": "Knob 8",
+            "library/common/KnobPanel?N=9": "Knob 9",
+            "library/common/KnobPanel?N=10": "Knob 10",
+            "library/common/KnobPanel?N=11": "Knob 11",
+            "library/common/KnobPanel?N=12": "Knob 12",
+            "library/common/KnobPanel?N=13": "Knob 13",
+            "library/common/KnobPanel?N=14": "Knob 14",
+            "library/common/KnobPanel?N=15": "Knob 15",
+            "library/common/KnobPanel?N=16": "Knob 16",
+            "library/common/KnobPanel?N=17": "Knob 17",
+            "library/common/KnobPanel?N=18": "Knob 18",
+            "library/common/KnobPanel?N=19": "Knob 19",
+            "library/common/KnobPanel?N=20": "Knob 20",
+            "library/common/KnobPanel?N=21": "Knob 21",
+            "library/common/KnobPanel?N=22": "Knob 22",
+            "library/common/KnobPanel?N=23": "Knob 23",
+            "library/common/KnobPanel?N=24": "Knob 24",
+            "library/common/KnobPanel?N=25": "Knob 25",
+            "library/common/KnobPanel?N=26": "Knob 26",
+            "library/common/KnobPanel?N=27": "Knob 27",
+            "library/common/KnobPanel?N=28": "Knob 28",
+            "library/common/KnobPanel?N=29": "Knob 29",
+            "library/common/KnobPanel?N=30": "Knob 30",
+            "library/common/KnobPanel?N=31": "Knob 31",
+            "library/common/KnobPanel?N=32": "Knob 32",
+            "library/common/KnobPanel?N=33": "Knob 33",
+            "library/common/KnobPanel?N=34": "Knob 34",
+            "library/common/KnobPanel?N=35": "Knob 35",
+            "library/common/KnobPanel?N=36": "Knob 36",
+            "library/common/KnobPanel?N=37": "Knob 37",
+            "library/common/KnobPanel?N=38": "Knob 38",
+            "library/common/KnobPanel?N=39": "Knob 39",
+            "library/common/KnobPanel?N=40": "Knob 40",
+            "library/common/KnobPanel?N=41": "Knob 41",
+            "library/common/KnobPanel?N=42": "Knob 42",
+            "library/common/KnobPanel?N=43": "Knob 43",
+            "library/common/KnobPanel?N=44": "Knob 44",
+            "library/common/KnobPanel?N=45": "Knob 45",
+            "library/common/KnobPanel?N=46": "Knob 46"
+          }
+        }
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "waveform"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "tab_limit"
+        }
+      ]
+    },
+    {
+      "name": "open_collection past 50 tabs",
+      "bound": "open_collection",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=2",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=3",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=4",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=5",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=6",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=7",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=8",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=9",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=10",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=11",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=12",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=13",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=14",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=15",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=16",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=17",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=18",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=19",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=20",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=21",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=22",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=23",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=24",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=25",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=26",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=27",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=28",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=29",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=30",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=31",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=32",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=33",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=34",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=35",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=36",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=37",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=38",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=39",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=40",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=41",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=42",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=43",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=44",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=45",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "library/common/KnobPanel?N=1",
+                  "library/common/KnobPanel?N=2",
+                  "library/common/KnobPanel?N=3",
+                  "library/common/KnobPanel?N=4",
+                  "library/common/KnobPanel?N=5",
+                  "library/common/KnobPanel?N=6",
+                  "library/common/KnobPanel?N=7",
+                  "library/common/KnobPanel?N=8",
+                  "library/common/KnobPanel?N=9",
+                  "library/common/KnobPanel?N=10",
+                  "library/common/KnobPanel?N=11",
+                  "library/common/KnobPanel?N=12",
+                  "library/common/KnobPanel?N=13",
+                  "library/common/KnobPanel?N=14",
+                  "library/common/KnobPanel?N=15",
+                  "library/common/KnobPanel?N=16",
+                  "library/common/KnobPanel?N=17",
+                  "library/common/KnobPanel?N=18",
+                  "library/common/KnobPanel?N=19",
+                  "library/common/KnobPanel?N=20",
+                  "library/common/KnobPanel?N=21",
+                  "library/common/KnobPanel?N=22",
+                  "library/common/KnobPanel?N=23",
+                  "library/common/KnobPanel?N=24",
+                  "library/common/KnobPanel?N=25",
+                  "library/common/KnobPanel?N=26",
+                  "library/common/KnobPanel?N=27",
+                  "library/common/KnobPanel?N=28",
+                  "library/common/KnobPanel?N=29",
+                  "library/common/KnobPanel?N=30",
+                  "library/common/KnobPanel?N=31",
+                  "library/common/KnobPanel?N=32",
+                  "library/common/KnobPanel?N=33",
+                  "library/common/KnobPanel?N=34",
+                  "library/common/KnobPanel?N=35",
+                  "library/common/KnobPanel?N=36",
+                  "library/common/KnobPanel?N=37",
+                  "library/common/KnobPanel?N=38",
+                  "library/common/KnobPanel?N=39",
+                  "library/common/KnobPanel?N=40",
+                  "library/common/KnobPanel?N=41",
+                  "library/common/KnobPanel?N=42",
+                  "library/common/KnobPanel?N=43",
+                  "library/common/KnobPanel?N=44",
+                  "library/common/KnobPanel?N=45"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            },
+            "library/common/KnobPanel": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "library/common/KnobPanel?N=1": "Knob 1",
+            "library/common/KnobPanel?N=2": "Knob 2",
+            "library/common/KnobPanel?N=3": "Knob 3",
+            "library/common/KnobPanel?N=4": "Knob 4",
+            "library/common/KnobPanel?N=5": "Knob 5",
+            "library/common/KnobPanel?N=6": "Knob 6",
+            "library/common/KnobPanel?N=7": "Knob 7",
+            "library/common/KnobPanel?N=8": "Knob 8",
+            "library/common/KnobPanel?N=9": "Knob 9",
+            "library/common/KnobPanel?N=10": "Knob 10",
+            "library/common/KnobPanel?N=11": "Knob 11",
+            "library/common/KnobPanel?N=12": "Knob 12",
+            "library/common/KnobPanel?N=13": "Knob 13",
+            "library/common/KnobPanel?N=14": "Knob 14",
+            "library/common/KnobPanel?N=15": "Knob 15",
+            "library/common/KnobPanel?N=16": "Knob 16",
+            "library/common/KnobPanel?N=17": "Knob 17",
+            "library/common/KnobPanel?N=18": "Knob 18",
+            "library/common/KnobPanel?N=19": "Knob 19",
+            "library/common/KnobPanel?N=20": "Knob 20",
+            "library/common/KnobPanel?N=21": "Knob 21",
+            "library/common/KnobPanel?N=22": "Knob 22",
+            "library/common/KnobPanel?N=23": "Knob 23",
+            "library/common/KnobPanel?N=24": "Knob 24",
+            "library/common/KnobPanel?N=25": "Knob 25",
+            "library/common/KnobPanel?N=26": "Knob 26",
+            "library/common/KnobPanel?N=27": "Knob 27",
+            "library/common/KnobPanel?N=28": "Knob 28",
+            "library/common/KnobPanel?N=29": "Knob 29",
+            "library/common/KnobPanel?N=30": "Knob 30",
+            "library/common/KnobPanel?N=31": "Knob 31",
+            "library/common/KnobPanel?N=32": "Knob 32",
+            "library/common/KnobPanel?N=33": "Knob 33",
+            "library/common/KnobPanel?N=34": "Knob 34",
+            "library/common/KnobPanel?N=35": "Knob 35",
+            "library/common/KnobPanel?N=36": "Knob 36",
+            "library/common/KnobPanel?N=37": "Knob 37",
+            "library/common/KnobPanel?N=38": "Knob 38",
+            "library/common/KnobPanel?N=39": "Knob 39",
+            "library/common/KnobPanel?N=40": "Knob 40",
+            "library/common/KnobPanel?N=41": "Knob 41",
+            "library/common/KnobPanel?N=42": "Knob 42",
+            "library/common/KnobPanel?N=43": "Knob 43",
+            "library/common/KnobPanel?N=44": "Knob 44",
+            "library/common/KnobPanel?N=45": "Knob 45"
+          }
+        }
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_collection",
+            "args": {
+              "ref": "facility:injector"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "tab_limit"
+        }
+      ]
+    },
+    {
+      "name": "open_set past 50 tabs",
+      "bound": "open_set",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=2",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=3",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=4",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=5",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=6",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=7",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=8",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=9",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=10",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=11",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=12",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=13",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=14",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=15",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=16",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=17",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=18",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=19",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=20",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=21",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=22",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=23",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=24",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=25",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=26",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=27",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=28",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=29",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=30",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=31",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=32",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=33",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=34",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=35",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=36",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=37",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=38",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=39",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=40",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=41",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=42",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=43",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=44",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=45",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "library/common/KnobPanel?N=1",
+                  "library/common/KnobPanel?N=2",
+                  "library/common/KnobPanel?N=3",
+                  "library/common/KnobPanel?N=4",
+                  "library/common/KnobPanel?N=5",
+                  "library/common/KnobPanel?N=6",
+                  "library/common/KnobPanel?N=7",
+                  "library/common/KnobPanel?N=8",
+                  "library/common/KnobPanel?N=9",
+                  "library/common/KnobPanel?N=10",
+                  "library/common/KnobPanel?N=11",
+                  "library/common/KnobPanel?N=12",
+                  "library/common/KnobPanel?N=13",
+                  "library/common/KnobPanel?N=14",
+                  "library/common/KnobPanel?N=15",
+                  "library/common/KnobPanel?N=16",
+                  "library/common/KnobPanel?N=17",
+                  "library/common/KnobPanel?N=18",
+                  "library/common/KnobPanel?N=19",
+                  "library/common/KnobPanel?N=20",
+                  "library/common/KnobPanel?N=21",
+                  "library/common/KnobPanel?N=22",
+                  "library/common/KnobPanel?N=23",
+                  "library/common/KnobPanel?N=24",
+                  "library/common/KnobPanel?N=25",
+                  "library/common/KnobPanel?N=26",
+                  "library/common/KnobPanel?N=27",
+                  "library/common/KnobPanel?N=28",
+                  "library/common/KnobPanel?N=29",
+                  "library/common/KnobPanel?N=30",
+                  "library/common/KnobPanel?N=31",
+                  "library/common/KnobPanel?N=32",
+                  "library/common/KnobPanel?N=33",
+                  "library/common/KnobPanel?N=34",
+                  "library/common/KnobPanel?N=35",
+                  "library/common/KnobPanel?N=36",
+                  "library/common/KnobPanel?N=37",
+                  "library/common/KnobPanel?N=38",
+                  "library/common/KnobPanel?N=39",
+                  "library/common/KnobPanel?N=40",
+                  "library/common/KnobPanel?N=41",
+                  "library/common/KnobPanel?N=42",
+                  "library/common/KnobPanel?N=43",
+                  "library/common/KnobPanel?N=44",
+                  "library/common/KnobPanel?N=45"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            },
+            "library/common/KnobPanel": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "library/common/KnobPanel?N=1": "Knob 1",
+            "library/common/KnobPanel?N=2": "Knob 2",
+            "library/common/KnobPanel?N=3": "Knob 3",
+            "library/common/KnobPanel?N=4": "Knob 4",
+            "library/common/KnobPanel?N=5": "Knob 5",
+            "library/common/KnobPanel?N=6": "Knob 6",
+            "library/common/KnobPanel?N=7": "Knob 7",
+            "library/common/KnobPanel?N=8": "Knob 8",
+            "library/common/KnobPanel?N=9": "Knob 9",
+            "library/common/KnobPanel?N=10": "Knob 10",
+            "library/common/KnobPanel?N=11": "Knob 11",
+            "library/common/KnobPanel?N=12": "Knob 12",
+            "library/common/KnobPanel?N=13": "Knob 13",
+            "library/common/KnobPanel?N=14": "Knob 14",
+            "library/common/KnobPanel?N=15": "Knob 15",
+            "library/common/KnobPanel?N=16": "Knob 16",
+            "library/common/KnobPanel?N=17": "Knob 17",
+            "library/common/KnobPanel?N=18": "Knob 18",
+            "library/common/KnobPanel?N=19": "Knob 19",
+            "library/common/KnobPanel?N=20": "Knob 20",
+            "library/common/KnobPanel?N=21": "Knob 21",
+            "library/common/KnobPanel?N=22": "Knob 22",
+            "library/common/KnobPanel?N=23": "Knob 23",
+            "library/common/KnobPanel?N=24": "Knob 24",
+            "library/common/KnobPanel?N=25": "Knob 25",
+            "library/common/KnobPanel?N=26": "Knob 26",
+            "library/common/KnobPanel?N=27": "Knob 27",
+            "library/common/KnobPanel?N=28": "Knob 28",
+            "library/common/KnobPanel?N=29": "Knob 29",
+            "library/common/KnobPanel?N=30": "Knob 30",
+            "library/common/KnobPanel?N=31": "Knob 31",
+            "library/common/KnobPanel?N=32": "Knob 32",
+            "library/common/KnobPanel?N=33": "Knob 33",
+            "library/common/KnobPanel?N=34": "Knob 34",
+            "library/common/KnobPanel?N=35": "Knob 35",
+            "library/common/KnobPanel?N=36": "Knob 36",
+            "library/common/KnobPanel?N=37": "Knob 37",
+            "library/common/KnobPanel?N=38": "Knob 38",
+            "library/common/KnobPanel?N=39": "Knob 39",
+            "library/common/KnobPanel?N=40": "Knob 40",
+            "library/common/KnobPanel?N=41": "Knob 41",
+            "library/common/KnobPanel?N=42": "Knob 42",
+            "library/common/KnobPanel?N=43": "Knob 43",
+            "library/common/KnobPanel?N=44": "Knob 44",
+            "library/common/KnobPanel?N=45": "Knob 45"
+          }
+        }
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_set",
+            "args": {
+              "members": [
+                {
+                  "ref": "library/s3-promo/promotion"
+                },
+                {
+                  "tool": "waveform"
+                }
+              ],
+              "as": "tabs"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "tab_limit"
+        }
+      ]
+    },
+    {
+      "name": "drop of a new item past 50 tabs",
+      "bound": "drop",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=2",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=3",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=4",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=5",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=6",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=7",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=8",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=9",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=10",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=11",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=12",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=13",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=14",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=15",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=16",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=17",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=18",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=19",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=20",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=21",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=22",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=23",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=24",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=25",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=26",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=27",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=28",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=29",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=30",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=31",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=32",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=33",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=34",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=35",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=36",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=37",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=38",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=39",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=40",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=41",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=42",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=43",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=44",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=45",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=46",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "library/common/KnobPanel?N=1",
+                  "library/common/KnobPanel?N=2",
+                  "library/common/KnobPanel?N=3",
+                  "library/common/KnobPanel?N=4",
+                  "library/common/KnobPanel?N=5",
+                  "library/common/KnobPanel?N=6",
+                  "library/common/KnobPanel?N=7",
+                  "library/common/KnobPanel?N=8",
+                  "library/common/KnobPanel?N=9",
+                  "library/common/KnobPanel?N=10",
+                  "library/common/KnobPanel?N=11",
+                  "library/common/KnobPanel?N=12",
+                  "library/common/KnobPanel?N=13",
+                  "library/common/KnobPanel?N=14",
+                  "library/common/KnobPanel?N=15",
+                  "library/common/KnobPanel?N=16",
+                  "library/common/KnobPanel?N=17",
+                  "library/common/KnobPanel?N=18",
+                  "library/common/KnobPanel?N=19",
+                  "library/common/KnobPanel?N=20",
+                  "library/common/KnobPanel?N=21",
+                  "library/common/KnobPanel?N=22",
+                  "library/common/KnobPanel?N=23",
+                  "library/common/KnobPanel?N=24",
+                  "library/common/KnobPanel?N=25",
+                  "library/common/KnobPanel?N=26",
+                  "library/common/KnobPanel?N=27",
+                  "library/common/KnobPanel?N=28",
+                  "library/common/KnobPanel?N=29",
+                  "library/common/KnobPanel?N=30",
+                  "library/common/KnobPanel?N=31",
+                  "library/common/KnobPanel?N=32",
+                  "library/common/KnobPanel?N=33",
+                  "library/common/KnobPanel?N=34",
+                  "library/common/KnobPanel?N=35",
+                  "library/common/KnobPanel?N=36",
+                  "library/common/KnobPanel?N=37",
+                  "library/common/KnobPanel?N=38",
+                  "library/common/KnobPanel?N=39",
+                  "library/common/KnobPanel?N=40",
+                  "library/common/KnobPanel?N=41",
+                  "library/common/KnobPanel?N=42",
+                  "library/common/KnobPanel?N=43",
+                  "library/common/KnobPanel?N=44",
+                  "library/common/KnobPanel?N=45",
+                  "library/common/KnobPanel?N=46"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            },
+            "library/common/KnobPanel": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "library/common/KnobPanel?N=1": "Knob 1",
+            "library/common/KnobPanel?N=2": "Knob 2",
+            "library/common/KnobPanel?N=3": "Knob 3",
+            "library/common/KnobPanel?N=4": "Knob 4",
+            "library/common/KnobPanel?N=5": "Knob 5",
+            "library/common/KnobPanel?N=6": "Knob 6",
+            "library/common/KnobPanel?N=7": "Knob 7",
+            "library/common/KnobPanel?N=8": "Knob 8",
+            "library/common/KnobPanel?N=9": "Knob 9",
+            "library/common/KnobPanel?N=10": "Knob 10",
+            "library/common/KnobPanel?N=11": "Knob 11",
+            "library/common/KnobPanel?N=12": "Knob 12",
+            "library/common/KnobPanel?N=13": "Knob 13",
+            "library/common/KnobPanel?N=14": "Knob 14",
+            "library/common/KnobPanel?N=15": "Knob 15",
+            "library/common/KnobPanel?N=16": "Knob 16",
+            "library/common/KnobPanel?N=17": "Knob 17",
+            "library/common/KnobPanel?N=18": "Knob 18",
+            "library/common/KnobPanel?N=19": "Knob 19",
+            "library/common/KnobPanel?N=20": "Knob 20",
+            "library/common/KnobPanel?N=21": "Knob 21",
+            "library/common/KnobPanel?N=22": "Knob 22",
+            "library/common/KnobPanel?N=23": "Knob 23",
+            "library/common/KnobPanel?N=24": "Knob 24",
+            "library/common/KnobPanel?N=25": "Knob 25",
+            "library/common/KnobPanel?N=26": "Knob 26",
+            "library/common/KnobPanel?N=27": "Knob 27",
+            "library/common/KnobPanel?N=28": "Knob 28",
+            "library/common/KnobPanel?N=29": "Knob 29",
+            "library/common/KnobPanel?N=30": "Knob 30",
+            "library/common/KnobPanel?N=31": "Knob 31",
+            "library/common/KnobPanel?N=32": "Knob 32",
+            "library/common/KnobPanel?N=33": "Knob 33",
+            "library/common/KnobPanel?N=34": "Knob 34",
+            "library/common/KnobPanel?N=35": "Knob 35",
+            "library/common/KnobPanel?N=36": "Knob 36",
+            "library/common/KnobPanel?N=37": "Knob 37",
+            "library/common/KnobPanel?N=38": "Knob 38",
+            "library/common/KnobPanel?N=39": "Knob 39",
+            "library/common/KnobPanel?N=40": "Knob 40",
+            "library/common/KnobPanel?N=41": "Knob 41",
+            "library/common/KnobPanel?N=42": "Knob 42",
+            "library/common/KnobPanel?N=43": "Knob 43",
+            "library/common/KnobPanel?N=44": "Knob 44",
+            "library/common/KnobPanel?N=45": "Knob 45",
+            "library/common/KnobPanel?N=46": "Knob 46"
+          }
+        }
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "drop",
+            "args": {
+              "source": {
+                "new": {
+                  "ref": "library/s3-promo/promotion"
+                }
+              },
+              "target": {
+                "outer": "right"
+              }
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "tab_limit"
+        }
+      ]
+    },
+    {
+      "name": "reopen past 50 tabs",
+      "bound": "reopen",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=2",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=3",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=4",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=5",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=6",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=7",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=8",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=9",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=10",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=11",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=12",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=13",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=14",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=15",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=16",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=17",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=18",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=19",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=20",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=21",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=22",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=23",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=24",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=25",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=26",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=27",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=28",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=29",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=30",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=31",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=32",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=33",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=34",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=35",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=36",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=37",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=38",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=39",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=40",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=41",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=42",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=43",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=44",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/common/KnobPanel?N=45",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "library/common/KnobPanel?N=1",
+                  "library/common/KnobPanel?N=2",
+                  "library/common/KnobPanel?N=3",
+                  "library/common/KnobPanel?N=4",
+                  "library/common/KnobPanel?N=5",
+                  "library/common/KnobPanel?N=6",
+                  "library/common/KnobPanel?N=7",
+                  "library/common/KnobPanel?N=8",
+                  "library/common/KnobPanel?N=9",
+                  "library/common/KnobPanel?N=10",
+                  "library/common/KnobPanel?N=11",
+                  "library/common/KnobPanel?N=12",
+                  "library/common/KnobPanel?N=13",
+                  "library/common/KnobPanel?N=14",
+                  "library/common/KnobPanel?N=15",
+                  "library/common/KnobPanel?N=16",
+                  "library/common/KnobPanel?N=17",
+                  "library/common/KnobPanel?N=18",
+                  "library/common/KnobPanel?N=19",
+                  "library/common/KnobPanel?N=20",
+                  "library/common/KnobPanel?N=21",
+                  "library/common/KnobPanel?N=22",
+                  "library/common/KnobPanel?N=23",
+                  "library/common/KnobPanel?N=24",
+                  "library/common/KnobPanel?N=25",
+                  "library/common/KnobPanel?N=26",
+                  "library/common/KnobPanel?N=27",
+                  "library/common/KnobPanel?N=28",
+                  "library/common/KnobPanel?N=29",
+                  "library/common/KnobPanel?N=30",
+                  "library/common/KnobPanel?N=31",
+                  "library/common/KnobPanel?N=32",
+                  "library/common/KnobPanel?N=33",
+                  "library/common/KnobPanel?N=34",
+                  "library/common/KnobPanel?N=35",
+                  "library/common/KnobPanel?N=36",
+                  "library/common/KnobPanel?N=37",
+                  "library/common/KnobPanel?N=38",
+                  "library/common/KnobPanel?N=39",
+                  "library/common/KnobPanel?N=40",
+                  "library/common/KnobPanel?N=41",
+                  "library/common/KnobPanel?N=42",
+                  "library/common/KnobPanel?N=43",
+                  "library/common/KnobPanel?N=44",
+                  "library/common/KnobPanel?N=45"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            },
+            "library/common/KnobPanel": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "library/common/KnobPanel?N=1": "Knob 1",
+            "library/common/KnobPanel?N=2": "Knob 2",
+            "library/common/KnobPanel?N=3": "Knob 3",
+            "library/common/KnobPanel?N=4": "Knob 4",
+            "library/common/KnobPanel?N=5": "Knob 5",
+            "library/common/KnobPanel?N=6": "Knob 6",
+            "library/common/KnobPanel?N=7": "Knob 7",
+            "library/common/KnobPanel?N=8": "Knob 8",
+            "library/common/KnobPanel?N=9": "Knob 9",
+            "library/common/KnobPanel?N=10": "Knob 10",
+            "library/common/KnobPanel?N=11": "Knob 11",
+            "library/common/KnobPanel?N=12": "Knob 12",
+            "library/common/KnobPanel?N=13": "Knob 13",
+            "library/common/KnobPanel?N=14": "Knob 14",
+            "library/common/KnobPanel?N=15": "Knob 15",
+            "library/common/KnobPanel?N=16": "Knob 16",
+            "library/common/KnobPanel?N=17": "Knob 17",
+            "library/common/KnobPanel?N=18": "Knob 18",
+            "library/common/KnobPanel?N=19": "Knob 19",
+            "library/common/KnobPanel?N=20": "Knob 20",
+            "library/common/KnobPanel?N=21": "Knob 21",
+            "library/common/KnobPanel?N=22": "Knob 22",
+            "library/common/KnobPanel?N=23": "Knob 23",
+            "library/common/KnobPanel?N=24": "Knob 24",
+            "library/common/KnobPanel?N=25": "Knob 25",
+            "library/common/KnobPanel?N=26": "Knob 26",
+            "library/common/KnobPanel?N=27": "Knob 27",
+            "library/common/KnobPanel?N=28": "Knob 28",
+            "library/common/KnobPanel?N=29": "Knob 29",
+            "library/common/KnobPanel?N=30": "Knob 30",
+            "library/common/KnobPanel?N=31": "Knob 31",
+            "library/common/KnobPanel?N=32": "Knob 32",
+            "library/common/KnobPanel?N=33": "Knob 33",
+            "library/common/KnobPanel?N=34": "Knob 34",
+            "library/common/KnobPanel?N=35": "Knob 35",
+            "library/common/KnobPanel?N=36": "Knob 36",
+            "library/common/KnobPanel?N=37": "Knob 37",
+            "library/common/KnobPanel?N=38": "Knob 38",
+            "library/common/KnobPanel?N=39": "Knob 39",
+            "library/common/KnobPanel?N=40": "Knob 40",
+            "library/common/KnobPanel?N=41": "Knob 41",
+            "library/common/KnobPanel?N=42": "Knob 42",
+            "library/common/KnobPanel?N=43": "Knob 43",
+            "library/common/KnobPanel?N=44": "Knob 44",
+            "library/common/KnobPanel?N=45": "Knob 45"
+          }
+        },
+        "closed": [
+          {
+            "id": "g-1",
+            "by": "you",
+            "tabs": [
+              "library/common/KnobPanel",
+              "library/common/KnobPanel?N=46"
+            ]
+          }
+        ]
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "reopen",
+            "args": {}
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "tab_limit"
+        }
+      ]
+    }
+  ]
+}

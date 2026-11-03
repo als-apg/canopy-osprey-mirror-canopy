@@ -1,0 +1,39 @@
+{
+  "about": [
+    "Command rejection vectors for nothing_to_reopen: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted."
+  ],
+  "reason": "nothing_to_reopen",
+  "cases": [
+    {
+      "name": "reopen with an empty closed stack",
+      "context": {
+        "closed": []
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "reopen",
+            "args": {}
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "nothing_to_reopen"
+        }
+      ]
+    }
+  ]
+}

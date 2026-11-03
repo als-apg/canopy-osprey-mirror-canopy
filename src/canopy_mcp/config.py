@@ -151,6 +151,10 @@ class Settings(BaseSettings):
     # Read-only directory of facility collection ``<id>.json`` files shipped
     # with the deployment; unset means no facility collections.
     facility_collections_dir: Path | None = None
+    # Whether the workspace hub is served (the /workspace routes, config.json
+    # ``workspace`` and the workspace tools); off by default. The hub lives in this
+    # process's memory, so it is for one server process serving one operator.
+    workspace: bool = False
     # Directory ``request_push`` writes its bundles into, one directory per
     # request, for an administrator to review. Unset means the tool answers
     # ``push_unavailable``.

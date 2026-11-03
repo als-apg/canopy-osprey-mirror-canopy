@@ -1,6 +1,6 @@
 """Entry point: ``python -m canopy_mcp.skill install <dir>``.
 
-Writes every Canopy skill (``canopy-panel-builder``) to
+Writes every Canopy skill (``canopy-panel-builder`` and ``canopy-operator``) to
 ``<dir>/.claude/skills/<name>/SKILL.md``, the place an agent working in project
 ``<dir>`` looks for it, and prints each path on a line of its own. The bytes are
 those of the packaged files. Running it again is safe: an up-to-date copy is

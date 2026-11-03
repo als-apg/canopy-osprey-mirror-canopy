@@ -1,0 +1,301 @@
+{
+  "about": [
+    "Command rejection vectors for unknown_target: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted."
+  ],
+  "reason": "unknown_target",
+  "cases": [
+    {
+      "name": "focus names a key that is not open",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "focus",
+            "args": {
+              "key": "@waveform"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "open names a screen the library does not list",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open",
+            "args": {
+              "ref": "library/linac/Missing"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "close_tile names a tile the layout does not hold",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "close_tile",
+            "args": {
+              "tile": "t9"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "open_collection names a collection that is not listed",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_collection",
+            "args": {
+              "ref": "facility:nope"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "drop names a tab that is not open",
+      "batch": {
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "drop",
+            "args": {
+              "source": {
+                "tab": "@waveform"
+              },
+              "target": {
+                "outer": "right"
+              }
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "drop onto a tile the layout does not hold",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "drop",
+            "args": {
+              "source": {
+                "tab": "@trace"
+              },
+              "target": {
+                "tile": "t9",
+                "zone": "centre"
+              }
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "set_query names a screen, not a tool instance",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "set_query",
+            "args": {
+              "key": "library/xfer/TransferView",
+              "query": "pv=A"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "reopen names a group the stack does not hold",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "reopen",
+            "args": {
+              "id": "g-9"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "open_tool names a tool this viewer has not configured",
+      "context": {
+        "tools": [
+          "trace",
+          "correlation"
+        ]
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "waveform"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "unknown_target"
+        }
+      ]
+    },
+    {
+      "name": "the first rejection stops the batch",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "focus",
+            "args": {
+              "key": "@trace"
+            }
+          },
+          {
+            "id": "c-e1-2",
+            "cmd": "close_tab",
+            "args": {
+              "key": "library/linac/Missing"
+            }
+          },
+          {
+            "id": "c-e1-3",
+            "cmd": "focus",
+            "args": {
+              "key": "library/linac/LinacView?SR=1"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "applied",
+          "changed": true
+        },
+        {
+          "id": "c-e1-2",
+          "status": "rejected",
+          "reason": "unknown_target"
+        },
+        {
+          "id": "c-e1-3",
+          "status": "skipped",
+          "after": "c-e1-2"
+        }
+      ]
+    }
+  ]
+}

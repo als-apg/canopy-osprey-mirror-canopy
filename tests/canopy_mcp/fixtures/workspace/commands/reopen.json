@@ -1,0 +1,71 @@
+{
+  "about": [
+    "Command vectors for reopen.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "reopen",
+  "args": {
+    "id": "string, optional (a closed group id; newest group without)"
+  },
+  "extras": [
+    "keys"
+  ],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "reopen without an id restores the newest group",
+      "command": {
+        "cmd": "reopen",
+        "args": {}
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/common/KnobPanel"
+        ]
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/common/KnobPanel"
+        ],
+        "active": "library/common/KnobPanel"
+      }
+    },
+    {
+      "name": "reopen with an id restores that group",
+      "command": {
+        "cmd": "reopen",
+        "args": {
+          "id": "g-1"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/common/KnobPanel"
+        ]
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/common/KnobPanel"
+        ],
+        "active": "library/common/KnobPanel"
+      }
+    }
+  ]
+}

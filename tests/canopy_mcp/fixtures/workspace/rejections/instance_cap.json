@@ -1,0 +1,268 @@
+{
+  "about": [
+    "Command rejection vectors for instance_cap: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted."
+  ],
+  "reason": "instance_cap",
+  "cases": [
+    {
+      "name": "a new trace instance past ten open",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/2",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/3",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/4",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/5",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/6",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/7",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/8",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/9",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace/10",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview",
+                  "@trace/2",
+                  "@trace/3",
+                  "@trace/4",
+                  "@trace/5",
+                  "@trace/6",
+                  "@trace/7",
+                  "@trace/8",
+                  "@trace/9",
+                  "@trace/10"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            },
+            "@trace/2": {
+              "tool": "trace",
+              "n": 2,
+              "query": "pv=SR:BPM:02:X&range=-1h",
+              "view": null
+            },
+            "@trace/3": {
+              "tool": "trace",
+              "n": 3,
+              "query": "pv=SR:BPM:03:X&range=-1h",
+              "view": null
+            },
+            "@trace/4": {
+              "tool": "trace",
+              "n": 4,
+              "query": "pv=SR:BPM:04:X&range=-1h",
+              "view": null
+            },
+            "@trace/5": {
+              "tool": "trace",
+              "n": 5,
+              "query": "pv=SR:BPM:05:X&range=-1h",
+              "view": null
+            },
+            "@trace/6": {
+              "tool": "trace",
+              "n": 6,
+              "query": "pv=SR:BPM:06:X&range=-1h",
+              "view": null
+            },
+            "@trace/7": {
+              "tool": "trace",
+              "n": 7,
+              "query": "pv=SR:BPM:07:X&range=-1h",
+              "view": null
+            },
+            "@trace/8": {
+              "tool": "trace",
+              "n": 8,
+              "query": "pv=SR:BPM:08:X&range=-1h",
+              "view": null
+            },
+            "@trace/9": {
+              "tool": "trace",
+              "n": 9,
+              "query": "pv=SR:BPM:09:X&range=-1h",
+              "view": null
+            },
+            "@trace/10": {
+              "tool": "trace",
+              "n": 10,
+              "query": "pv=SR:BPM:10:X&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace",
+            "@trace/2",
+            "@trace/3",
+            "@trace/4",
+            "@trace/5",
+            "@trace/6",
+            "@trace/7",
+            "@trace/8",
+            "@trace/9",
+            "@trace/10"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring",
+            "@trace/2": "Data Browser 2",
+            "@trace/3": "Data Browser 3",
+            "@trace/4": "Data Browser 4",
+            "@trace/5": "Data Browser 5",
+            "@trace/6": "Data Browser 6",
+            "@trace/7": "Data Browser 7",
+            "@trace/8": "Data Browser 8",
+            "@trace/9": "Data Browser 9",
+            "@trace/10": "Data Browser 10"
+          }
+        }
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open_tool",
+            "args": {
+              "tool": "trace",
+              "query": "pv=A&range=-4h"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "instance_cap"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "about": [
+    "Command rejection vectors for operator_busy: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted."
+  ],
+  "reason": "operator_busy",
+  "cases": [
+    {
+      "name": "the operator is still busy at the deadline",
+      "context": {
+        "busy": true
+      },
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "open",
+            "args": {
+              "ref": "library/s3-promo/promotion"
+            }
+          },
+          {
+            "id": "c-e1-2",
+            "cmd": "focus",
+            "args": {
+              "key": "library/linac/LinacView?SR=1"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "operator_busy"
+        },
+        {
+          "id": "c-e1-2",
+          "status": "skipped",
+          "after": "c-e1-1"
+        }
+      ]
+    }
+  ]
+}
