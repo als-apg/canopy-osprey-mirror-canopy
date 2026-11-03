@@ -10,7 +10,9 @@ metadata, and writes.
 Hare keeps **one EPICS monitor per PV**, no matter how many clients subscribe
 to it. Updates land in a cache of latest values and are fanned out to
 subscribers as batched diffs. New subscribers get the current value
-immediately from the cache — no extra load on the IOC.
+immediately from the cache — no extra load on the IOC. When a PV's last
+subscriber leaves, its monitor and cached value stay warm for a grace period
+before they are released.
 
 ```mermaid
 graph LR
@@ -90,6 +92,7 @@ Environment variables with prefix `CANOPY_HARE__`:
 | `CANOPY_HARE__SEED_CONCURRENCY` | `32` | Max concurrent metadata fetches (describes) across all clients; a describe runs only once a PV's channel has connected, so channels that never connect take no slot |
 | `CANOPY_HARE__SEED_TIMEOUT_S` | `2.0` | How long a newly subscribed PV waits for its monitor's first value before being reported `connected: false`; the monitor still delivers the value when the channel connects |
 | `CANOPY_HARE__SEED_RETRY_BACKOFF_S` | `30.0` | How long before a subscribe retries a describe that failed on a connected channel |
+| `CANOPY_HARE__MONITOR_GRACE_SECONDS` | `60.0` | How long a PV's monitor and cached value stay warm after its last subscriber leaves, so switching back to a screen is served from the cache (0 releases at once) |
 
 The connector's own settings use the `CANOPY_EPICS__` prefix — see
 `.env.example` at the repo root for the full annotated list.

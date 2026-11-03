@@ -268,7 +268,9 @@ sequenceDiagram
 ```
 
 On disconnect, all of the client's subscriptions are cleaned up
-automatically; monitors for PVs no other client watches are released.
+automatically; monitors for PVs no other client watches are released after
+`CANOPY_HARE__MONITOR_GRACE_SECONDS` (default 60 s), so a reconnect or screen
+switch within that window is served from the cache.
 
 ## Limits
 

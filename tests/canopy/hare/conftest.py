@@ -104,6 +104,14 @@ async def settle(broker: PVBroker) -> None:
     await broker._flush()
 
 
+@pytest.fixture(autouse=True)
+def _no_keep_warm_grace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ``HareConfig`` built here releases a PV the moment its last subscriber
+    leaves, as upstream's refcount tests expect; test_broker_grace.py sets the
+    grace it tests explicitly."""
+    monkeypatch.setenv("CANOPY_HARE__MONITOR_GRACE_SECONDS", "0")
+
+
 @pytest.fixture
 def fake_connector() -> FakeConnector:
     return FakeConnector()

@@ -3,7 +3,8 @@
 Driven deterministically via FakeConnector (emit on demand) + FakeWebSocket,
 without starting the background loops — tests call `_drain_nowait` / `_flush`,
 and `settle` to ingest the monitor's first update and wait for the describe it
-starts.
+starts. The keep-warm grace is off (conftest), so a PV is released the moment
+its last subscriber leaves; test_broker_grace.py covers the grace.
 """
 
 import asyncio

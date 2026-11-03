@@ -2,11 +2,12 @@
 
 Owns the connector, the subscription registry, a latest-value cache, and three
 background loops (consume / flush / heartbeat). Monitors are started and stopped
-on demand: the first subscriber to a PV starts an EPICS monitor, the last to
-leave stops it. Updates are buffered and flushed as diffs every
-``ws_batch_interval_ms`` to the clients subscribed to each PV. A newly
-subscribed PV is seeded by its monitor's first update and a background
-describe, so a subscribe never waits on the connector.
+on demand: the first subscriber to a PV starts an EPICS monitor; once the last
+one leaves, the monitor and its cached value stay warm for
+``monitor_grace_seconds`` and are then released. Updates are buffered and
+flushed as diffs every ``ws_batch_interval_ms`` to the clients subscribed to
+each PV. A newly subscribed PV is seeded by its monitor's first update and a
+background describe, so a subscribe never waits on the connector.
 """
 
 import time
@@ -73,6 +74,8 @@ class PVBroker:
         # PVs whose running describe task must run again after its fan-out,
         # because the channel reconnected while that fan-out was in progress.
         self._describe_again: set[str] = set()
+        # PVs with no subscriber left, kept warm until their release task fires.
+        self._grace: dict[str, asyncio.Task] = {}
         self._buffer: dict[str, PVValue] = {}
         self._buffer_lock = asyncio.Lock()
         # Bounded so a fast producer can't grow the queue without limit; the
@@ -142,6 +145,11 @@ class PVBroker:
             except asyncio.CancelledError:
                 pass
         self._tasks = []
+        grace = list(self._grace.values())
+        self._grace.clear()
+        for task in grace:
+            task.cancel()
+        await asyncio.gather(*grace, return_exceptions=True)
         for task in (*self._connect_timers.values(), *self._describe_tasks.values()):
             task.cancel()
         await self.drain_seeds()
@@ -171,7 +179,7 @@ class PVBroker:
     async def remove_client(self, client_id: str) -> None:
         affected_pvs = list(self._registry.client_pvs(client_id))
         deactivated = self._registry.remove_client(client_id)
-        await self._stop_monitors(deactivated)
+        await self._release_monitors(deactivated)
         if affected_pvs:
             await self._fire_deactivation_hooks(affected_pvs, client_id)
         self._channels.pop(client_id, None)
@@ -291,6 +299,7 @@ class PVBroker:
         newly = self._registry.subscribe(client_id, pvs)
         for pv in pvs:
             self._seed_locks.setdefault(pv, asyncio.Lock())
+        self._cancel_release(newly)
         await self._start_monitors(newly)
         new_for_client = [pv for pv in pvs if pv not in previously_subscribed]
         if new_for_client:
@@ -582,7 +591,7 @@ class PVBroker:
         held = self._registry.client_pvs(client_id)
         released = [pv for pv in pvs if pv in held]
         deactivated = self._registry.unsubscribe(client_id, pvs)
-        await self._stop_monitors(deactivated)
+        await self._release_monitors(deactivated)
         if released:
             await self._fire_deactivation_hooks(released, client_id)
 
@@ -612,6 +621,46 @@ class PVBroker:
                 )
             except Exception as exc:
                 logger.error("failed to start monitor for %s: %s", pv, exc)
+
+    async def _release_monitors(self, pvs: Iterable[str]) -> None:
+        """Release PVs that lost their last subscriber, once ``monitor_grace_seconds`` has passed.
+
+        Until then the monitor keeps running and its updates keep the cache
+        current, so a client that subscribes again within the grace period is
+        answered from cache. With a grace of 0 the PVs are released at once.
+
+        Parameters
+        ----------
+        pvs : Iterable[str]
+            PVs that have no subscribers left.
+        """
+        grace = self._config.monitor_grace_seconds
+        if grace <= 0:
+            await self._stop_monitors(pvs)
+            return
+        for pv in pvs:
+            if pv not in self._grace:
+                self._grace[pv] = asyncio.create_task(self._release_after_grace(pv, grace), name=f"grace:{pv}")
+
+    async def _release_after_grace(self, pv: str, grace: float) -> None:
+        """Wait out a PV's grace period, then release it unless it was subscribed again."""
+        await asyncio.sleep(grace)
+        if self._grace.get(pv) is asyncio.current_task():
+            del self._grace[pv]
+        if self._registry.subscribers(pv):
+            return
+        try:
+            await self._stop_monitors([pv])
+        except Exception:
+            # Nothing awaits this task, so an unlogged error would be invisible.
+            logger.exception("releasing %s after its grace period failed", pv)
+
+    def _cancel_release(self, pvs: Iterable[str]) -> None:
+        """Keep PVs in their grace period warm: they have a subscriber again."""
+        for pv in pvs:
+            task = self._grace.pop(pv, None)
+            if task is not None:
+                task.cancel()
 
     async def _stop_monitors(self, pvs: Iterable[str]) -> None:
         """Close the monitors of released PVs and discard their cached state.
@@ -760,7 +809,7 @@ class PVBroker:
             self._channels.pop(client_id, None)
             affected_pvs = list(self._registry.client_pvs(client_id))
             deactivated = self._registry.remove_client(client_id)
-            await self._stop_monitors(deactivated)
+            await self._release_monitors(deactivated)
             if affected_pvs:
                 await self._fire_deactivation_hooks(affected_pvs, client_id)
 
@@ -803,6 +852,7 @@ class PVBroker:
             "running": self._running,
             "backend": getattr(self._connector, "backend_name", None),
             "active_monitors": len(self._monitors),
+            "warm_monitors": len(self._grace),
             **self._registry.stats(),
             # After the spread so it wins over the registry's own ``clients``
             # bookkeeping key; the two are kept in step, but this is the count
