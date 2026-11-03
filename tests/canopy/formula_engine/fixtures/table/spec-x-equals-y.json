@@ -1,0 +1,19 @@
+{
+  "type": "subscribe",
+  "t0Ns": -60000000000,
+  "spec": {
+    "kind": "table",
+    "index": "first_input",
+    "mode": "raw",
+    "align": "last",
+    "bindings": {
+      "a": "SR01C:BPM1:X"
+    },
+    "columns": {
+      "x": "{a}",
+      "y": "{a}"
+    },
+    "trigger": "a",
+    "maxPoints": 1000
+  }
+}

@@ -251,6 +251,24 @@ An error occurred for a specific subscription or for the connection.
 
 The `id` field is present when the error is specific to a subscription. Connection-level errors (e.g., unknown message type) omit it.
 
+An error with an `id` does not end the subscription: the server keeps evaluating and a later `result` supersedes it.
+
+Every error frame of a live subscription carries `retryable`. It is `true` exactly when the server retries on its own: an input with no data yet (`formula_input_missing`, `pv_not_buffered`), an input whose connection is down, an archiver that is down or slow (`archiver_unavailable`, `archiver_timeout`), an evaluation timeout (`formula_eval_timeout`) or an unexpected server error (`unhandled_exception`). A missing input is retried every 250 ms; the other codes back off, doubling up to 5 s. A poll-mode subscription retries on every tick. Any other code (a parse, type or dimension error, a circular reference) is final for the spec as given, and `retryable` is `false`.
+
+A wait for input data stays silent for `CANOPY_FORMULA_ENGINE__INPUT_WAIT_NOTIFY_S` (default 1 s); after that the subscription gets one error frame with `"retryable": true`. An input whose connection is down is reported at once. The frame is sent once per distinct reason, not on every retry, and the first `result` after the inputs arrive replaces it.
+
+```json
+{
+  "type": "error",
+  "id": "a1b2c3d4e5f6",
+  "code": "formula_input_missing",
+  "message": "PV:SENSOR:A has no buffered data",
+  "retryable": true
+}
+```
+
+Subscriptions with identical parameters share one evaluation. A subscriber that joins an evaluation that already produced an outcome receives that latest `result` (or error) immediately after `subscribed`, without waiting for an input to change. The joiner is replayed the frame the other subscribers last received; the join never runs an evaluation of its own.
+
 ### pong
 
 Response to a `ping` message with the server timestamp.

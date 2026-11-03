@@ -65,6 +65,9 @@ class ErrorCode(StrEnum):
     INVALID_MESSAGE = auto()
     INVALID_SPEC = auto()
     SUBSCRIPTION_LIMIT_EXCEEDED = auto()
+    TABLE_LIVE_ONLY = auto()
+    TABLE_UPDATE_UNSUPPORTED = auto()
+    TABLE_LIMIT = auto()
 
     # Vole
     PV_NOT_BUFFERED = auto()

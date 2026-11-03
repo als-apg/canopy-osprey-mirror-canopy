@@ -276,3 +276,16 @@ class TestDebugEvict:
         assert body == {"status": "dropped", "pv": "ca://X:1"}
         assert ingest.subscribed_pvs == {"Y:1"}
         assert "X:1" not in buffer._store._rings
+
+
+class TestFormulaEngineWiring:
+    async def test_formula_engine_predicate_follows_the_bound_ingest_and_is_false_without_one(self, stack):
+        from canopy.formula_engine.app import _is_live_fed
+
+        _buffer_, ingest, *_ = stack
+        await ingest.subscribe(["ca://X:1"])
+        assert _is_live_fed("X:1")
+        await ingest.unsubscribe(["ca://X:1"])
+        assert not _is_live_fed("X:1")  # derived per call: never stale after an unsubscribe
+        gateway.bind_ingest(None)
+        assert not _is_live_fed("X:1")
