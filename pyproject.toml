@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "markdown>=3.5",
     "prometheus-client>=0.20",
+    "nh3>=0.2.18",
 ]
 
 [dependency-groups]

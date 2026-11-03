@@ -8,6 +8,7 @@ Ported from react-squirrel-backend, keeping what it learned about elog-plus:
   ``payload`` holds the result.
 - Entry text is stored as HTML (elog-plus parses it with jsoup to find inline
   images) and never run through a markdown processor, so we render it here.
+  elog-plus doesn't clean the HTML it is sent either, so we do that here too.
 - elog-plus rejects the whole post if any ``additionalAuthors`` entry is not
   an LDAP email it knows.
 - ``eventAt`` is a ``LocalDateTime`` stored as UTC (the server runs in UTC),
@@ -24,6 +25,7 @@ from datetime import UTC, datetime
 from contextlib import contextmanager
 from urllib.parse import quote
 
+import nh3
 import httpx
 import markdown as markdown_lib
 
@@ -48,9 +50,30 @@ _HEALTH_TIMEOUT_S = 2.0
 _ERROR_EXCERPT_CHARS = 500
 _NO_EMAIL = "elog-plus /v1/users/me returned no email for this app's token"
 
+# What survives in entry text: elog-plus's own sanitizeEntryText list (jsoup's
+# Safelist.basic() plus h1-h4 and its entry-reference tag), plus the tables and
+# rules markdown's "extra" emits. Everything else, raw HTML included, is dropped;
+# <script> and <style> lose their content too.
+_ALLOWED_TAGS = {
+    "a", "b", "blockquote", "br", "cite", "code", "dd", "dl", "dt", "em", "i", "li", "ol", "p", "pre",
+    "q", "small", "span", "strike", "strong", "sub", "sup", "u", "ul",
+    "h1", "h2", "h3", "h4",
+    "table", "thead", "tbody", "tr", "th", "td", "hr",
+    "elog-entry-ref",
+}  # fmt: skip
+_ALLOWED_ATTRIBUTES = {"a": {"href"}, "blockquote": {"cite"}, "q": {"cite"}, "elog-entry-ref": {"id"}}
+_ALLOWED_URL_SCHEMES = {"http", "https", "mailto"}
+
 
 def render_markdown(md: str) -> str:
-    return markdown_lib.markdown(md, extensions=_MARKDOWN_EXTENSIONS, output_format="html")
+    """Render ``md`` to HTML and clean it down to what an e-log entry may contain.
+
+    elog-plus stores ``text`` as sent and renders it in places (email, other
+    clients) that don't clean it, so a key with e-log write access must not be
+    able to store script or event handlers under an app's name.
+    """
+    html = markdown_lib.markdown(md, extensions=_MARKDOWN_EXTENSIONS, output_format="html")
+    return nh3.clean(html, tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRIBUTES, url_schemes=_ALLOWED_URL_SCHEMES)
 
 
 def _unwrap(body: Any) -> Any:
