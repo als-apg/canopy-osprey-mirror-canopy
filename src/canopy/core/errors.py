@@ -104,6 +104,14 @@ class ErrorCode(StrEnum):
     # Analytics
     ANALYTICS_EVENT_TOO_LARGE = auto()
 
+    # E-log
+    ELOG_APP_NOT_FOUND = auto()
+    ELOG_NOT_CONFIGURED = auto()
+    ELOG_UPSTREAM_ERROR = auto()
+    ELOG_UPSTREAM_TIMEOUT = auto()
+    ELOG_NOT_SUPPORTED = auto()
+    ELOG_ATTACHMENT_TOO_LARGE = auto()
+
 
 class CanopyError(Exception):
     """Base for all Canopy domain exceptions.

@@ -17,6 +17,7 @@ through in-process gateways, so the whole platform runs as one API process
 | `/squirrel` | Squirrel | Machine-state snapshots: save, restore, and compare (Postgres-backed) |
 | `/jobs` | Jobs | Background-job status over the Arq/Redis queue |
 | `/converter` | Converter | Legacy screen converter — EDM `.edl` / Qt `.ui` to Canopy Screen IR |
+| `/elog` | [E-log](../elog/index.md) | Posts e-log entries for client apps, with one e-log token per app held server-side |
 
 Modules without a guide here yet are documented by their interactive API docs
 (below).

@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from canopy import __version__
 from canopy.core.db import session_scope
+from canopy.elog.app import app as elog_app
+from canopy.elog.app import elog_lifespan
 from canopy.hare.app import app as hare_app
 from canopy.hare.app import hare_lifespan
 from canopy.jobs.app import app as jobs_app
@@ -57,6 +59,7 @@ API_MODULES = (
     ("jobs", "Jobs"),
     ("converter", "Converter"),
     ("analytics", "Analytics"),
+    ("elog", "E-log"),
 )
 
 
@@ -94,6 +97,7 @@ async def lifespan(app: FastAPI):
         jobs_lifespan(),
         converter_lifespan(),
         analytics_lifespan(),
+        elog_lifespan(),
     ):
         logger.info(f"Starting Canopy API [version {__version__}]")
         yield
@@ -137,6 +141,7 @@ app.mount("/magpie", magpie_app)
 app.mount("/jobs", jobs_app)
 app.mount("/converter", converter_app)
 app.mount("/analytics", analytics_app)
+app.mount("/elog", elog_app)
 
 tag_module(mole_app, "mole")
 tag_module(hare_app, "hare")
@@ -148,6 +153,7 @@ tag_module(magpie_app, "magpie")
 tag_module(jobs_app, "jobs")
 tag_module(converter_app, "converter")
 tag_module(analytics_app, "analytics")
+tag_module(elog_app, "elog")
 
 
 @app.get("/health", tags=["meta"])

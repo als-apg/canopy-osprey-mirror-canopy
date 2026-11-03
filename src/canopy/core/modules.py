@@ -29,6 +29,7 @@ MODULES: frozenset[str] = frozenset(
         "jobs",
         "converter",
         "analytics",
+        "elog",
     }
 )
 

@@ -101,6 +101,7 @@ nav:
       - vole/index.md
       - REST API: vole/rest_api.md
       - Configuration: vole/configuration.md
+    - E-log: elog/index.md
   - Deployment:
     - deployment/index.md
     - Docker Compose: deployment/docker.md

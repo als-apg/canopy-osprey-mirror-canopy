@@ -53,6 +53,7 @@ def test_docs_ui_lists_main_and_module_specs() -> None:
             ("jobs", "Jobs"),
             ("converter", "Converter"),
             ("analytics", "Analytics"),
+            ("elog", "E-log"),
         )
     ]
     assert '"urls.primaryName": "Canopy"' in response.text

@@ -52,6 +52,7 @@ they live in a `.env` file next to it, which compose reads both for its own
 | `EPICS_CA_SERVER_PORT`, `EPICS_PVA_SERVER_PORT`, ... | If non-default | Any other standard EPICS variable your network needs |
 | `CANOPY_EPICS__CA_TIMEOUT_S`, `CANOPY_EPICS__PVA_TIMEOUT_S` | No | EPICS backend tuning. Default 5 s each |
 | `CANOPY_DEBUG` | No | Keep `false` (the default) in production |
+| `CANOPY_ELOG__*` | No | E-log posting for client apps: the provider, its base URL, and one e-log application token per app. Leave unset and clients hide "Post to e-log". With it set, cap the request body in the proxy in front of Canopy, which has no limit of its own. See [E-log](../elog/index.md) |
 
 The [configuration table](index.md#configuration) and
 [`.env.example`](https://github.com/slaclab/Canopy/blob/main/.env.example)
@@ -109,6 +110,8 @@ older image fails if the database is already on a revision it doesn't know.
 ```bash
 curl http://localhost:<API_PORT>/health
 docker compose ps        # api healthy, both workers up
+# With CANOPY_ELOG__* set: "ok" once every app's token works; "down" with a reason if no app has one.
+curl -H "X-API-Key: <read-token>" http://localhost:<API_PORT>/elog/v1/health/summary
 ```
 
 `/health` is process liveness, the same probe the compose healthcheck uses.
