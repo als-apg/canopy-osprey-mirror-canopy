@@ -1,0 +1,234 @@
+{
+  "about": [
+    "Query vectors for the waveform tool.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Every query is copied verbatim from react-trace's query tests at d52a7b9 (test: '<describe> > <it>'); a query a test builds from constants or a template is written out as the string the test builds.",
+    "verdict is what a command carrying the query as open_tool.query or set_query.query gets:",
+    "invalid_command: the hub refuses the batch (the query is over 4096 UTF-8 bytes; the hub's only query bound).",
+    "invalid_args: the viewer rejects the command (the tool's query grammar, its PV cap, or Trace's range).",
+    "accepted: the command is applied; the tool's page falls back to its default for any key it cannot read.",
+    "The viewer's rules: the query is decodable (every '&'-separated key and value survives decodeURIComponent); the distinct values of the tool's PV key (trace pv, correlation y, waveform pv; read as URLSearchParams does, '+' a space), blank ones not counted, number at most maxPvs.",
+    "Waveform: maxPvs 8 (pv); '' is allowed."
+  ],
+  "tool": "waveform",
+  "source": "react-trace d52a7b9 src/waveform/query.test.ts",
+  "cases": [
+    {
+      "name": "empty query",
+      "test": "parseWaveformQuery > opens the defaults from an empty query without a warning",
+      "query": "",
+      "verdict": "accepted"
+    },
+    {
+      "name": "question mark only",
+      "test": "parseWaveformQuery > opens the defaults from an empty query without a warning",
+      "query": "?",
+      "verdict": "accepted"
+    },
+    {
+      "name": "eleven distinct pvs",
+      "test": "parseWaveformQuery > reads repeated pv= keys in order, deduplicated, capped at 8 (A4)",
+      "query": "pv=SR:BPM:X:WF&pv=SR:BPM:X:WF&pv=WF:0&pv=WF:1&pv=WF:2&pv=WF:3&pv=WF:4&pv=WF:5&pv=WF:6&pv=WF:7&pv=WF:8&pv=WF:9",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "ref and xs",
+      "test": "parseWaveformQuery > reads ref as a PV reference and xs as the X source",
+      "query": "pv=SR:BPM:X:WF&ref=SR:BPM:X:GOLDEN&xs=SR:BPM:S:POS",
+      "verdict": "accepted"
+    },
+    {
+      "name": "live wins over ref and xs",
+      "test": "parseWaveformQuery > keeps a PV in at most one section: live wins over reference and X source",
+      "query": "pv=SR:BPM:X:WF&ref=SR:BPM:X:WF&xs=SR:BPM:X:WF",
+      "verdict": "accepted"
+    },
+    {
+      "name": "ref wins over xs",
+      "test": "parseWaveformQuery > keeps a PV in at most one section: live wins over reference and X source",
+      "query": "pv=SR:BPM:X:WF&ref=SR:BPM:X:GOLDEN&xs=SR:BPM:X:GOLDEN",
+      "verdict": "accepted"
+    },
+    {
+      "name": "delta without ref",
+      "test": "parseWaveformQuery > ignores delta without a reference (A37)",
+      "query": "pv=SR:BPM:X:WF&delta=1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "delta with ref",
+      "test": "parseWaveformQuery > ignores delta without a reference (A37)",
+      "query": "pv=SR:BPM:X:WF&ref=SR:BPM:X:GOLDEN&delta=1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "persist=16",
+      "test": "parseWaveformQuery > accepts persistence 1..16 only (A14) and average 1..64",
+      "query": "persist=16",
+      "verdict": "accepted"
+    },
+    {
+      "name": "persist=17",
+      "test": "parseWaveformQuery > accepts persistence 1..16 only (A14) and average 1..64",
+      "query": "persist=17",
+      "verdict": "accepted"
+    },
+    {
+      "name": "persist=0",
+      "test": "parseWaveformQuery > accepts persistence 1..16 only (A14) and average 1..64",
+      "query": "persist=0",
+      "verdict": "accepted"
+    },
+    {
+      "name": "avg=64",
+      "test": "parseWaveformQuery > accepts persistence 1..16 only (A14) and average 1..64",
+      "query": "avg=64",
+      "verdict": "accepted"
+    },
+    {
+      "name": "avg=65",
+      "test": "parseWaveformQuery > accepts persistence 1..16 only (A14) and average 1..64",
+      "query": "avg=65",
+      "verdict": "accepted"
+    },
+    {
+      "name": "avg=2.5",
+      "test": "parseWaveformQuery > accepts persistence 1..16 only (A14) and average 1..64",
+      "query": "avg=2.5",
+      "verdict": "accepted"
+    },
+    {
+      "name": "elems=10:20",
+      "test": "parseWaveformQuery > reads element ranges with either side open, refusing first > last",
+      "query": "elems=10:20",
+      "verdict": "accepted"
+    },
+    {
+      "name": "elems=10:",
+      "test": "parseWaveformQuery > reads element ranges with either side open, refusing first > last",
+      "query": "elems=10:",
+      "verdict": "accepted"
+    },
+    {
+      "name": "elems=:20",
+      "test": "parseWaveformQuery > reads element ranges with either side open, refusing first > last",
+      "query": "elems=:20",
+      "verdict": "accepted"
+    },
+    {
+      "name": "elems=:",
+      "test": "parseWaveformQuery > reads element ranges with either side open, refusing first > last",
+      "query": "elems=:",
+      "verdict": "accepted"
+    },
+    {
+      "name": "elems=20:10",
+      "test": "parseWaveformQuery > reads element ranges with either side open, refusing first > last",
+      "query": "elems=20:10",
+      "verdict": "accepted"
+    },
+    {
+      "name": "elems=a:b",
+      "test": "parseWaveformQuery > reads element ranges with either side open, refusing first > last",
+      "query": "elems=a:b",
+      "verdict": "accepted"
+    },
+    {
+      "name": "dec=0",
+      "test": "parseWaveformQuery > reads decimation 0 or 256..100000 and an update cap of 1..10 Hz",
+      "query": "dec=0",
+      "verdict": "accepted"
+    },
+    {
+      "name": "dec=1000",
+      "test": "parseWaveformQuery > reads decimation 0 or 256..100000 and an update cap of 1..10 Hz",
+      "query": "dec=1000",
+      "verdict": "accepted"
+    },
+    {
+      "name": "dec=100",
+      "test": "parseWaveformQuery > reads decimation 0 or 256..100000 and an update cap of 1..10 Hz",
+      "query": "dec=100",
+      "verdict": "accepted"
+    },
+    {
+      "name": "hz=2",
+      "test": "parseWaveformQuery > reads decimation 0 or 256..100000 and an update cap of 1..10 Hz",
+      "query": "hz=2",
+      "verdict": "accepted"
+    },
+    {
+      "name": "hz=11",
+      "test": "parseWaveformQuery > reads decimation 0 or 256..100000 and an update cap of 1..10 Hz",
+      "query": "hz=11",
+      "verdict": "accepted"
+    },
+    {
+      "name": "several invalid keys",
+      "test": "parseWaveformQuery > warns once per parse naming every invalid key",
+      "query": "persist=x&avg=y&hz=z&draw=nope&legend=maybe",
+      "verdict": "accepted"
+    },
+    {
+      "name": "page and unknown keys",
+      "test": "parseWaveformQuery > ignores unknown keys and page keys",
+      "query": "theme=dark&embedded=true&foo=1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "over 4 KB",
+      "test": "parseWaveformQuery > rejects a query over 4 KB as a whole",
+      "query": "pv=SR:BPM:X:WF&xl=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "verdict": "invalid_command"
+    },
+    {
+      "name": "plot traces",
+      "test": "parseWaveformQuery > reads plot= traces positionally: live entries, then one for the reference PV",
+      "query": "pv=SR:BPM:X:WF&pv=SR:BPM:Y:WF&ref=SR:BPM:X:GOLDEN&plot=%7B%22v%22%3A1%2C%22traces%22%3A%5B%7B%22color%22%3A%22%23ff0000%22%7D%2C%7B%22displayName%22%3A%22Y%22%7D%2C%7B%22lineWidth%22%3A3%7D%5D%7D",
+      "verdict": "accepted"
+    },
+    {
+      "name": "malformed plot",
+      "test": "parseWaveformQuery > drops a malformed plot= with one warning and keeps the PVs",
+      "query": "pv=SR:BPM:X:WF&plot=%7Bnot-json",
+      "verdict": "accepted"
+    },
+    {
+      "name": "hide",
+      "test": "parseWaveformQuery > reads hide= for live and reference curves only",
+      "query": "pv=SR:BPM:X:WF&pv=SR:BPM:Y:WF&ref=SR:BPM:X:GOLDEN&hide=SR:BPM:Y:WF&hide=SR:BPM:X:GOLDEN&hide=SR:COR:H:WF",
+      "verdict": "accepted"
+    },
+    {
+      "name": "serialized live pvs",
+      "test": "serializeWaveformQuery > writes live PVs as repeated pv= keys with \":\" left readable",
+      "query": "pv=SR:BPM:X:WF&pv=SR:BPM:Y:WF",
+      "verdict": "accepted"
+    },
+    {
+      "name": "serialized delta",
+      "test": "serializeWaveformQuery > writes delta=1 only together with ref= (A37)",
+      "query": "pv=SR:BPM:X:WF&ref=SR:BPM:X:GOLDEN&delta=1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "serialized xs",
+      "test": "serializeWaveformQuery > prunes styles and hidden of PVs not in Live or Reference",
+      "query": "pv=SR:BPM:X:WF&xs=SR:BPM:S:POS",
+      "verdict": "accepted"
+    },
+    {
+      "name": "roll zero",
+      "test": "serializeWaveformQuery > writes roll= for a rolling reference, delta=1 with it, and spread= off its default (DESIGN 2)",
+      "query": "pv=A&roll=0",
+      "verdict": "accepted"
+    },
+    {
+      "name": "spread seven",
+      "test": "serializeWaveformQuery > writes roll= for a rolling reference, delta=1 with it, and spread= off its default (DESIGN 2)",
+      "query": "pv=A&spread=7",
+      "verdict": "accepted"
+    }
+  ]
+}

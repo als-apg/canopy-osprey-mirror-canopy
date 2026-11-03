@@ -140,7 +140,8 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     """The viewer's ``config.json``. It never carries a key: the viewer needs none.
 
     * ``confirmWrites`` (``CANOPY_CONFIRM_WRITES``): whether the viewer asks
-      before each write; ``home`` the configured home screen;
+      before each write under a backend whose write state is ``on`` (at
+      ``asked`` it asks either way); ``home`` the configured home screen;
     * each tool of :func:`configured_tools` as ``{path, query}``, ``query``
       being its default query;
     * ``colorScheme``: the flat scheme plus ``meta`` this server sees

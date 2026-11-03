@@ -42,6 +42,7 @@ from canopy_mcp.server import (  # noqa: E402
     register_all,
     registered_tools,
     authoring_snapshot,
+    set_workspace_tools,
 )
 from canopy.contracts.health import HareHealthSummaryDTO  # noqa: E402
 
@@ -85,13 +86,15 @@ def summary(**overrides: Any) -> dict[str, Any]:
 
 @pytest.fixture(autouse=True)
 def restore_authoring() -> Iterator[None]:
-    """Start every test from the tool set a default app offers: every tool.
+    """Start every test from the tool set a default app offers: every tool but the workspace ones.
 
-    Any authoring tool a test's app removed is re-added afterwards, so no test
-    inherits another test's app.
+    Any authoring tool a test's app removed is re-added and the workspace tools are
+    taken off again afterwards, so no test inherits another test's app.
     """
     register_all()
+    set_workspace_tools(False)
     yield
+    set_workspace_tools(False)
     removed = authoring_snapshot()
     if not removed:
         return

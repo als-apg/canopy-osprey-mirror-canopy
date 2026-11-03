@@ -1,0 +1,93 @@
+{
+  "about": [
+    "Command vectors for reset_layout.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "reset_layout",
+  "args": {},
+  "extras": [
+    "group"
+  ],
+  "destructive": true,
+  "cases": [
+    {
+      "name": "reset_layout re-tiles the dock and pushes a layout group",
+      "command": {
+        "cmd": "reset_layout",
+        "args": {}
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "group": "g-2"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/linac/LinacView?SR=1"
+      }
+    },
+    {
+      "name": "reset_layout below two tiles is a no-op without a group",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": true,
+              "canForward": false
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "tile": "t1",
+            "tabs": [
+              "library/linac/LinacView?SR=1",
+              "library/xfer/TransferView"
+            ],
+            "showing": "library/linac/LinacView?SR=1"
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            }
+          },
+          "instances": {},
+          "toolMru": [],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View"
+          }
+        }
+      },
+      "command": {
+        "cmd": "reset_layout",
+        "args": {}
+      },
+      "result": {
+        "status": "applied",
+        "changed": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,747 @@
+{
+  "about": [
+    "Route vectors for POST <ws>/active/<windowId>/result (one per batch).",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Route vectors for the workspace's HTTP surface on FRONT. path is relative to the advertised workspace path (config.json workspace.path); there is no route that accepts commands.",
+    "Each case: setup steps (the scenarios' step grammar, on a fresh hub with epoch e1 and the clock at 0), one request {method, path, headers?, body?, padTo?}, expect {status, body?, events?}, then optional follow-up steps.",
+    "A body {'$file': <name>} is that fixture file's body (state.sample.json, state.oversize.json, state.reduced.json); state '$sample' / '$empty' as in the scenarios. padTo: once those are resolved, the body's compact JSON followed by spaces up to that many bytes.",
+    "A claim or report body is {windowId, seq, shown, state, truncated?}; truncated is true when the window reduced an oversize state. An error body is {error: <code>, detail?}; expect names the code only.",
+    "Every workspace route, the event stream included, refuses a Sec-Fetch-Site that is present and neither same-origin nor none with 403 cross_site, before it reads the body or the hub.",
+    "Bodies are at most 131072 bytes (413 too_large); a state that breaks the hub's normalisation is 422 invalid_state.",
+    "Results are stored whenever accepted; state is written to the slot only when the window holds the slot and seq is above the slot's seq."
+  ],
+  "route": "result",
+  "cases": [
+    {
+      "name": "the holding window posts its result",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result",
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 42,
+          "state": "$sample",
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 204
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "seq": 42,
+            "pending": [],
+            "results": [
+              {
+                "id": "c-e1-1",
+                "batch": "b-e1-1",
+                "window": "w-A",
+                "cmd": "focus",
+                "status": "applied",
+                "changed": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a window that does not hold the batch",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-B/result",
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 2,
+          "state": "$empty",
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "not_claimed"
+        }
+      }
+    },
+    {
+      "name": "a result after the deadline",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        },
+        {
+          "actor": "clock",
+          "do": "advance",
+          "ms": 10000
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result",
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 42,
+          "state": "$sample",
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "batch_closed"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "seq": 41,
+            "results": [
+              {
+                "id": "c-e1-1",
+                "status": "lost"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a result after another window claimed: the batch is already window_gone",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        },
+        {
+          "actor": "window:B",
+          "do": "claim",
+          "seq": 1,
+          "shown": true,
+          "state": "$empty",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": "w-A",
+              "epoch": "e1"
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result",
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 42,
+          "state": "$sample",
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 409,
+        "body": {
+          "error": "batch_closed"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "activeWindow": "w-B",
+            "seq": 1,
+            "results": [
+              {
+                "id": "c-e1-1",
+                "status": "window_gone"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a cross-site result",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result",
+        "headers": {
+          "Sec-Fetch-Site": "cross-site"
+        },
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 42,
+          "state": "$sample",
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 403,
+        "body": {
+          "error": "cross_site"
+        }
+      },
+      "then": [
+        {
+          "actor": "agent",
+          "do": "get_workspace",
+          "expect": {
+            "pending": [
+              "c-e1-1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a result body over 128 KiB",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result",
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 42,
+          "state": "$sample",
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        },
+        "padTo": 131073
+      },
+      "expect": {
+        "status": 413,
+        "body": {
+          "error": "too_large"
+        }
+      }
+    },
+    {
+      "name": "a result whose state breaks the normalisation",
+      "setup": [
+        {
+          "actor": "window:A",
+          "do": "claim",
+          "seq": 41,
+          "shown": true,
+          "state": "$sample",
+          "expect": {
+            "status": 200,
+            "body": {
+              "active": true,
+              "previous": null,
+              "epoch": "e1"
+            }
+          }
+        },
+        {
+          "actor": "window:A",
+          "do": "connect",
+          "expect": {
+            "status": 200,
+            "events": [
+              {
+                "event": "hello",
+                "data": {
+                  "epoch": "e1",
+                  "activeWindow": "w-A",
+                  "seq": 41
+                }
+              }
+            ]
+          }
+        },
+        {
+          "actor": "agent",
+          "do": "set_workspace",
+          "commands": [
+            {
+              "cmd": "focus",
+              "args": {
+                "key": "@trace"
+              }
+            }
+          ],
+          "wait_s": 0,
+          "expect": {
+            "batch": {
+              "id": "b-e1-1",
+              "status": "pending",
+              "results": []
+            }
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "active/w-A/result",
+        "body": {
+          "batch": "b-e1-1",
+          "seq": 42,
+          "state": {
+            "tabs": [
+              {
+                "key": "library/linac/LinacView?SR=1",
+                "kind": "screen",
+                "canBack": true,
+                "canForward": false
+              },
+              {
+                "key": "library/xfer/TransferView",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "@trace",
+                "kind": "tool",
+                "canBack": false,
+                "canForward": false
+              },
+              {
+                "key": "library/sr/overview",
+                "kind": "screen",
+                "canBack": false,
+                "canForward": false
+              }
+            ],
+            "active": "library/linac/LinacView?SR=1",
+            "layout": {
+              "split": "row",
+              "items": [
+                {
+                  "tile": "t1",
+                  "tabs": [
+                    "library/linac/LinacView?SR=1",
+                    "library/sr/overview"
+                  ],
+                  "showing": "library/linac/LinacView?SR=1",
+                  "size": 0.6
+                },
+                {
+                  "split": "column",
+                  "items": [
+                    {
+                      "tile": "t2",
+                      "tabs": [
+                        "library/xfer/TransferView"
+                      ],
+                      "showing": "library/xfer/TransferView"
+                    },
+                    {
+                      "tile": "t3",
+                      "tabs": [
+                        "@trace"
+                      ],
+                      "showing": "@trace"
+                    }
+                  ],
+                  "size": 0.4
+                }
+              ]
+            },
+            "zoom": {
+              "library/linac/LinacView": {
+                "mode": "fit"
+              },
+              "library/xfer/TransferView": {
+                "mode": "manual",
+                "percent": 75
+              },
+              "library/sr/overview": {
+                "mode": "fit"
+              }
+            },
+            "instances": {
+              "@trace": {
+                "tool": "trace",
+                "n": 1,
+                "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+                "view": null
+              }
+            },
+            "toolMru": [
+              "@trace"
+            ],
+            "labels": {
+              "library/linac/LinacView?SR=1": "LINAC View",
+              "library/xfer/TransferView": "XFER View",
+              "@trace": "Data Browser",
+              "library/sr/overview": "Storage Ring"
+            },
+            "pvValues": {
+              "SR:DIAG:DCCT:01:CURRENT:RB": 500.1
+            }
+          },
+          "results": [
+            {
+              "id": "c-e1-1",
+              "status": "applied",
+              "changed": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 422,
+        "body": {
+          "error": "invalid_state"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "about": [
+    "Command vectors for open_collection.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra.",
+    "A collection opened with its layout (as layout, or no as on a collection that has one) pushes a layout group."
+  ],
+  "verb": "open_collection",
+  "args": {
+    "ref": "string, required (<source>:<id>)",
+    "as": "tabs | side | layout, optional (default: its saved layout, else side)"
+  },
+  "extras": [
+    "keys",
+    "group"
+  ],
+  "destructive": "with layout",
+  "cases": [
+    {
+      "name": "open_collection without as opens a layout-less collection side by side",
+      "command": {
+        "cmd": "open_collection",
+        "args": {
+          "ref": "facility:injector"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/linac/LinacView",
+          "library/xfer/TransferView",
+          "@trace/2"
+        ]
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/linac/LinacView",
+          "@trace/2"
+        ]
+      }
+    },
+    {
+      "name": "open_collection without as uses the saved layout and pushes a layout group",
+      "command": {
+        "cmd": "open_collection",
+        "args": {
+          "ref": "personal:grid"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/sr/overview",
+          "library/s3-promo/promotion",
+          "@trace",
+          "@correlation"
+        ],
+        "group": "g-2"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion",
+          "@correlation"
+        ]
+      }
+    },
+    {
+      "name": "open_collection as tabs opens the members as tabs of one tile",
+      "command": {
+        "cmd": "open_collection",
+        "args": {
+          "ref": "facility:injector",
+          "as": "tabs"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "keys": [
+          "library/linac/LinacView",
+          "library/xfer/TransferView",
+          "@trace/2"
+        ]
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/linac/LinacView",
+          "@trace/2"
+        ]
+      }
+    }
+  ]
+}

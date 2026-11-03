@@ -1,10 +1,10 @@
 """The Canopy skills: the agent's guides to the canopy MCP tools.
 
 :data:`SKILLS` maps each skill's name to its source file in this package, which
-is the single source of the text: ``canopy-panel-builder`` (building screens).
-The files ship in the wheel as package data, and ``python -m canopy_mcp.skill
-install <dir>`` writes them in the Claude Code skill layout, each to
-``<dir>/.claude/skills/<name>/SKILL.md``.
+is the single source of the text: ``canopy-panel-builder`` (building screens)
+and ``canopy-operator`` (operating the workspace). The files ship in the wheel
+as package data, and ``python -m canopy_mcp.skill install <dir>`` writes them
+in the Claude Code skill layout, each to ``<dir>/.claude/skills/<name>/SKILL.md``.
 The text is only ever handled as bytes (:func:`skill_bytes`): no newline
 translation, no template.
 
@@ -22,6 +22,7 @@ from importlib.resources import files
 
 SKILLS: dict[str, str] = {
     "canopy-panel-builder": "SKILL.md",
+    "canopy-operator": "operator/SKILL.md",
 }
 
 SKILL_NAME = "canopy-panel-builder"

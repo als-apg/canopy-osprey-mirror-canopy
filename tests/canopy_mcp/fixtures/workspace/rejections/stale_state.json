@@ -1,0 +1,101 @@
+{
+  "about": [
+    "Command rejection vectors for stale_state: the viewer's precheck, before dispatch.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole). batch {base?, commands [{id, cmd, args}]} is what the window receives; results is what it posts back, one entry per command in order.",
+    "The first rejection stops the batch: every later command is skipped {after: the rejected command's id}.",
+    "Every batch here passes the hub's shape check; the hub stores the results as posted.",
+    "base.seq is checked once at batch start against the window's seq; the window then tracks its own commands. operatorChangeAfter: the operator changes the workspace after that command is applied, which fails the next one."
+  ],
+  "reason": "stale_state",
+  "cases": [
+    {
+      "name": "the window's seq moved past base.seq",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 40
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "focus",
+            "args": {
+              "key": "@trace"
+            }
+          },
+          {
+            "id": "c-e1-2",
+            "cmd": "close_tab",
+            "args": {
+              "key": "library/xfer/TransferView"
+            }
+          }
+        ]
+      },
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "rejected",
+          "reason": "stale_state"
+        },
+        {
+          "id": "c-e1-2",
+          "status": "skipped",
+          "after": "c-e1-1"
+        }
+      ]
+    },
+    {
+      "name": "an operator change between commands",
+      "batch": {
+        "base": {
+          "window": "w-A",
+          "seq": 41
+        },
+        "commands": [
+          {
+            "id": "c-e1-1",
+            "cmd": "focus",
+            "args": {
+              "key": "@trace"
+            }
+          },
+          {
+            "id": "c-e1-2",
+            "cmd": "close_tab",
+            "args": {
+              "key": "library/xfer/TransferView"
+            }
+          },
+          {
+            "id": "c-e1-3",
+            "cmd": "focus",
+            "args": {
+              "key": "library/linac/LinacView?SR=1"
+            }
+          }
+        ]
+      },
+      "operatorChangeAfter": "c-e1-1",
+      "results": [
+        {
+          "id": "c-e1-1",
+          "status": "applied",
+          "changed": true
+        },
+        {
+          "id": "c-e1-2",
+          "status": "rejected",
+          "reason": "stale_state"
+        },
+        {
+          "id": "c-e1-3",
+          "status": "skipped",
+          "after": "c-e1-2"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "about": [
+    "Command vectors for forward.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra."
+  ],
+  "verb": "forward",
+  "args": {
+    "key": "string, required"
+  },
+  "extras": [],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "forward steps the tab's own history",
+      "context": {
+        "state": {
+          "tabs": [
+            {
+              "key": "library/linac/LinacView?SR=1",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": true
+            },
+            {
+              "key": "library/xfer/TransferView",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "@trace",
+              "kind": "tool",
+              "canBack": false,
+              "canForward": false
+            },
+            {
+              "key": "library/sr/overview",
+              "kind": "screen",
+              "canBack": false,
+              "canForward": false
+            }
+          ],
+          "active": "library/linac/LinacView?SR=1",
+          "layout": {
+            "split": "row",
+            "items": [
+              {
+                "tile": "t1",
+                "tabs": [
+                  "library/linac/LinacView?SR=1",
+                  "library/sr/overview"
+                ],
+                "showing": "library/linac/LinacView?SR=1",
+                "size": 0.6
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tile": "t2",
+                    "tabs": [
+                      "library/xfer/TransferView"
+                    ],
+                    "showing": "library/xfer/TransferView"
+                  },
+                  {
+                    "tile": "t3",
+                    "tabs": [
+                      "@trace"
+                    ],
+                    "showing": "@trace"
+                  }
+                ],
+                "size": 0.4
+              }
+            ]
+          },
+          "zoom": {
+            "library/linac/LinacView": {
+              "mode": "fit"
+            },
+            "library/xfer/TransferView": {
+              "mode": "manual",
+              "percent": 75
+            },
+            "library/sr/overview": {
+              "mode": "fit"
+            }
+          },
+          "instances": {
+            "@trace": {
+              "tool": "trace",
+              "n": 1,
+              "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+              "view": null
+            }
+          },
+          "toolMru": [
+            "@trace"
+          ],
+          "labels": {
+            "library/linac/LinacView?SR=1": "LINAC View",
+            "library/xfer/TransferView": "XFER View",
+            "@trace": "Data Browser",
+            "library/sr/overview": "Storage Ring"
+          }
+        }
+      },
+      "command": {
+        "cmd": "forward",
+        "args": {
+          "key": "library/linac/LinacView?SR=1"
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "about": [
+    "Query vectors for the correlation tool.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "Every query is copied verbatim from react-trace's query tests at d52a7b9 (test: '<describe> > <it>'); a query a test builds from constants or a template is written out as the string the test builds.",
+    "verdict is what a command carrying the query as open_tool.query or set_query.query gets:",
+    "invalid_command: the hub refuses the batch (the query is over 4096 UTF-8 bytes; the hub's only query bound).",
+    "invalid_args: the viewer rejects the command (the tool's query grammar, its PV cap, or Trace's range).",
+    "accepted: the command is applied; the tool's page falls back to its default for any key it cannot read.",
+    "The viewer's rules: the query is decodable (every '&'-separated key and value survives decodeURIComponent); the distinct values of the tool's PV key (trace pv, correlation y, waveform pv; read as URLSearchParams does, '+' a space), blank ones not counted, number at most maxPvs.",
+    "Correlation: maxPvs 8 (y); '' is allowed."
+  ],
+  "tool": "correlation",
+  "source": "react-trace d52a7b9 src/correlation/query.test.ts",
+  "cases": [
+    {
+      "name": "empty query",
+      "test": "parseCorrelationQuery defaults > opens Timer 1 s, n=1000, lookback 1h, scatter with an empty query",
+      "query": "",
+      "verdict": "accepted"
+    },
+    {
+      "name": "page and unknown keys",
+      "test": "parseCorrelationQuery defaults > strips a leading \"?\" and ignores unknown and page keys",
+      "query": "?embedded=true&theme=dark&foo=bar&x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X",
+      "verdict": "accepted"
+    },
+    {
+      "name": "y order and duplicates",
+      "test": "parseCorrelationQuery keys > keeps Y in order, drops duplicates, allows Y = X",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:03:POSITION:X&y=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:03:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X",
+      "verdict": "accepted"
+    },
+    {
+      "name": "trig wins over dt",
+      "test": "parseCorrelationQuery keys > trig wins over dt",
+      "query": "dt=5&trig=XFER:TIMING:TRIGGER",
+      "verdict": "accepted"
+    },
+    {
+      "name": "dt 0.1",
+      "test": "parseCorrelationQuery keys > reads dt in seconds, down to 0.1",
+      "query": "dt=0.1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "dt 2.5",
+      "test": "parseCorrelationQuery keys > reads dt in seconds, down to 0.1",
+      "query": "dt=2.5",
+      "verdict": "accepted"
+    },
+    {
+      "name": "n lower bound",
+      "test": "parseCorrelationQuery keys > reads n at both bounds",
+      "query": "n=1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "n upper bound",
+      "test": "parseCorrelationQuery keys > reads n at both bounds",
+      "query": "n=10000",
+      "verdict": "accepted"
+    },
+    {
+      "name": "lookback 30m",
+      "test": "parseCorrelationQuery keys > reads lookback in Trace's span syntax and clamps it to [1m, 24h]",
+      "query": "lookback=30m",
+      "verdict": "accepted"
+    },
+    {
+      "name": "lookback 1.5h",
+      "test": "parseCorrelationQuery keys > reads lookback in Trace's span syntax and clamps it to [1m, 24h]",
+      "query": "lookback=1.5h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "lookback 0.5m",
+      "test": "parseCorrelationQuery keys > reads lookback in Trace's span syntax and clamps it to [1m, 24h]",
+      "query": "lookback=0.5m",
+      "verdict": "accepted"
+    },
+    {
+      "name": "lookback 2d",
+      "test": "parseCorrelationQuery keys > reads lookback in Trace's span syntax and clamps it to [1m, 24h]",
+      "query": "lookback=2d",
+      "verdict": "accepted"
+    },
+    {
+      "name": "lookback 1w",
+      "test": "parseCorrelationQuery keys > reads lookback in Trace's span syntax and clamps it to [1m, 24h]",
+      "query": "lookback=1w",
+      "verdict": "accepted"
+    },
+    {
+      "name": "view and dy",
+      "test": "parseCorrelationQuery keys > reads view and dy, dy by PV name",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&y=XFER:DIAG:BPM:03:POSITION:X&view=density&dy=XFER:DIAG:BPM:03:POSITION:X",
+      "verdict": "accepted"
+    },
+    {
+      "name": "axes default",
+      "test": "parseCorrelationQuery keys > reads axes; shared by default",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X",
+      "verdict": "accepted"
+    },
+    {
+      "name": "axes shared",
+      "test": "parseCorrelationQuery keys > reads axes; shared by default",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&axes=shared",
+      "verdict": "accepted"
+    },
+    {
+      "name": "axes overlay",
+      "test": "parseCorrelationQuery keys > reads axes; shared by default",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&axes=overlay",
+      "verdict": "accepted"
+    },
+    {
+      "name": "axes split",
+      "test": "parseCorrelationQuery keys > reads axes; shared by default",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&axes=split",
+      "verdict": "accepted"
+    },
+    {
+      "name": "density y default",
+      "test": "parseCorrelationQuery keys > density Y defaults to the first Y",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&y=XFER:DIAG:BPM:03:POSITION:X&view=density",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value n=0",
+      "test": "parseCorrelationQuery invalid values > n=0 falls back to the default with one warning",
+      "query": "n=0",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value n=10001",
+      "test": "parseCorrelationQuery invalid values > n=10001 falls back to the default with one warning",
+      "query": "n=10001",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value n=12.5",
+      "test": "parseCorrelationQuery invalid values > n=12.5 falls back to the default with one warning",
+      "query": "n=12.5",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value n=abc",
+      "test": "parseCorrelationQuery invalid values > n=abc falls back to the default with one warning",
+      "query": "n=abc",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value dt=0.05",
+      "test": "parseCorrelationQuery invalid values > dt=0.05 falls back to the default with one warning",
+      "query": "dt=0.05",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value dt=-1",
+      "test": "parseCorrelationQuery invalid values > dt=-1 falls back to the default with one warning",
+      "query": "dt=-1",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value dt=fast",
+      "test": "parseCorrelationQuery invalid values > dt=fast falls back to the default with one warning",
+      "query": "dt=fast",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value trig=",
+      "test": "parseCorrelationQuery invalid values > trig= falls back to the default with one warning",
+      "query": "trig=",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value lookback=-1h",
+      "test": "parseCorrelationQuery invalid values > lookback=-1h falls back to the default with one warning",
+      "query": "lookback=-1h",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value lookback=10s",
+      "test": "parseCorrelationQuery invalid values > lookback=10s falls back to the default with one warning",
+      "query": "lookback=10s",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value lookback=",
+      "test": "parseCorrelationQuery invalid values > lookback= falls back to the default with one warning",
+      "query": "lookback=",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value view=line",
+      "test": "parseCorrelationQuery invalid values > view=line falls back to the default with one warning",
+      "query": "view=line",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value axes=stacked",
+      "test": "parseCorrelationQuery invalid values > axes=stacked falls back to the default with one warning",
+      "query": "axes=stacked",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value axes=",
+      "test": "parseCorrelationQuery invalid values > axes= falls back to the default with one warning",
+      "query": "axes=",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value y=XFER:DIAG:BPM:02:POSITION:X&dy=XFER:DIAG:BPM:03:POSITION:X",
+      "test": "parseCorrelationQuery invalid values > y=XFER:DIAG:BPM:02:POSITION:X&dy=XFER:DIAG:BPM:03:POSITION:X falls back to the default with one warning",
+      "query": "y=XFER:DIAG:BPM:02:POSITION:X&dy=XFER:DIAG:BPM:03:POSITION:X",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid value x=",
+      "test": "parseCorrelationQuery invalid values > x= falls back to the default with one warning",
+      "query": "x=",
+      "verdict": "accepted"
+    },
+    {
+      "name": "invalid trig falls to dt",
+      "test": "parseCorrelationQuery invalid values > an invalid trig falls to a valid dt",
+      "query": "trig=%20&dt=3",
+      "verdict": "accepted"
+    },
+    {
+      "name": "ten y",
+      "test": "parseCorrelationQuery invalid values > keeps the first 8 distinct Y and warns once",
+      "query": "y=PV:Y0&y=PV:Y1&y=PV:Y2&y=PV:Y3&y=PV:Y4&y=PV:Y5&y=PV:Y6&y=PV:Y7&y=PV:Y8&y=PV:Y9",
+      "verdict": "invalid_args"
+    },
+    {
+      "name": "several invalid keys",
+      "test": "parseCorrelationQuery invalid values > several invalid keys still cost one warning; valid keys are kept",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&n=0&dt=0&view=pie&lookback=forever",
+      "verdict": "accepted"
+    },
+    {
+      "name": "over 4 KB",
+      "test": "parseCorrelationQuery invalid values > rejects a query over 4 KB as a whole, with one warning",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "verdict": "invalid_command"
+    },
+    {
+      "name": "serialized timer query",
+      "test": "serializeCorrelationQuery > writes only the active trigger key",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&dt=1&n=1000&lookback=1h&view=scatter",
+      "verdict": "accepted"
+    },
+    {
+      "name": "serialized trigger query",
+      "test": "serializeCorrelationQuery > writes only the active trigger key",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&trig=XFER:TIMING:TRIGGER&n=1000&lookback=1h&view=scatter",
+      "verdict": "accepted"
+    },
+    {
+      "name": "canonical query",
+      "test": "round-trip > query -> state -> query is stable for a canonical query",
+      "query": "x=XFER:DIAG:BPM:01:POSITION:X&y=XFER:DIAG:BPM:02:POSITION:X&y=XFER:DIAG:BPM:03:POSITION:X&trig=XFER:TIMING:TRIGGER&n=500&lookback=30m&view=density&axes=split&dy=XFER:DIAG:BPM:02:POSITION:X",
+      "verdict": "accepted"
+    }
+  ]
+}

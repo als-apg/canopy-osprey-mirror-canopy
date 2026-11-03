@@ -1,0 +1,201 @@
+{
+  "about": [
+    "Command vectors for drop.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "args: the closed argument set (the hub refuses anything else as invalid_command). extras: the applied result's extra fields. destructive: whether an applied changed:true command pushes a group on the closed-tabs stack.",
+    "Each case runs in context.json's context (with the case's context keys replaced whole): command {cmd, args} -> result, the command's result entry without its id.",
+    "after, when present: the open tab keys in strip order and the active key once the command is applied.",
+    "A no-op is applied {changed: false}; a destructive no-op pushes no group and carries no group extra.",
+    "A command that names a tile id (close_tile; drop from a tile, onto a tile or onto a border) runs in a batch with base {window, seq}; the hub refuses it without as invalid_command (refusals/invalid_command.json, bound base-required). The tile ids here are context.json's: t1 holds LinacView and overview, t2 TransferView, t3 @trace.",
+    "key: the minted key of a new source's item; absent for a tab or tile source. A {new} member already open drops as that tab."
+  ],
+  "verb": "drop",
+  "args": {
+    "source": "{new: {ref, macros?} | {tool, query?}} | {tab: key} | {tile: id}, required",
+    "target": "{tile, zone: centre} | {tile, zone: tab, index} | {tile, edge: left|right|top|bottom} | {border: {tile, side}} | {outer: left|right|top|bottom}, required"
+  },
+  "extras": [
+    "key"
+  ],
+  "destructive": false,
+  "cases": [
+    {
+      "name": "drop a new screen on a tile's bottom edge",
+      "command": {
+        "cmd": "drop",
+        "args": {
+          "source": {
+            "new": {
+              "ref": "library/s3-promo/promotion"
+            }
+          },
+          "target": {
+            "tile": "t1",
+            "edge": "bottom"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "library/s3-promo/promotion"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "library/s3-promo/promotion"
+        ],
+        "active": "library/s3-promo/promotion"
+      }
+    },
+    {
+      "name": "drop a new tool between two tiles",
+      "command": {
+        "cmd": "drop",
+        "args": {
+          "source": {
+            "new": {
+              "tool": "waveform"
+            }
+          },
+          "target": {
+            "border": {
+              "tile": "t2",
+              "side": "bottom"
+            }
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true,
+        "key": "@waveform"
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview",
+          "@waveform"
+        ],
+        "active": "@waveform"
+      }
+    },
+    {
+      "name": "drop an open tab into another tile's centre",
+      "command": {
+        "cmd": "drop",
+        "args": {
+          "source": {
+            "tab": "@trace"
+          },
+          "target": {
+            "tile": "t1",
+            "zone": "centre"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "@trace"
+      }
+    },
+    {
+      "name": "drop an open tab at a tab-bar position",
+      "command": {
+        "cmd": "drop",
+        "args": {
+          "source": {
+            "tab": "library/xfer/TransferView"
+          },
+          "target": {
+            "tile": "t1",
+            "zone": "tab",
+            "index": 1
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/xfer/TransferView"
+      }
+    },
+    {
+      "name": "drop a whole tile on the dock's outer edge",
+      "command": {
+        "cmd": "drop",
+        "args": {
+          "source": {
+            "tile": "t3"
+          },
+          "target": {
+            "outer": "bottom"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": true
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ]
+      }
+    },
+    {
+      "name": "a self-drop is a no-op",
+      "command": {
+        "cmd": "drop",
+        "args": {
+          "source": {
+            "tile": "t2"
+          },
+          "target": {
+            "tile": "t2",
+            "zone": "centre"
+          }
+        }
+      },
+      "result": {
+        "status": "applied",
+        "changed": false
+      },
+      "after": {
+        "tabs": [
+          "library/linac/LinacView?SR=1",
+          "library/xfer/TransferView",
+          "@trace",
+          "library/sr/overview"
+        ],
+        "active": "library/linac/LinacView?SR=1"
+      }
+    }
+  ]
+}

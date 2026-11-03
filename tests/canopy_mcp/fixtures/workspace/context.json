@@ -1,0 +1,208 @@
+{
+  "about": [
+    "The default viewer context the command and rejection vectors run in.",
+    "Authored in canopy (tests/canopy_mcp/fixtures/workspace/); every other holder keeps a byte-identical copy of the whole directory.",
+    "ASCII-only, no trailing whitespace, exactly one final newline.",
+    "seq: the window's state counter. state: the window's reported state (equal to state.sample.json's state).",
+    "manifest: the screen refs the library lists and the viewer can show (kind ir). tools: the tools this viewer has configured.",
+    "collections: what list_collections returns, by ref (<source>:<id>), with members and layout as stored.",
+    "closed: the closed-tabs stack, oldest first; each group {id, by: agent | you, tabs: [keys]}. Ids the viewer mints next continue at g-2.",
+    "busy: true while an operator write dialog or a multi-write run is open when the batch deadline arrives.",
+    "A vector case's context is this context with each top-level key the case's own context names replaced whole."
+  ],
+  "context": {
+    "seq": 41,
+    "state": {
+      "tabs": [
+        {
+          "key": "library/linac/LinacView?SR=1",
+          "kind": "screen",
+          "canBack": true,
+          "canForward": false
+        },
+        {
+          "key": "library/xfer/TransferView",
+          "kind": "screen",
+          "canBack": false,
+          "canForward": false
+        },
+        {
+          "key": "@trace",
+          "kind": "tool",
+          "canBack": false,
+          "canForward": false
+        },
+        {
+          "key": "library/sr/overview",
+          "kind": "screen",
+          "canBack": false,
+          "canForward": false
+        }
+      ],
+      "active": "library/linac/LinacView?SR=1",
+      "layout": {
+        "split": "row",
+        "items": [
+          {
+            "tile": "t1",
+            "tabs": [
+              "library/linac/LinacView?SR=1",
+              "library/sr/overview"
+            ],
+            "showing": "library/linac/LinacView?SR=1",
+            "size": 0.6
+          },
+          {
+            "split": "column",
+            "items": [
+              {
+                "tile": "t2",
+                "tabs": [
+                  "library/xfer/TransferView"
+                ],
+                "showing": "library/xfer/TransferView"
+              },
+              {
+                "tile": "t3",
+                "tabs": [
+                  "@trace"
+                ],
+                "showing": "@trace"
+              }
+            ],
+            "size": 0.4
+          }
+        ]
+      },
+      "zoom": {
+        "library/linac/LinacView": {
+          "mode": "fit"
+        },
+        "library/xfer/TransferView": {
+          "mode": "manual",
+          "percent": 75
+        },
+        "library/sr/overview": {
+          "mode": "fit"
+        }
+      },
+      "instances": {
+        "@trace": {
+          "tool": "trace",
+          "n": 1,
+          "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+          "view": null
+        }
+      },
+      "toolMru": [
+        "@trace"
+      ],
+      "labels": {
+        "library/linac/LinacView?SR=1": "LINAC View",
+        "library/xfer/TransferView": "XFER View",
+        "@trace": "Data Browser",
+        "library/sr/overview": "Storage Ring"
+      }
+    },
+    "manifest": [
+      "library/linac/LinacView",
+      "library/xfer/TransferView",
+      "library/sr/overview",
+      "library/s3-promo/promotion",
+      "library/common/KnobPanel",
+      "drafts/beam-tune"
+    ],
+    "tools": [
+      "trace",
+      "correlation",
+      "waveform"
+    ],
+    "collections": [
+      {
+        "ref": "facility:injector",
+        "default": true,
+        "members": [
+          {
+            "screen": "library/linac/LinacView"
+          },
+          {
+            "screen": "library/xfer/TransferView"
+          },
+          {
+            "tool": "trace",
+            "name": "Gun high voltage and heater",
+            "query": "pv=EG______HV_____AM00&pv=EG______HTR____AM00&range=-1h"
+          }
+        ],
+        "layout": null
+      },
+      {
+        "ref": "personal:grid",
+        "default": false,
+        "members": [
+          {
+            "screen": "library/sr/overview"
+          },
+          {
+            "screen": "library/s3-promo/promotion"
+          },
+          {
+            "tool": "trace",
+            "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+            "name": "Beam current"
+          },
+          {
+            "tool": "correlation"
+          }
+        ],
+        "layout": {
+          "split": "row",
+          "items": [
+            {
+              "split": "column",
+              "items": [
+                {
+                  "tabs": [
+                    0
+                  ]
+                },
+                {
+                  "tabs": [
+                    2
+                  ]
+                }
+              ],
+              "size": 2
+            },
+            {
+              "split": "column",
+              "items": [
+                {
+                  "tabs": [
+                    1
+                  ]
+                },
+                {
+                  "tabs": [
+                    3
+                  ]
+                }
+              ],
+              "size": 1
+            }
+          ]
+        }
+      }
+    ],
+    "closed": [
+      {
+        "id": "g-1",
+        "by": "agent",
+        "tabs": [
+          "library/common/KnobPanel"
+        ]
+      }
+    ],
+    "busy": false
+  }
+}
