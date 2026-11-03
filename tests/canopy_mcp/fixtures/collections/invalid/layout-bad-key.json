@@ -1,0 +1,27 @@
+{
+  "name": "Broken",
+  "members": [
+    {
+      "screen": "library/sr/overview"
+    },
+    {
+      "tool": "trace",
+      "name": "Trace"
+    }
+  ],
+  "layout": {
+    "split": "row",
+    "items": [
+      {
+        "tabs": [
+          0
+        ]
+      },
+      {
+        "tabs": [
+          2
+        ]
+      }
+    ]
+  }
+}

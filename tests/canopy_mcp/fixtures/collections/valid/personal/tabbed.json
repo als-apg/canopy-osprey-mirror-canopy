@@ -1,0 +1,35 @@
+{
+  "id": "tabbed",
+  "name": "Transfer lines",
+  "description": "Two tiles side by side; the left one holds two tabs and shows the second.",
+  "members": [
+    {
+      "screen": "library/linac/LinacView"
+    },
+    {
+      "screen": "library/xfer/TransferView"
+    },
+    {
+      "tool": "waveform",
+      "query": ""
+    }
+  ],
+  "layout": {
+    "split": "row",
+    "items": [
+      {
+        "tabs": [
+          0,
+          1
+        ],
+        "showing": 1
+      },
+      {
+        "tabs": [
+          2
+        ]
+      }
+    ]
+  },
+  "updated": "2026-10-16T00:00:00+00:00"
+}

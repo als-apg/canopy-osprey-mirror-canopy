@@ -140,6 +140,26 @@ class Settings(BaseSettings):
     # set, ``convert_legacy`` overwrites only with conversions made against it.
     theme_file: Path | None = None
 
+    # --- the shared screen library: saved views, collections, workspace, push ---
+
+    # Directory holding the saved-view ``*.json`` files; unset means
+    # ``<drafts_dir>/views``.
+    views_dir: Path | None = None
+    # Directory holding the personal collection ``<id>.json`` files and the
+    # per-user ``.state.json``; unset means ``<drafts_dir>/collections``.
+    collections_dir: Path | None = None
+    # Read-only directory of facility collection ``<id>.json`` files shipped
+    # with the deployment; unset means no facility collections.
+    facility_collections_dir: Path | None = None
+    # Directory ``request_push`` writes its bundles into, one directory per
+    # request, for an administrator to review. Unset means the tool answers
+    # ``push_unavailable``.
+    push_dir: Path | None = None
+    # Names (whitespace-separated, compared case-folded) a library path may not
+    # use besides the built-in rules, such as the files a deployment's own build
+    # leaves out; empty means none. Read the set from ``library_ignored_name_set``.
+    library_ignored_names: str = ""
+
     _write_api_key: str = PrivateAttr(default="")
 
     @field_validator("*", mode="before")
@@ -230,6 +250,13 @@ class Settings(BaseSettings):
         return None
 
     @property
+    def personal_collections_dir(self) -> Path:
+        """The personal collections directory: ``collections_dir``, else ``<drafts_dir>/collections``."""
+        if self.collections_dir is not None:
+            return Path(self.collections_dir)
+        return Path(self.drafts_dir) / "collections"
+
+    @property
     def host_stylesheet_paths(self) -> list[str]:
         """The validated ``host_stylesheets`` entries in order; empty when the setting is."""
         return self.host_stylesheets.split()
@@ -240,6 +267,11 @@ class Settings(BaseSettings):
         return ("x-forwarded-prefix", *(name.lower() for name in self.proxy_mark_headers.split()))
 
     @property
+    def library_ignored_name_set(self) -> frozenset[str]:
+        """The ``library_ignored_names`` entries, case-folded; empty when the setting is."""
+        return parse_name_list(self.library_ignored_names)
+
+    @property
     def screen_base_url(self) -> str:
         """The absolute base of the tools' screen URLs without a prefix: ``public_url``, ``self_url``, the default."""
         return (self.public_url or self.self_url or DEFAULT_SELF_URL).rstrip("/")
@@ -248,6 +280,11 @@ class Settings(BaseSettings):
     def write_api_key(self) -> str:
         """The key the PUT relay sends upstream; empty when no write-key file is configured."""
         return self._write_api_key
+
+
+def parse_name_list(text: str) -> frozenset[str]:
+    """A whitespace-separated list of names as a set of their case-folded forms."""
+    return frozenset(name.casefold() for name in text.split())
 
 
 @lru_cache

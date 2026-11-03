@@ -25,6 +25,7 @@ READ_TOOLS = [
     "search_pvs",
     "read_pv",
     "screenshot",
+    "list_collections",
 ]
 
 

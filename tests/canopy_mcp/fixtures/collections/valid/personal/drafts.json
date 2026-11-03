@@ -1,0 +1,19 @@
+{
+  "id": "drafts",
+  "name": "my drafts",
+  "members": [
+    {
+      "screen": "drafts/xfer/view"
+    },
+    {
+      "screen": "library/sr/overview",
+      "macros": {
+        "S": "SR01"
+      }
+    },
+    {
+      "tool": "trace"
+    }
+  ],
+  "updated": "2026-10-16T00:00:00+00:00"
+}

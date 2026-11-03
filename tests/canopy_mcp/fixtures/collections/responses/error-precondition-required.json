@@ -1,0 +1,4 @@
+{
+  "error": "precondition_required",
+  "detail": "send If-None-Match: * to create or If-Match: <rev> to replace"
+}

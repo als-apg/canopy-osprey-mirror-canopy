@@ -137,6 +137,7 @@ write.
 | `list_drafts` | reads | List your drafts, followed by the library screens. |
 | `get_screen` | reads | Read one screen and its `rev`. |
 | `screenshot` | reads | Render a screen as a PNG and look at it. |
+| `list_collections` | reads | List the collections: named sets of screens and tools. Answer with collection names and member counts, render `open_url` as a link, and never quote field names to the operator. |
 | `new_screen` | writes | Save a whole document as a new draft, or replace a draft. |
 | `add_node` | writes | Append one widget node to a container of a draft. |
 | `patch_node` | writes | Change the props, geometry, rules or warnings of one node. |

@@ -1,0 +1,58 @@
+{
+  "id": "grid",
+  "name": "Ring grid",
+  "members": [
+    {
+      "screen": "library/sr/overview"
+    },
+    {
+      "screen": "library/s3-promo/promotion"
+    },
+    {
+      "tool": "trace",
+      "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+      "name": "Beam current"
+    },
+    {
+      "tool": "correlation"
+    }
+  ],
+  "layout": {
+    "split": "row",
+    "items": [
+      {
+        "split": "column",
+        "items": [
+          {
+            "tabs": [
+              0
+            ]
+          },
+          {
+            "tabs": [
+              2
+            ]
+          }
+        ],
+        "size": 2
+      },
+      {
+        "split": "column",
+        "items": [
+          {
+            "tabs": [
+              1
+            ]
+          },
+          {
+            "tabs": [
+              3
+            ]
+          }
+        ],
+        "size": 1
+      }
+    ]
+  },
+  "updated": "2026-10-16T00:00:00+00:00"
+}

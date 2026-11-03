@@ -261,6 +261,8 @@ async def test_the_skill_marks_exactly_the_authoring_tools_as_writing() -> None:
         "`y_channel`",
         "`y_channels`",
         "Trace tab",
+        "`list_collections`",
+        "`open_url`",
     ],
 )
 def test_the_skill_covers(phrase: str) -> None:

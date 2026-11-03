@@ -34,6 +34,10 @@ dependencies = [
     "nh3>=0.2.18",
 ]
 
+[project.scripts]
+# Checks a facility collection directory before it is deployed (needs the mcp extra).
+canopy-collections-check = "canopy_mcp.collections_cli:main"
+
 [project.optional-dependencies]
 # canopy_mcp: the panel-builder MCP server shipped in the same wheel. Kept out of
 # the core dependencies so canopy-api and canopy-worker images stay lean.
@@ -50,6 +54,8 @@ mcp = [
     "psutil>=6",
     # canopy_mcp serves the color scheme the converter's flattener builds.
     "PyDMConverter>=1.1.0",
+    # The workspace hub's event stream (EventSourceResponse, ends on the server's exit signal).
+    "sse-starlette>=3.4",
 ]
 # Postgres and the Redis job queue: needed by squirrel, magpie, jobs and the
 # canopy-worker. A deployment that selects none of them (CANOPY_MODULES) runs
@@ -155,6 +161,59 @@ name = "canopy never imports canopy_mcp"
 type = "forbidden"
 source_modules = ["canopy"]
 forbidden_modules = ["canopy_mcp"]
+
+# The MCP server core (authoring, checks, the viewer host) stands on its own: the
+# shared screen library (saved views, collections, workspace, push, report) builds
+# on it and is mounted onto the app in one place (canopy_mcp.shared_library).
+[[tool.importlinter.contracts]]
+name = "the MCP server core does not import the shared screen library"
+type = "forbidden"
+source_modules = [
+    "canopy_mcp.access",
+    "canopy_mcp.browser",
+    "canopy_mcp.catalog",
+    "canopy_mcp.channels",
+    "canopy_mcp.check",
+    "canopy_mcp.client",
+    "canopy_mcp.config",
+    "canopy_mcp.forward",
+    "canopy_mcp.formulas",
+    "canopy_mcp.http",
+    "canopy_mcp.merge",
+    "canopy_mcp.png",
+    "canopy_mcp.refs",
+    "canopy_mcp.screens",
+    "canopy_mcp.server",
+    "canopy_mcp.skill",
+    "canopy_mcp.static",
+    "canopy_mcp.store",
+    "canopy_mcp.text",
+    "canopy_mcp.urls",
+    "canopy_mcp.validate",
+    "canopy_mcp.tools._common",
+    "canopy_mcp.tools.check",
+    "canopy_mcp.tools.convert",
+    "canopy_mcp.tools.drafts",
+    "canopy_mcp.tools.pvs",
+    "canopy_mcp.tools.screenshot",
+    "canopy_mcp.tools.widgets",
+]
+forbidden_modules = [
+    "canopy_mcp.collections",
+    "canopy_mcp.collections_cli",
+    "canopy_mcp.layout",
+    "canopy_mcp.library_screens",
+    "canopy_mcp.listing",
+    "canopy_mcp.member_key",
+    "canopy_mcp.report",
+    "canopy_mcp.shared_library",
+    "canopy_mcp.views",
+    "canopy_mcp.workspace",
+    "canopy_mcp.workspace_routes",
+    "canopy_mcp.tools.collections",
+    "canopy_mcp.tools.push",
+    "canopy_mcp.tools.workspace",
+]
 
 # canopy_mcp talks to canopy over HTTP. It may use the shared kernel
 # (canopy.core, canopy.contracts) and, for the formula checks, the formula-engine

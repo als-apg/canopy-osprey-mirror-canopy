@@ -1,0 +1,18 @@
+{
+  "name": "Injector",
+  "description": "Gun-to-linac and booster-to-storage-ring transfer lines.",
+  "members": [
+    {
+      "screen": "library/linac/LinacView"
+    },
+    {
+      "screen": "library/xfer/TransferView"
+    },
+    {
+      "tool": "trace",
+      "name": "Gun high voltage and heater",
+      "query": "pv=EG______HV_____AM00&pv=EG______HTR____AM00&range=-1h"
+    }
+  ],
+  "updated": "2026-10-16T00:00:00+00:00"
+}

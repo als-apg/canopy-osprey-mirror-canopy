@@ -4,7 +4,8 @@
 mounted) so ``POST /mcp`` answers directly instead of redirecting to
 ``/mcp/``. The viewer and draft routes come from :mod:`canopy_mcp.static` and
 the API forward (two WebSocket relays, the Mole GET, the Formula Engine POSTs and, with
-``CANOPY_PUT_RELAY`` on, the one PV write) from :mod:`canopy_mcp.forward`.
+``CANOPY_PUT_RELAY`` on, the one PV write) from :mod:`canopy_mcp.forward`. The
+shared screen library (saved views and collections) is added by :func:`~canopy_mcp.shared_library.mount_library`.
 
 :class:`HostGuard` is the outermost layer: a request whose ``Host`` names neither
 loopback nor the host of ``CANOPY_SELF_URL`` / ``CANOPY_PUBLIC_URL`` is refused
@@ -25,7 +26,7 @@ One lifespan first flattens the color scheme (:func:`~canopy.core.color_scheme.g
 so a bad ``CANOPY_THEME_FILE`` logs its one ERROR at boot, not on the first
 request), then runs FastMCP's session manager, opens the shared backend
 ``httpx.AsyncClient`` (``app.state.http``) and then enters every
-:data:`STARTUP_HOOKS` entry in order; they are exited
+:data:`STARTUP_HOOKS` entry in order, the shared library's last; they are exited
 in reverse on shutdown. The defaults load the widget catalog (:func:`catalog_hook`)
 and install the lazy screenshot browser (:func:`chromium_hook`, which launches
 nothing until the first ``screenshot`` call); neither keeps the server from
@@ -71,6 +72,7 @@ from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.forward import build_forward_routes
 from canopy.core.color_scheme import get_color_scheme
+from canopy_mcp.shared_library import mount_library
 
 MCP_PATH = "/mcp"
 
@@ -198,6 +200,7 @@ def create_app(
     resolved_self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
     host_guard = Middleware(HostGuard, configured=configured_origins(resolved_self_url, settings.public_url))
     mcp_app = mcp.http_app(path=MCP_PATH)
+    late_hooks: list[StartupHook] = []
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
@@ -205,7 +208,7 @@ def create_app(
         get_color_scheme()  # never raises; a bad file degrades /health/summary and serves canopy-default
         async with mcp_app.lifespan(app), make_client(settings) as client, AsyncExitStack() as stack:
             app.state.http = client
-            for hook in hooks:
+            for hook in [*hooks, *late_hooks]:
                 await stack.enter_async_context(hook(app))
             yield
 
@@ -228,4 +231,6 @@ def create_app(
     app.state.store = store
     app.state.library = library
     app.state.self_url = resolved_self_url
+    # The shared screen library: its routes, its stores on app.state and its lifespan hook.
+    late_hooks.append(mount_library(app, settings))
     return app

@@ -195,11 +195,16 @@ def test_config_json(client: TestClient) -> None:
     assert body["pvMode"] == "hare"
     assert body["screensPath"] == "drafts"
     assert isinstance(body["themes"], dict)
+    assert body["views"] == {"path": "views"}
+    # Always advertised: the personal store defaults to <drafts_dir>/collections.
+    assert body["collections"] == {"path": "collections"}
     assert body["confirmWrites"] is False
     assert set(body) == {
         "pvMode",
         "screensPath",
         "themes",
+        "views",
+        "collections",
         "colorScheme",
         "confirmWrites",
         "backend",
@@ -217,6 +222,17 @@ def test_config_json_mock_mode(drafts: Path) -> None:
         body = c.get("/config.json").json()
         assert body["pvMode"] == "mock"
         assert "backend" not in body and "binding" not in body
+        assert body["collections"] == {"path": "collections"}
+
+
+def test_collections_routes_are_registered(client: TestClient) -> None:
+    for path in ("/collections", "/collections-state"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers["cache-control"] == "no-cache"
+    assert client.get("/collections/missing").status_code == 404
+    assert client.app.state.collections.dir == client.app.state.settings.personal_collections_dir
+    assert client.app.state.facility_collections is None
 
 
 # --- drafts ----------------------------------------------------------------------

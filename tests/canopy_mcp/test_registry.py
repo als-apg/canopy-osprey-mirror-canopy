@@ -24,6 +24,7 @@ EXPECTED_TOOLS = [
     "add_node",
     "remove_node",
     "list_drafts",
+    "list_collections",
     "delete_draft",
     "convert_legacy",
     "search_pvs",
