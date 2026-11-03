@@ -157,8 +157,9 @@ curl -H "X-API-Key: dev" http://localhost:8000/hare/v1/pvs/TEST:SINE
 ```
 
 For PV Access there is a second soft IOC, `scripts/sim_ioc_pva.py`, hosting
-every value kind (`TEST:COUNTER`, `TEST:SINE`, `TEST:WAVEFORM`, `TEST:ENUM`,
-`TEST:TABLE`, ...). Address a PV over PVA with the `pva://` prefix:
+every value kind (`TEST:COUNTER`, `TEST:SINE`, `TEST:WAVEFORM`,
+`TEST:STR_WAVEFORM`, `TEST:ENUM`, `TEST:TABLE`, ...). Address a PV over PVA
+with the `pva://` prefix:
 
 ```bash
 curl -H "X-API-Key: dev" "http://localhost:8000/hare/v1/pvs/pva://TEST:COUNTER"

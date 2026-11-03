@@ -7,6 +7,7 @@ pvmonitor has something to stream:
     TEST:SINE      NTScalar double (sine,         TEST:WAVEFORM  NTScalarArray double
                    with valueAlarm limits)        TEST:IMAGE     NTNDArray (8x8 image)
     TEST:CONST     NTScalar double (constant)     TEST:TABLE     NTTable (idx/name/val)
+    TEST:STR_WAVEFORM  NTScalarArray string
 
 Run::
 
@@ -24,6 +25,7 @@ from p4p.server.thread import SharedPV
 
 _STATES = ["OFF", "LOW", "HIGH", "FAULT"]
 _WF_LEN = 32
+_STR_WF_LEN = 8
 
 # An NTScalar that also publishes warning/alarm thresholds, so `describe` exposes
 # valueAlarm limits (PyDM uses these for alarm-range coloring).
@@ -55,6 +57,7 @@ def make_pvs():
         "TEST:CONST": SharedPV(nt=NTScalar("d"), initial=42.0),
         "TEST:ENUM": SharedPV(nt=NTEnum(), initial={"index": 0, "choices": _STATES}),
         "TEST:WAVEFORM": SharedPV(nt=NTScalar("ad"), initial=[0.0] * _WF_LEN),
+        "TEST:STR_WAVEFORM": SharedPV(nt=NTScalar("as"), initial=[""] * _STR_WF_LEN),
         "TEST:IMAGE": SharedPV(nt=NTNDArray(), initial=np.zeros((8, 8), dtype=np.uint8)),
         "TEST:TABLE": SharedPV(nt=_TABLE_NT, initial=_table_rows(0)),
     }
@@ -79,6 +82,9 @@ def updater(pvs, stop_event: threading.Event):
         pvs["TEST:SINE"].post(round(math.sin(t), 4))
         pvs["TEST:ENUM"].post({"index": count % len(_STATES), "choices": _STATES})
         pvs["TEST:WAVEFORM"].post([round(math.sin(t + i * 2 * math.pi / _WF_LEN), 4) for i in range(_WF_LEN)])
+        pvs["TEST:STR_WAVEFORM"].post(
+            [f"sample={math.sin(t + i * 2 * math.pi / _STR_WF_LEN):+.3f}" for i in range(_STR_WF_LEN)]
+        )
         pvs["TEST:IMAGE"].post((np.random.default_rng(count).integers(0, 255, size=(8, 8))).astype(np.uint8))
         pvs["TEST:TABLE"].post(_table_rows(count))
         stop_event.wait(0.5)

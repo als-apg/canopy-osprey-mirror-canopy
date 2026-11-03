@@ -26,6 +26,7 @@ class ErrorCode(StrEnum):
     INSUFFICIENT_WRITE_ACCESS = auto()
     INSUFFICIENT_ADMIN_ACCESS = auto()
     INSUFFICIENT_MODULE_ACCESS = auto()
+    INSUFFICIENT_FACILITY_ACCESS = auto()
     API_KEY_NOT_FOUND = auto()
     API_KEY_SELF_DEACTIVATION = auto()
     KEY_STORE_UNAVAILABLE = auto()
@@ -83,6 +84,11 @@ class ErrorCode(StrEnum):
     TAG_GROUP_NOT_FOUND = auto()
     TAG_GROUP_ALREADY_EXISTS = auto()
     META_PV_NOT_FOUND = auto()
+    FACILITY_NOT_FOUND = auto()
+    FACILITY_SLUG_CONFLICT = auto()
+    FACILITY_HAS_CHILDREN = auto()
+    FACILITY_IN_USE = auto()
+    FACILITY_CYCLE = auto()
 
     # Converter
     CONVERTER_UNSUPPORTED_INPUT = auto()
@@ -160,6 +166,22 @@ class InsufficientModuleAccess(CanopyError):
     error_code = ErrorCode.INSUFFICIENT_MODULE_ACCESS
 
 
+class InsufficientFacilityAccess(CanopyError):
+    """The key resolved and has write access, but is not granted the facility the
+    row being written belongs to.
+
+    Orthogonal to read/write/admin and to module scope, like
+    ``InsufficientModuleAccess`` — but raised from a module's service layer
+    rather than during authentication, because the target facility is a property
+    of the row, not of the request envelope.
+
+    Reads have no equivalent refusal: an out-of-scope row is simply filtered out.
+    """
+
+    status_code = 403
+    error_code = ErrorCode.INSUFFICIENT_FACILITY_ACCESS
+
+
 class ApiKeyNotFound(CanopyError):
     status_code = 404
     error_code = ErrorCode.API_KEY_NOT_FOUND
@@ -187,6 +209,38 @@ class KeyStoreUnavailable(CanopyError):
 
     status_code = 503
     error_code = ErrorCode.KEY_STORE_UNAVAILABLE
+
+
+class FacilityNotFound(CanopyError):
+    status_code = 404
+    error_code = ErrorCode.FACILITY_NOT_FOUND
+
+
+class FacilitySlugConflict(CanopyError):
+    status_code = 409
+    error_code = ErrorCode.FACILITY_SLUG_CONFLICT
+
+
+class FacilityHasChildren(CanopyError):
+    """Refused a delete/reparent — a facility with children must be emptied first."""
+
+    status_code = 400
+    error_code = ErrorCode.FACILITY_HAS_CHILDREN
+
+
+class FacilityInUse(CanopyError):
+    """Refused a delete — PVs or snapshots still reference this facility."""
+
+    status_code = 400
+    error_code = ErrorCode.FACILITY_IN_USE
+
+
+class FacilityCycle(CanopyError):
+    """Refused a reparent that would make a facility its own ancestor — includes
+    the self-parent case, not just a deeper cycle."""
+
+    status_code = 400
+    error_code = ErrorCode.FACILITY_CYCLE
 
 
 def register_canopy_error_handler(app: FastAPI) -> None:

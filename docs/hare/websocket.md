@@ -109,10 +109,18 @@ The server responds with `pong`.
 
 ### initial
 
-Sent after a `subscribe`, once the new PVs have been seeded. `data` maps PV
-name to its current value; `meta` maps PV name to its static display metadata
-(units, precision, `enumChoices`, limits) — read `meta` once, then rely on
-diffs for the values.
+Sent after a `subscribe`, in one or more frames. The first carries whatever
+Hare already holds for the batch (PVs another client is watching). Each
+remaining PV's value comes from its monitor's first update; Hare then fetches
+the PV's metadata in the background and sends both in a one-PV `initial`
+frame, so a channel that never connects delays only itself — never the other
+PVs in the batch, nor later `subscribe`, `unsubscribe` or `ping` frames on the
+socket, nor other clients. Merge `initial` frames by PV name: a PV may appear
+in a later frame with the metadata an earlier one lacked.
+
+`data` maps PV name to its current value; `meta` maps PV name to its static
+display metadata (units, precision, `enumChoices`, limits) — read `meta` once,
+then rely on diffs for the values.
 
 ```json
 {
@@ -144,11 +152,11 @@ diffs for the values.
 }
 ```
 
-A PV that is valid but has not produced a value yet (e.g. a disconnected
-channel) may be absent from `initial` — its first `diff` arrives when the
-channel connects. If no PV in the batch yields a value or metadata, the
-`initial` frame is skipped entirely, so do not treat it as a subscribe
-acknowledgement.
+A channel that has delivered no value within `CANOPY_HARE__SEED_TIMEOUT_S`
+(default 2 s) arrives with `connected: false` and no `meta`. When it later
+connects, its first `diff` carries the value and a further `initial` carries
+the metadata Hare fetches at that point. If nothing in a batch yields a value or metadata,
+no `initial` is sent, so do not treat it as a subscribe acknowledgement.
 
 ### diff
 
@@ -248,7 +256,9 @@ sequenceDiagram
     participant Hare
 
     Client->>Hare: subscribe {pvNames: [A, B]}
-    Hare->>Client: initial {data: {A, B}, meta: {A, B}}
+    Hare->>Client: initial {data: {A}, meta: {A}}
+    Note right of Hare: A was already cached;<br/>B is seeded in the background
+    Hare->>Client: initial {data: {B}, meta: {B}}
     Hare->>Client: diff {data: {A}}
     Hare->>Client: diff {data: {A, B}}
     Note right of Hare: batched every 100 ms,<br/>changed PVs only

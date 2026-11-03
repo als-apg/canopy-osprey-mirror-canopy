@@ -7,6 +7,7 @@ camonitor has something to stream:
     TEST:SINE        scalar double (sine)           TEST:WAVEFORM   double waveform
     TEST:CONST       scalar double (constant)       TEST:STRING     string
                                                      TEST:LONGSTRING DBR_CHAR string
+                                                     TEST:STR_WAVEFORM string waveform
 
 Run (loopback only)::
 
@@ -22,6 +23,7 @@ from caproto.server import PVGroup, run, pvproperty
 
 _STATES = ["OFF", "LOW", "HIGH", "FAULT"]
 _WF_LEN = 32
+_STR_WF_LEN = 8
 
 
 class CanopyTestIOC(PVGroup):
@@ -54,6 +56,13 @@ class CanopyTestIOC(PVGroup):
         precision=2,
         doc="Animated sine waveform",
     )
+    str_waveform = pvproperty(
+        value=[""] * _STR_WF_LEN,
+        name="STR_WAVEFORM",
+        dtype=ChannelType.STRING,
+        max_length=_STR_WF_LEN,
+        doc="Animated DBR_STRING waveform",
+    )
     message = pvproperty(value="idle", name="STRING", dtype=ChannelType.STRING, doc="A string PV")
     longstring = pvproperty(
         value="canopy-long-string",
@@ -79,6 +88,11 @@ class CanopyTestIOC(PVGroup):
     async def waveform(self, instance, async_lib):
         t = time.time()
         await instance.write([round(math.sin(t + i * 2 * math.pi / _WF_LEN), 4) for i in range(_WF_LEN)])
+
+    @str_waveform.scan(period=0.5)
+    async def str_waveform(self, instance, async_lib):
+        t = time.time()
+        await instance.write([f"sample={math.sin(t + i * 2 * math.pi / _STR_WF_LEN):+.3f}" for i in range(_STR_WF_LEN)])
 
 
 if __name__ == "__main__":

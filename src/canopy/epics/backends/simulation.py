@@ -6,6 +6,8 @@ exercised end to end:
 
 - ``:ENUM``               -> an enum cycling through fixed choices
 - ``:WAVEFORM`` / ``:WF`` -> a numeric waveform (animated sine across the array)
+- ``:STR_WAVEFORM`` / ``:STR_WF`` -> a string waveform (the animated sine, formatted
+  as one string per element), as a CA ``DBR_STRING`` array reads
 - ``:STR``                -> a string value
 - ``:TABLE``              -> a small NTTable-style table (index/value/status columns)
 - anything else           -> a scalar
@@ -40,8 +42,14 @@ from canopy.epics.pv_protocol import strip_protocol_prefix
 # Fixed choice set for simulated enum PVs (names ending in ``:ENUM``).
 _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
 
+# Name suffixes selecting a simulated string waveform rather than a numeric one.
+_STR_WAVEFORM_SUFFIXES = (":STR_WAVEFORM", ":STR_WF")
 _NO_ALARM_STATUS = ALARM_STATUS_CODES["NO_ALARM"]
 _FAULT_INDEX = _ENUM_CHOICES.index("FAULT")
+
+
+def _is_string_waveform(name: str) -> bool:
+    return name.endswith(_STR_WAVEFORM_SUFFIXES)
 
 
 def _parse_fail_pvs(raw: str) -> frozenset[str]:
@@ -154,7 +162,7 @@ class SimulationConnector:
     def _kind_for(pv: str) -> ValueKind:
         if pv.endswith(":ENUM"):
             return ValueKind.ENUM
-        if pv.endswith((":WAVEFORM", ":WF")):
+        if pv.endswith((":WAVEFORM", ":WF", *_STR_WAVEFORM_SUFFIXES)):
             return ValueKind.WAVEFORM
         if pv.endswith(":STR"):
             return ValueKind.STRING
@@ -252,6 +260,8 @@ class SimulationConnector:
             t = 2 * math.pi * 0.1 * time.monotonic() + self._phase(name)
             n = self._waveform_length
             value = [round(10.0 * math.sin(t + i * 2 * math.pi / n), 4) for i in range(n)]
+            if _is_string_waveform(name):
+                value = [f"sample={v:+.3f}" for v in value]
         elif kind is ValueKind.STRING:
             value = f"sample={self._sine(name):+.3f}"
         elif kind is ValueKind.TABLE:
@@ -330,8 +340,12 @@ class SimulationConnector:
         kind = self._kind_for(name)
         if kind is ValueKind.ENUM:
             return PVMeta(pv=pv, value_kind=kind, enum_choices=list(_ENUM_CHOICES), writable=True)
+        if kind is ValueKind.WAVEFORM and _is_string_waveform(name):
+            return PVMeta(pv=pv, value_kind=kind, writable=True)
         if kind is ValueKind.WAVEFORM:
-            return PVMeta(pv=pv, value_kind=kind, units=self._units, display_low=-10.0, display_high=10.0)
+            return PVMeta(
+                pv=pv, value_kind=kind, units=self._units, display_low=-10.0, display_high=10.0, writable=True
+            )
         if kind is ValueKind.STRING:
             return PVMeta(pv=pv, value_kind=kind, writable=True)
         if kind is ValueKind.TABLE:
