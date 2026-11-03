@@ -12,6 +12,10 @@ exercised end to end:
 - ``:TABLE``              -> a small NTTable-style table (index/value/status columns)
 - anything else           -> a scalar
 
+A name under ``SIM:NEVER:`` stands for a PV no IOC serves: reads come back
+disconnected, a monitor reports ``connected=False`` once and then stays silent, and
+writes fail. A ``ca://`` or ``pva://`` prefix is accepted and ignored.
+
 Each PV's phase is a stable function of its name, so values are deterministic per
 process. Severity thresholds let the alarm-styling path be exercised too, and every
 value carries the EPICS alarm status an IOC would report with it: HIHI / HIGH above
@@ -46,6 +50,9 @@ _ENUM_CHOICES = ["OFF", "LOW", "HIGH", "FAULT"]
 _STR_WAVEFORM_SUFFIXES = (":STR_WAVEFORM", ":STR_WF")
 _NO_ALARM_STATUS = ALARM_STATUS_CODES["NO_ALARM"]
 _FAULT_INDEX = _ENUM_CHOICES.index("FAULT")
+
+# Names under this prefix (after any protocol prefix) simulate a PV that never connects.
+NEVER_CONNECTING_PREFIX = "SIM:NEVER:"
 
 
 def _is_string_waveform(name: str) -> bool:
@@ -159,6 +166,10 @@ class SimulationConnector:
     # --- value generation ------------------------------------------------ #
 
     @staticmethod
+    def _never_connects(pv: str) -> bool:
+        return strip_protocol_prefix(pv).startswith(NEVER_CONNECTING_PREFIX)
+
+    @staticmethod
     def _kind_for(pv: str) -> ValueKind:
         if pv.endswith(":ENUM"):
             return ValueKind.ENUM
@@ -233,6 +244,7 @@ class SimulationConnector:
         value kind so a write round-trips through a read, with the alarm an IOC would
         raise for that value. A ``ca://`` / ``pva://`` prefix doesn't change which PV
         is read: every spelling shares one generated value and one written override.
+        A name under ``SIM:NEVER:`` reads back disconnected.
 
         Parameters
         ----------
@@ -245,6 +257,15 @@ class SimulationConnector:
             The value, its kind, and an alarm severity with the matching status.
         """
         name = strip_protocol_prefix(pv)
+        if self._never_connects(name):
+            return PVValue(
+                pv=pv,
+                value=None,
+                severity=AlarmSeverity.INVALID,
+                ts_ns=time.time_ns(),
+                connected=False,
+                error="simulated PV that never connects",
+            )
         kind = self._kind_for(name)
         severity, status = AlarmSeverity.NO_ALARM, _NO_ALARM_STATUS
         if name in self._overrides:
@@ -307,14 +328,16 @@ class SimulationConnector:
         Raises
         ------
         PVWriteFailed
-            When `pv`, ignoring any ``ca://`` / ``pva://`` prefix, is one of the
-            configured always-failing PVs, or when the instance's RNG draws below the
-            configured put error rate.
+            When `pv`, ignoring any ``ca://`` / ``pva://`` prefix, is under
+            ``SIM:NEVER:`` or one of the configured always-failing PVs, or when the
+            instance's RNG draws below the configured put error rate.
         """
         name = strip_protocol_prefix(pv)
         # Draw on every put, so naming a PV to always fail doesn't shift the seeded
         # outcomes of the others.
         drawn = self._rng.random()
+        if self._never_connects(name):
+            raise PVWriteFailed(f"Simulated write to {pv} failed: the PV never connects")
         if name in self._put_fail_pvs or drawn < self._put_error_rate:
             raise PVWriteFailed(f"simulated put failure for {pv}")
         self._overrides[name] = value
@@ -337,6 +360,8 @@ class SimulationConnector:
             the name as requested.
         """
         name = strip_protocol_prefix(pv)
+        if self._never_connects(name):
+            return PVMeta(pv=pv)
         kind = self._kind_for(name)
         if kind is ValueKind.ENUM:
             return PVMeta(pv=pv, value_kind=kind, enum_choices=list(_ENUM_CHOICES), writable=True)
@@ -377,6 +402,9 @@ class SimulationConnector:
     async def _run(self, pv: str, on_event: EventCallback) -> None:
         # Emit an initial value immediately, then once per tick.
         on_event(self._value_for(pv))
+        if self._never_connects(pv):
+            # One not-connected report, then silence until the monitor is closed.
+            await asyncio.Event().wait()
         while True:
             await asyncio.sleep(self._interval)
             on_event(self._value_for(pv))
