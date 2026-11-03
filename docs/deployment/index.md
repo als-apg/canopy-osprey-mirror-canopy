@@ -28,7 +28,7 @@ essentials:
 | Variable | Purpose |
 |----------|---------|
 | `CANOPY_API_KEYS` | API-key registry — see below. Unset means every gated endpoint returns 401 |
-| `CANOPY_EPICS__BACKEND` | `simulation` (default) or `epics`. **Production must set `epics`** |
+| `CANOPY_EPICS__BACKEND` | `simulation` (default) or `epics`, or a `module:Class` path to an [out-of-tree backend](../how_to/custom_epics_backend.md). **Production must set `epics`** |
 | `EPICS_CA_ADDR_LIST`, `EPICS_PVA_ADDR_LIST`, ... | Standard EPICS network discovery variables (only with the `epics` backend) |
 | `CANOPY_DATABASE_URL` | Postgres, asyncpg driver: `postgresql+asyncpg://user:pass@host:port/db` |
 | `CANOPY_REDIS_URL` | Redis: `redis://[:password@]host:port/0` |
