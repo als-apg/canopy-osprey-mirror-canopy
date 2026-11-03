@@ -251,6 +251,11 @@ async def test_the_skill_marks_exactly_the_authoring_tools_as_writing() -> None:
         "your screens root",
         "`<your screens root>/screens/rf/status.screen.json`",
         "`CANOPY_PV_MODE=mock`",
+        "\npython -m canopy_mcp.report <root> --write\n",
+        "when the server offers push",
+        "`push_unavailable`",
+        "`push_queue_full`",
+        "`rid`",
         "`base_rev`",
         "`stale_rev`",
         "`library/<id>`",
@@ -278,6 +283,12 @@ def test_the_example_screen_passes_the_schema_and_semantic_checks(tmp_path: Path
     assert check_semantic(document) == []
     known = set(json.loads((Path(__file__).parent / "fixtures" / "ir-map.json").read_text()))
     assert {node["type"] for _, node in iter_nodes(document)} <= known
+
+
+def test_the_skill_tells_the_agent_a_full_review_queue_is_the_users_to_resolve() -> None:
+    item = next(line for line in TEXT.split("\n- ") if line.startswith("`push_queue_full`"))
+    assert "user" in item
+    assert "not retry" in item
 
 
 def test_the_skill_sends_a_scalar_time_series_to_trace_not_to_a_widget() -> None:

@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "top",
+  "metadata": {
+    "title": "top",
+    "source": {
+      "type": "hand-authored"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "root",
+    "type": "absolute-canvas",
+    "props": {},
+    "children": [
+      {
+        "id": "cross",
+        "type": "embedded-display",
+        "props": {
+          "file": "../../../screens/p.screen.json"
+        }
+      },
+      {
+        "id": "rooted",
+        "type": "regular-button",
+        "props": {
+          "actions": [
+            {
+              "type": "open_display",
+              "file": "/a/other.screen.json"
+            }
+          ]
+        }
+      },
+      {
+        "id": "prefixed",
+        "type": "regular-button",
+        "props": {
+          "actions": [
+            {
+              "type": "open_display",
+              "file": "screens/x.screen.json"
+            }
+          ]
+        }
+      },
+      {
+        "id": "icon",
+        "type": "image-view",
+        "props": {
+          "src": "icon.svg"
+        }
+      },
+      {
+        "id": "ruled",
+        "type": "pv-label",
+        "props": {
+          "pv": "A:B"
+        },
+        "rules": [
+          {
+            "targetProperty": "pv",
+            "pvs": [
+              {
+                "name": "SEL"
+              }
+            ],
+            "expressions": []
+          },
+          {
+            "targetProperty": "actions[0].file",
+            "pvs": [
+              {
+                "name": "SEL"
+              }
+            ],
+            "expressions": []
+          },
+          {
+            "targetProperty": "visible",
+            "pvs": [
+              {
+                "name": "SEL"
+              }
+            ],
+            "expressions": []
+          }
+        ]
+      }
+    ]
+  }
+}

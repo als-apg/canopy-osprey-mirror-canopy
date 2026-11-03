@@ -1,0 +1,796 @@
+{
+  "about": [
+    "The canopy_mcp.report document over the trees under tests/canopy_mcp/fixtures/report-tree/, keyed by generator.schema.",
+    "A change to any row output must bump the schema, or the golden test fails. generator.canopy_version is left out: it is not compared.",
+    "library: served as a library; nothing is refused. md holds the lines of LIBRARY-REPORT.md.",
+    "library holds the file top/Embedded/_X.part.screen.json and a ref embedded/_X.part.screen.json: the ref is unresolved on every platform, so the write binding PART:X is in no row.",
+    "refused: the lines --check refuses the tree with. invalid-text: the refusal every mode gives.",
+    "ASCII-only, no trailing whitespace, one final newline."
+  ],
+  "canopy-library-report/1": {
+    "library": {
+      "report": {
+        "generator": {
+          "schema": "canopy-library-report/1"
+        },
+        "files": {
+          "digest": "sha256:12a82975e0a8a29d80fd14c4fc2b0db1c36edd5bdd9f4a8dfc8501eac182508c",
+          "list": [
+            {
+              "path": "screens/array.screen.json",
+              "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+            },
+            {
+              "path": "screens/broken.screen.json",
+              "sha256": "3c48773b404d850071dff4006d4ef0d7302d1343aefc58fbc84d730753de8831"
+            },
+            {
+              "path": "screens/odd/v1.2.screen.json",
+              "sha256": "d3cbfaf50588270bc3ba113b0d8148a3b497254527ac98e295d76d5900e38686"
+            },
+            {
+              "path": "screens/top/Embedded/_X.part.screen.json",
+              "sha256": "24d81b88c6e89ea6451c9dd744a4435b4084c9bcfc81604c9f8134d50c9e986d"
+            },
+            {
+              "path": "screens/top/Main.screen.json",
+              "sha256": "bccc03f8712e7836a2e95b58920f957ff201a4bb3a0f2ecbe73c2b775f67c7f6"
+            },
+            {
+              "path": "screens/top/logo.png",
+              "sha256": "497790947d4666760ce38f3c00e852c71fdb66cae849bae8e9ede352719e1581"
+            },
+            {
+              "path": "screens/top/other.screen.json",
+              "sha256": "0ab962f22c61c684867187af7fa686c268c86085e85bc95240df0c72529847c4"
+            },
+            {
+              "path": "screens/top/parts/part.v2.screen.json",
+              "sha256": "dece13cf357e388c7ef8365d9a01b99aa0357adb80372e0b13c5eed6a8c8756e"
+            }
+          ]
+        },
+        "manifest": [
+          "array",
+          "broken",
+          "top/Main",
+          "top/other"
+        ],
+        "templates": [
+          {
+            "path": "screens/array.screen.json",
+            "screen": "array",
+            "role": "manifest",
+            "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+            "declaredMacros": [],
+            "referencedMacros": [],
+            "error": "not a JSON object"
+          },
+          {
+            "path": "screens/broken.screen.json",
+            "screen": "broken",
+            "role": "manifest",
+            "sha256": "3c48773b404d850071dff4006d4ef0d7302d1343aefc58fbc84d730753de8831",
+            "declaredMacros": [],
+            "referencedMacros": [],
+            "error": "not valid JSON"
+          },
+          {
+            "path": "screens/odd/v1.2.screen.json",
+            "screen": "odd/v1.2",
+            "role": "unlisted",
+            "sha256": "d3cbfaf50588270bc3ba113b0d8148a3b497254527ac98e295d76d5900e38686",
+            "declaredMacros": [],
+            "referencedMacros": [
+              "ODD"
+            ]
+          },
+          {
+            "path": "screens/top/Embedded/_X.part.screen.json",
+            "screen": "top/Embedded/_X.part",
+            "role": "unlisted",
+            "sha256": "24d81b88c6e89ea6451c9dd744a4435b4084c9bcfc81604c9f8134d50c9e986d",
+            "declaredMacros": [],
+            "referencedMacros": []
+          },
+          {
+            "path": "screens/top/Main.screen.json",
+            "screen": "top/Main",
+            "role": "manifest",
+            "sha256": "bccc03f8712e7836a2e95b58920f957ff201a4bb3a0f2ecbe73c2b775f67c7f6",
+            "declaredMacros": [
+              {
+                "name": "DEV",
+                "default": "SR01"
+              },
+              {
+                "name": "theme",
+                "default": "dark"
+              }
+            ],
+            "referencedMacros": [
+              "DEV",
+              "UNSET"
+            ]
+          },
+          {
+            "path": "screens/top/other.screen.json",
+            "screen": "top/other",
+            "role": "manifest",
+            "sha256": "0ab962f22c61c684867187af7fa686c268c86085e85bc95240df0c72529847c4",
+            "declaredMacros": [],
+            "referencedMacros": []
+          },
+          {
+            "path": "screens/top/parts/part.v2.screen.json",
+            "screen": "top/parts/part.v2",
+            "role": "embedded",
+            "sha256": "dece13cf357e388c7ef8365d9a01b99aa0357adb80372e0b13c5eed6a8c8756e",
+            "declaredMacros": [
+              {
+                "name": "P",
+                "default": ""
+              }
+            ],
+            "referencedMacros": [
+              "P"
+            ]
+          }
+        ],
+        "screens": [
+          {
+            "id": "array",
+            "path": "screens/array.screen.json",
+            "error": "not a JSON object"
+          },
+          {
+            "id": "broken",
+            "path": "screens/broken.screen.json",
+            "error": "not valid JSON"
+          },
+          {
+            "id": "top/Main",
+            "path": "screens/top/Main.screen.json",
+            "instances": [
+              {
+                "instance": "",
+                "screen": "top/Main",
+                "hidden": false
+              },
+              {
+                "instance": "/0:part",
+                "screen": "top/parts/part.v2",
+                "hidden": false
+              },
+              {
+                "instance": "/h:under",
+                "screen": "top/other",
+                "hidden": true
+              }
+            ],
+            "urlMacros": [
+              {
+                "name": "DEV",
+                "default": "SR01",
+                "declared": true,
+                "referencedIn": [
+                  "top/Main"
+                ]
+              },
+              {
+                "name": "P",
+                "default": null,
+                "declared": false,
+                "referencedIn": [
+                  "top/parts/part.v2"
+                ]
+              },
+              {
+                "name": "UNSET",
+                "default": null,
+                "declared": false,
+                "referencedIn": [
+                  "top/Main"
+                ]
+              }
+            ],
+            "unresolvedRefs": [
+              {
+                "kind": "open_display",
+                "screen": "top/Main",
+                "instance": "",
+                "nodeId": "run",
+                "file": "parts/part.v2.screen.json"
+              },
+              {
+                "kind": "open_display",
+                "screen": "top/Main",
+                "instance": "",
+                "nodeId": "run",
+                "file": "gone.screen.json"
+              },
+              {
+                "kind": "embed",
+                "screen": "top/Main",
+                "instance": "",
+                "nodeId": "folded",
+                "file": "embedded/_X.part.screen.json"
+              },
+              {
+                "kind": "embed",
+                "screen": "top/Main",
+                "instance": "",
+                "nodeId": "missing",
+                "file": "nope.screen.json"
+              }
+            ],
+            "unresolvedMacros": [
+              {
+                "screen": "top/Main",
+                "instance": "",
+                "nodeId": "loose"
+              }
+            ]
+          },
+          {
+            "id": "top/other",
+            "path": "screens/top/other.screen.json",
+            "instances": [
+              {
+                "instance": "",
+                "screen": "top/other",
+                "hidden": false
+              }
+            ],
+            "urlMacros": [],
+            "unresolvedRefs": [],
+            "unresolvedMacros": []
+          }
+        ],
+        "writeBindings": [
+          {
+            "top": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "slider",
+            "kind": "pv-slider",
+            "pvAsWritten": "${DEV}:SET",
+            "pvResolved": "SR01:SET",
+            "local": false,
+            "unresolvedMacro": false
+          },
+          {
+            "top": "top/Main",
+            "screen": "top/parts/part.v2",
+            "instance": "/0:part",
+            "nodeId": "input",
+            "kind": "pv-text-input",
+            "pvAsWritten": "${P}:IN",
+            "pvResolved": "SR01:IN",
+            "local": false,
+            "unresolvedMacro": false
+          },
+          {
+            "top": "top/Main",
+            "screen": "top/parts/part.v2",
+            "instance": "/0:part",
+            "nodeId": "zero",
+            "kind": "pv-button",
+            "pvAsWritten": "loc://zero",
+            "pvResolved": "loc://zero",
+            "local": true,
+            "unresolvedMacro": false
+          },
+          {
+            "top": "top/Main",
+            "screen": "top/parts/part.v2",
+            "instance": "/0:part",
+            "nodeId": "zero",
+            "kind": "write_pv",
+            "pvAsWritten": "${P}:ZERO",
+            "pvResolved": "SR01:ZERO",
+            "local": false,
+            "unresolvedMacro": false
+          }
+        ],
+        "executeActions": [
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "command": "Run | thing",
+            "description": "starts *it*",
+            "hidden": false
+          },
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "shell",
+            "nodeType": "shell-command-button",
+            "command": "reboot",
+            "description": null,
+            "hidden": true
+          }
+        ],
+        "commandButtons": [
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "hidden": false
+          },
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "shell",
+            "nodeType": "shell-command-button",
+            "hidden": true
+          }
+        ],
+        "openDisplays": [
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "file": "other.screen.json",
+            "target": "top/other",
+            "hidden": false
+          },
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "file": "parts/part.v2.screen.json",
+            "target": null,
+            "hidden": false
+          },
+          {
+            "topScreen": "top/Main",
+            "screen": "top/Main",
+            "instance": "",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "file": "gone.screen.json",
+            "target": null,
+            "hidden": false
+          },
+          {
+            "topScreen": "top/Main",
+            "screen": "top/other",
+            "instance": "/h:under",
+            "nodeId": "back",
+            "nodeType": "related-display-button",
+            "file": "Main.screen.json",
+            "target": "top/Main",
+            "hidden": true
+          },
+          {
+            "topScreen": "top/other",
+            "screen": "top/other",
+            "instance": "",
+            "nodeId": "back",
+            "nodeType": "related-display-button",
+            "file": "Main.screen.json",
+            "target": "top/Main",
+            "hidden": false
+          }
+        ],
+        "absoluteUrls": [
+          {
+            "screen": "top/Main",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "kind": "open_webpage",
+            "path": "/root/children/1/props/actions/4/url",
+            "url": "https://example.org/a_b"
+          },
+          {
+            "screen": "top/Main",
+            "nodeId": "run",
+            "nodeType": "regular-button",
+            "kind": "open_webpage",
+            "path": "/root/children/1/props/actions/5/url",
+            "url": "/docs/x"
+          },
+          {
+            "screen": "top/Main",
+            "nodeId": "remote",
+            "nodeType": "image-view",
+            "kind": "image",
+            "path": "/root/children/8/props/src",
+            "url": "https://example.org/logo.png"
+          },
+          {
+            "screen": "top/Main",
+            "nodeId": "link",
+            "nodeType": "text-label",
+            "kind": "string",
+            "path": "/root/children/9/props/url",
+            "url": "HTTP://example.org/Help"
+          }
+        ],
+        "crossRootRefs": [],
+        "rootRelativeRefs": [],
+        "ruleRetargetedChannels": [],
+        "ruleRetargetedRefs": []
+      },
+      "refusals": [],
+      "md": [
+        "# Report of the screen library",
+        "",
+        "Generated by `python -m canopy_mcp.report`; the same data is in",
+        "`LIBRARY-REPORT.json`. Every PV a stored screen can write is listed under *Write bindings*.",
+        "",
+        "## Sources",
+        "",
+        "- schema: `canopy-library-report/1`",
+        "- library digest: `sha256:12a82975e0a8a29d80fd14c4fc2b0db1c36edd5bdd9f4a8dfc8501eac182508c` (8 files)",
+        "",
+        "## Write bindings (4)",
+        "",
+        "| top screen | screen | instance | node | kind | PV as written | PV resolved | local | unresolved macro |",
+        "|---|---|---|---|---|---|---|---|---|",
+        "| top/Main | top/Main | (top) | slider | pv-slider | ${DEV}:SET | SR01:SET | no | no |",
+        "| top/Main | top/parts/part.v2 | /0:part | input | pv-text-input | ${P}:IN | SR01:IN | no | no |",
+        "| top/Main | top/parts/part.v2 | /0:part | zero | pv-button | loc://zero | loc://zero | yes | no |",
+        "| top/Main | top/parts/part.v2 | /0:part | zero | write\\_pv | ${P}:ZERO | SR01:ZERO | no | no |",
+        "",
+        "## Execute actions (2)",
+        "",
+        "| top screen | screen | instance | node | type | command | description | hidden |",
+        "|---|---|---|---|---|---|---|---|",
+        "| top/Main | top/Main | (top) | run | regular-button | Run \\| thing | starts \\*it\\* | no |",
+        "| top/Main | top/Main | (top) | shell | shell-command-button | reboot |  | yes |",
+        "",
+        "## Command buttons (2)",
+        "",
+        "| top screen | screen | instance | node | type | hidden |",
+        "|---|---|---|---|---|---|",
+        "| top/Main | top/Main | (top) | run | regular-button | no |",
+        "| top/Main | top/Main | (top) | shell | shell-command-button | yes |",
+        "",
+        "## Open displays (5)",
+        "",
+        "| top screen | screen | instance | node | type | file | target | hidden |",
+        "|---|---|---|---|---|---|---|---|",
+        "| top/Main | top/Main | (top) | run | regular-button | other.screen.json | top/other | no |",
+        "| top/Main | top/Main | (top) | run | regular-button | parts/part.v2.screen.json |  | no |",
+        "| top/Main | top/Main | (top) | run | regular-button | gone.screen.json |  | no |",
+        "| top/Main | top/other | /h:under | back | related-display-button | Main.screen.json | top/Main | yes |",
+        "| top/other | top/other | (top) | back | related-display-button | Main.screen.json | top/Main | no |",
+        "",
+        "## Absolute URLs (4)",
+        "",
+        "| screen | node | type | kind | path | URL |",
+        "|---|---|---|---|---|---|",
+        "| top/Main | run | regular-button | open\\_webpage | /root/children/1/props/actions/4/url | https://example.org/a\\_b |",
+        "| top/Main | run | regular-button | open\\_webpage | /root/children/1/props/actions/5/url | /docs/x |",
+        "| top/Main | remote | image-view | image | /root/children/8/props/src | https://example.org/logo.png |",
+        "| top/Main | link | text-label | string | /root/children/9/props/url | HTTP://example.org/Help |",
+        "",
+        "## Cross-root refs (0)",
+        "",
+        "none",
+        "",
+        "## Root-relative refs (0)",
+        "",
+        "none",
+        "",
+        "## Rule-retargeted channels (0)",
+        "",
+        "none",
+        "",
+        "## Rule-retargeted refs (0)",
+        "",
+        "none",
+        "",
+        "## Top-level screens",
+        "",
+        "### array",
+        "",
+        "- path: screens/array.screen.json",
+        "- not readable: not a JSON object",
+        "",
+        "### broken",
+        "",
+        "- path: screens/broken.screen.json",
+        "- not readable: not valid JSON",
+        "",
+        "### top/Main",
+        "",
+        "- path: screens/top/Main.screen.json",
+        "- instances: 3",
+        "",
+        "Instances:",
+        "",
+        "| instance | screen | hidden |",
+        "|---|---|---|",
+        "| (top) | top/Main | no |",
+        "| /0:part | top/parts/part.v2 | no |",
+        "| /h:under | top/other | yes |",
+        "",
+        "URL-settable macros:",
+        "",
+        "| name | default | declared | referenced in |",
+        "|---|---|---|---|",
+        "| DEV | SR01 | yes | top/Main |",
+        "| P |  | no | top/parts/part.v2 |",
+        "| UNSET |  | no | top/Main |",
+        "",
+        "Unresolved refs:",
+        "",
+        "| kind | screen | instance | node | file |",
+        "|---|---|---|---|---|",
+        "| open\\_display | top/Main | (top) | run | parts/part.v2.screen.json |",
+        "| open\\_display | top/Main | (top) | run | gone.screen.json |",
+        "| embed | top/Main | (top) | folded | embedded/\\_X.part.screen.json |",
+        "| embed | top/Main | (top) | missing | nope.screen.json |",
+        "",
+        "Nodes with an unresolved macro:",
+        "",
+        "| screen | instance | node |",
+        "|---|---|---|",
+        "| top/Main | (top) | loose |",
+        "",
+        "### top/other",
+        "",
+        "- path: screens/top/other.screen.json",
+        "- instances: 1",
+        "",
+        "Instances:",
+        "",
+        "| instance | screen | hidden |",
+        "|---|---|---|",
+        "| (top) | top/other | no |",
+        "",
+        "URL-settable macros:",
+        "",
+        "none",
+        "",
+        "Unresolved refs:",
+        "",
+        "none",
+        "",
+        "Nodes with an unresolved macro:",
+        "",
+        "none",
+        "",
+        "## Templates",
+        "",
+        "| path | role | declared macros | referenced macros | sha256 |",
+        "|---|---|---|---|---|",
+        "| screens/array.screen.json | manifest (not readable) |  |  | 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570 |",
+        "| screens/broken.screen.json | manifest (not readable) |  |  | 3c48773b404d850071dff4006d4ef0d7302d1343aefc58fbc84d730753de8831 |",
+        "| screens/odd/v1.2.screen.json | unlisted |  | ODD | d3cbfaf50588270bc3ba113b0d8148a3b497254527ac98e295d76d5900e38686 |",
+        "| screens/top/Embedded/\\_X.part.screen.json | unlisted |  |  | 24d81b88c6e89ea6451c9dd744a4435b4084c9bcfc81604c9f8134d50c9e986d |",
+        "| screens/top/Main.screen.json | manifest | DEV=SR01, theme=dark | DEV, UNSET | bccc03f8712e7836a2e95b58920f957ff201a4bb3a0f2ecbe73c2b775f67c7f6 |",
+        "| screens/top/other.screen.json | manifest |  |  | 0ab962f22c61c684867187af7fa686c268c86085e85bc95240df0c72529847c4 |",
+        "| screens/top/parts/part.v2.screen.json | embedded | P= | P | dece13cf357e388c7ef8365d9a01b99aa0357adb80372e0b13c5eed6a8c8756e |",
+        "",
+        "## Files",
+        "",
+        "| sha256 | path |",
+        "|---|---|",
+        "| 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570 | screens/array.screen.json |",
+        "| 3c48773b404d850071dff4006d4ef0d7302d1343aefc58fbc84d730753de8831 | screens/broken.screen.json |",
+        "| d3cbfaf50588270bc3ba113b0d8148a3b497254527ac98e295d76d5900e38686 | screens/odd/v1.2.screen.json |",
+        "| 24d81b88c6e89ea6451c9dd744a4435b4084c9bcfc81604c9f8134d50c9e986d | screens/top/Embedded/\\_X.part.screen.json |",
+        "| bccc03f8712e7836a2e95b58920f957ff201a4bb3a0f2ecbe73c2b775f67c7f6 | screens/top/Main.screen.json |",
+        "| 497790947d4666760ce38f3c00e852c71fdb66cae849bae8e9ede352719e1581 | screens/top/logo.png |",
+        "| 0ab962f22c61c684867187af7fa686c268c86085e85bc95240df0c72529847c4 | screens/top/other.screen.json |",
+        "| dece13cf357e388c7ef8365d9a01b99aa0357adb80372e0b13c5eed6a8c8756e | screens/top/parts/part.v2.screen.json |",
+        ""
+      ]
+    },
+    "refused": {
+      "report": {
+        "generator": {
+          "schema": "canopy-library-report/1"
+        },
+        "files": {
+          "digest": "sha256:121f8ea60f6e2497cb574b1d70cc3eb36a5f3c1564508d726f0ae0d354511a30",
+          "list": [
+            {
+              "path": "screens/a/icon.svg",
+              "sha256": "fb91f9a03c202c5f160eef644da6f2f704b19ac5c5f8b4c124e1b0b485ad57a0"
+            },
+            {
+              "path": "screens/a/other.screen.json",
+              "sha256": "06447d7c7c2a198e941c67cbaaa4d4a7b78a2ea20b77ff8ee93be781079ae6f0"
+            },
+            {
+              "path": "screens/a/top.screen.json",
+              "sha256": "fe7566738cc80a6fc7ccafb0e41665ed4b04696dc35cc429c6b6d89551a57ed3"
+            }
+          ]
+        },
+        "manifest": [
+          "a/other",
+          "a/top"
+        ],
+        "templates": [
+          {
+            "path": "screens/a/other.screen.json",
+            "screen": "a/other",
+            "role": "manifest",
+            "sha256": "06447d7c7c2a198e941c67cbaaa4d4a7b78a2ea20b77ff8ee93be781079ae6f0",
+            "declaredMacros": [],
+            "referencedMacros": []
+          },
+          {
+            "path": "screens/a/top.screen.json",
+            "screen": "a/top",
+            "role": "manifest",
+            "sha256": "fe7566738cc80a6fc7ccafb0e41665ed4b04696dc35cc429c6b6d89551a57ed3",
+            "declaredMacros": [],
+            "referencedMacros": []
+          }
+        ],
+        "screens": [
+          {
+            "id": "a/other",
+            "path": "screens/a/other.screen.json",
+            "instances": [
+              {
+                "instance": "",
+                "screen": "a/other",
+                "hidden": false
+              }
+            ],
+            "urlMacros": [],
+            "unresolvedRefs": [],
+            "unresolvedMacros": []
+          },
+          {
+            "id": "a/top",
+            "path": "screens/a/top.screen.json",
+            "instances": [
+              {
+                "instance": "",
+                "screen": "a/top",
+                "hidden": false
+              }
+            ],
+            "urlMacros": [],
+            "unresolvedRefs": [
+              {
+                "kind": "embed",
+                "screen": "a/top",
+                "instance": "",
+                "nodeId": "cross",
+                "file": "../../../screens/p.screen.json"
+              },
+              {
+                "kind": "open_display",
+                "screen": "a/top",
+                "instance": "",
+                "nodeId": "rooted",
+                "file": "/a/other.screen.json"
+              },
+              {
+                "kind": "open_display",
+                "screen": "a/top",
+                "instance": "",
+                "nodeId": "prefixed",
+                "file": "screens/x.screen.json"
+              }
+            ],
+            "unresolvedMacros": []
+          }
+        ],
+        "writeBindings": [],
+        "executeActions": [],
+        "commandButtons": [
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "instance": "",
+            "nodeId": "rooted",
+            "nodeType": "regular-button",
+            "hidden": false
+          },
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "instance": "",
+            "nodeId": "prefixed",
+            "nodeType": "regular-button",
+            "hidden": false
+          }
+        ],
+        "openDisplays": [
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "instance": "",
+            "nodeId": "rooted",
+            "nodeType": "regular-button",
+            "file": "/a/other.screen.json",
+            "target": null,
+            "hidden": false
+          },
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "instance": "",
+            "nodeId": "prefixed",
+            "nodeType": "regular-button",
+            "file": "screens/x.screen.json",
+            "target": null,
+            "hidden": false
+          }
+        ],
+        "absoluteUrls": [],
+        "crossRootRefs": [
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "nodeId": "cross",
+            "kind": "screen",
+            "path": "/root/children/0/props/file",
+            "ref": "../../../screens/p.screen.json"
+          }
+        ],
+        "rootRelativeRefs": [
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "nodeId": "rooted",
+            "kind": "screen",
+            "path": "/root/children/1/props/actions/0/file",
+            "ref": "/a/other.screen.json"
+          },
+          {
+            "topScreen": "a/top",
+            "screen": "a/top",
+            "nodeId": "prefixed",
+            "kind": "screen",
+            "path": "/root/children/2/props/actions/0/file",
+            "ref": "screens/x.screen.json"
+          }
+        ],
+        "ruleRetargetedChannels": [
+          {
+            "screen": "a/top",
+            "nodeId": "ruled",
+            "nodeType": "pv-label",
+            "path": "/root/children/4/rules/0/targetProperty",
+            "targetProperty": "pv"
+          }
+        ],
+        "ruleRetargetedRefs": [
+          {
+            "screen": "a/top",
+            "nodeId": "ruled",
+            "nodeType": "pv-label",
+            "path": "/root/children/4/rules/1/targetProperty",
+            "targetProperty": "actions[0].file"
+          }
+        ]
+      },
+      "refusals": [
+        "outside_screens: README.md: a library root holds only screens/ and the LIBRARY-REPORT files; delete it",
+        "suffix: screens/notes.txt: neither a *.screen.json file nor an image; delete it",
+        "svg: screens/a/icon.svg: SVG is markup a browser runs; delete it or convert it to a raster image",
+        "crossRootRefs: screen a/top node cross at /root/children/0/props/file: ../../../screens/p.screen.json",
+        "rootRelativeRefs: screen a/top node rooted at /root/children/1/props/actions/0/file: /a/other.screen.json",
+        "rootRelativeRefs: screen a/top node prefixed at /root/children/2/props/actions/0/file: screens/x.screen.json",
+        "ruleRetargetedChannels: screen a/top node ruled at /root/children/4/rules/0/targetProperty: pv",
+        "ruleRetargetedRefs: screen a/top node ruled at /root/children/4/rules/1/targetProperty: actions[0].file"
+      ]
+    },
+    "invalid-text": {
+      "refused": "invalid_text: screens/bad.screen.json /root/children/0/props/text"
+    }
+  }
+}

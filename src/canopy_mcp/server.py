@@ -30,7 +30,8 @@ mcp = FastMCP(
 
 _TOOLS_PACKAGE = "canopy_mcp.tools"
 
-# The tools that create, change or delete drafts. Every other tool only reads.
+# The tools that create, change or delete drafts, or file one for the shared library.
+# Every other tool only reads.
 AUTHORING_TOOLS = (
     "new_screen",
     "patch_node",
@@ -38,6 +39,7 @@ AUTHORING_TOOLS = (
     "remove_node",
     "delete_draft",
     "convert_legacy",
+    "request_push",
 )
 
 # The tools that read and change the CANOPY workspace through the in-process hub

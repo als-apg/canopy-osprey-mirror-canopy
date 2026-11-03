@@ -30,6 +30,7 @@ EXPECTED_TOOLS = [
     "search_pvs",
     "read_pv",
     "screenshot",
+    "request_push",
 ]
 
 
