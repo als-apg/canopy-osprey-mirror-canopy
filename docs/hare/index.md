@@ -68,7 +68,9 @@ The EPICS connector behind Hare has two backends, selected with
   else is a scalar.
 - **`epics`** — real Channel Access / PV Access via the facility network.
   Discovery uses the standard EPICS environment variables
-  (`EPICS_CA_ADDR_LIST`, `EPICS_PVA_ADDR_LIST`, ...).
+  (`EPICS_CA_ADDR_LIST`, `EPICS_PVA_ADDR_LIST`, ...). A Channel Access
+  channel lost in an outage is searched for afresh every
+  `CANOPY_EPICS__CA_RECONNECT_S` (default 15 s) until it reconnects.
 
 ## Configuration
 

@@ -51,6 +51,7 @@ they live in a `.env` file next to it, which compose reads both for its own
 | `EPICS_PVA_ADDR_LIST`, `EPICS_PVA_AUTO_ADDR_LIST` | For PVA | Your facility's PV Access network |
 | `EPICS_CA_SERVER_PORT`, `EPICS_PVA_SERVER_PORT`, ... | If non-default | Any other standard EPICS variable your network needs |
 | `CANOPY_EPICS__CA_TIMEOUT_S`, `CANOPY_EPICS__PVA_TIMEOUT_S` | No | EPICS backend tuning. Default 5 s each |
+| `CANOPY_EPICS__CA_RECONNECT_S` | No | Re-search period for a lost CA channel. Default 15 s; `0` leaves it to libca |
 | `CANOPY_DEBUG` | No | Keep `false` (the default) in production |
 | `CANOPY_ELOG__*` | No | E-log posting for client apps: the provider, its base URL, and one e-log application token per app. Leave unset and clients hide "Post to e-log". With it set, cap the request body in the proxy in front of Canopy, which has no limit of its own. See [E-log](../elog/index.md) |
 

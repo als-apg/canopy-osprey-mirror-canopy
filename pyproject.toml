@@ -38,6 +38,7 @@ dev = [
     "fakeredis>=2.21",
     "coverage>=7.15.1",
     "pyyaml>=6",
+    "caproto>=1.1",
 ]
 docs = [
     "zensical>=0.0.51",
