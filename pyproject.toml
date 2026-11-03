@@ -44,7 +44,7 @@ mcp = [
     # >=14: the first release whose asyncio client has ``process_redirect``,
     # which the screenshot browser's relay needs to refuse redirects.
     "websockets>=14",
-    # The screenshot browser; its tests run on the locked 1.63.
+    # The screenshot browser.
     "playwright>=1.61",
     # Kills a Playwright driver that will not stop, with its process tree.
     "psutil>=6",
