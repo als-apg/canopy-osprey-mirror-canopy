@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "a/sub/x",
+  "metadata": {
+    "title": "x",
+    "source": {
+      "type": "native"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "a-sub-x-root",
+    "type": "group",
+    "props": {},
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 10,
+      "height": 10
+    },
+    "children": [
+      {
+        "id": "x-label",
+        "type": "label",
+        "props": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      }
+    ]
+  }
+}
