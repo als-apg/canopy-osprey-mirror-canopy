@@ -10,6 +10,16 @@ from canopy.hare import gateway
 from canopy.main import app
 
 
+def _receive_heartbeat(ws) -> dict:
+    """The first frame of every socket is the heartbeat (built-in simulation: no statement)."""
+    beat = ws.receive_json()
+    assert beat["type"] == "heartbeat"
+    assert beat["backend"] == "simulation"
+    assert (beat["label"], beat["notice"], beat["binding"]) == (None, None, None)
+    assert (beat["reachable"], beat["writes"]) == (None, None)
+    return beat
+
+
 def test_ws_subscribe_streams_values():
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
@@ -74,6 +84,7 @@ def test_ws_subscribe_with_invalid_name_does_not_crash_connection():
 def test_ws_ping_pong():
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            _receive_heartbeat(ws)
             ws.send_json({"type": "ping"})
             msg = ws.receive_json()
             assert msg["type"] == "pong"
@@ -91,6 +102,7 @@ def test_ws_non_object_message_errors_without_dropping():
     # the connection. Now it returns an error frame and stays open.
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            _receive_heartbeat(ws)
             ws.send_json([1, 2, 3])
             err = ws.receive_json()
             assert err["type"] == "error"
@@ -103,6 +115,7 @@ def test_ws_non_object_message_errors_without_dropping():
 def test_ws_non_json_text_message_errors_without_dropping():
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            _receive_heartbeat(ws)
             ws.send_text("this is not json")
             err = ws.receive_json()
             assert err["type"] == "error"
@@ -114,6 +127,7 @@ def test_ws_pvnames_as_string_is_rejected_not_exploded():
     # "MYPV" must not become ['M','Y','P','V'] -> 4 bogus monitors.
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            _receive_heartbeat(ws)
             ws.send_json({"type": "subscribe", "pvNames": "SIM:WS"})
             err = ws.receive_json()
             assert err["type"] == "error"
@@ -125,6 +139,7 @@ def test_ws_pvnames_as_string_is_rejected_not_exploded():
 def test_ws_unknown_type_errors_without_dropping():
     with TestClient(app) as client:
         with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+            _receive_heartbeat(ws)
             ws.send_json({"type": "frobnicate"})
             err = ws.receive_json()
             assert err["type"] == "error"

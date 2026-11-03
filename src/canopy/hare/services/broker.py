@@ -10,6 +10,7 @@ each PV. A newly subscribed PV is seeded by its monitor's first update and a
 background describe, so a subscribe never waits on the connector.
 """
 
+import copy
 import time
 import asyncio
 import logging
@@ -17,7 +18,7 @@ from typing import Any, Protocol, runtime_checkable
 from collections import defaultdict
 from collections.abc import Mapping, Callable, Iterable, Awaitable
 
-from canopy.epics.base import PVConnector, Subscription
+from canopy.epics.base import PVConnector, Subscription, ConnectorStatement
 from canopy.core.errors import ErrorCode
 from canopy.hare.config import HareConfig
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
@@ -85,6 +86,13 @@ class PVBroker:
         self._tasks: list[asyncio.Task] = []
         self._activation_hooks: list[tuple[LifecycleHook, set[str]]] = []
         self._deactivation_hooks: list[tuple[LifecycleHook, set[str]]] = []
+        # The connector's statement seam, when it implements one.
+        self._statement_source = connector if isinstance(connector, ConnectorStatement) else None
+        # The statement of the last heartbeat the flush loop pushed; unset until
+        # start() records the connector's first statement as given.
+        self._last_statement: tuple | None = None
+        # The background loops' clock; tests replace it to step the loops.
+        self._sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
 
     @property
     def registry(self) -> SubscriptionRegistry:
@@ -96,6 +104,7 @@ class PVBroker:
         if self._running:
             return
         await self._connector.start()
+        self._last_statement = self._statement(self.heartbeat_frame())
         self._running = True
         self._tasks = [self._spawn_loop(name) for name in ("consume", "flush", "heartbeat")]
         logger.info(
@@ -759,13 +768,72 @@ class PVBroker:
     async def _flush_loop(self) -> None:
         interval = self._config.ws_batch_interval_ms / 1000.0
         while self._running:
-            await asyncio.sleep(interval)
+            await self._sleep(interval)
             try:
                 await self._flush()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("broker flush loop iteration failed")
+            try:
+                await self._push_statement()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("broker statement push failed")
+
+    @staticmethod
+    def _statement(frame: dict) -> tuple:
+        """The part of a heartbeat frame whose change is pushed at once.
+
+        A copy, so a connector that updates its ``reachable`` or ``writes``
+        mapping in place still differs from the recorded statement.
+        """
+        return copy.deepcopy((frame["label"], frame["notice"], frame["binding"], frame["reachable"], frame["writes"]))
+
+    async def _push_statement(self) -> None:
+        """Send the heartbeat at once when the connector's statement changed.
+
+        Runs on every flush tick whether or not any client is connected. When
+        (label, notice, binding, reachable, writes) differs from the last
+        pushed statement, the frame goes to every client, then the connector's
+        `ConnectorStatement.statement_sent` is called once. The keep-alive loop
+        neither records a statement nor calls it.
+        """
+        frame = self.heartbeat_frame()
+        statement = self._statement(frame)
+        if self._last_statement is None:
+            self._last_statement = statement
+            return
+        if statement == self._last_statement:
+            return
+        self._last_statement = statement
+        for client_id in list(self._channels):
+            await self._send(client_id, frame)
+        if self._statement_source is not None:
+            self._statement_source.statement_sent()
+
+    def heartbeat_frame(self) -> dict:
+        """The heartbeat frame: the backend, plus the connector's identity and statement.
+
+        ``label``, ``notice``, ``binding``, ``reachable`` and ``writes`` are read
+        from the connector on every call when it implements `ConnectorStatement`,
+        so a change shows on the next frame; they are ``None`` (no claim) for a
+        connector that does not. One builder for the keep-alive loop, the first
+        frame of every ``ws_pvs`` socket, the push on a statement change and
+        ``GET /hare/v1/health/summary``.
+        """
+        source = self._statement_source
+        return {
+            "type": "heartbeat",
+            "timestamp": time.time(),
+            "backend": getattr(self._connector, "backend_name", None),
+            "label": source.label if source is not None else None,
+            "notice": source.notice if source is not None else None,
+            "binding": source.binding if source is not None else None,
+            "reachable": source.reachable if source is not None else None,
+            "writes": source.writes if source is not None else None,
+        }
 
     async def _flush(self) -> None:
         async with self._buffer_lock:
@@ -784,13 +852,9 @@ class PVBroker:
 
     async def _heartbeat_loop(self) -> None:
         while self._running:
-            await asyncio.sleep(self._config.heartbeat_interval_s)
+            await self._sleep(self._config.heartbeat_interval_s)
             try:
-                message = {
-                    "type": "heartbeat",
-                    "timestamp": time.time(),
-                    "backend": getattr(self._connector, "backend_name", None),
-                }
+                message = self.heartbeat_frame()
                 for client_id in list(self._channels):
                     await self._send(client_id, message)
             except asyncio.CancelledError:

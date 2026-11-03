@@ -148,7 +148,11 @@ class Subscription(Protocol):
 
 @runtime_checkable
 class PVConnector(Protocol):
-    """Contract every connector backend satisfies. See `docs` / Hare design."""
+    """Contract every connector backend satisfies. See `docs` / Hare design.
+
+    A backend may also implement `ConnectorStatement` to state its identity and
+    the control system's state in Hare's heartbeat.
+    """
 
     backend_name: str
 
@@ -204,4 +208,44 @@ class PVConnector(Protocol):
         """Static per-channel metadata (value kind, units, precision, enum
         choices, display/control limits). Read once per active PV by the broker
         and served by the `describe` endpoint."""
+        ...
+
+
+@runtime_checkable
+class ConnectorStatement(Protocol):
+    """Optional seam: a connector that states what it is connected to and what it allows.
+
+    The broker reads these attributes on every heartbeat frame (see
+    ``PVBroker.heartbeat_frame``) and copies them into the frame and into
+    ``GET /hare/v1/health/summary``. A connector opts in by providing all of
+    them; one that does not is treated as making no statement, and every field
+    reads ``None``. An attribute the connector has nothing to say about is
+    ``None``, which a reader takes as "no claim".
+
+    - ``label`` and ``notice``: a short name for what the connector is connected
+      to, and a one-line remark a client may show next to it.
+    - ``binding``: an id for that connection, which changes whenever the
+      connector switches what it is connected to. A client sends it back with
+      a write (``PUT`` body ``binding``) so the connector can refuse a write
+      meant for another one.
+    - ``reachable``: whether the control system answers, as
+      ``{"state": "yes" | "no" | "unknown", "since": <epoch s> | None, "reason": str | None}``.
+    - ``writes``: whether screens may write, as
+      ``{"state": "on" | "asked" | "off" | "locked" | "applying" | "held", "reason": str | None, "cause": str | None}``;
+      ``asked`` asks a person before each write (the PUT then carries
+      ``confirmed``), ``held`` is a watchdog's hold on the session.
+
+    The broker compares (label, notice, binding, reachable, writes) on every
+    flush tick and sends the heartbeat at once when it changed, then calls
+    `statement_sent`, so a connector can tell when its new statement is out.
+    """
+
+    label: str | None
+    notice: str | None
+    binding: str | None
+    reachable: Mapping[str, Any] | None
+    writes: Mapping[str, Any] | None
+
+    def statement_sent(self) -> None:
+        """Called after a changed statement was sent to every connected client. May do nothing."""
         ...
