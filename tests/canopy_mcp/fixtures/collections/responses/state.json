@@ -1,0 +1,23 @@
+{
+  "ticked": [
+    "personal:mine"
+  ],
+  "unticked": [
+    "facility:injector"
+  ],
+  "pinned": [
+    {
+      "tool": "trace",
+      "query": "pv=A:B&range=-1h",
+      "name": "Beam current"
+    }
+  ],
+  "recent": [
+    {
+      "screen": "library/sr/overview"
+    },
+    {
+      "screen": "drafts/xfer/view"
+    }
+  ]
+}

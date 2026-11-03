@@ -22,10 +22,13 @@ ENV_VARS = (
     "CANOPY_URL_PREFIX",
     "CANOPY_PUBLIC_URL",
     "CANOPY_PROXY_MARK_HEADERS",
+    "CANOPY_LIBRARY_IGNORED_NAMES",
     "CANOPY_PV_MODE",
     "CANOPY_API_KEY_FILE",
     "CANOPY_ACCESS_TOKEN_FILE",
     "CANOPY_SELF_URL",
+    "CANOPY_COLLECTIONS_DIR",
+    "CANOPY_FACILITY_COLLECTIONS_DIR",
 )
 
 
@@ -49,7 +52,10 @@ def test_settings_read_every_variable_from_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CANOPY_URL_PREFIX", "/panel/canopy")
     monkeypatch.setenv("CANOPY_PUBLIC_URL", "http://host.example:9000")
     monkeypatch.setenv("CANOPY_PROXY_MARK_HEADERS", "X-Host-Session")
+    monkeypatch.setenv("CANOPY_LIBRARY_IGNORED_NAMES", "Dockerfile  build")
     monkeypatch.setenv("CANOPY_PV_MODE", "mock")
+    monkeypatch.setenv("CANOPY_COLLECTIONS_DIR", str(tmp_path / "collections"))
+    monkeypatch.setenv("CANOPY_FACILITY_COLLECTIONS_DIR", str(tmp_path / "facility"))
 
     s = Settings()
 
@@ -60,7 +66,10 @@ def test_settings_read_every_variable_from_env(monkeypatch, tmp_path):
     assert s.url_prefix == "/panel/canopy"
     assert s.public_url == "http://host.example:9000"
     assert s.proxy_mark_header_names == ("x-forwarded-prefix", "x-host-session")
+    assert s.library_ignored_name_set == frozenset({"dockerfile", "build"})
     assert s.pv_mode == "mock"
+    assert s.collections_dir == tmp_path / "collections"
+    assert s.facility_collections_dir == tmp_path / "facility"
 
 
 def test_settings_defaults():
@@ -68,9 +77,32 @@ def test_settings_defaults():
     assert s.pv_mode == "hare"
     assert (s.url_prefix, s.public_url) == (None, None)
     assert s.proxy_mark_header_names == ("x-forwarded-prefix",)
+    assert s.library_ignored_name_set == frozenset()
     assert s.api_key == ""
     assert isinstance(s.drafts_dir, Path)
     assert (s.api_key_file, s.access_token_file, s.self_url) == (None, None, None)
+    assert (s.collections_dir, s.facility_collections_dir) == (None, None)
+    assert s.personal_collections_dir == Path(s.drafts_dir) / "collections"
+
+
+def test_settings_read_the_collection_dirs_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("CANOPY_DRAFTS_DIR", str(tmp_path / "drafts"))
+    monkeypatch.setenv("CANOPY_COLLECTIONS_DIR", str(tmp_path / "mine"))
+    monkeypatch.setenv("CANOPY_FACILITY_COLLECTIONS_DIR", str(tmp_path / "facility"))
+    s = Settings()
+    assert s.collections_dir == tmp_path / "mine"
+    assert s.personal_collections_dir == tmp_path / "mine"
+    assert s.facility_collections_dir == tmp_path / "facility"
+
+
+_ROOT = Path(__file__).resolve().parents[2]
+_README = _ROOT / "src" / "canopy_mcp" / "README.md"
+
+
+@pytest.mark.parametrize("name", ["CANOPY_COLLECTIONS_DIR", "CANOPY_FACILITY_COLLECTIONS_DIR"])
+def test_the_collection_dirs_are_documented_settings(name):
+    assert name.removeprefix("CANOPY_").lower() in Settings.model_fields
+    assert f"| `{name}` |" in _README.read_text(encoding="utf-8")
 
 
 def test_settings_read_the_file_and_self_url_variables(monkeypatch, tmp_path):

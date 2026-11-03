@@ -1,0 +1,120 @@
+{
+  "id": "deep",
+  "name": "Deep spiral",
+  "description": "Eight splits deep, past the old depth cap: only the byte cap bounds a layout.",
+  "members": [
+    {
+      "screen": "library/sr/overview"
+    },
+    {
+      "screen": "library/s3-promo/promotion"
+    },
+    {
+      "screen": "library/linac/LinacView"
+    },
+    {
+      "screen": "library/xfer/TransferView"
+    },
+    {
+      "screen": "library/common/KnobPanel"
+    },
+    {
+      "screen": "library/dev/b1-dev"
+    },
+    {
+      "tool": "trace"
+    },
+    {
+      "tool": "correlation"
+    },
+    {
+      "tool": "waveform"
+    }
+  ],
+  "layout": {
+    "split": "column",
+    "items": [
+      {
+        "tabs": [
+          0
+        ]
+      },
+      {
+        "split": "row",
+        "items": [
+          {
+            "tabs": [
+              1
+            ]
+          },
+          {
+            "split": "column",
+            "items": [
+              {
+                "tabs": [
+                  2
+                ]
+              },
+              {
+                "split": "row",
+                "items": [
+                  {
+                    "tabs": [
+                      3
+                    ]
+                  },
+                  {
+                    "split": "column",
+                    "items": [
+                      {
+                        "tabs": [
+                          4
+                        ]
+                      },
+                      {
+                        "split": "row",
+                        "items": [
+                          {
+                            "tabs": [
+                              5
+                            ]
+                          },
+                          {
+                            "split": "column",
+                            "items": [
+                              {
+                                "tabs": [
+                                  6
+                                ]
+                              },
+                              {
+                                "split": "column",
+                                "items": [
+                                  {
+                                    "tabs": [
+                                      7
+                                    ]
+                                  },
+                                  {
+                                    "tabs": [
+                                      8
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "updated": "2026-10-16T00:00:00+00:00"
+}

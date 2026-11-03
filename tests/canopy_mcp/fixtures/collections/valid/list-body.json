@@ -1,0 +1,363 @@
+{
+  "collections": [
+    {
+      "source": "facility",
+      "ref": "facility:control-assistant",
+      "rev": "2da35074fd1818c8",
+      "id": "control-assistant",
+      "name": "Control assistant",
+      "description": "The storage ring overview with Trace and Correlation at their defaults.",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "tool": "trace",
+          "name": "Trace"
+        },
+        {
+          "tool": "correlation",
+          "name": "Correlation"
+        }
+      ],
+      "default": true,
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "facility",
+      "ref": "facility:diagnostics",
+      "rev": "30b1409c2dd13fbc",
+      "id": "diagnostics",
+      "name": "Diagnostics",
+      "description": "Knob panel, the B1 development screen and the Waveform tool.",
+      "members": [
+        {
+          "screen": "library/common/KnobPanel"
+        },
+        {
+          "screen": "library/dev/b1-dev"
+        },
+        {
+          "tool": "waveform",
+          "name": "Waveform"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "facility",
+      "ref": "facility:injector",
+      "rev": "8af50e46c8169541",
+      "id": "injector",
+      "name": "Injector",
+      "description": "Gun-to-linac and booster-to-storage-ring transfer lines.",
+      "members": [
+        {
+          "screen": "library/linac/LinacView"
+        },
+        {
+          "screen": "library/xfer/TransferView"
+        },
+        {
+          "tool": "trace",
+          "query": "pv=EG______HV_____AM00&pv=EG______HTR____AM00&range=-1h",
+          "name": "Gun high voltage and heater"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "facility",
+      "ref": "facility:storage-ring",
+      "rev": "0300a04fa0e3de58",
+      "id": "storage-ring",
+      "name": "Storage ring",
+      "description": "Storage ring overview and the S3 promotion screen.",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "screen": "library/s3-promo/promotion"
+        },
+        {
+          "tool": "correlation",
+          "query": "x=SR:DIAG:DCCT:01:CURRENT:RB&y=SR:RF:CAVITY:01:POWER:FWD&range=-1h",
+          "name": "Beam current vs. RF forward power"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:deep",
+      "rev": "b8622a562e5a38dc",
+      "id": "deep",
+      "name": "Deep spiral",
+      "description": "Eight splits deep, past the old depth cap: only the byte cap bounds a layout.",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "screen": "library/s3-promo/promotion"
+        },
+        {
+          "screen": "library/linac/LinacView"
+        },
+        {
+          "screen": "library/xfer/TransferView"
+        },
+        {
+          "screen": "library/common/KnobPanel"
+        },
+        {
+          "screen": "library/dev/b1-dev"
+        },
+        {
+          "tool": "trace"
+        },
+        {
+          "tool": "correlation"
+        },
+        {
+          "tool": "waveform"
+        }
+      ],
+      "layout": {
+        "split": "column",
+        "items": [
+          {
+            "tabs": [
+              0
+            ]
+          },
+          {
+            "split": "row",
+            "items": [
+              {
+                "tabs": [
+                  1
+                ]
+              },
+              {
+                "split": "column",
+                "items": [
+                  {
+                    "tabs": [
+                      2
+                    ]
+                  },
+                  {
+                    "split": "row",
+                    "items": [
+                      {
+                        "tabs": [
+                          3
+                        ]
+                      },
+                      {
+                        "split": "column",
+                        "items": [
+                          {
+                            "tabs": [
+                              4
+                            ]
+                          },
+                          {
+                            "split": "row",
+                            "items": [
+                              {
+                                "tabs": [
+                                  5
+                                ]
+                              },
+                              {
+                                "split": "column",
+                                "items": [
+                                  {
+                                    "tabs": [
+                                      6
+                                    ]
+                                  },
+                                  {
+                                    "split": "column",
+                                    "items": [
+                                      {
+                                        "tabs": [
+                                          7
+                                        ]
+                                      },
+                                      {
+                                        "tabs": [
+                                          8
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:drafts",
+      "rev": "fa254849b669c1d8",
+      "id": "drafts",
+      "name": "my drafts",
+      "members": [
+        {
+          "screen": "drafts/xfer/view"
+        },
+        {
+          "screen": "library/sr/overview",
+          "macros": {
+            "S": "SR01"
+          }
+        },
+        {
+          "tool": "trace"
+        }
+      ],
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:root-tile",
+      "rev": "a7dbdd060b2f8c37",
+      "id": "root-tile",
+      "name": "One tile",
+      "description": "A single tile holding every member as a tab, showing the first.",
+      "members": [
+        {
+          "screen": "library/common/KnobPanel"
+        },
+        {
+          "screen": "library/dev/b1-dev"
+        },
+        {
+          "tool": "trace"
+        }
+      ],
+      "layout": {
+        "tabs": [
+          0,
+          1,
+          2
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:grid",
+      "rev": "cbff71cc3430b331",
+      "id": "grid",
+      "name": "Ring grid",
+      "members": [
+        {
+          "screen": "library/sr/overview"
+        },
+        {
+          "screen": "library/s3-promo/promotion"
+        },
+        {
+          "tool": "trace",
+          "query": "pv=SR:DIAG:DCCT:01:CURRENT:RB&range=-1h",
+          "name": "Beam current"
+        },
+        {
+          "tool": "correlation"
+        }
+      ],
+      "layout": {
+        "split": "row",
+        "items": [
+          {
+            "split": "column",
+            "items": [
+              {
+                "tabs": [
+                  0
+                ]
+              },
+              {
+                "tabs": [
+                  2
+                ]
+              }
+            ],
+            "size": 2
+          },
+          {
+            "split": "column",
+            "items": [
+              {
+                "tabs": [
+                  1
+                ]
+              },
+              {
+                "tabs": [
+                  3
+                ]
+              }
+            ],
+            "size": 1
+          }
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    },
+    {
+      "source": "personal",
+      "ref": "personal:tabbed",
+      "rev": "e947a01fcc227918",
+      "id": "tabbed",
+      "name": "Transfer lines",
+      "description": "Two tiles side by side; the left one holds two tabs and shows the second.",
+      "members": [
+        {
+          "screen": "library/linac/LinacView"
+        },
+        {
+          "screen": "library/xfer/TransferView"
+        },
+        {
+          "tool": "waveform",
+          "query": ""
+        }
+      ],
+      "layout": {
+        "split": "row",
+        "items": [
+          {
+            "tabs": [
+              0,
+              1
+            ],
+            "showing": 1
+          },
+          {
+            "tabs": [
+              2
+            ]
+          }
+        ]
+      },
+      "updated": "2026-10-16T00:00:00+00:00"
+    }
+  ]
+}
