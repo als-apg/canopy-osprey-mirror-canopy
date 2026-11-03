@@ -3,6 +3,7 @@
 import ssl
 import json
 import logging
+import threading
 import traceback
 from datetime import UTC, datetime, timezone, timedelta
 
@@ -14,6 +15,7 @@ from pytest_httpx import HTTPXMock
 from canopy.core.errors import BadRequest
 from canopy.elog.config import ElogConfig, ElogAppConfig, ElogPlusConfig
 from canopy.elog.errors import ElogNotConfigured, ElogUpstreamError, ElogUpstreamTimeout
+from canopy.elog.adapters import elog_plus
 from canopy.elog.schemas.elog import ElogEntryCreateDTO
 from canopy.elog.adapters.elog_plus import ElogPlusAdapter, _ssl_verify
 
@@ -159,6 +161,15 @@ class TestListing:
 
 
 class TestCreateEntry:
+    async def test_renders_the_body_off_the_event_loop(self, adapter, httpx_mock: HTTPXMock, monkeypatch):
+        threads = []
+        monkeypatch.setattr(elog_plus, "render_markdown", lambda md: threads.append(threading.get_ident()) or "")
+        httpx_mock.add_response(method="POST", url=f"{BASE}/v1/entries", json=_envelope("entry-abc"))
+
+        await adapter.create_entry(_entry())
+
+        assert threads and threads[0] != threading.get_ident()
+
     async def test_posts_v1_json_with_markdown_rendered(self, adapter, httpx_mock: HTTPXMock):
         httpx_mock.add_response(method="POST", url=f"{BASE}/v1/entries", json=_envelope("entry-abc"))
 

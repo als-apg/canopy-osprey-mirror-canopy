@@ -21,6 +21,7 @@ app as the author of everything it posts.
 import os
 import ssl
 import time
+import asyncio
 import logging
 from typing import Any
 from datetime import UTC, datetime
@@ -249,12 +250,14 @@ class ElogPlusAdapter:
         return str(entry_id)
 
     @staticmethod
-    def _entry_body(entry: ElogEntryCreateDTO) -> dict[str, Any]:
+    async def _entry_body(entry: ElogEntryCreateDTO) -> dict[str, Any]:
         """The v1 ``EntryNewDTO`` JSON for ``entry``."""
         body: dict[str, Any] = {
             "logbooks": list(entry.logbook_ids),
             "title": entry.title,
-            "text": render_markdown(entry.body_markdown),
+            # Off the event loop: every mounted module shares it, and a long body
+            # takes a while to render and clean.
+            "text": await asyncio.to_thread(render_markdown, entry.body_markdown),
             "tags": list(entry.tag_ids),
         }
         if entry.attachment_ids:
@@ -322,12 +325,12 @@ class ElogPlusAdapter:
         return ElogAttachmentDTO(id=str(payload))
 
     async def create_entry(self, entry: ElogEntryCreateDTO) -> ElogEntryResultDTO:
-        payload = await self._call("POST", "/v1/entries", json=self._entry_body(entry))
+        payload = await self._call("POST", "/v1/entries", json=await self._entry_body(entry))
         return ElogEntryResultDTO(id=self._entry_id(payload))
 
     async def create_follow_up(self, parent_entry_id: str, entry: ElogEntryCreateDTO) -> ElogEntryResultDTO:
         payload = await self._call(
-            "POST", f"/v1/entries/{_segment(parent_entry_id)}/follow-ups", json=self._entry_body(entry)
+            "POST", f"/v1/entries/{_segment(parent_entry_id)}/follow-ups", json=await self._entry_body(entry)
         )
         return ElogEntryResultDTO(id=self._entry_id(payload))
 

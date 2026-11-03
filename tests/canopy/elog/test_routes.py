@@ -8,6 +8,7 @@ from tests.conftest import READ_HEADERS, WRITE_HEADERS
 from canopy.elog.app import app as elog_app
 from canopy.elog.errors import ElogUpstreamError, ElogUpstreamTimeout
 from canopy.elog.dependencies import get_elog_service
+from canopy.elog.schemas.elog import MAX_BODY_MARKDOWN_CHARS
 from tests.canopy.elog._fakes import FakeElogAdapter
 from tests.canopy.elog.conftest import DEFAULT_LOGBOOK_IDS, build_service
 
@@ -207,6 +208,16 @@ class TestEntries:
         assert entry.attachment_ids == ["att-1"]
         assert entry.additional_authors == ["jdoe@example.org"]
         assert entry.important is True
+
+    def test_a_body_over_the_limit_is_422(self, elog_client, squirrel_adapter):
+        r = elog_client.post(
+            "/elog/v1/apps/squirrel/entries",
+            json={**ENTRY, "bodyMarkdown": "x" * (MAX_BODY_MARKDOWN_CHARS + 1)},
+            headers=WRITE_HEADERS,
+        )
+
+        assert r.status_code == 422
+        assert squirrel_adapter.calls == []
 
     def test_follows_up_entry_id_posts_a_follow_up(self, elog_client, squirrel_adapter):
         r = elog_client.post(

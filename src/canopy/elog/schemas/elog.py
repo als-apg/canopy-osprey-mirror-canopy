@@ -7,6 +7,10 @@ from canopy.contracts.base import CanopyModel
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
+# Far above any entry a person writes, low enough that rendering it can't hold
+# up the process for long.
+MAX_BODY_MARKDOWN_CHARS = 1_000_000
+
 
 class ElogConfigDTO(CanopyModel):
     """Whether an app can post, so its client can show or hide "Post to e-log".
@@ -67,7 +71,7 @@ class ElogEntryCreateDTO(CanopyModel):
 
     logbook_ids: list[NonEmptyStr] = Field(min_length=1)
     title: str = Field(min_length=1, max_length=255)
-    body_markdown: str
+    body_markdown: str = Field(max_length=MAX_BODY_MARKDOWN_CHARS)
     tag_ids: list[NonEmptyStr] = Field(default_factory=list)
     attachment_ids: list[NonEmptyStr] = Field(default_factory=list)
     additional_authors: list[NonEmptyStr] = Field(default_factory=list)

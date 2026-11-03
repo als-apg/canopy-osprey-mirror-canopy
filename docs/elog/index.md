@@ -126,7 +126,7 @@ unauthenticated and hide its "Post to e-log" button when `enabled` is false.
   paragraphs, headings (`h1`–`h4`), emphasis, code, lists, quotes, tables,
   rules, `http`/`https`/`mailto` links and elog-plus's `<elog-entry-ref id>`.
   Anything else is dropped, raw HTML included: no images, scripts, styles,
-  classes or event handlers.
+  classes or event handlers. `bodyMarkdown` may be up to 1,000,000 characters.
 - There is no author field. elog-plus credits the app's token;
   `additionalAuthors` adds people, and elog-plus rejects the **whole** post if
   any of them is not an email it knows (look them up with `/users` first).
