@@ -32,15 +32,23 @@ class HareConfig(BaseSettings):
     # Bound on the internal event queue so a fast producer can't grow it without
     # limit (OOM). At capacity the oldest-losing policy is "drop newest + warn".
     event_queue_maxsize: int = 100_000
-    # Max concurrent seed (get+describe) calls when activating a subscribe batch.
+    # Max concurrent describe calls across all subscribes. A describe runs only
+    # once a PV's monitor has delivered a connected value, so a channel that
+    # never connects takes no slot.
     seed_concurrency: int = 32
-    seed_retry_backoff_s: float = 30.0
-    """Seconds a subscribe waits before re-seeding a PV whose last seed left its value or metadata missing.
+    seed_timeout_s: float = 2.0
+    """Seconds a newly subscribed PV waits for its monitor's first value before being reported ``connected: false``.
 
-    Bounds how often an unreachable PV makes a subscribe block on connector
-    get/describe timeouts. The default is several times the 5.0 s CA and PVA
-    connector timeouts, so repeated subscribes of a dead PV pay that timeout at
-    most once per window rather than on nearly every subscribe.
+    The monitor delivers the current value as soon as the channel connects, so
+    no one-shot read is made and a slow channel still fills in later; this only
+    bounds how long subscribers wait to learn that a channel has not answered.
+    """
+    seed_retry_backoff_s: float = 30.0
+    """Seconds before a subscribe retries a describe that failed on a connected channel.
+
+    A channel that reconnects is described again at once regardless; the
+    backoff only stops repeated subscribes of a PV whose describe keeps failing
+    from retrying it on every subscribe.
     """
 
 

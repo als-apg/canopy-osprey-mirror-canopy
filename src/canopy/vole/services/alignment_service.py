@@ -1,7 +1,7 @@
 """Cross-PV time alignment.
 
 Given raw sliced samples per PV and alignment parameters, produces a common
-time index with aligned value/severity arrays suitable for Fox's formula eval.
+time index with aligned value/severity arrays suitable for the Formula Engine's formula eval.
 """
 
 from __future__ import annotations

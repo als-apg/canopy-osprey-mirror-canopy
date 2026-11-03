@@ -61,7 +61,10 @@ need care:
   the same vocabulary API-key scopes use (`hare`, `vole`, …, and `core` for
   the parent app's own routes). It is read from the app instance that handled
   the request, never from the URL, so it is bounded by construction and
-  unaffected by a path-prefixed ingress.
+  unaffected by a path-prefixed ingress. The Formula Engine reports
+  `module="formula-engine"`, as does the `module` field of its
+  `/formula-engine/v1/health/watchdog` heartbeat. Before the rename both were
+  `fox`, so dashboards and alerts that filter on `module="fox"` need updating.
 - `route` — the matched route *template* (`/v1/pvs/{pv}`), never the raw
   path. A request that matches no route collapses into `route="unmatched"`
   while keeping its `module`: a bot scan of `/wp-admin/...` lands in
@@ -127,7 +130,7 @@ speculatively.
 
 Candidates deliberately **not** built yet, each its own follow-up: Hare event
 queue depth and dropped updates, Mole archiver round-trip latency, Vole
-ring-buffer bytes and evictions, Fox evaluation latency, Squirrel restore
+ring-buffer bytes and evictions, Formula Engine evaluation latency, Squirrel restore
 durations (a worker-side metric, so it also waits on the worker exposition
 above).
 

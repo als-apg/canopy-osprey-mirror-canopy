@@ -1,7 +1,7 @@
-"""DataSource adapter: bridges Vole's BufferService to Fox's DataSource protocol.
+"""DataSource adapter: bridges Vole's BufferService to the Formula Engine's DataSource protocol.
 
-Fox imports this class; it is constructed in fox_lifespan() and injected
-into FormulaService. Fox never imports canopy.vole.gateway directly.
+The Formula Engine imports this class; it is constructed in formula_engine_lifespan() and injected
+into FormulaService. The Formula Engine never imports canopy.vole.gateway directly.
 
 When a PV is not yet buffered, the adapter auto-provisions it: fetches
 historical data from Mole and subscribes to live updates via Hare.
@@ -16,12 +16,12 @@ from collections.abc import Callable, Awaitable
 
 import numpy as np
 
-from canopy.fox.ports import AlignedWindow
 from canopy.core.clock import Clock
 from canopy.vole.errors import PVNotBuffered
 from canopy.contracts.sample import Sample, BinnedPoint, AlarmSeverity
 from canopy.contracts.formula import IndexMode, AlignmentMode
 from canopy.epics.pv_protocol import strip_protocol_prefix
+from canopy.formula_engine.ports import AlignedWindow
 from canopy.vole.services.buffer_service import BufferService
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ SubscribeLiveFn = Callable[[list[str]], Awaitable[None]]
 
 
 class VoleDataSource:
-    """Implements Fox's DataSource protocol by delegating to BufferService.
+    """Implements the Formula Engine's DataSource protocol by delegating to BufferService.
 
     On first access to an unknown PV, provisions it by seeding from Mole
     and subscribing to Hare for live updates.
@@ -95,7 +95,7 @@ class VoleDataSource:
                 canonical, t0_ns, t1_ns, align=vole_align, index=vole_index, grid_dt_ns=grid_dt_ns
             )
 
-        # Re-key arrays from canonical names back to the original PV names Fox expects
+        # Re-key arrays from canonical names back to the original PV names the Formula Engine expects
         arrays = {canon_to_orig.get(k, k): v for k, v in result.arrays.items()}
         severities = {canon_to_orig.get(k, k): v for k, v in result.severities.items()}
 
@@ -114,7 +114,7 @@ class VoleDataSource:
         target_buckets: int | None = None,
     ) -> AlignedWindow:
         if self._fetch_binned is None:
-            from canopy.fox.errors import FormulaInputMissing
+            from canopy.formula_engine.errors import FormulaInputMissing
 
             raise FormulaInputMissing("Binned data source not available")
 

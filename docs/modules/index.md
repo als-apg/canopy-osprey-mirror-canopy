@@ -13,15 +13,14 @@ through in-process gateways, so the whole platform runs as one API process
 | `/mole` | Mole | Archiver Appliance proxy for historical PV data |
 | `/raccoon` | Raccoon | PV name-lookup proxy over the lab directory service |
 | `/vole` | [Vole](../vole/index.md) | In-memory per-PV buffers merging Hare live data with Mole history |
-| `/fox` | [Fox](../fox/index.md) | Formula engine — expressions over live and historical PV data |
+| `/formula-engine` | [Formula Engine](../formula-engine/index.md) | Expressions over live and historical PV data |
 | `/squirrel` | Squirrel | Machine-state snapshots: save, restore, and compare (Postgres-backed) |
 | `/jobs` | Jobs | Background-job status over the Arq/Redis queue |
 | `/converter` | Converter | Legacy screen converter — EDM `.edl` / Qt `.ui` to Canopy Screen IR |
 | `/elog` | [E-log](../elog/index.md) | Posts e-log entries for client apps, with one e-log token per app held server-side |
 
 Modules without a guide here yet are documented by their interactive API docs
-(below) and their design pages on the
-[GitHub wiki](https://github.com/slaclab/Canopy/wiki).
+(below).
 
 The top-level Swagger UI at `/docs` provides a dropdown to switch between
 Canopy's core API and each mounted module. Each module's standalone Swagger UI
@@ -82,6 +81,3 @@ These live in the same codebase but expose no HTTP API of their own:
 
 - **Owl** — plot-configuration persistence + legacy importer.
 - **Wren** — rules engine, hosted inside Hare.
-
-Design discussions for these live on the
-[GitHub wiki](https://github.com/slaclab/Canopy/wiki).

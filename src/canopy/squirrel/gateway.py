@@ -1,7 +1,7 @@
 """Public surface of the Squirrel module for in-process callers.
 
 Other Canopy modules import only from this file; the rest of ``canopy.squirrel.*``
-is private implementation. Unlike fox/converter — whose gateways hand back a
+is private implementation. Unlike formula_engine/converter — whose gateways hand back a
 service *singleton* bound at startup — Squirrel's services are request/session
 scoped (there is nothing to bind), so each call here opens a short-lived read
 session via ``session_scope`` and builds the service from it.

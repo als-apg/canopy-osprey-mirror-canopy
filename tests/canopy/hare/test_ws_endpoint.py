@@ -1,9 +1,12 @@
 """Hare WebSocket endpoint — end-to-end over the simulation backend."""
 
+import time
+
 import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
+from canopy.hare import gateway
 from canopy.main import app
 
 
@@ -128,3 +131,92 @@ def test_ws_unknown_type_errors_without_dropping():
             assert "frobnicate" in err["message"]
             ws.send_json({"type": "ping"})
             assert ws.receive_json()["type"] == "pong"
+
+
+class _SilentSubscription:
+    """Monitor of a channel that never connects: it never emits and closes cleanly."""
+
+    async def close(self) -> None:
+        pass
+
+
+class _NeverConnects:
+    """Wrap the live connector so ``DEAD:*`` PVs behave like CA channels that never connect.
+
+    Their monitor never emits, so only the broker's connect timer ever reports
+    them; every other PV goes to the wrapped connector.
+    """
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        self.backend_name = getattr(inner, "backend_name", None)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    async def subscribe(self, pv, on_event):
+        if pv.startswith("DEAD:"):
+            return _SilentSubscription()
+        return await self._inner.subscribe(pv, on_event)
+
+
+def _read_until(ws, predicate, *, budget_s: float) -> tuple[list[dict], float]:
+    """Read frames until ``predicate`` matches one; return the frames read and the seconds it took."""
+    frames = []
+    start = time.monotonic()
+    while True:
+        msg = ws.receive_json()
+        frames.append(msg)
+        elapsed = time.monotonic() - start
+        if predicate(msg):
+            return frames, elapsed
+        assert elapsed < budget_s, f"no matching frame within {budget_s}s: {frames}"
+
+
+def test_ws_dead_channel_does_not_stall_the_socket():
+    """A PV whose channel never connects holds up neither a ping nor a later subscribe on the same socket."""
+    with TestClient(app) as client:
+        broker = gateway.get_broker()
+        real = broker._connector
+        broker._connector = _NeverConnects(real)
+        try:
+            with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+                ws.send_json({"type": "subscribe", "pvNames": ["DEAD:NEVER"]})
+                ws.send_json({"type": "subscribe", "pvNames": ["SIM:WS"]})
+                ws.send_json({"type": "ping"})
+
+                frames, to_pong = _read_until(ws, lambda m: m["type"] == "pong", budget_s=10.0)
+                assert to_pong < 2.0, f"pong took {to_pong:.1f}s behind the dead channel's seed"
+
+                def live_initial(m):
+                    return m["type"] == "initial" and "SIM:WS" in m.get("meta", {})
+
+                if not any(live_initial(m) for m in frames):
+                    more, to_initial = _read_until(ws, live_initial, budget_s=10.0)
+                    frames += more
+                    assert to_initial < 2.0, f"SIM:WS initial took {to_initial:.1f}s behind the dead channel's seed"
+                assert not any("DEAD:NEVER" in m.get("data", {}) for m in frames)
+        finally:
+            broker._connector = real
+
+
+def test_ws_dead_channel_in_the_same_frame_does_not_delay_live_metadata():
+    """A live PV subscribed in the same frame as a dead one gets its ``initial`` with metadata promptly."""
+    with TestClient(app) as client:
+        broker = gateway.get_broker()
+        real = broker._connector
+        broker._connector = _NeverConnects(real)
+        try:
+            with client.websocket_connect("/hare/v1/ws/pvs?api_key=test-read") as ws:
+                ws.send_json({"type": "subscribe", "pvNames": ["DEAD:NEVER", "SIM:STATE:ENUM"]})
+
+                frames, elapsed = _read_until(
+                    ws,
+                    lambda m: m["type"] == "initial" and "SIM:STATE:ENUM" in m.get("meta", {}),
+                    budget_s=10.0,
+                )
+                assert elapsed < 2.0, f"initial took {elapsed:.1f}s behind the dead channel's seed"
+                assert frames[-1]["meta"]["SIM:STATE:ENUM"]["enumChoices"]
+                assert "DEAD:NEVER" not in frames[-1]["data"]
+        finally:
+            broker._connector = real

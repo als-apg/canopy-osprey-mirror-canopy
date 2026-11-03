@@ -4,7 +4,7 @@ This page documents Vole's internal design decisions and component interactions 
 
 ## Why Vole exists
 
-Vole decouples Fox from direct dependencies on Hare (live broker) and Mole (archiver proxy). Without Vole, Fox would need to:
+Vole decouples the Formula Engine from direct dependencies on Hare (live broker) and Mole (archiver proxy). Without Vole, the Formula Engine would need to:
 
 - Query Mole on every formula evaluation (network round-trip, latency)
 - Maintain its own subscription management for live data
@@ -14,10 +14,10 @@ Vole provides a single in-memory layer that:
 
 - Absorbs live data from Hare continuously
 - Seeds from Mole on first access (auto-provisioning)
-- Serves Fox with sub-millisecond reads from memory
+- Serves the Formula Engine with sub-millisecond reads from memory
 - Manages memory bounds and eviction independently
 
-This separation means Fox only knows about the `DataSource` protocol — it doesn't know or care whether data came from a live broker, an archiver, or both.
+This separation means the Formula Engine only knows about the `DataSource` protocol — it doesn't know or care whether data came from a live broker, an archiver, or both.
 
 ## Ring buffer model
 
@@ -93,11 +93,11 @@ Design decisions:
 
 - **Fire-and-forget**: Callbacks are launched as independent asyncio tasks. Failures are logged but don't block the data path or affect other callbacks.
 - **Unsubscribe function**: `subscribe()` returns a callable that removes the callback. This avoids the need for callback identity tracking by callers.
-- **Single PV granularity**: Subscriptions are per-PV, not per-ring or global. Fox registers one callback per PV per shared eval loop.
+- **Single PV granularity**: Subscriptions are per-PV, not per-ring or global. The Formula Engine registers one callback per PV per shared eval loop.
 
 ## DataSource protocol boundary
 
-Fox defines a `DataSource` protocol (port) that abstracts data access. Vole implements it via `VoleDataSource`:
+The Formula Engine defines a `DataSource` protocol (port) that abstracts data access. Vole implements it via `VoleDataSource`:
 
 ```python
 class DataSource(Protocol):

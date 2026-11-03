@@ -1,6 +1,6 @@
 # Vole data buffer
 
-Vole is an in-memory time-series data buffer that sits between Hare (live PV data broker) and Fox (formula evaluator). It maintains per-PV ring buffers that combine live data from Hare with historical data seeded from Mole, providing Fox with a unified, low-latency data layer for formula evaluation.
+Vole is an in-memory time-series data buffer that sits between Hare (live PV data broker) and the Formula Engine (formula evaluator). It maintains per-PV ring buffers that combine live data from Hare with historical data seeded from Mole, providing Formula Engine with a unified, low-latency data layer for formula evaluation.
 
 ## How it works
 
@@ -10,7 +10,7 @@ Each PV gets its own **ring buffer** — a fixed-capacity FIFO queue of timestam
 graph LR
     Mole["Mole (archiver)"] -->|seed| Ring["Per-PV Ring\n(FIFO, bounded)"]
     Hare["Hare (live broker)"] -->|append| Ring
-    Ring -->|read| Fox["Fox (evaluator)"]
+    Ring -->|read| FormulaEngine["Formula Engine (evaluator)"]
 ```
 
 Key properties:
@@ -22,7 +22,7 @@ Key properties:
 
 ## Auto-provisioning
 
-When Fox evaluates a formula referencing a PV that Vole doesn't have buffered, Vole automatically provisions it:
+When the Formula Engine evaluates a formula referencing a PV that Vole doesn't have buffered, Vole automatically provisions it:
 
 1. **Seed** — Fetches historical data from Mole for the requested time window and loads it into a new ring buffer
 2. **Subscribe** — Registers with Hare for live updates so future samples arrive automatically
@@ -55,14 +55,14 @@ This guarantees that the ring's contents are always sorted, enabling efficient t
 
 - **Created** on first access (via auto-provisioning, explicit seed, or client subscribe)
 - **Appended** as live data flows from Hare
-- **Read** by Fox for formula evaluation (updates LRU access time)
+- **Read** by the Formula Engine for formula evaluation (updates LRU access time)
 - **Grace period** — when all external subscribers disconnect, a configurable timer starts (default: 60s); resubscription cancels it
 - **Dropped** when the grace period expires without reconnection, or explicitly via the gateway
 - **Evicted** when global memory pressure requires it (LRU, entire ring removed)
 
 ## Client-initiated subscriptions
 
-In addition to auto-provisioning (triggered by Fox formula evaluation), clients can explicitly subscribe PVs via the REST API:
+In addition to auto-provisioning (triggered by Formula Engine evaluation), clients can explicitly subscribe PVs via the REST API:
 
 ```
 POST /vole/v1/pvs/subscribe          # body: {"pvs": ["PV:A", "PV:B"]}
@@ -79,7 +79,7 @@ This tolerates page refreshes, brief network blips, and tab switches without los
 
 ## Change notifications
 
-Vole provides a push-based notification system that Fox uses for live formula subscriptions. When a ring buffer receives a new sample, Vole fires registered callbacks for that PV. This triggers Fox to re-evaluate any formulas that reference that PV — providing low-latency updates without polling.
+Vole provides a push-based notification system that the Formula Engine uses for live formula subscriptions. When a ring buffer receives a new sample, Vole fires registered callbacks for that PV. This triggers the Formula Engine to re-evaluate any formulas that reference that PV — providing low-latency updates without polling.
 
 Callbacks are fire-and-forget: exceptions in a callback are logged but don't affect the data path or other callbacks.
 

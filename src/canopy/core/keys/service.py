@@ -15,9 +15,11 @@ from canopy.core.errors import (
     ApiKeyNotFound,
     ApiKeySelfDeactivation,
     InsufficientModuleAccess,
+    InsufficientFacilityAccess,
 )
 from canopy.core.modules import MODULES, WILDCARD, split_modules
 from canopy.core.security import invalidate_key_id
+from canopy.core.facilities import gateway as facilities_gateway
 from canopy.core.keys.models import ApiKey
 from canopy.core.keys.tokens import hash_token, mint_token
 from canopy.core.keys.schemas import ApiKeyDTO, ApiKeyCreateResultDTO
@@ -35,6 +37,7 @@ def to_dto(api_key: ApiKey) -> ApiKeyDTO:
         write_access=api_key.write_access,
         admin_access=api_key.admin_access,
         modules=api_key.modules,
+        facilities=api_key.facilities,
         created_at=api_key.created_at,
         updated_at=api_key.updated_at,
         last_used_at=api_key.last_used_at,
@@ -74,6 +77,50 @@ def _require_module_containment(target_modules, acting_modules) -> None:
         raise InsufficientModuleAccess(f"Acting API key is not scoped to module(s) {sorted(outside)}")
 
 
+async def _require_facility_containment(target_facilities: list[str], acting_key_facilities: list[str] | None) -> None:
+    """Refuse an admin action that reaches outside the acting key's own facility grant.
+
+    Mirrors ``_require_module_containment``, but facility containment needs hierarchy
+    expansion — a grant on a parent covers a child the target list names directly —
+    so each target slug is checked by resolving its descendant set and testing it
+    against the acting key's own resolved scope, rather than comparing slug sets
+    directly. ``acting_key_facilities`` is ``None`` for the CLI, which stays
+    unrestricted, same as module containment.
+
+    An acting key not holding the wildcard can never delegate the wildcard: there is
+    no finite resolved scope to compare it against, since a future facility would
+    fall inside it too.
+    """
+    if acting_key_facilities is None or WILDCARD in acting_key_facilities:
+        return
+    if WILDCARD in target_facilities:
+        raise InsufficientFacilityAccess("Acting API key is not scoped to every facility and cannot delegate '*'")
+    acting_scope = await facilities_gateway.resolve_key_facility_scope(frozenset(acting_key_facilities))
+    outside = set()
+    for slug in target_facilities:
+        slug_scope = await facilities_gateway.resolve_key_facility_scope(frozenset({slug}))
+        if slug_scope and not slug_scope <= acting_scope:
+            outside.add(slug)
+    if outside:
+        raise InsufficientFacilityAccess(f"Acting API key is not scoped to facility/facilities {sorted(outside)}")
+
+
+def _normalize_facilities(facilities: list[str]) -> list[str]:
+    """Canonicalize a requested facility list.
+
+    Unlike ``_normalize_modules``, an empty list is valid and meaningful —
+    "provisioned but not yet assigned to a facility" / "data-suspended without
+    revoking the credential" — so it is returned as-is rather than rejected.
+
+    Whether the named slugs *exist* is checked separately, in ``create_key``,
+    where there's a session in hand; this stays a pure string transform.
+    """
+    cleaned = {f.strip() for f in facilities if f.strip()}
+    if WILDCARD in cleaned:
+        return [WILDCARD]
+    return sorted(cleaned)
+
+
 class ApiKeyService:
     """Create and manage API keys."""
 
@@ -90,6 +137,8 @@ class ApiKeyService:
         admin: bool = False,
         modules: list[str],
         acting_key_modules: list[str] | None = None,
+        facilities: list[str] | None = None,
+        acting_key_facilities: list[str] | None = None,
     ) -> ApiKeyCreateResultDTO:
         """Mint a key and return it with its plaintext token — the only time the
         token exists outside the caller's hands. Only its hash is stored.
@@ -104,6 +153,14 @@ class ApiKeyService:
         ``acting_key_modules`` is the module set of the admin key making this
         request (``None`` for the CLI). A module-scoped admin can only delegate
         modules it itself holds — it cannot mint a key scoped wider than itself.
+
+        ``facilities`` defaults to no grants (``[]``) rather than every module's
+        implicit ``[WILDCARD]`` — unlike modules, an unassigned key is a valid,
+        unprivileged state here, not a mistake.
+
+        ``acting_key_facilities`` (``None`` for the CLI) is the same delegation check
+        as ``acting_key_modules``, for facility scope: a facility-scoped admin cannot
+        mint a key granted a facility outside its own resolved scope, or the wildcard.
         """
         app_name = app_name.strip()
         if not app_name:
@@ -112,6 +169,19 @@ class ApiKeyService:
             raise BadRequest("Cannot create an API key with no access; pass at least one scope")
         module_list = _normalize_modules(modules)
         _require_module_containment(module_list, acting_key_modules)
+        facility_list = _normalize_facilities(facilities or [])
+        # A grant naming a nonexistent facility is a hard reject: it resolves to
+        # "matches nothing" at request time, so the key would authenticate and then
+        # see and write nothing, with no error to point at the typo. `[WILDCARD]`
+        # names no slug, so there's nothing to check.
+        if facility_list and facility_list != [WILDCARD]:
+            unknown = set(facility_list) - await facilities_gateway.known_slugs(facility_list)
+            if unknown:
+                raise BadRequest(
+                    f"Unknown facility slug(s) {sorted(unknown)}; create them first "
+                    f"(scripts/create_facility.py or POST /v1/facilities)"
+                )
+        await _require_facility_containment(facility_list, acting_key_facilities)
 
         token = mint_token()
         created = await self.repo.create(
@@ -122,6 +192,7 @@ class ApiKeyService:
                 write_access=write,
                 admin_access=admin,
                 modules=module_list,
+                facilities=facility_list,
             )
         )
         # The token itself is never logged — app_name and id are the audit trail.
@@ -162,6 +233,7 @@ class ApiKeyService:
         acting_key_id: str | None = None,
         acting_key_modules: list[str] | None = None,
         force: bool = False,
+        acting_key_facilities: list[str] | None = None,
     ) -> ApiKeyDTO:
         """Soft-delete a key. Idempotent-adjacent: deactivating an already inactive
         key is a no-op rather than an error, so a retried revocation still succeeds.
@@ -173,12 +245,14 @@ class ApiKeyService:
 
         ``acting_key_modules`` (``None`` for the CLI) contains the same delegation
         check as ``create_key``: a module-scoped admin cannot deactivate a key
-        scoped to a module it does not itself hold.
+        scoped to a module it does not itself hold. ``acting_key_facilities`` is the
+        same check for facility scope.
         """
         api_key = await self._find(key_id)
         if api_key is None:
             raise ApiKeyNotFound(f"No API key with id '{key_id}'")
         _require_module_containment(api_key.modules, acting_key_modules)
+        await _require_facility_containment(api_key.facilities, acting_key_facilities)
         if not force and acting_key_id is not None and api_key.id == acting_key_id:
             raise ApiKeySelfDeactivation(
                 "Refusing to deactivate the API key authenticating this request; pass force=true to override"

@@ -11,7 +11,7 @@ class UnknownWidgetDTO(CanopyModel):
 
 
 class FormulaSummaryDTO(CanopyModel):
-    """A hoisted ``calc://`` expression, lowered to a screen-level Fox formula."""
+    """A hoisted ``calc://`` expression, lowered to a screen-level formula."""
 
     name: str
     expression: str

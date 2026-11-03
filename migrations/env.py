@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 import canopy.core.keys.models  # noqa: F401, E402
 import canopy.magpie.data.models  # noqa: F401, E402
 import canopy.squirrel.data.models  # noqa: F401, E402
+import canopy.core.facilities.models  # noqa: F401, E402
 from canopy.core.db import Base
 from canopy.core.config import get_settings
 

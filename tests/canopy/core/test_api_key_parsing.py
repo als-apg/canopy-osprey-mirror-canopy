@@ -115,7 +115,7 @@ class TestEnvKeyRegistryParsing:
 
         viewer = await registry.get("viewer")
         assert viewer is not None
-        assert viewer.allows_module("fox")
+        assert viewer.allows_module("formula-engine")
         assert "entry #1" in caplog.text
         assert "deprecated" in caplog.text
 
@@ -130,14 +130,14 @@ class TestEnvKeyRegistryParsing:
         registry = EnvKeyRegistry("viewer:read@*")
 
         viewer = await registry.get("viewer")
-        assert viewer.allows_module("fox")
+        assert viewer.allows_module("formula-engine")
         assert viewer.allows_module("core")
 
     async def test_module_suffix_scopes_the_key(self):
-        registry = EnvKeyRegistry("trace:read@fox+vole")
+        registry = EnvKeyRegistry("trace:read@formula-engine+vole")
 
         trace = await registry.get("trace")
-        assert trace.allows_module("fox")
+        assert trace.allows_module("formula-engine")
         assert trace.allows_module("vole")
         assert not trace.allows_module("squirrel")
 
@@ -151,7 +151,7 @@ class TestEnvKeyRegistryParsing:
 
     def test_unknown_module_warns_by_position_and_still_loads(self, caplog):
         with caplog.at_level(logging.WARNING, logger="canopy.core.security"):
-            EnvKeyRegistry("trace:read@fox+not-a-module")
+            EnvKeyRegistry("trace:read@formula-engine+not-a-module")
 
         assert "entry #1" in caplog.text
         assert "1 unrecognized module" in caplog.text

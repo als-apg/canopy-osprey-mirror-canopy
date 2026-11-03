@@ -51,3 +51,12 @@ class ApiKey(UUIDMixin, TimestampMixin, Base):
         default=lambda: [WILDCARD],
         server_default=text(f"'{{{WILDCARD}}}'::text[]"),
     )
+    # Which facilities this key's data access is scoped to. Unlike `modules`, empty is
+    # a valid, meaningful state — "provisioned but not yet assigned to a facility" —
+    # so the default is empty, not {WILDCARD}. "*" is an explicit "every facility".
+    facilities: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'::text[]"),
+    )

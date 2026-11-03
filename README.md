@@ -1,6 +1,21 @@
 # Canopy
 
-Canopy is a planned platform for control system displays, tools and applications.
+Canopy is the backend for SLAC's control-system display platform. It is a single
+FastAPI application made of independent modules that serve live and historical
+process-variable (PV) data, formula results, machine-state snapshots and
+background jobs over REST and WebSocket APIs. It talks to EPICS Channel Access
+and pvAccess, and includes a simulation backend, so you can run it without an
+IOC.
+
+Canopy is pre-1.0 and under active development; APIs may change between
+releases.
+
+- [Documentation](https://slaclab.github.io/canopy/), including the
+  [getting started guide](https://slaclab.github.io/canopy/getting_started/) and
+  the [modules overview](https://slaclab.github.io/canopy/modules/)
+- [Deploy at your facility](#deployment)
+- [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
+- [License](LICENSE.md)
 
 ## Setup
 

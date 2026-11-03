@@ -67,12 +67,12 @@ class TestCreateKey:
         with db_backed_registry(env="admin-env-key:admin@*"):
             resp = keys_client.post(
                 "/v1/api-keys",
-                json={"appName": "trace", "read": True, "modules": ["fox", "vole"]},
+                json={"appName": "trace", "read": True, "modules": ["formula-engine", "vole"]},
                 headers=ADMIN_HEADERS,
             )
 
         assert resp.status_code == 200, resp.text
-        assert resp.json()["modules"] == ["fox", "vole"]
+        assert resp.json()["modules"] == ["formula-engine", "vole"]
 
     async def test_unknown_module_is_rejected(self, session, session_maker, keys_client):
         with db_backed_registry(env="admin-env-key:admin@*"):
@@ -111,11 +111,11 @@ class TestCreateKey:
 
     async def test_module_scoped_admin_cannot_mint_a_wider_key(self, session, session_maker, keys_client):
         # A delegated admin scoped to core+squirrel must not be able to hand out
-        # a key that reaches modules it doesn't itself hold, like fox.
+        # a key that reaches modules it doesn't itself hold, like formula-engine.
         with db_backed_registry(env="squirrel-admin:admin@core+squirrel"):
             resp = keys_client.post(
                 "/v1/api-keys",
-                json={"appName": "trace", "read": True, "modules": ["squirrel", "fox"]},
+                json={"appName": "trace", "read": True, "modules": ["squirrel", "formula-engine"]},
                 headers={"X-API-Key": "squirrel-admin"},
             )
 
@@ -269,7 +269,7 @@ class TestDeactivate:
         self, session, session_maker, keys_client
     ):
         actor = await mint(session, "squirrel-admin", admin=True, modules=["core", "squirrel"])
-        other = await mint(session, "fox-trace", read=True, modules=["fox"])
+        other = await mint(session, "formula-trace", read=True, modules=["formula-engine"])
 
         with db_backed_registry(env="", ttl_s=0):
             resp = keys_client.delete(f"/v1/api-keys/{other.id}", headers={"X-API-Key": actor.token})

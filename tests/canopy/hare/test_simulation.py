@@ -1,10 +1,14 @@
 """Simulation connector backend."""
 
+import time
+from types import SimpleNamespace
+
 import pytest
 
 from tests.conftest import wait_for
 from canopy.contracts.pv import PVValue, ValueKind
 from canopy.epics.config import EpicsConfig
+from canopy.epics.backends import simulation
 from canopy.epics.backends.simulation import SimulationConnector
 
 
@@ -49,6 +53,27 @@ async def test_waveform_value_and_describe():
     assert value.value_kind is ValueKind.WAVEFORM
     assert isinstance(value.value, list)
     assert len(value.value) == 16
+
+
+@pytest.mark.parametrize("pv", ["SIM:NAMES:STR_WAVEFORM", "SIM:NAMES:STR_WF", "pva://SIM:NAMES:STR_WF"])
+async def test_string_waveform_value_and_describe(monkeypatch, pv):
+    monkeypatch.setattr(simulation, "time", SimpleNamespace(monotonic=lambda: 0.0, time_ns=time.time_ns))
+    monkeypatch.setattr(SimulationConnector, "_phase", staticmethod(lambda pv: 0.0))
+    conn = SimulationConnector(waveform_length=4)
+    value = await conn.get(pv)
+    assert value.value_kind is ValueKind.WAVEFORM
+    assert value.value == ["sample=+0.000", "sample=+10.000", "sample=+0.000", "sample=-10.000"]
+    meta = await conn.describe(pv)
+    assert meta.value_kind is ValueKind.WAVEFORM
+    assert meta.units is None and meta.display_low is None
+
+
+async def test_string_waveform_write_round_trips():
+    conn = SimulationConnector()
+    await conn.put("SIM:NAMES:STR_WF", ["alpha", "beta"])
+    value = await conn.get("SIM:NAMES:STR_WF")
+    assert value.value == ["alpha", "beta"]
+    assert value.value_kind is ValueKind.WAVEFORM
 
 
 async def test_string_value():

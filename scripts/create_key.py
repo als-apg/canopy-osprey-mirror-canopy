@@ -12,7 +12,7 @@ Run::
     uv run python scripts/create_key.py "Trace Display" -r
     uv run python scripts/create_key.py operator-tools -r -w
     uv run python scripts/create_key.py ops -a
-    uv run python scripts/create_key.py trace -r -m mole -m fox   # scoped to two modules
+    uv run python scripts/create_key.py trace -r -m mole -m formula-engine   # scoped to two modules
 
     # In a container (local Docker Compose, or a facility instance where the
     # database is only reachable from the running api container):
@@ -43,6 +43,14 @@ async def main() -> int:
         metavar="MODULE",
         help="Restrict the key to this module (repeatable). Omit for access to every module.",
     )
+    parser.add_argument(
+        "-f",
+        "--facility",
+        action="append",
+        dest="facilities",
+        metavar="FACILITY",
+        help="Scope the key's data access to this facility (repeatable). Omit for no facility grants yet.",
+    )
     args = parser.parse_args()
 
     try:
@@ -53,6 +61,7 @@ async def main() -> int:
                 write=args.write,
                 admin=args.admin,
                 modules=args.modules or [WILDCARD],
+                facilities=args.facilities or [],
             )
             await session.commit()
     except CanopyError as exc:
@@ -69,6 +78,7 @@ async def main() -> int:
     print(f"  ID:        {key.id}")
     print(f"  Access:    {', '.join(scopes)}")
     print(f"  Modules:   {', '.join(key.modules)}")
+    print(f"  Facilities:{' ' + ', '.join(key.facilities) if key.facilities else ' (none)'}")
     print(f"  Created:   {key.created_at}")
     print(f"  Token:     {key.token}")
     print()

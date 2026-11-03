@@ -1,9 +1,11 @@
 """Hare-scoped pytest fixtures.
 
-`FakeConnector` is a deterministic connector that emits only when the test calls
-`emit()` — used to drive the broker without timing or external infra.
-`FakeWebSocket` captures the JSON the broker sends. Endpoint tests instead use
-the real simulation backend via the app lifespan.
+`FakeConnector` is a deterministic connector: a monitor delivers one value on
+subscribe, as a real monitor does on connect, unless the PV is in `dead`, and
+after that only when the test calls `emit()` — used to drive the broker without
+timing or external infra. `FakeWebSocket` captures the JSON the broker sends.
+`settle()` ingests queued monitor updates and waits for the seeding they start.
+Endpoint tests instead use the real simulation backend via the app lifespan.
 """
 
 from dataclasses import field, dataclass
@@ -36,6 +38,8 @@ class FakeConnector:
     # the next put raise (drives the broker/endpoint write-failure paths).
     puts: list = field(default_factory=list)
     put_error: Exception | None = None
+    # PVs whose monitor never delivers a value: channels that never connect.
+    dead: set[str] = field(default_factory=set)
 
     @classmethod
     def from_config(cls, cfg) -> "FakeConnector":
@@ -61,13 +65,23 @@ class FakeConnector:
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:
         self.callbacks[pv] = on_event
+        if pv not in self.dead:
+            on_event(PVValue(pv=pv, value=0.0, severity=AlarmSeverity.NO_ALARM, ts_ns=1, connected=True))
         return _FakeSub(pv, self.callbacks)
 
-    def emit(self, pv: str, value, *, severity: AlarmSeverity = AlarmSeverity.NO_ALARM, ts: int = 2) -> None:
+    def emit(
+        self,
+        pv: str,
+        value,
+        *,
+        severity: AlarmSeverity = AlarmSeverity.NO_ALARM,
+        ts: int = 2,
+        connected: bool = True,
+    ) -> None:
         """Synchronously deliver one update (as the connector callback would)."""
         callback = self.callbacks.get(pv)
         if callback is not None:
-            callback(PVValue(pv=pv, value=value, severity=severity, ts_ns=ts, connected=True))
+            callback(PVValue(pv=pv, value=value, severity=severity, ts_ns=ts, connected=connected))
 
 
 class FakeWebSocket:
@@ -80,6 +94,14 @@ class FakeWebSocket:
 
     async def close(self) -> None:
         self.closed = True
+
+
+async def settle(broker: PVBroker) -> None:
+    """Ingest queued monitor updates, wait for the seeding they start and flush the diffs, as the running broker would."""
+    await broker._drain_nowait()
+    await broker.drain_seeds()
+    await broker._drain_nowait()
+    await broker._flush()
 
 
 @pytest.fixture
