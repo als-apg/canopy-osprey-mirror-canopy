@@ -196,18 +196,18 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.21,<5" },
     { name = "markdown", specifier = ">=3.5" },
     { name = "nh3", specifier = ">=0.2.18" },
-    { name = "numexpr", specifier = ">=2.8" },
+    { name = "numexpr", specifier = ">=2.8.3" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "orjson", specifier = ">=3.9.3" },
-    { name = "p4p", specifier = ">=4.1" },
+    { name = "p4p", specifier = ">=4.2" },
     { name = "prometheus-client", specifier = ">=0.20" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "pydantic-settings", specifier = ">=2.11" },
     { name = "pydmconverter", marker = "extra == 'convert'", specifier = ">=1.0.8" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "redis", marker = "extra == 'data'", specifier = ">=5.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'data'", specifier = ">=2.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.36" },
 ]
 provides-extras = ["convert", "data"]
 
@@ -215,18 +215,18 @@ provides-extras = ["convert", "data"]
 dev = [
     { name = "caproto", specifier = ">=1.1" },
     { name = "coverage", specifier = ">=7.15.1" },
-    { name = "fakeredis", specifier = ">=2.21" },
+    { name = "fakeredis", specifier = ">=2.21.3" },
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "import-linter", specifier = ">=2.0" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-    { name = "pytest-httpx", specifier = ">=0.30" },
+    { name = "pre-commit", specifier = ">=3.6" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23.5" },
+    { name = "pytest-httpx", specifier = ">=0.34" },
     { name = "pyyaml", specifier = ">=6" },
 ]
 docs = [
-    { name = "mkdocstrings" },
-    { name = "mkdocstrings-python" },
+    { name = "mkdocstrings", specifier = ">=0.24" },
+    { name = "mkdocstrings-python", specifier = ">=1.8" },
     { name = "zensical", specifier = ">=0.0.51" },
 ]
 

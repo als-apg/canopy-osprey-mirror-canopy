@@ -14,6 +14,8 @@ The app name is the ``{app}`` path segment of every route; env var names are
 case-insensitive, so ``APPS__SQUIRREL__`` lands in ``apps["squirrel"]``.
 """
 
+import re
+
 from pydantic import Field, BaseModel, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsError, SettingsConfigDict
 
@@ -85,20 +87,36 @@ def get_elog_config() -> ElogConfig:
     return ElogConfig()
 
 
+# The field a SettingsError names: 'error parsing value for field "apps" from source ...'.
+_SETTINGS_ERROR_FIELD = re.compile(r'field "([A-Za-z_][A-Za-z0-9_]*)"')
+
+
 def describe_settings_error(exc: ValidationError | SettingsError) -> str:
     """Why the ``CANOPY_ELOG__*`` settings failed to parse, safe to show any caller.
 
-    Names the offending variables but never their values: pydantic's own
-    message echoes the input, which may sit next to a token in a deploy secret.
+    The reason is our own text, never pydantic's message: that message can echo
+    the input, which may sit next to a token in a deploy secret, and its wording
+    differs between pydantic-settings releases (one reports a value that isn't
+    JSON as a ``SettingsError``, another as a ``ValidationError``). It names the
+    setting group and, where pydantic says which, the offending variable, but
+    never a value.
     """
     if isinstance(exc, ValidationError):
         problems = [
-            f"{_env_name(error['loc'])}: {error['msg']}"
+            f'"{error["loc"][0]}" ({_env_name(error["loc"])}: {error["type"]})'
             for error in exc.errors(include_input=False, include_url=False, include_context=False)
+            if error["loc"]
         ]
-        return "Invalid e-log settings: " + "; ".join(problems)
-    # SettingsError names the field and source only (e.g. a DEFAULT_LOGBOOK_IDS that isn't JSON).
-    return f"Invalid e-log settings: {exc}"
+        if problems:
+            return "Invalid e-log settings: " + "; ".join(problems)
+    else:
+        # SettingsError carries no field attribute; take the group from its
+        # message only when it is one of ours, so nothing else is passed on.
+        named = _SETTINGS_ERROR_FIELD.search(str(exc))
+        if named and named.group(1) in ElogConfig.model_fields:
+            group = named.group(1)
+            return f'Invalid e-log settings: "{group}" ({_env_name((group,))}*) does not parse'
+    return "Invalid e-log settings: a CANOPY_ELOG__* variable does not parse"
 
 
 def _env_name(loc: tuple) -> str:
