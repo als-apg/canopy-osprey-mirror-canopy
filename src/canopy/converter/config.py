@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Canonical EDM ``colors.list`` bundled with the module (added in Phase 3).
@@ -15,6 +16,8 @@ class ConverterConfig(BaseSettings):
 
         CANOPY_CONVERTER__COLORS_LIST_PATH=/etc/edm/colors.list
         CANOPY_CONVERTER__MAX_UPLOAD_BYTES=10485760
+        CANOPY_CONVERTER__SCHEME_PATH=/etc/canopy/facility-colors.json
+        CANOPY_CONVERTER__COLOR_DEF_PATH=/etc/phoebus/color.def
     """
 
     model_config = SettingsConfigDict(
@@ -60,6 +63,23 @@ class ConverterConfig(BaseSettings):
     # TTL (seconds) for the staged archive and the per-screen result keys in
     # Redis. Matches the worker's keep_result so a client can poll then fetch.
     batch_result_ttl_s: int = 3600
+
+    # The color scheme (``canopy-color-scheme/1``) conversions map named colors
+    # onto, for the converter only. ``None`` (unset or empty) leaves the choice to
+    # ``canopy.core.color_scheme.resolve_scheme_path``: the deployment-wide
+    # ``CANOPY_THEME_FILE``, else the packaged ``canopy-default``.
+    scheme_path: Path | None = None
+
+    # An optional Phoebus ``color.def`` passed to the converter so its named colors
+    # resolve. Unset by default: no ``color_def_path`` reaches ``convert_bytes``.
+    color_def_path: Path | None = None
+
+    @field_validator("scheme_path", "color_def_path", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 def get_converter_config() -> ConverterConfig:
