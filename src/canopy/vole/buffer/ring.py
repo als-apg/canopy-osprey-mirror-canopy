@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import bisect
 from typing import Literal, NamedTuple
 
@@ -11,10 +12,36 @@ class StoredSample(NamedTuple):
     value: float | int | bool | str | bytes | None
     severity: AlarmSeverity
     source: Literal["live", "archive"]
+    # Server receive time of the Hare flush that carried the sample; 0 for archive-seeded samples.
+    recv_ns: int = 0
+    # True for the first sample after a (re)connect: an ``initial`` frame, the first
+    # sample after a disconnected entry, or a PV's first sample at all.
+    after_connect: bool = False
 
 
-# Assumes scalar numeric values; str/bytes payloads will be under-counted.
-BYTES_PER_SAMPLE = 80
+def measure_sample_bytes() -> int:
+    """The footprint of one stored sample: the six-field tuple plus its per-sample objects.
+
+    The severity enum member, the source literal and the bool are shared singletons;
+    the timestamp, a float value and the receive time are allocated per sample.
+    """
+    ts = 1_700_000_000_000_000_000
+    sample = StoredSample(ts, 1.5, AlarmSeverity.NO_ALARM, "live", ts, False)
+    return (
+        sys.getsizeof(sample)
+        + sys.getsizeof(sample.ts_ns)
+        + sys.getsizeof(sample.value)
+        + sys.getsizeof(sample.recv_ns)
+    )
+
+
+# Measured, not assumed: str/bytes payloads are still under-counted.
+BYTES_PER_SAMPLE = measure_sample_bytes()
+
+Outage = tuple[int, int | None]
+
+#: Most closed outage intervals a ring keeps; older ones are dropped first.
+MAX_CLOSED_OUTAGES = 256
 
 
 class PerPVRing:
@@ -22,6 +49,10 @@ class PerPVRing:
 
     Backed by a sorted list with bisect for O(log N) lookups.
     FIFO eviction enforced on every mutation when ceilings are exceeded.
+
+    Also carries the per-PV state that lives and dies with the ring: whether its
+    archive history has been provisioned (and when a failed attempt may be
+    retried), and the outage intervals ingest recorded on the receive clock.
     """
 
     def __init__(self, *, max_points: int) -> None:
@@ -29,6 +60,10 @@ class PerPVRing:
         self._max_points = max_points
         self._last_access_ns: int = 0
         self._dropped_out_of_order: int = 0
+        self.provisioned: bool = False
+        self.provision_retry_after_ns: int = 0
+        self._outages: list[tuple[int, int]] = []
+        self._open_outage_since_ns: int | None = None
 
     @property
     def max_points(self) -> int:
@@ -117,6 +152,13 @@ class PerPVRing:
         hi = bisect.bisect_right(self._samples, t1_ns, key=lambda s: s.ts_ns)
         return self._samples[lo:hi]
 
+    def slice_from(self, ts_from_ns: int) -> list[StoredSample]:
+        """One O(k) copy of the samples with ``ts_ns >= ts_from_ns``."""
+        if not self._samples:
+            return []
+        lo = bisect.bisect_left(self._samples, ts_from_ns, key=lambda s: s.ts_ns)
+        return self._samples[lo:]
+
     def sample_before(self, ts_ns: int) -> StoredSample | None:
         """Return the last sample with ts_ns < given ts."""
         if not self._samples:
@@ -126,6 +168,62 @@ class PerPVRing:
             return None
         return self._samples[idx - 1]
 
+    def last_at_or_before(self, ts_ns: int) -> StoredSample | None:
+        """Return the last sample with ts_ns <= given ts."""
+        if not self._samples:
+            return None
+        idx = bisect.bisect_right(self._samples, ts_ns, key=lambda s: s.ts_ns)
+        if idx == 0:
+            return None
+        return self._samples[idx - 1]
+
+    def samples_since(self, recv_after_ns: int) -> list[StoredSample]:
+        """Every live sample received after ``recv_after_ns``, oldest first.
+
+        Scans back from the newest sample and stops at the first one received at
+        or before the argument -- archive-seeded samples carry 0, so the scan is
+        O(new samples) and never walks the seeded history.
+        """
+        out: list[StoredSample] = []
+        for s in reversed(self._samples):
+            if s.recv_ns <= recv_after_ns:
+                break
+            out.append(s)
+        out.reverse()
+        return out
+
+    # --- outages (receive clock) ------------------------------------------ #
+
+    @property
+    def outages(self) -> list[Outage]:
+        """Closed intervals ``(start_ns, end_ns)`` plus the open one as ``(start_ns, None)``."""
+        intervals: list[Outage] = list(self._outages)
+        if self._open_outage_since_ns is not None:
+            intervals.append((self._open_outage_since_ns, None))
+        return intervals
+
+    @property
+    def outage_open(self) -> bool:
+        """True while an outage is open (the PV's connection is down now)."""
+        return self._open_outage_since_ns is not None
+
+    def open_outage(self, now_ns: int) -> None:
+        if self._open_outage_since_ns is None:
+            self._open_outage_since_ns = now_ns
+
+    def close_outage(self, now_ns: int) -> None:
+        if self._open_outage_since_ns is not None:
+            self._outages.append((self._open_outage_since_ns, max(now_ns, self._open_outage_since_ns)))
+            self._open_outage_since_ns = None
+            self._prune_outages()
+
+    def in_outage(self, ts_ns: int) -> bool:
+        if self._open_outage_since_ns is not None and ts_ns >= self._open_outage_since_ns:
+            return True
+        return any(start <= ts_ns <= end for start, end in self._outages)
+
+    # --- capacity ----------------------------------------------------------- #
+
     def clear(self) -> None:
         self._samples.clear()
 
@@ -133,7 +231,41 @@ class PerPVRing:
         if max_points is not None:
             self._max_points = max_points
 
+    def ensure_capacity(self, max_points: int) -> None:
+        """Grow-only: never lowers an existing ceiling."""
+        if max_points > self._max_points:
+            self._max_points = max_points
+
+    def shrink_to(self, max_points: int) -> int:
+        """Lower the ceiling, trim to the newest ``max_points`` and forget the provisioned history.
+
+        Returns the number of samples trimmed. Used only under memory pressure.
+        """
+        before = len(self._samples)
+        self._max_points = max_points
+        self._enforce_retention()
+        self.provisioned = False
+        return before - len(self._samples)
+
     def _enforce_retention(self) -> None:
         if len(self._samples) > self._max_points:
             excess = len(self._samples) - self._max_points
             del self._samples[:excess]
+        if self._outages:
+            self._prune_outages()
+
+    def _prune_outages(self) -> None:
+        """Drop closed outages older than the ring's samples, and keep at most `MAX_CLOSED_OUTAGES`.
+
+        An outage that ended before the oldest stored live sample was received
+        can mark nothing the ring still holds. Archive-seeded samples carry no
+        receive time, so a ring whose oldest sample is seeded keeps its
+        intervals until the count cap applies.
+        """
+        oldest_recv = self._samples[0].recv_ns if self._samples else 0
+        if oldest_recv:
+            keep = bisect.bisect_left(self._outages, oldest_recv, key=lambda o: o[1])
+            if keep:
+                del self._outages[:keep]
+        if len(self._outages) > MAX_CLOSED_OUTAGES:
+            del self._outages[: len(self._outages) - MAX_CLOSED_OUTAGES]

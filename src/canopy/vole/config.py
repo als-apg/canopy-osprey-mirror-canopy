@@ -20,6 +20,11 @@ class VoleConfig(BaseSettings):
     default_align: str = "last"
     default_index: str = "union"
     buffer_grace_seconds: int = 60
+    # Samples a table input's ring must hold (``ensure_capacity`` floor), and the
+    # depth a pinned ring is shrunk to when only pinned rings remain over the ceiling.
+    settle_depth: int = 1024
+    # After a failed archive provision, the next read waits this long before asking Mole again.
+    provision_retry_s: float = 60.0
 
 
 def get_vole_config() -> VoleConfig:
