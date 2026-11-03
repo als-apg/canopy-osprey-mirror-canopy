@@ -41,6 +41,9 @@ from canopy.core.keys.registry import (
     CachingKeyRegistry,
     ChainedKeyRegistry,
 )
+from canopy.core.facilities.models import (
+    Facility,  # also registers core.facility on Base.metadata
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "CANOPY_TEST_DATABASE_URL", "postgresql+asyncpg://canopy:canopy@localhost:5432/canopy_test"
@@ -94,6 +97,22 @@ async def session(session_maker) -> AsyncSession:
     """A session for arranging test data; commits are explicit in the test."""
     async with session_maker() as s:
         yield s
+
+
+@pytest_asyncio.fixture
+async def seeded_facilities(session) -> list[str]:
+    """Define ``lcls`` and its child ``lcls-sc``, committed.
+
+    Minting a key with a facility grant now rejects a slug that doesn't exist, so
+    any test that mints a scoped key has to define the facility first — the same
+    order an operator follows (``create_facility.py`` before ``create_key.py -f``).
+    """
+    lcls = Facility(slug="lcls", name="LCLS")
+    session.add(lcls)
+    await session.flush()
+    session.add(Facility(slug="lcls-sc", name="LCLS-II SC", parent_id=lcls.id))
+    await session.commit()
+    return ["lcls", "lcls-sc"]
 
 
 @pytest.fixture

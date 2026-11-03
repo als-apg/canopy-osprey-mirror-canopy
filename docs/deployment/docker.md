@@ -48,6 +48,49 @@ CANOPY_DATABASE_URL=postgresql+asyncpg://canopy:canopy@localhost:5432/canopy \
 Postgres-backed endpoints (Squirrel) return errors until this has been run
 once.
 
+### Defining facilities
+
+Facilities are not seeded by a migration and are not read from an env var — a
+facility is a row in `core.facility`, created explicitly. Nothing can reference
+a facility slug that doesn't exist: minting an API key with an unknown grant is
+a 400. (A PV or snapshot write naming an unknown slug is also rejected, once
+Squirrel's facility enforcement — not yet merged — reads this table.)
+
+For the dev stack, seed the SLAC hierarchy in one step (idempotent, safe to
+re-run):
+
+```bash
+CANOPY_DATABASE_URL=postgresql+asyncpg://canopy:canopy@localhost:5432/canopy \
+  uv run python scripts/seed_dev_facilities.py
+```
+
+This is **dev only** — it is deliberately not wired into container startup.
+Each production instance has its own database and its own hierarchy, so there
+is no single baseline to seed, and re-seeding on boot would fight facilities
+edited through the API. Define them individually instead:
+
+```bash
+uv run python scripts/create_facility.py lcls --name "LCLS"
+uv run python scripts/create_facility.py lcls-sc --name "LCLS-II SC" --parent lcls
+uv run python scripts/list_facilities.py
+```
+
+Slugs are lowercase alphanumerics with single internal hyphens — not leading,
+trailing, or doubled; `LCLS` is rejected rather than silently lowercased. A
+handful of slugs (`snapshots`, `tags`, `pv-browser`, `api-keys`, `meta-pvs`,
+`comparison`, `snapshot-details`) are reserved, since they collide with
+react-squirrel's own page routes. A slug is **immutable** once created — it's
+what `?facility=` filters and API key grants reference — so correcting one
+means deleting and recreating, which is refused while the facility has
+children or while any PV, snapshot, or active key grant still references it.
+
+An `admin` key can also manage facilities over HTTP: `POST /v1/facilities`,
+`PUT /v1/facilities/{slug}`, `DELETE /v1/facilities/{slug}`. These routes
+additionally require the key to hold the facility wildcard (`*`), not just
+`admin` — reparenting or deleting a facility can widen what an existing grant
+on an ancestor resolves to, so only an unrestricted key may touch the
+hierarchy at all. The CLI stays the bootstrap path, since it needs no key.
+
 ### Using a local IOC
 
 To point the containers at an IOC on the host, set the EPICS variables in

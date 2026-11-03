@@ -20,8 +20,9 @@ cannot itself read a PV is a better credential for a provisioning tool than one
 that can do everything. A `write` key cannot mint or revoke keys; only `admin`
 can.
 
-Independently, every key also carries a **module scope** — see
-[Module scoping](#module-scoping) below.
+Independently, every key also carries a **module scope** and a **facility
+scope** — see [Module scoping](#module-scoping) and
+[Facility scoping](#facility-scoping) below.
 
 Clients send the token in the `X-API-Key` header. WebSocket endpoints also
 accept `?api_key=<token>` for browsers that cannot set headers on a WebSocket
@@ -119,7 +120,7 @@ The same operations are available at `/v1/api-keys` on the parent app, gated on
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/v1/api-keys` | Mint a key. Body: `appName`, and any of `read`/`write`/`admin`. Returns the plaintext `token` once. |
+| `POST` | `/v1/api-keys` | Mint a key. Body: `appName`, any of `read`/`write`/`admin`, and optionally `modules`/`facilities`. Returns the plaintext `token` once. |
 | `GET` | `/v1/api-keys` | List keys (`?activeOnly=true`, `?appName=<name>` to filter). Never returns a token. |
 | `GET` | `/v1/api-keys/count` | Count keys (`?activeOnly=true` to filter). |
 | `DELETE` | `/v1/api-keys/{id}` | Deactivate a key. |
@@ -148,8 +149,9 @@ such default for the env layer — see below.
 
 This constrains which **surface** a key can call, not which **data** it can
 see through that surface — a `squirrel`-scoped key can reach every route
-`squirrel` exposes, the same as an unscoped key would. Facility-level data
-scoping is a separate, Squirrel-side mechanism and is not expressible here.
+`squirrel` exposes, the same as an unscoped key would. Restricting *which*
+facility's data a key can see is a separate mechanism — see
+[Facility scoping](#facility-scoping) below.
 
 Set it with `-m`/`--module` (repeatable) on `scripts/create_key.py`, or the
 `modules` field on `POST /v1/api-keys`:
@@ -176,6 +178,65 @@ A key that resolves but isn't scoped to the module a route belongs to gets
 `403` `insufficient_module_access` — checked before the `read`/`write`/`admin`
 scope check, so an out-of-scope, no-access key is still reported as
 out-of-scope, not out-of-read.
+
+### Facility scoping
+
+A key can also be restricted to one or more `core.facility` slugs — a global
+attribute of the key, independent of module scope. Naming a facility grants
+that facility and everything beneath it in the hierarchy, the same "itself
+plus descendants" rule `?facility=` filtering itself uses.
+
+The grant itself is defined and validated here; nothing yet *consults* it. A
+data-serving module (Squirrel) reading and enforcing this scope on its own
+reads and writes is separate, not-yet-merged work — until it lands, a
+facility-scoped key authenticates and passes module/read/write checks
+normally, but every module ignores its facility grant.
+
+Unlike module scope, an **empty** facility list is valid and meaningful — it's
+the default for a newly minted key, and means "provisioned but not yet
+assigned to a facility" (or "data access suspended without revoking the
+credential entirely"). Minting without any `-f`/`facilities` value leaves this
+empty; there is no implicit "every facility" default the way module scope
+defaults to `["*"]`. Pass the wildcard explicitly (`-f '*'` or
+`"facilities": ["*"]`) for a key that should see every facility's data.
+
+Keys configured via `CANOPY_API_KEYS` are always granted every facility. There
+is no env syntax for facility scope and deliberately won't be: env keys are the
+statically stable floor that has to keep working through a database outage, and
+resolving a facility grant requires reading the hierarchy from the database.
+Restrict by facility with a database-backed key.
+
+Set it with `-f`/`--facility` (repeatable) on `scripts/create_key.py`, or the
+`facilities` field on `POST /v1/api-keys`:
+
+```bash
+uv run python scripts/create_key.py trace -r -f lcls -f lcls-sc
+```
+
+```bash
+curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
+  -d '{"appName": "trace", "read": true, "facilities": ["lcls", "lcls-sc"]}' \
+  http://localhost:<API_PORT>/v1/api-keys
+```
+
+Every slug named in a grant must already exist — an unrecognized or mistyped
+one is a `400` naming it, not a shrug. A typo'd grant resolves to "matches
+nothing" at request time, so the key would authenticate normally and then see
+and write nothing, with no error anywhere to point at the mistake. Define the
+facility first (see [Defining facilities](docker.md#defining-facilities)). `*`
+names no slug, so it needs nothing defined.
+
+For the same reason, a facility that any *active* key grants cannot be deleted:
+`DELETE /v1/facilities/{slug}` is refused with `facility_in_use` until the
+grants are gone, since slugs are immutable and deleting one would silently turn
+those keys deny-all. Deactivating a key releases its grants.
+
+This check and a concurrent mint aren't serialized against each other — each
+runs in its own transaction with no lock between them — so a delete and a mint
+of a key granted the same facility, racing within the same narrow window, could
+each see the other's not-yet-committed state. In practice this needs two admin
+actions targeting the same facility at nearly the same instant, which is far
+outside normal operation; it isn't a guarantee against that specific race.
 
 ### Why `admin`, not `write`
 

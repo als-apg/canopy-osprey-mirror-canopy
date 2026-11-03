@@ -20,8 +20,10 @@ from canopy.core.keys.repositories import ApiKeyRepository
 from tests.canopy.core.keys.conftest import db_backed_registry
 
 
-async def mint(session, app_name="trace", *, read=True, write=False, admin=False, modules=[WILDCARD]):
-    key = await ApiKeyService(session).create_key(app_name, read=read, write=write, admin=admin, modules=modules)
+async def mint(session, app_name="trace", *, read=True, write=False, admin=False, modules=[WILDCARD], facilities=None):
+    key = await ApiKeyService(session).create_key(
+        app_name, read=read, write=write, admin=admin, modules=modules, facilities=facilities
+    )
     await session.commit()
     return key
 
@@ -62,6 +64,22 @@ class TestMintAndResolve:
 
         assert resolved is not None
         assert resolved.modules == frozenset({"*"})
+
+    async def test_scoped_key_resolves_with_its_facilities(self, session, session_maker, seeded_facilities):
+        created = await mint(session, "trace", read=True, facilities=["lcls", "lcls-sc"])
+
+        resolved = await DbKeyRegistry().get(created.token)
+
+        assert resolved is not None
+        assert resolved.facilities == frozenset({"lcls", "lcls-sc"})
+
+    async def test_unscoped_key_resolves_with_no_facilities(self, session, session_maker):
+        created = await mint(session, "trace", read=True)
+
+        resolved = await DbKeyRegistry().get(created.token)
+
+        assert resolved is not None
+        assert resolved.facilities == frozenset()
 
     async def test_unknown_token_resolves_to_none(self, session, session_maker):
         await mint(session)
