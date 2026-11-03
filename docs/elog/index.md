@@ -32,7 +32,7 @@ routes (env names are case-insensitive, so `APPS__SQUIRREL__` serves
 | `CANOPY_ELOG__APPS__<APP>__DEFAULT_LOGBOOK_IDS` | `[]` | JSON list of logbook ids the client preselects, e.g. `["<id>"]`. |
 | `CANOPY_ELOG__PROXY_URL` | unset | Outbound HTTP(S) proxy for e-log calls. Process proxy variables (`HTTPS_PROXY`, ...) are ignored, but `SSL_CERT_FILE` and `SSL_CERT_DIR` still set the CA bundle. |
 | `CANOPY_ELOG__TIMEOUT_S` | `15` | Per-request timeout to the e-log, in seconds. |
-| `CANOPY_ELOG__MAX_ATTACHMENT_BYTES` | `20971520` (20 MiB) | Larger attachment uploads are rejected with 413. |
+| `CANOPY_ELOG__MAX_ATTACHMENT_BYTES` | `20971520` (20 MiB) | Larger attachment uploads are rejected with 413. The check runs after the upload has been received, so also cap the request body in the proxy in front of Canopy (see below). |
 
 ```bash
 CANOPY_ELOG__PROVIDER=elog_plus
@@ -41,6 +41,13 @@ CANOPY_ELOG__APPS__SQUIRREL__TOKEN=<squirrel's elog-plus token>
 CANOPY_ELOG__APPS__SQUIRREL__DEFAULT_LOGBOOK_IDS=["<logbook id>"]
 CANOPY_ELOG__APPS__TRACE__TOKEN=<trace's elog-plus token>
 ```
+
+Canopy does not limit the size of a request body. An attachment upload is
+received and spooled to a temporary file in full before
+`MAX_ATTACHMENT_BYTES` is checked, so the reverse proxy or ingress in front of
+Canopy must cap the body: a little above `MAX_ATTACHMENT_BYTES`, for example
+`client_max_body_size 25m` in nginx or the `proxy-body-size` annotation on an
+ingress-nginx Ingress.
 
 Misconfiguration leaves the module disabled rather than failing Canopy's
 startup: an unknown provider, a dotted path that isn't an adapter class, a

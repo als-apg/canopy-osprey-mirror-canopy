@@ -27,9 +27,11 @@ router = APIRouter(prefix="/apps/{app}", tags=["Elog / Apps"])
 
 
 async def _read_upload(file: UploadFile, max_bytes: int) -> bytes:
-    # Reject on the declared size first so an oversized body is not fully buffered
-    # into memory before the check. The size can be absent or wrong, so the
-    # service's check on the bytes actually read stays the authoritative one.
+    # FastAPI has already parsed the whole multipart body by now, spooling the
+    # file to a temporary file, and ``size`` is the bytes written there. Checking
+    # it first keeps an oversized file from being read into memory; the service
+    # checks the bytes again for gateway callers. Nothing here caps the request
+    # body itself: the proxy in front of Canopy has to (see docs/elog).
     if file.size is not None and file.size > max_bytes:
         raise ElogAttachmentTooLarge(f"Attachment is {file.size} bytes; limit is {max_bytes} bytes")
     return await file.read()
