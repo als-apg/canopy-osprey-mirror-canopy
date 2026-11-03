@@ -59,12 +59,14 @@ agent that connects without it is told where to get it.
 | Edit with `rev` and `base_rev` | Every change names the revision it was made against. |
 | Port a legacy panel | `convert_legacy` for `.bob`, `.opi`, `.edl` and `.ui` files. |
 | Screenshots and mock mode | What a screenshot shows with live and with mock PVs. |
+| Before you commit | Regenerating the [library report](library_report.md). |
+| Push to the shared library | [`request_push`](request_push.md) and its refusals. |
 | When a call fails | What each refusal means and what to do next. |
 
 ## The tools
 
 Most tools only read. The authoring tools create, change or delete the user's
-own screens.
+own screens, or file one for the library.
 
 | Tool | Kind | What it does |
 |------|------|--------------|
@@ -77,12 +79,14 @@ own screens.
 | `search_pvs` | read | Searches the PV directory by a glob pattern. |
 | `read_pv` | read | Reads one PV once. |
 | `screenshot` | read | Renders a screen as a PNG. |
+| `list_collections` | read | Lists the [collections](collections.md) the viewer offers. |
 | `new_screen` | authoring | Saves a whole document as a draft. |
 | `patch_node` | authoring | Changes one node by JSON Merge Patch. |
 | `add_node` | authoring | Appends one node to a container. |
 | `remove_node` | authoring | Removes one node and its children. |
 | `delete_draft` | authoring | Deletes a draft. |
 | `convert_legacy` | authoring | Converts a legacy panel and its sub-screens into drafts. |
+| `request_push` | authoring | Files a draft and everything it refers to for an administrator to review. |
 
 No tool writes a PV. Every change to a screen is checked against the rev the
 caller last saw, so an agent and a person editing in the viewer cannot

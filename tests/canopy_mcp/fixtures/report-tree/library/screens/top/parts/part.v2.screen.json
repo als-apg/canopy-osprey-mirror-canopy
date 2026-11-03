@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "part",
+  "metadata": {
+    "title": "part",
+    "source": {
+      "type": "hand-authored"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [
+    {
+      "name": "P",
+      "default": ""
+    }
+  ],
+  "root": {
+    "id": "root",
+    "type": "absolute-canvas",
+    "props": {},
+    "children": [
+      {
+        "id": "input",
+        "type": "pv-text-input",
+        "props": {
+          "pv": "${P}:IN"
+        }
+      },
+      {
+        "id": "zero",
+        "type": "pv-button",
+        "props": {
+          "pv": "loc://zero",
+          "actions": [
+            {
+              "type": "write_pv",
+              "pvName": "${P}:ZERO",
+              "value": 0
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

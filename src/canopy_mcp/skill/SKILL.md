@@ -1,6 +1,6 @@
 ---
 name: canopy-panel-builder
-description: Build, edit and port Canopy control-system screens (panels) with the canopy MCP tools. Use it to create a new panel or screen, change one, convert a legacy .bob, .opi, .edl or .ui display, or screenshot a screen.
+description: Build, edit, port and share Canopy control-system screens (panels) with the canopy MCP tools. Use it to create a new panel or screen, change one, convert a legacy .bob, .opi, .edl or .ui display, screenshot a screen, or push a screen to the shared library.
 ---
 
 # Canopy panel builder
@@ -35,7 +35,9 @@ served, `library` is not allowed as the first segment of your own ids.
 
 Your screens root is whatever the person who started the server chose. It can
 be a private store that only you see, or a directory of a source tree that is
-under version control. The tools behave the same in both.
+under version control. The tools behave the same in both. What differs is how
+a screen reaches other people: see "Before you commit" and "Push to the shared
+library" below.
 
 ## The Screen-IR file format
 
@@ -121,7 +123,7 @@ finds beside a legacy file. No tool uploads a single image.
 ## The tools
 
 The tools marked "reads" change nothing. The tools marked "writes" create,
-change or delete drafts. A server may
+change or delete drafts, or file a draft for the shared library. A server may
 be started without the "writes" tools. If they are missing from your tool
 list, this server is read-only: say so, and do not look for another way to
 write.
@@ -137,12 +139,14 @@ write.
 | `list_drafts` | reads | List your drafts, followed by the library screens. |
 | `get_screen` | reads | Read one screen and its `rev`. |
 | `screenshot` | reads | Render a screen as a PNG and look at it. |
+| `list_collections` | reads | List the collections: named sets of screens and tools. Answer with collection names and member counts, render `open_url` as a link, and never quote field names to the operator. |
 | `new_screen` | writes | Save a whole document as a new draft, or replace a draft. |
 | `add_node` | writes | Append one widget node to a container of a draft. |
 | `patch_node` | writes | Change the props, geometry, rules or warnings of one node. |
 | `remove_node` | writes | Remove one node and its children. |
 | `delete_draft` | writes | Delete a draft. |
 | `convert_legacy` | writes | Port a `.bob`, `.opi`, `.edl` or `.ui` panel and its sub-screens into drafts. |
+| `request_push` | writes | Ask for a draft to be added to the shared library. |
 
 Each tool's own description has the full argument list and the shape of its
 result. This table says when to reach for which.
@@ -165,8 +169,20 @@ No tool writes to a PV. `read_pv` and `search_pvs` only read.
    clipped text.
 6. Make small changes with `patch_node`, `add_node` and `remove_node`. Take a
    screenshot after each round of edits.
-7. Show the user the screen: give the user the `url` from the result. It
-   opens the screen in the viewer.
+7. Show the user the screen. With a `set_workspace` tool, send
+   `set_workspace` with `[{"cmd": "open", "args": {"ref": <ref>}}]`, the
+   `ref` from the result; the `canopy-operator` skill says how. On
+   `no_window` or `window_hidden`, open the host's Canopy panel without a
+   url and send it again, once; with no host, ask the user to open or focus
+   the Canopy viewer. Without a `set_workspace` tool, or when that did not
+   work, give the user the `url` from the result. It opens the screen in the
+   viewer.
+
+When the user wants several screens shown together in a given arrangement
+(two screens side by side, one screen as tabs with several macro sets, a
+Trace below a screen), open them with one `open_set` command with
+`as: "layout"` instead of one `open` each; "Load an arrangement in one call"
+in the `canopy-operator` skill gives the form.
 
 A finding has `nodeId`, `code`, `path` (a JSON pointer into the document),
 `severity` and `message`. A finding inside an embedded screen also has
@@ -276,6 +292,66 @@ If `screenshot` answers that screenshots are unavailable, the server has no
 browser to render with. Say so, show the user the screen as step 7 of
 "Build a screen" says, and go on with `check`.
 
+## Before you commit
+
+This section applies when your screens root is a directory of a source tree
+that carries a report, the files `LIBRARY-REPORT.json` and `LIBRARY-REPORT.md`
+beside `screens/`. The report lists what the screens of the tree can write,
+run and open, and a reviewer reads it. It must match the screens.
+
+After your last change and before the commit, run:
+
+```sh
+python -m canopy_mcp.report <root> --write
+```
+
+`<root>` is the directory that holds `screens/`. Run the command in the
+Python environment the server runs in. Then commit the changed files below
+`screens/` together with both report files. If the command refuses, it names
+the file and the reason. Fix that and run it again. Do not edit the report
+files by hand.
+
+`python -m canopy_mcp.report <root> --check` tells you whether the report
+matches without writing anything.
+
+Skip this section when your screens root is a private store that is not
+committed.
+
+## Push to the shared library
+
+Use `request_push` when the server offers push and the user asks for a screen
+to be shared. The call files a request. It publishes nothing. An administrator
+reviews the request and accepts or rejects it outside this session.
+
+- `id` is your draft. `target_dir` is the library directory it should land
+  in, in id form, such as `sr/rf`. `note` tells the reviewer in plain words
+  what the screen is and why it belongs in the library.
+- The request holds a copy of the screen, of every screen it embeds or opens,
+  and of every stored image they show. All of them must lie in `source_dir`,
+  which defaults to the directory of `id`.
+- Run `check` first and fix every error. A screen with errors is refused.
+
+The result has a `rid`, the name of the request. Give the `rid` to the user.
+The reviewer needs it.
+
+A refusal comes back as `{refused: true, reason, message}` and files nothing.
+
+- `push_unavailable`: this server takes no pushes. Tell the user. Do not
+  retry. If your screens root is a source tree, the way to share a screen is
+  the commit described above.
+- `push_queue_full`: 8 requests already wait for review. Tell the user. Do
+  not retry until the reviewer has worked through some of them.
+- `read_only_store` or `library_source`: the id is a library screen. Push
+  your own copy.
+- `closure_refused`: `refusals` lists references and rules that would not
+  mean the same in the library, such as an unresolved reference, a macro in a
+  reference, or a reference that leaves `source_dir`. Fix them, or push from
+  a directory further up.
+- `grammar_refused`: `refusals` lists names and contents the library does not
+  take, such as an SVG image, a file that is too large, or names that differ
+  only in case.
+- `check_errors`: `errors` lists the error findings of each pushed screen.
+
 ## When a call fails
 
 - A refusal is an answer, not a fault. Read `reason` and `message`, fix the
@@ -285,4 +361,4 @@ browser to render with. Say so, show the user the screen as step 7 of
 - Never work around a refusal by writing files into the screens root
   yourself.
 - Tell the user what you saved, under which id, and what is left: open
-  warnings, unverified PV names.
+  warnings, unverified PV names, a `rid` waiting for review.
