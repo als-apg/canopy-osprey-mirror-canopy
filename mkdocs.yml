@@ -106,6 +106,7 @@ nav:
     - deployment/index.md
     - Docker Compose: deployment/docker.md
     - Deploy at Your Facility: deployment/production.md
+    - Appliance Mode: deployment/appliance.md
     - Color Schemes: deployment/color-schemes.md
     - API Keys: deployment/api-keys.md
   - How To:
