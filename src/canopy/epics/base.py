@@ -8,8 +8,8 @@ are `simulation` (data all simulated in process without any dependencies) and `e
 The same value can instead name an out-of-tree backend by a `module:Class` dotted path.
 """
 
-from typing import Protocol, runtime_checkable
-from collections.abc import Callable
+from typing import Any, Protocol, runtime_checkable
+from collections.abc import Mapping, Callable
 
 from canopy.core.errors import ErrorCode, CanopyError
 from canopy.contracts.pv import PVMeta, PVValue, PVWriteValue
@@ -169,10 +169,31 @@ class PVConnector(Protocol):
         """One-shot read of a PV's current value."""
         ...
 
-    async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
+    async def put(
+        self,
+        pv: str,
+        value: PVWriteValue,
+        *,
+        timeout: float | None = None,
+        wait: bool = True,
+        binding: str | None = None,
+        origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
+    ) -> None:
         """Write `value` to `pv`. When `wait=True`, block until the write
         completes (put-with-callback) so the caller knows it landed. The
-        protocol is taken from the PV name prefix (``ca://`` / ``pva://``)"""
+        protocol is taken from the PV name prefix (``ca://`` / ``pva://``).
+
+        `binding`, `origin` and `confirmed` describe the write, as the client
+        sent them; the first two are ``None`` when it sent none. `binding` is
+        the connector binding the issuing screen was shown (the heartbeat's
+        ``binding``), so a connector that can switch what it is connected to
+        may refuse a write aimed at another one. `origin` is where the write
+        came from, a plain ``{"screen": ..., "rev": ...}`` mapping, for the
+        connector's own audit record. `confirmed` is true when a person
+        confirmed the write in the viewer's dialog; a connector whose
+        ``writes`` statement says ``asked`` refuses a write without it. A
+        connector that has no use for any of them ignores them."""
         ...
 
     async def subscribe(self, pv: str, on_event: EventCallback) -> Subscription:

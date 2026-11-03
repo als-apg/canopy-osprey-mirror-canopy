@@ -31,7 +31,9 @@ import time
 import zlib
 import random
 import asyncio
+from typing import Any
 from dataclasses import dataclass
+from collections.abc import Mapping
 
 from canopy.epics.base import (
     ALARM_STATUS_CODES,
@@ -307,7 +309,17 @@ class SimulationConnector:
     async def get(self, pv: str, *, timeout: float | None = None) -> PVValue:
         return self._value_for(pv)
 
-    async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
+    async def put(
+        self,
+        pv: str,
+        value: PVWriteValue,
+        *,
+        timeout: float | None = None,
+        wait: bool = True,
+        binding: str | None = None,
+        origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
+    ) -> None:
         """Pin a PV's value so subsequent reads and monitor ticks return it.
 
         The override is held under the name without any ``ca://`` / ``pva://`` prefix,
@@ -324,6 +336,8 @@ class SimulationConnector:
             Accepted for protocol compatibility; the write completes immediately.
         wait : bool, optional
             Accepted for protocol compatibility; the write completes immediately.
+        binding, origin, confirmed : optional
+            Accepted for protocol compatibility and ignored.
 
         Raises
         ------

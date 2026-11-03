@@ -15,7 +15,9 @@ import math
 import time
 import asyncio
 import logging
+from typing import Any
 from dataclasses import dataclass
+from collections.abc import Mapping
 
 from aioca import (
     FORMAT_CTRL,
@@ -478,8 +480,18 @@ class EpicsConnector:
 
     # --- writes ---------------------------------------------------------- #
 
-    async def put(self, pv: str, value: PVWriteValue, *, timeout: float | None = None, wait: bool = True) -> None:
-        """Write `value` to `pv`, routed by protocol prefix."""
+    async def put(
+        self,
+        pv: str,
+        value: PVWriteValue,
+        *,
+        timeout: float | None = None,
+        wait: bool = True,
+        binding: str | None = None,
+        origin: Mapping[str, Any] | None = None,
+        confirmed: bool = False,
+    ) -> None:
+        """Write `value` to `pv`, routed by protocol prefix. `binding`, `origin` and `confirmed` are accepted and ignored."""
         validate_pv_name(pv)
         protocol, stripped = parse_pv_name(pv)
         if protocol == "pva":
