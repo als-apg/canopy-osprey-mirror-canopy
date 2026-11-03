@@ -65,14 +65,23 @@ class FormulaService:
     def _validate_bindings(self, spec: FormulaSpec) -> None:
         """Bindings must resolve to well-formed PV names only.
 
-        Rejects formula-of-formula composition (``formula:`` refs) and malformed PV
-        names (empty, over-long, protocol-prefixed garbage) so a bad binding
-        can't reach the data source / EPICS layer.
+        Rejects formula-of-formula composition (``formula:`` refs), references
+        that still use the retired ``fox:`` prefix, and malformed PV names
+        (empty, over-long, protocol-prefixed garbage) so a bad binding can't
+        reach the data source / EPICS layer. A ``fox:`` name is otherwise a
+        valid PV name, so without its own check a stale reference would fail
+        as a timeout or missing input instead of a clear error.
         """
         for var, pv in spec.bindings.items():
             if pv.startswith("formula:"):
                 raise FormulaCircularReference(
                     f"Binding '{var}' references a derived formula '{pv}'; "
                     "formula-of-formula composition is not supported"
+                )
+            if pv.startswith("fox:"):
+                raise FormulaCircularReference(
+                    f"Binding '{var}' uses the retired 'fox:' prefix in '{pv}'; "
+                    "formula references now use 'formula:', and formula-of-formula "
+                    "composition is not supported"
                 )
             validate_pv_name(pv)

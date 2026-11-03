@@ -1,5 +1,7 @@
 """Formula Engine /validate endpoint tests."""
 
+import pytest
+
 from tests.conftest import READ_HEADERS
 
 
@@ -50,20 +52,21 @@ def test_validate_unsafe_expression(formula_engine_client):
     assert response.status_code == 200
 
 
-def test_validate_circular_reference(formula_engine_client):
+@pytest.mark.parametrize("ref", ["formula:some_id", "fox:some_id"])
+def test_validate_circular_reference(formula_engine_client, ref):
     response = formula_engine_client.post(
         "/formula-engine/v1/validate",
         json={
             "kind": "scalar",
             "expression": "{a} + {b}",
-            "bindings": {"a": "formula:some_id", "b": "PV:B"},
+            "bindings": {"a": ref, "b": "PV:B"},
         },
         headers=READ_HEADERS,
     )
     assert response.status_code == 200
     body = response.json()
     assert body["valid"] is False
-    assert any("formula:" in err for err in body["errors"])
+    assert any(ref in err for err in body["errors"])
 
 
 def test_validate_requires_auth(formula_engine_client):

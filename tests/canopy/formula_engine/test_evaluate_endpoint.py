@@ -1,5 +1,7 @@
 """Formula Engine /evaluate endpoint tests."""
 
+import pytest
+
 from tests.conftest import READ_HEADERS
 
 
@@ -112,14 +114,17 @@ def test_evaluate_requires_auth(formula_engine_client):
     assert response.status_code == 401
 
 
-def test_evaluate_circular_ref_rejected(formula_engine_client):
+# ``fox:`` is the retired prefix: a stale reference must fail the same clear
+# way, not reach the data source as a literal channel name.
+@pytest.mark.parametrize("ref", ["formula:derived", "fox:derived"])
+def test_evaluate_circular_ref_rejected(formula_engine_client, ref):
     response = formula_engine_client.post(
         "/formula-engine/v1/evaluate",
         json={
             "spec": {
                 "kind": "scalar",
                 "expression": "{a} + {b}",
-                "bindings": {"a": "formula:derived", "b": "PV:B"},
+                "bindings": {"a": ref, "b": "PV:B"},
             },
             "t0Ns": 0,
             "t1Ns": 10_000_000_000,
