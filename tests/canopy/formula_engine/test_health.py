@@ -15,3 +15,11 @@ def test_watchdog_returns_heartbeat():
     assert "version" in body
     assert body["uptimeS"] >= 0
     assert body["nowTsNs"] > 0
+
+
+def test_health_tag_matches_the_other_formula_engine_groups():
+    # module.capitalize() would give "Formula-engine / Health".
+    with TestClient(app) as client:
+        spec = client.get("/formula-engine/openapi.json").json()
+
+    assert spec["paths"]["/v1/health/watchdog"]["get"]["tags"] == ["Formula Engine / Health"]
