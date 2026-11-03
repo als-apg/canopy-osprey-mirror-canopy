@@ -119,8 +119,9 @@ class TestAutoProvision:
         assert fetch_count == 1
 
     async def test_read_aligned_provisions_only_missing_pvs(self, test_service, fake_clock):
-        """Only PVs not already buffered are provisioned."""
+        """Only PVs not already provisioned are fetched."""
         await test_service.seed("PV:EXISTS", _make_samples())
+        test_service.mark_provisioned("PV:EXISTS")
 
         fetched_pvs: list[str] = []
 
@@ -161,7 +162,7 @@ class TestAutoProvision:
             await adapter.read_aligned(["PV:FAIL"], _BASE + 100, _BASE + 500, align="last", index="union")
 
         assert subscribed == [["PV:FAIL"]]
-        assert "PV:FAIL" not in adapter._provisioned
+        assert not test_service.is_provisioned("PV:FAIL")
 
     async def test_read_latest_provisions_missing_pv(self, test_service, fake_clock):
         """read_latest for an unknown PV triggers provisioning."""

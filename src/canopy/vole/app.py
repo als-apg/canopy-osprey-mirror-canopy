@@ -37,8 +37,9 @@ async def vole_lifespan():
 
     async def _on_evict(pvs: list[str]) -> None:
         nonlocal ingest
+        # Evicted keys are canonical ring names; release every name that fed them.
         if ingest is not None:
-            await ingest.unsubscribe(pvs)
+            await ingest.unsubscribe_canonical(pvs)
 
     eviction = EvictionService(store, config, on_evict=_on_evict)
     notifier = ChangeNotifier()
@@ -52,7 +53,8 @@ async def vole_lifespan():
     gateway.bind_ingest(ingest)
     logger.info("Vole connected to Hare for live data ingestion")
 
-    grace = GraceManager(ingest, service, config)
+    grace = GraceManager(ingest, service, config, is_pinned=store.is_pinned)
+    gateway.bind_grace(grace)
     broker.add_deactivation_hook(grace.on_pv_deactivated, exclude_clients={HareIngestService.CLIENT_ID})
     broker.add_activation_hook(grace.on_pv_activated, exclude_clients={HareIngestService.CLIENT_ID})
 
@@ -69,6 +71,7 @@ async def vole_lifespan():
         broker.remove_activation_hook(grace.on_pv_activated)
         await grace.shutdown()
         await ingest.stop()
+        gateway.bind_grace(None)
         gateway.bind_ingest(None)
         gateway.bind_notifier(None)
         gateway.bind(None)
