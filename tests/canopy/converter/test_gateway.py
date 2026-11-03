@@ -36,3 +36,22 @@ async def test_convert_screen_before_bind_raises():
     gateway.bind(None)
     with pytest.raises(RuntimeError, match="before app startup"):
         await gateway.convert_screen(b"x", kind="edl")
+
+
+async def test_convert_screen_accepts_bob():
+    bob = b"""<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Synthetic</name>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <text>Hello</text>
+  </widget>
+</display>
+"""
+    gateway.bind(ConversionService())
+    try:
+        screen = await gateway.convert_screen(bob, kind="bob")
+    finally:
+        gateway.bind(None)
+    assert screen["schemaVersion"] == "1.0"
+    assert screen["root"]["children"]
