@@ -1,7 +1,8 @@
 # The panel-builder skill
 
-The panel-builder server (`canopy_mcp`, installed with the `mcp` extra) lets
-an agent build Canopy screens through MCP tools. The `canopy-panel-builder` skill is the guide the
+The panel-builder server (`canopy_mcp`, installed with the `mcp` extra; the
+FRONT process of [appliance mode](../deployment/appliance.md)) lets an agent
+build Canopy screens through MCP tools. The `canopy-panel-builder` skill is the guide the
 agent works by: where screens live, the Screen-IR file format, which tool to
 call when, and what to do when a call is refused. This page says how to
 install the skill and what the tools are.
@@ -105,4 +106,5 @@ tools are safe to allow without one.
     beside the viewer build). Without one, `check` returns one
     `spec_unavailable` warning in place of the schema and property findings,
     and `list_widgets`, `get_widget` and `get_schema` carry a
-    `spec_unavailable` note.
+    `spec_unavailable` note. See
+    [appliance mode](../deployment/appliance.md#spec_unavailable).

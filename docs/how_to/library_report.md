@@ -72,9 +72,10 @@ library they are listed and refused by `--check`, in a personal store they
 are only a warning of the `check` tool. Pass `--served-at personal` for a
 user's own store.
 
-A library served by the panel-builder server is named by `CANOPY_LIBRARY_DIR`.
-The server serves only its `screens/` subtree, so the two report files are
-never reachable from a browser.
+A library served by the panel-builder server is named by `CANOPY_LIBRARY_DIR`
+(see [appliance mode](../deployment/appliance.md)). The server serves only
+its `screens/` subtree, so the two report files are never reachable from a
+browser.
 
 ## What the report lists
 
