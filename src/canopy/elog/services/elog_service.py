@@ -17,7 +17,7 @@ from canopy.elog.errors import (
     ElogNotConfigured,
     ElogAttachmentTooLarge,
 )
-from canopy.elog.validation import APP_NAME_RULE, is_app
+from canopy.core.app_names import APP_NAME_RULE, is_app
 from canopy.elog.schemas.elog import (
     ElogTagDTO,
     ElogUserDTO,

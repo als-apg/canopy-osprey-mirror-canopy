@@ -21,7 +21,7 @@ import importlib
 
 from canopy.elog.config import ElogConfig
 from canopy.elog.errors import ElogNotConfigured
-from canopy.elog.validation import is_app
+from canopy.core.app_names import is_app
 from canopy.elog.adapters.base import (
     ElogAdapter,
     AdapterHealth,

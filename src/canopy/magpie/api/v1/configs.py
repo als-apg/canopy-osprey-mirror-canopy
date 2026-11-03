@@ -20,10 +20,11 @@ from fastapi import Path, Query, Security, APIRouter
 from canopy.core.errors import BadRequest
 from canopy.core.security import require_read_access, require_write_access
 from canopy.magpie.errors import ConfigNotFound, InvalidAppName
+from canopy.core.app_names import APP_NAME_RULE, is_app
 from canopy.magpie.dependencies import ConfigServiceDep
 from canopy.contracts.pagination import PagedResult
 from canopy.magpie.schemas.config import ConfigDTO, NewConfigDTO, UpdateConfigDTO
-from canopy.magpie.api.v1._validation import APP_NAME_RULE, is_app, is_slug, is_uuid
+from canopy.magpie.api.v1._validation import is_slug, is_uuid
 
 router = APIRouter(prefix="/configs", tags=["Configs"])
 

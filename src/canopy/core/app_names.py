@@ -1,8 +1,7 @@
-"""The ``{app}`` path-segment rule.
+"""The client app-name rule, shared by every module that takes an ``{app}``.
 
-Mirrors magpie's app-name rule (``canopy.magpie.api.v1._validation``) so one
-client app name works in both modules, without importing another module's
-internals. Keep the two in sync.
+Magpie keys stored configs by app and E-log picks an app's token by it, so one
+client app name has to be valid in both. Keeping the rule here makes that so.
 """
 
 import re
