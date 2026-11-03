@@ -123,14 +123,18 @@ def _email_of(user: Any) -> str:
     return user.get("mail") or user.get("email") or ""
 
 
-def _error_detail(response: httpx.Response) -> str:
+def _error_message(response: httpx.Response) -> str | None:
+    """elog-plus's own ``errorMessage``, which clients show to say why a post was rejected.
+
+    Any other body (an ingress or login page, say) is not passed on.
+    """
     try:
         body = response.json()
     except ValueError:
-        body = None
+        return None
     if isinstance(body, dict) and body.get("errorMessage"):
         return str(body["errorMessage"])[:_ERROR_EXCERPT_CHARS]
-    return response.text.strip()[:_ERROR_EXCERPT_CHARS]
+    return None
 
 
 def _segment(value: str) -> str:
@@ -218,9 +222,14 @@ class ElogPlusAdapter:
             logger.warning("elog-plus %s %s failed for app %s: %s", method, path, self.app, error)
             raise ElogUpstreamError(f"elog-plus is unreachable ({error})") from None
         if not response.is_success:
-            detail = _error_detail(response)
+            detail = _error_message(response)
             logger.warning(
-                "elog-plus %s %s returned %d for app %s: %s", method, path, response.status_code, self.app, detail
+                "elog-plus %s %s returned %d for app %s: %s",
+                method,
+                path,
+                response.status_code,
+                self.app,
+                detail or response.text.strip()[:_ERROR_EXCERPT_CHARS],
             )
             message = f"elog-plus returned {response.status_code}"
             if response.is_redirect or response.status_code == 401:

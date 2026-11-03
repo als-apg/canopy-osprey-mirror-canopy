@@ -300,6 +300,15 @@ class TestErrors:
         with pytest.raises(ElogUpstreamError, match="returned 400: Unknown author nobody@x"):
             await adapter.create_entry(_entry(additionalAuthors=["nobody@x"]))
 
+    async def test_an_error_page_is_logged_but_not_passed_on(self, adapter, httpx_mock: HTTPXMock, caplog):
+        httpx_mock.add_response(status_code=502, text="<html><title>Bad Gateway</title>internal-host</html>")
+
+        with caplog.at_level(logging.WARNING), pytest.raises(ElogUpstreamError) as excinfo:
+            await adapter.list_logbooks()
+
+        assert excinfo.value.detail == "elog-plus returned 502"
+        assert "internal-host" in caplog.text
+
     async def test_login_redirect_hints_at_the_wrong_ingress(self, adapter, httpx_mock: HTTPXMock):
         httpx_mock.add_response(status_code=302, headers={"location": "https://vouch.example.org/login"})
 

@@ -148,7 +148,7 @@ parent, new entry id), never the token or the body.
 | 404 | `elog_app_not_found` | `{app}` has no token configured |
 | 413 | `elog_attachment_too_large` | upload over `MAX_ATTACHMENT_BYTES` |
 | 501 | `elog_not_supported` | the provider has no equivalent (an out-of-tree adapter without follow-ups, say) |
-| 502 | `elog_upstream_error` | the e-log rejected the call or is unreachable; `detail` carries its status and message |
+| 502 | `elog_upstream_error` | the e-log rejected the call or is unreachable; `detail` carries its status, plus elog-plus's own `errorMessage` when it sent one (any other response body is only logged) |
 | 503 | `elog_not_configured` | no usable provider on this instance |
 | 504 | `elog_upstream_timeout` | the e-log did not answer within `TIMEOUT_S` |
 
