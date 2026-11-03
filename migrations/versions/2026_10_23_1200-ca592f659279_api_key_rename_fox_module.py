@@ -1,7 +1,7 @@
 """api_key: rename the fox module scope to formula-engine
 
 Revision ID: ca592f659279
-Revises: e2a7c1f5b6d3
+Revises: aecc42bb60da
 Create Date: 2026-10-23 12:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "ca592f659279"
-down_revision: str | None = "e2a7c1f5b6d3"
+down_revision: str | None = "aecc42bb60da"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
