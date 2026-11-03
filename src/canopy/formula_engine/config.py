@@ -1,4 +1,12 @@
+import os
+import logging
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+LEGACY_ENV_PREFIX = "CANOPY_FOX__"
+"""The Formula Engine's prefix while it was named Fox. Nothing reads it any more."""
 
 
 class FormulaEngineConfig(BaseSettings):
@@ -33,3 +41,19 @@ class FormulaEngineConfig(BaseSettings):
 
 def get_formula_engine_config() -> FormulaEngineConfig:
     return FormulaEngineConfig()
+
+
+def warn_legacy_env() -> None:
+    """Warn once if any ``CANOPY_FOX__*`` variable is still set.
+
+    Those variables are ignored since the rename, so a deployment that still
+    sets them silently runs on the defaults. Called from the module's lifespan,
+    which runs once per process.
+    """
+    legacy = sorted(name for name in os.environ if name.startswith(LEGACY_ENV_PREFIX))
+    if legacy:
+        logger.warning(
+            "Ignoring %s: the Formula Engine reads %s* now, so these settings fall back to their defaults",
+            ", ".join(legacy),
+            FormulaEngineConfig.model_config["env_prefix"],
+        )

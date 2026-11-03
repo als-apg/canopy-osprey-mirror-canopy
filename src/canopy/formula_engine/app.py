@@ -9,7 +9,7 @@ from canopy.core.clock import SystemClock
 from canopy.core.errors import register_canopy_error_handler
 from canopy.vole.adapter import VoleDataSource
 from canopy.formula_engine import gateway
-from canopy.formula_engine.config import get_formula_engine_config
+from canopy.formula_engine.config import warn_legacy_env, get_formula_engine_config
 from canopy.formula_engine.runtime import mark_started
 from canopy.formula_engine.api.v1.router import router as v1_router
 from canopy.formula_engine.services.parser import Parser
@@ -26,6 +26,7 @@ async def formula_engine_lifespan():
     Composed by the parent app's lifespan in ``canopy.main`` — mounted sub-apps
     don't run their own lifespan automatically behind ``app.mount()``.
     """
+    warn_legacy_env()
     config = get_formula_engine_config()
     data_source = VoleDataSource(
         vole_gateway.get_service(),
