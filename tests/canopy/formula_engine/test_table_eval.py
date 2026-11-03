@@ -642,3 +642,93 @@ class TestWebSocketUnreachable:
                 seen.setdefault(msg["type"], msg)
             assert time.monotonic() - start < 1.0
         assert seen["result"]["data"]["table"]["inputs"]["y1"]["history"] == "not-archived"
+
+
+# --------------------------------------------------------------------------- #
+# Through canopy_mcp's forward (text frames on every hop)
+# --------------------------------------------------------------------------- #
+
+
+class FormulaEngineServer:
+    """The real ``/formula-engine/v1/ws/formulas`` endpoint over a table-capable manager, under uvicorn."""
+
+    def __init__(self) -> None:
+        import time
+        import threading
+
+        import uvicorn
+        from fastapi import FastAPI
+
+        from canopy.core.security import ws_require_read_access
+        from canopy.formula_engine.api.v1 import ws as formula_engine_ws
+
+        self.h = Harness()
+        self.h.archived("X", [(T0 - HOUR, 1.0)])
+        self.h.archived("Y1", [(T0 - HOUR, float("nan"))])
+        self.rig: Rig | None = None
+        app = FastAPI()
+        app.include_router(formula_engine_ws.router, prefix="/formula-engine/v1")
+
+        @app.on_event("startup")
+        async def _start() -> None:
+            self.rig = Rig(self.h)
+
+        @app.on_event("shutdown")
+        async def _stop() -> None:
+            await self.rig.mgr.shutdown()
+
+        app.dependency_overrides[get_subscription_manager] = lambda: self.rig.mgr
+        app.dependency_overrides[ws_require_read_access] = lambda: None
+        self._server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on"))
+        self._thread = threading.Thread(target=self._server.run, daemon=True)
+        self._thread.start()
+        deadline = time.monotonic() + 10
+        while not self._server.started:
+            if time.monotonic() > deadline:
+                raise RuntimeError("formula engine server did not start")
+            time.sleep(0.02)
+        self.port = self._server.servers[0].sockets[0].getsockname()[1]
+
+    def stop(self) -> None:
+        self._server.should_exit = True
+        self._thread.join(timeout=10)
+
+
+@pytest.fixture
+def formula_engine_server():
+    server = FormulaEngineServer()
+    yield server
+    server.stop()
+
+
+def test_table_frames_arrive_as_text_through_the_canopy_mcp_forward(tmp_path, formula_engine_server):
+    pytest.importorskip("fcntl", reason="the panel server is POSIX-only: its draft store takes fcntl file locks")
+    pytest.importorskip("canopy_mcp", reason="the panel server is a separate package")
+    from canopy_mcp.app import create_app
+    from canopy_mcp.config import Settings
+
+    drafts = tmp_path / "drafts"
+    drafts.mkdir()
+    # The test client names its server "testserver" in Host, which the relay must accept.
+    settings = Settings(
+        base_url=f"http://127.0.0.1:{formula_engine_server.port}",
+        api_key="k",
+        drafts_dir=drafts,
+        self_url="http://testserver",
+    )
+    with TestClient(create_app(settings, startup_hooks=[])) as client:
+        with client.websocket_connect("/formula-engine/v1/ws/formulas") as ws:
+            ws.send_json(_table_subscribe())
+            seen: dict[str, dict] = {}
+            while "result" not in seen:
+                msg = json.loads(ws.receive_text())  # receive_text fails on a binary frame
+                seen.setdefault(msg["type"], msg)
+            ws.send_json({"type": "ping"})
+            while "pong" not in seen:
+                msg = json.loads(ws.receive_text())
+                seen.setdefault(msg["type"], msg)
+    assert {"subscribed", "result", "pong"} <= set(seen)
+    data = seen["result"]["data"]
+    FormulaResultDTO.model_validate(data)
+    assert set(data) == {"kind", "table"}
+    assert data["table"]["columns"]["y1"][0] is None
