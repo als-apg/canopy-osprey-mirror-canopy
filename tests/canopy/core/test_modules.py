@@ -29,19 +29,19 @@ def test_every_mount_and_the_parent_app_are_tagged_with_their_module():
 
 class TestSplitModules:
     def test_recognized_modules_pass_through(self):
-        known, unknown = split_modules({"fox", "vole"})
+        known, unknown = split_modules({"formula-engine", "vole"})
 
-        assert known == frozenset({"fox", "vole"})
+        assert known == frozenset({"formula-engine", "vole"})
         assert unknown == frozenset()
 
     def test_unrecognized_modules_are_separated_out(self):
-        known, unknown = split_modules({"fox", "not-a-module"})
+        known, unknown = split_modules({"formula-engine", "not-a-module"})
 
-        assert known == frozenset({"fox"})
+        assert known == frozenset({"formula-engine"})
         assert unknown == frozenset({"not-a-module"})
 
     def test_wildcard_collapses_the_known_set(self):
-        known, unknown = split_modules({"fox", WILDCARD})
+        known, unknown = split_modules({"formula-engine", WILDCARD})
 
         assert known == frozenset({WILDCARD})
         assert unknown == frozenset()

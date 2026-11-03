@@ -47,7 +47,7 @@ def test_docs_ui_lists_main_and_module_specs() -> None:
             ("hare", "Hare"),
             ("raccoon", "Raccoon"),
             ("vole", "Vole"),
-            ("fox", "Fox"),
+            ("formula-engine", "Formula Engine"),
             ("squirrel", "Squirrel"),
             ("magpie", "Magpie"),
             ("jobs", "Jobs"),

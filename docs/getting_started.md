@@ -127,7 +127,7 @@ exercise the WebSocket APIs — open them directly in a browser:
 
 - `hare-example.html` — subscribe to PVs and watch raw update frames.
 - `hare-plot-example.html` — live strip chart.
-- `fox-ws-example.html` / `fox-rest-example.html` — formula evaluation.
+- `formula-engine-ws-example.html` / `formula-engine-rest-example.html` — formula evaluation.
 
 Each page defaults to `ws://localhost:8000/...?api_key=dev`. See the
 [Hare WebSocket guide](hare/websocket.md) for the protocol itself.
@@ -190,6 +190,6 @@ database migrations, and the production variant.
 - [Modules overview](modules/index.md) — what each module does and where its
   docs live.
 - [Hare](hare/index.md) — live PV reads, writes, and the WebSocket stream.
-- [Fox](fox/index.md) — formulas over live and historical data.
-- [Vole](vole/index.md) — the time-aligned buffer behind Fox.
+- [Formula Engine](formula-engine/index.md) — formulas over live and historical data.
+- [Vole](vole/index.md) — the time-aligned buffer behind the Formula Engine.
 - [Deployment](deployment/index.md) — running Canopy for real users.

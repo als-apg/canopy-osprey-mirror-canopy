@@ -9,7 +9,7 @@ credential layers behind the scenes fit together.
 Every key carries three independent scopes:
 
 - **`read`** — GET requests and WebSocket connections, plus the handful of
-  POSTs that only read (Converter's conversions, Fox's evaluate/validate).
+  POSTs that only read (Converter's conversions, Formula Engine's evaluate/validate).
 - **`write`** — endpoints that change something: setting a PV, saving a
   snapshot, storing a config.
 - **`admin`** — key management (this page's own HTTP surface) and other
@@ -141,7 +141,7 @@ curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
 ### Module scoping
 
 A key can be restricted to one or more mounted sub-apps — `mole`, `hare`,
-`raccoon`, `vole`, `fox`, `squirrel`, `magpie`, `jobs`, `converter`
+`raccoon`, `vole`, `formula-engine`, `squirrel`, `magpie`, `jobs`, `converter`
 — or `core`, for the parent app's own routes (`/health`, `/v1/api-keys`).
 Minting a key via the CLI or `POST /v1/api-keys` without naming any modules
 grants every module, an explicit default of `["*"]` at that layer. There is no
@@ -157,12 +157,12 @@ Set it with `-m`/`--module` (repeatable) on `scripts/create_key.py`, or the
 `modules` field on `POST /v1/api-keys`:
 
 ```bash
-uv run python scripts/create_key.py trace -r -m fox -m vole
+uv run python scripts/create_key.py trace -r -m formula-engine -m vole
 ```
 
 ```bash
 curl -X POST -H "X-API-Key: <admin-token>" -H "Content-Type: application/json" \
-  -d '{"appName": "trace", "read": true, "modules": ["fox", "vole"]}' \
+  -d '{"appName": "trace", "read": true, "modules": ["formula-engine", "vole"]}' \
   http://localhost:<API_PORT>/v1/api-keys
 ```
 
@@ -171,7 +171,7 @@ entry with no `@` at all is skipped as malformed, the same as an empty token.
 Use `@*` for every module:
 
 ```bash
-CANOPY_API_KEYS="trace:read@fox+vole,ops:admin@*"
+CANOPY_API_KEYS="trace:read@formula-engine+vole,ops:admin@*"
 ```
 
 A key that resolves but isn't scoped to the module a route belongs to gets

@@ -1,0 +1,223 @@
+"""Formula Engine WebSocket endpoint — end-to-end tests."""
+
+import pytest
+from fastapi import WebSocketDisconnect
+from fastapi.testclient import TestClient
+
+from canopy.main import app as parent_app
+from canopy.contracts.sample import Sample, AlarmSeverity
+from canopy.formula_engine.app import app as formula_engine_app
+from canopy.formula_engine.config import FormulaEngineConfig
+from canopy.vole.services.notifier import ChangeNotifier
+from canopy.formula_engine.dependencies import (
+    get_formula_service,
+    get_subscription_manager,
+)
+from tests.canopy.formula_engine.conftest import FakeDataSource
+from canopy.formula_engine.services.parser import Parser
+from canopy.formula_engine.services.formula_service import FormulaService
+from canopy.formula_engine.services.subscription_manager import SubscriptionManager
+
+
+@pytest.fixture
+def notifier():
+    return ChangeNotifier()
+
+
+@pytest.fixture
+def ws_client(notifier):
+    """TestClient with the Formula Engine's FormulaService and SubscriptionManager overridden."""
+    data_source = FakeDataSource(
+        latest={
+            "PV:A": Sample(ts_ns=1000, value=5.0, severity=AlarmSeverity.NO_ALARM, source="archive"),
+            "PV:B": Sample(ts_ns=2000, value=3.0, severity=AlarmSeverity.NO_ALARM, source="archive"),
+        }
+    )
+    config = FormulaEngineConfig()
+    parser = Parser()
+    formula_service = FormulaService(data_source, parser, config)
+
+    subscribed_pvs = []
+
+    async def subscribe_live(pvs: list[str]) -> None:
+        subscribed_pvs.extend(pvs)
+
+    sub_manager = SubscriptionManager(
+        formula_service=formula_service,
+        on_change_fn=notifier.subscribe,
+        subscribe_live_fn=subscribe_live,
+    )
+
+    formula_engine_app.dependency_overrides[get_formula_service] = lambda: formula_service
+    formula_engine_app.dependency_overrides[get_subscription_manager] = lambda: sub_manager
+    try:
+        with TestClient(parent_app) as client:
+            yield client, notifier, sub_manager
+    finally:
+        formula_engine_app.dependency_overrides.pop(get_formula_service, None)
+        formula_engine_app.dependency_overrides.pop(get_subscription_manager, None)
+
+
+_SCALAR_SPEC = {
+    "kind": "scalar",
+    "expression": "{a} + {b}",
+    "bindings": {"a": "PV:A", "b": "PV:B"},
+}
+
+
+class TestFormulaEngineWebSocket:
+    def test_ws_subscribe_receives_result(self, ws_client):
+        client, notifier, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": _SCALAR_SPEC})
+
+            msg = ws.receive_json()
+            assert msg["type"] == "subscribed"
+            sub_id = msg["id"]
+            assert sub_id
+
+            msg = ws.receive_json()
+            assert msg["type"] == "result"
+            assert msg["id"] == sub_id
+            assert msg["data"]["kind"] == "scalar"
+            assert msg["data"]["scalar"]["value"] == 8.0
+
+    def test_ws_ping_pong(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "ping"})
+            msg = ws.receive_json()
+            assert msg["type"] == "pong"
+            assert "timestamp" in msg
+
+    def test_ws_bad_message_type(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "bogus"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert "unknown message type" in msg["message"]
+
+    def test_ws_requires_auth(self, ws_client):
+        client, _, _ = ws_client
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/formula-engine/v1/ws/formulas") as ws:
+                ws.receive_json()
+
+    def test_ws_invalid_spec(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": {"bad": "data"}})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert "invalid spec" in msg["message"]
+
+    def test_ws_subscribe_missing_spec(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert "requires" in msg["message"]
+
+    def test_ws_one_shot_sends_completed(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json(
+                {
+                    "type": "subscribe",
+                    "spec": {
+                        "kind": "timeseries",
+                        "expression": "{a} + {b}",
+                        "bindings": {"a": "PV:A", "b": "PV:B"},
+                    },
+                    "t0Ns": 1_000_000_000,
+                    "t1Ns": 10_000_000_000,
+                }
+            )
+
+            msg = ws.receive_json()
+            assert msg["type"] == "subscribed"
+            sub_id = msg["id"]
+
+            msg = ws.receive_json()
+            assert msg["type"] == "result"
+            assert msg["id"] == sub_id
+
+            msg = ws.receive_json()
+            assert msg["type"] == "completed"
+            assert msg["id"] == sub_id
+
+    def test_ws_non_object_message_errors_without_dropping(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json([1, 2, 3])
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert msg["code"] == "invalid_message"
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+    def test_ws_non_json_text_errors_without_dropping(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_text("not json")
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+    def test_ws_non_numeric_interval_is_rejected(self, ws_client):
+        # "fast" used to raise mid-setup and orphan a shared eval. Now it's a
+        # clean error and the connection survives.
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": _SCALAR_SPEC, "intervalMs": "fast"})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert msg["code"] == "invalid_message"
+            assert "intervalMs" in msg["message"]
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"
+
+    def test_ws_unsubscribe(self, ws_client):
+        client, _, _ = ws_client
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": _SCALAR_SPEC})
+
+            msg = ws.receive_json()
+            assert msg["type"] == "subscribed"
+            sub_id = msg["id"]
+
+            msg = ws.receive_json()
+            assert msg["type"] == "result"
+
+            ws.send_json({"type": "unsubscribe", "id": sub_id})
+            ws.send_json({"type": "ping"})
+            msg = ws.receive_json()
+            assert msg["type"] == "pong"
+
+    def test_ws_update_failure_errors_without_dropping(self, ws_client):
+        # A raising update_subscription must send an error frame and keep the
+        # socket open, not fall through to remove_client and drop the connection.
+        client, _, sub_manager = ws_client
+
+        async def boom(*_args, **_kwargs):
+            raise RuntimeError("update failed")
+
+        sub_manager.update_subscription = boom
+
+        with client.websocket_connect("/formula-engine/v1/ws/formulas?api_key=test-read") as ws:
+            ws.send_json({"type": "subscribe", "spec": _SCALAR_SPEC})
+            assert ws.receive_json()["type"] == "subscribed"
+            assert ws.receive_json()["type"] == "result"
+
+            ws.send_json({"type": "update", "id": "sub-1", "t0Ns": -5000})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert msg["code"] == "unhandled_exception"
+            assert msg["id"] == "sub-1"
+
+            # Socket survives: connection was not dropped.
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"

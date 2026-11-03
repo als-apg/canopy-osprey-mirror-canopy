@@ -33,12 +33,12 @@ def scoped_app() -> FastAPI:
     async def core_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
         return {"name": key.name}
 
-    fox_app = FastAPI()
-    register_canopy_error_handler(fox_app)
-    tag_module(fox_app, "fox")
+    formula_engine_app = FastAPI()
+    register_canopy_error_handler(formula_engine_app)
+    tag_module(formula_engine_app, "formula-engine")
 
-    @fox_app.get("/read")
-    async def fox_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
+    @formula_engine_app.get("/read")
+    async def formula_engine_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
         return {"name": key.name}
 
     squirrel_app = FastAPI()
@@ -49,7 +49,7 @@ def scoped_app() -> FastAPI:
     async def squirrel_route(key: APIKey = Security(require_read_access)) -> dict[str, str]:
         return {"name": key.name}
 
-    app.mount("/fox", fox_app)
+    app.mount("/formula-engine", formula_engine_app)
     app.mount("/squirrel", squirrel_app)
     return app
 
@@ -71,7 +71,7 @@ class TestModuleScoping:
         client = TestClient(scoped_app)
 
         assert client.get("/core-route", headers={"X-API-Key": "t"}).status_code == 200
-        assert client.get("/fox/read", headers={"X-API-Key": "t"}).status_code == 200
+        assert client.get("/formula-engine/read", headers={"X-API-Key": "t"}).status_code == 200
         assert client.get("/squirrel/read", headers={"X-API-Key": "t"}).status_code == 200
 
     def test_scoped_key_is_refused_outside_its_module(self, scoped_app, bind_fake_registry):
@@ -81,7 +81,7 @@ class TestModuleScoping:
         client = TestClient(scoped_app)
 
         ok = client.get("/squirrel/read", headers={"X-API-Key": "t"})
-        refused = client.get("/fox/read", headers={"X-API-Key": "t"})
+        refused = client.get("/formula-engine/read", headers={"X-API-Key": "t"})
 
         assert ok.status_code == 200
         assert refused.status_code == 403
@@ -92,7 +92,7 @@ class TestModuleScoping:
         bind_fake_registry(APIKey(token="t", read=False, write=False, name="none", modules=frozenset({"squirrel"})))
         client = TestClient(scoped_app)
 
-        resp = client.get("/fox/read", headers={"X-API-Key": "t"})
+        resp = client.get("/formula-engine/read", headers={"X-API-Key": "t"})
 
         assert resp.status_code == 403
         assert resp.json()["code"] == "insufficient_module_access"

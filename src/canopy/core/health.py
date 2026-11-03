@@ -16,14 +16,16 @@ from canopy import __version__
 from canopy.contracts.health import HeartbeatDTO
 
 
-def make_health_router(module: str, uptime_s: Callable[[], float]) -> APIRouter:
+def make_health_router(module: str, uptime_s: Callable[[], float], *, display_name: str | None = None) -> APIRouter:
     """Build a ``/health`` router pre-populated with the ``/watchdog`` route.
 
-    ``module`` names the sub-module (used in the DTO and the router's tag) and
-    ``uptime_s`` is that module's ``ModuleRuntime.uptime_s`` (or the thin
-    module-level wrapper around it).
+    ``module`` names the sub-module in the DTO, and ``uptime_s`` is that
+    module's ``ModuleRuntime.uptime_s`` (or the thin module-level wrapper
+    around it). The router's OpenAPI tag is ``"<display_name> / Health"``;
+    ``display_name`` defaults to ``module.capitalize()``, which suits
+    single-word names but turns ``formula-engine`` into ``Formula-engine``.
     """
-    router = APIRouter(prefix="/health", tags=[f"{module.capitalize()} / Health"])
+    router = APIRouter(prefix="/health", tags=[f"{display_name or module.capitalize()} / Health"])
 
     @router.get("/watchdog")
     async def watchdog() -> HeartbeatDTO:

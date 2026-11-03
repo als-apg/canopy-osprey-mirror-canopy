@@ -1,7 +1,7 @@
 """Change-notification pub/sub for Vole ring buffers.
 
 When a ring receives new data via append(), the notifier fires registered
-callbacks so downstream consumers (Fox) can react without polling.
+callbacks so downstream consumers (Formula Engine) can react without polling.
 """
 
 from __future__ import annotations

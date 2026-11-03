@@ -15,9 +15,9 @@ from canopy.converter.errors import (
     BatchResultNotFound,
 )
 from canopy.converter.dependencies import (
-    FoxValidateDep,
     ConverterConfigDep,
     ConversionServiceDep,
+    FormulaEngineValidateDep,
 )
 from canopy.converter.schemas.conversions import (
     BatchScreenDTO,
@@ -27,8 +27,8 @@ from canopy.converter.schemas.conversions import (
     ConversionStatsDTO,
     ScreenConversionResultDTO,
 )
-from canopy.converter.adapters.fox_validation import validate_formulas
 from canopy.converter.services.conversion_service import ConversionResult
+from canopy.converter.adapters.formula_engine_validation import validate_formulas
 
 router = APIRouter(tags=["Converter / Conversions"])
 
@@ -78,7 +78,7 @@ def _to_dto(result: ConversionResult, warnings: list[str]) -> ScreenConversionRe
 async def create_conversion(
     service: ConversionServiceDep,
     config: ConverterConfigDep,
-    fox_validate: FoxValidateDep,
+    formula_engine_validate: FormulaEngineValidateDep,
     file: Annotated[UploadFile, File(description="A legacy .edl or .ui screen")],
     kind: Annotated[Literal["edl", "ui"] | None, Form()] = None,
 ) -> ScreenConversionResultDTO:
@@ -90,8 +90,8 @@ async def create_conversion(
     data = await _read_upload(file, config.max_upload_bytes)
     resolved = _resolve_kind(kind, file.filename)
     result = await run_in_threadpool(lambda: service.convert(data, kind=resolved, filename=file.filename))
-    # Seam #2: validate hoisted calc:// formulas via Fox; failures become warnings.
-    formula_warnings = await validate_formulas(result.formulas, validate=fox_validate)
+    # Seam #2: validate hoisted calc:// formulas via the Formula Engine; failures become warnings.
+    formula_warnings = await validate_formulas(result.formulas, validate=formula_engine_validate)
     return _to_dto(result, result.warnings + formula_warnings)
 
 
@@ -99,7 +99,7 @@ async def create_conversion(
 async def validate_conversion(
     service: ConversionServiceDep,
     config: ConverterConfigDep,
-    fox_validate: FoxValidateDep,
+    formula_engine_validate: FormulaEngineValidateDep,
     file: Annotated[UploadFile, File(description="A legacy .edl or .ui screen")],
     kind: Annotated[Literal["edl", "ui"] | None, Form()] = None,
 ) -> ValidateResultDTO:
@@ -118,7 +118,7 @@ async def validate_conversion(
         result = await run_in_threadpool(lambda: service.convert(data, kind=resolved, filename=file.filename))
     except (UnsupportedInput, ConversionFailed) as exc:
         return ValidateResultDTO(ok=False, warnings=[exc.detail])
-    formula_warnings = await validate_formulas(result.formulas, validate=fox_validate)
+    formula_warnings = await validate_formulas(result.formulas, validate=formula_engine_validate)
     return ValidateResultDTO(
         ok=True,
         warnings=result.warnings + formula_warnings,
@@ -146,7 +146,7 @@ async def create_batch_conversion(
     ``GET /conversions/batch/{jobId}/screens/{index}``.
     """
     # Lazy import: keeps the converter loadable without Jobs and routes the
-    # cross-module call through the public gateway only (mirrors get_fox_validate).
+    # cross-module call through the public gateway only (mirrors get_formula_engine_validate).
     from canopy.jobs import gateway as jobs_gateway
     from canopy.converter.tasks import input_key
 

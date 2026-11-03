@@ -93,10 +93,10 @@ nav:
       - hare/index.md
       - REST API: hare/rest_api.md
       - WebSocket Stream: hare/websocket.md
-    - Fox:
-      - fox/index.md
-      - REST API: fox/rest_api.md
-      - WebSocket Subscriptions: fox/websocket.md
+    - Formula Engine:
+      - formula-engine/index.md
+      - REST API: formula-engine/rest_api.md
+      - WebSocket Subscriptions: formula-engine/websocket.md
     - Vole:
       - vole/index.md
       - REST API: vole/rest_api.md
@@ -114,5 +114,5 @@ nav:
     - Setup guide: observability/setup_guide.md
     - Metrics: observability/metrics.md
   - API Reference:
-    - Fox: api_reference/fox.md
+    - Formula Engine: api_reference/formula-engine.md
     - Vole: api_reference/vole.md

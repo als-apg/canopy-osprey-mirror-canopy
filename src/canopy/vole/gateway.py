@@ -143,6 +143,6 @@ async def unsubscribe_live(pvs: list[str]) -> None:
 def on_change(pv: str, callback: Callable[[str], Awaitable[None]]) -> Callable[[], None]:
     """Subscribe to notifications when a PV ring receives new data.
 
-    Returns an unsubscribe function. Used by Fox to trigger re-evaluation.
+    Returns an unsubscribe function. Used by the Formula Engine to trigger re-evaluation.
     """
     return get_notifier().subscribe(pv, callback)

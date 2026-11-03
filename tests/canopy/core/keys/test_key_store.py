@@ -50,12 +50,12 @@ class TestMintAndResolve:
         assert (resolved.read, resolved.write, resolved.admin) == (False, False, True)
 
     async def test_scoped_key_resolves_with_its_modules(self, session, session_maker):
-        created = await mint(session, "trace", read=True, modules=["fox", "vole"])
+        created = await mint(session, "trace", read=True, modules=["formula-engine", "vole"])
 
         resolved = await DbKeyRegistry().get(created.token)
 
         assert resolved is not None
-        assert resolved.modules == frozenset({"fox", "vole"})
+        assert resolved.modules == frozenset({"formula-engine", "vole"})
 
     async def test_unscoped_key_resolves_with_the_wildcard(self, session, session_maker):
         created = await mint(session, "trace", read=True)

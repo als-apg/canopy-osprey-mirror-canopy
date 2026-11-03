@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Canopy · Formula Engine WebSocket formula subscriptions</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; max-width: 960px; }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  .sub { color: #888; margin: 0 0 1rem; }
+  fieldset { border: 1px solid #ccc; border-radius: 8px; margin: 0 0 1rem; padding: .75rem 1rem; }
+  legend { padding: 0 .4rem; color: #888; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  label { display: inline-flex; flex-direction: column; font-size: .75rem; color: #888; gap: .15rem; margin-right: .75rem; }
+  input, select, textarea { font: inherit; padding: .35rem .5rem; border: 1px solid #bbb; border-radius: 6px; min-width: 14rem; }
+  textarea { resize: vertical; min-height: 2.5rem; }
+  button { font: inherit; padding: .4rem .8rem; border: 1px solid #888; border-radius: 6px; background: #f3f3f3; color: #1a1a1a; cursor: pointer; }
+  button:hover { background: #e8e8e8; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .5rem; }
+  .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; background: #bbb; vertical-align: middle; margin-right: .4rem; }
+  .dot.on { background: #2e9e44; } .dot.off { background: #c0392b; }
+  .muted { color: #888; }
+  code { background: rgba(127,127,127,.18); padding: .05rem .35rem; border-radius: 4px; }
+  #log { height: 12rem; overflow: auto; background: #11151c; color: #c8d3e0; border-radius: 8px;
+         padding: .5rem .75rem; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ddd; font-variant-numeric: tabular-nums; }
+  th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #888; }
+  td.value { font-weight: 600; }
+  .chip { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 600; background: #4ea1ff; color: #fff; margin-right: .3rem; }
+  .chip-push { background: #2e9e44; }
+  .chip-poll { background: #d39e00; }
+  .chip-oneshot { background: #7d3c98; }
+</style>
+</head>
+<body>
+  <h1>Canopy · Formula Engine <span class="muted">WebSocket formula subscriptions</span></h1>
+  <p class="sub">Subscribes to live formula evaluations over <code>/formula-engine/v1/ws/formulas</code>.
+     Supports push (data-driven), poll (interval), and one-shot modes.
+     Start the backend with <code>CANOPY_API_KEYS="dev:read+write" uv run uvicorn canopy.main:app</code> and open this file.</p>
+
+  <fieldset>
+    <legend>Connection</legend>
+    <div class="row">
+      <label>WebSocket URL
+        <input id="url" value="ws://localhost:8000/formula-engine/v1/ws/formulas" size="40" />
+      </label>
+      <label>API key
+        <input id="key" value="dev" style="min-width:8rem" />
+      </label>
+      <button id="connectBtn">Connect</button>
+      <span style="margin-left:.5rem"><span id="dot" class="dot"></span><span id="status">disconnected</span></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Subscribe to formula</legend>
+    <div class="row" style="margin-bottom:.5rem">
+      <label>Kind
+        <select id="kind" style="min-width:8rem">
+          <option value="scalar" selected>scalar</option>
+          <option value="timeseries">timeseries</option>
+          <option value="waveform">waveform</option>
+        </select>
+      </label>
+      <label>Mode
+        <select id="subMode" style="min-width:8rem">
+          <option value="push" selected>push (data-driven)</option>
+          <option value="poll">poll (interval)</option>
+          <option value="oneshot">one-shot (fixed window)</option>
+        </select>
+      </label>
+      <label>Interval ms (poll mode)
+        <input id="intervalMs" type="number" value="1000" style="min-width:6rem" />
+      </label>
+    </div>
+    <div class="row" style="margin-bottom:.5rem">
+      <label style="flex:1">Expression
+        <input id="expr" value="{sine} * 2" style="width:100%" placeholder='e.g. {current} * {voltage}' />
+      </label>
+    </div>
+    <div class="row" style="margin-bottom:.5rem">
+      <label style="flex:1">Bindings (JSON: token --> PV name)
+        <textarea id="bindings" style="width:100%">{"sine": "TEST:SINE"}</textarea>
+      </label>
+    </div>
+    <div class="row">
+      <label>t0 window (seconds, 0 = latest only)
+        <input id="t0Sec" type="number" value="0" step="1" style="min-width:6rem" />
+      </label>
+      <label>t0Ns (computed)
+        <input id="t0" type="number" value="0" style="min-width:10rem" readonly />
+      </label>
+      <label>t1Ns (0 = live, non-zero = one-shot)
+        <input id="t1" type="number" value="0" style="min-width:10rem" />
+      </label>
+      <button id="subBtn" disabled>Subscribe</button>
+      <button id="pingBtn" disabled>Ping</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Active subscriptions</legend>
+    <table>
+      <thead><tr><th>ID</th><th>Expression</th><th>Kind</th><th>Mode</th><th>Latest value</th><th>Updated</th><th></th></tr></thead>
+      <tbody id="subTable"><tr><td colspan="7" class="muted">No active subscriptions.</td></tr></tbody>
+    </table>
+  </fieldset>
+
+  <fieldset id="updateSection" style="display:none">
+    <legend>Update subscription</legend>
+    <div class="row" style="margin-bottom:.5rem">
+      <label>Subscription ID
+        <input id="updateId" readonly style="min-width:18rem; opacity:.7" />
+      </label>
+    </div>
+    <div class="row" style="margin-bottom:.5rem">
+      <label style="flex:1">New expression (blank = keep current)
+        <input id="updateExpr" style="width:100%" placeholder="leave blank to keep unchanged" />
+      </label>
+    </div>
+    <div class="row" style="margin-bottom:.5rem">
+      <label style="flex:1">New bindings JSON (blank = keep current)
+        <textarea id="updateBindings" style="width:100%" placeholder="leave blank to keep unchanged"></textarea>
+      </label>
+    </div>
+    <div class="row">
+      <label>New t0 window (seconds, blank = keep)
+        <input id="updateT0Sec" type="number" step="1" style="min-width:6rem" placeholder="—" />
+      </label>
+      <label>New interval ms (blank = keep)
+        <input id="updateInterval" type="number" style="min-width:6rem" placeholder="—" />
+      </label>
+      <button id="updateBtn">Send update</button>
+      <button id="updateCancelBtn" style="background:transparent">Cancel</button>
+    </div>
+  </fieldset>
+
+  <h2 style="font-size:.8rem;color:#888;text-transform:uppercase;letter-spacing:.05em;margin:1.25rem 0 .35rem">Frame log</h2>
+  <div id="log"></div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let ws = null;
+  const subs = new Map(); // id -> { spec, mode, latest, tsNs }
+
+  function log(line) {
+    const el = $("log");
+    const ts = new Date().toLocaleTimeString();
+    el.textContent = `[${ts}] ${line}\n` + el.textContent;
+    if (el.textContent.length > 12000) el.textContent = el.textContent.slice(0, 12000);
+  }
+
+  function fmtValue(data) {
+    if (!data) return "—";
+    if (data.scalar) {
+      const v = data.scalar.value;
+      return typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(4)) : String(v);
+    }
+    if (data.timeseries) return `[${data.timeseries.values.length} pts]`;
+    if (data.waveform) return `[${data.waveform.values.length} elem]`;
+    return JSON.stringify(data).slice(0, 60);
+  }
+
+  function fmtTs(ns) {
+    if (!ns) return "—";
+    const ms = ns / 1e6;
+    return new Date(ms).toLocaleTimeString() + "." + String(Math.floor(ms % 1000)).padStart(3, "0");
+  }
+
+  function getTsFromResult(data) {
+    if (data.scalar) return data.scalar.tsNs;
+    if (data.timeseries && data.timeseries.tsNs.length) return data.timeseries.tsNs[data.timeseries.tsNs.length - 1];
+    if (data.waveform) return data.waveform.tsNs;
+    return 0;
+  }
+
+  function renderSubs() {
+    const tbody = $("subTable");
+    if (!subs.size) {
+      tbody.innerHTML = '<tr><td colspan="7" class="muted">No active subscriptions.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = "";
+    for (const [id, s] of subs) {
+      const tr = document.createElement("tr");
+      const modeClass = s.mode === "push" ? "chip-push" : s.mode === "poll" ? "chip-poll" : "chip-oneshot";
+      tr.innerHTML =
+        `<td class="muted" style="font-size:.72rem">${id.slice(0, 8)}…</td>` +
+        `<td><code>${s.spec.expression}</code></td>` +
+        `<td>${s.spec.kind}</td>` +
+        `<td><span class="chip ${modeClass}">${s.mode}</span></td>` +
+        `<td class="value">${fmtValue(s.latest)}</td>` +
+        `<td class="muted">${fmtTs(s.tsNs)}</td>` +
+        `<td><button data-edit="${id}" style="font-size:.72rem;padding:.2rem .5rem">Edit</button> ` +
+        `<button data-unsub="${id}" style="font-size:.72rem;padding:.2rem .5rem">Unsub</button></td>`;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll("[data-unsub]").forEach((btn) => {
+      btn.onclick = () => unsubscribe(btn.dataset.unsub);
+    });
+    tbody.querySelectorAll("[data-edit]").forEach((btn) => {
+      btn.onclick = () => showUpdateForm(btn.dataset.edit);
+    });
+  }
+
+  function setConnected(on) {
+    $("dot").className = "dot " + (on ? "on" : "off");
+    $("status").textContent = on ? "connected" : "disconnected";
+    $("connectBtn").textContent = on ? "Disconnect" : "Connect";
+    $("subBtn").disabled = !on;
+    $("pingBtn").disabled = !on;
+  }
+
+  function connect() {
+    const url = $("url").value.trim() + "?api_key=" + encodeURIComponent($("key").value.trim());
+    log("connecting...");
+    ws = new WebSocket(url);
+    ws.onopen = () => { setConnected(true); log("connected"); };
+    ws.onclose = (e) => {
+      setConnected(false); ws = null;
+      log(`closed (code ${e.code}${e.reason ? ", " + e.reason : ""})`);
+    };
+    ws.onerror = () => log("socket error (check backend / api key)");
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      switch (m.type) {
+        case "subscribed":
+          log(`subscribed: id=${m.id}`);
+          break;
+        case "updated":
+          log(`updated: id=${m.id}`);
+          break;
+        case "result": {
+          const s = subs.get(m.id);
+          if (s) {
+            s.latest = m.data;
+            s.tsNs = getTsFromResult(m.data);
+            renderSubs();
+          }
+          log(`result [${m.id.slice(0, 8)}]: ${fmtValue(m.data)}`);
+          break;
+        }
+        case "pong":
+          log("pong (ts=" + m.timestamp + ")");
+          break;
+        case "error":
+          log(`error: ${m.code} - ${m.message}`);
+          break;
+        default:
+          log(m.type + ": " + ev.data.slice(0, 200));
+      }
+    };
+  }
+
+  function subscribe() {
+    if (!ws) return;
+    const spec = {
+      kind: $("kind").value,
+      expression: $("expr").value,
+      bindings: JSON.parse($("bindings").value),
+    };
+    const t0Ns = parseInt($("t0").value, 10) || 0;
+    const t1Ns = parseInt($("t1").value, 10) || 0;
+    const intervalMs = parseInt($("intervalMs").value, 10) || 0;
+    const modeSelect = $("subMode").value;
+
+    const msg = { type: "subscribe", spec, t0Ns, t1Ns };
+    if (modeSelect === "poll") msg.intervalMs = intervalMs;
+    if (modeSelect === "oneshot" && t1Ns === 0) {
+      msg.t1Ns = Date.now() * 1e6;
+    }
+
+    const mode = modeSelect === "oneshot" ? "one-shot" : (modeSelect === "poll" ? "poll" : "push");
+
+    const handler = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "subscribed") {
+        subs.set(m.id, { spec, mode, latest: null, tsNs: 0 });
+        renderSubs();
+        ws.removeEventListener("message", handler);
+      }
+    };
+    ws.addEventListener("message", handler);
+    ws.send(JSON.stringify(msg));
+    log(`subscribe: ${spec.expression} (${mode})`);
+  }
+
+  function unsubscribe(id) {
+    if (!ws) return;
+    ws.send(JSON.stringify({ type: "unsubscribe", id }));
+    subs.delete(id);
+    renderSubs();
+    if ($("updateId").value === id) $("updateSection").style.display = "none";
+    log(`unsubscribed: ${id.slice(0, 8)}`);
+  }
+
+  function showUpdateForm(id) {
+    const s = subs.get(id);
+    if (!s) return;
+    $("updateId").value = id;
+    $("updateExpr").value = "";
+    $("updateBindings").value = "";
+    $("updateT0Sec").value = "";
+    $("updateInterval").value = "";
+    $("updateSection").style.display = "";
+  }
+
+  function sendUpdate() {
+    if (!ws) return;
+    const id = $("updateId").value;
+    if (!id) return;
+    const s = subs.get(id);
+    if (!s) return;
+
+    const msg = { type: "update", id };
+    const expr = $("updateExpr").value.trim();
+    const bindingsRaw = $("updateBindings").value.trim();
+    const t0Sec = $("updateT0Sec").value.trim();
+    const intervalRaw = $("updateInterval").value.trim();
+
+    if (expr || bindingsRaw) {
+      const spec = { ...s.spec };
+      if (expr) spec.expression = expr;
+      if (bindingsRaw) spec.bindings = JSON.parse(bindingsRaw);
+      msg.spec = spec;
+    }
+    if (t0Sec !== "") {
+      const sec = parseFloat(t0Sec) || 0;
+      msg.t0Ns = sec === 0 ? 0 : -Math.abs(sec) * 1e9;
+    }
+    if (intervalRaw !== "") {
+      msg.intervalMs = parseInt(intervalRaw, 10) || 0;
+    }
+
+    ws.send(JSON.stringify(msg));
+    log(`update [${id.slice(0, 8)}]: ${JSON.stringify(msg).slice(0, 120)}`);
+    $("updateSection").style.display = "none";
+  }
+
+  $("connectBtn").onclick = () => { if (ws) ws.close(); else connect(); };
+  $("subBtn").onclick = subscribe;
+  $("pingBtn").onclick = () => ws && ws.send(JSON.stringify({ type: "ping" }));
+  $("updateBtn").onclick = sendUpdate;
+  $("updateCancelBtn").onclick = () => { $("updateSection").style.display = "none"; };
+
+  function syncT0() {
+    const sec = parseFloat($("t0Sec").value) || 0;
+    $("t0").value = sec === 0 ? "0" : String(-Math.abs(sec) * 1e9);
+  }
+
+  function syncDefaults() {
+    const mode = $("subMode").value;
+    const kind = $("kind").value;
+    $("intervalMs").closest("label").style.opacity = mode === "poll" ? "1" : ".4";
+    if (kind === "timeseries" && parseFloat($("t0Sec").value) === 0) {
+      $("t0Sec").value = "5";
+      syncT0();
+    }
+  }
+
+  $("t0Sec").oninput = syncT0;
+  $("subMode").onchange = syncDefaults;
+  $("kind").onchange = syncDefaults;
+
+  setConnected(false);
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 """Shared formula domain models.
 
-Used by Fox (the evaluator), and eventually Owl (persists formula definitions),
+Used by the Formula Engine (the evaluator), and eventually Owl (persists formula definitions),
 Squirrel (delta-vs-snapshot), and notebooks (ad-hoc evaluation).
 """
 
@@ -20,7 +20,7 @@ IndexMode = Literal["union", "intersection", "grid", "first_input"]
 class FormulaSpec(CanopyModel):
     """A complete formula request.
 
-    Owl stores these in its plot configs; Fox accepts them as input.
+    Owl stores these in its plot configs; the Formula Engine accepts them as input.
     """
 
     kind: FormulaKind

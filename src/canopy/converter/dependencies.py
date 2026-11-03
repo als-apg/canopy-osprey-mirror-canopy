@@ -9,8 +9,8 @@ from fastapi import Depends
 
 from canopy.converter import gateway
 from canopy.converter.config import ConverterConfig, get_converter_config
-from canopy.converter.adapters.fox_validation import FoxValidate
 from canopy.converter.services.conversion_service import ConversionService
+from canopy.converter.adapters.formula_engine_validation import FormulaEngineValidate
 
 
 def get_conversion_service() -> ConversionService:
@@ -21,14 +21,14 @@ def get_config() -> ConverterConfig:
     return get_converter_config()
 
 
-def get_fox_validate() -> FoxValidate:
-    # Lazy import keeps converter module-load independent of Fox; the Fox gateway
+def get_formula_engine_validate() -> FormulaEngineValidate:
+    # Lazy import keeps converter module-load independent of the Formula Engine; its gateway
     # is the sanctioned cross-module surface (validate = parse + AST-check, no I/O).
-    from canopy.fox import gateway as fox_gateway
+    from canopy.formula_engine import gateway as formula_engine_gateway
 
-    return fox_gateway.validate
+    return formula_engine_gateway.validate
 
 
 ConversionServiceDep = Annotated[ConversionService, Depends(get_conversion_service)]
 ConverterConfigDep = Annotated[ConverterConfig, Depends(get_config)]
-FoxValidateDep = Annotated[FoxValidate, Depends(get_fox_validate)]
+FormulaEngineValidateDep = Annotated[FormulaEngineValidate, Depends(get_formula_engine_validate)]

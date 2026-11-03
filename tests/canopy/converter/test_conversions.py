@@ -11,8 +11,8 @@ from canopy.converter.config import ConverterConfig
 from canopy.contracts.formula import FormulaValidationResult
 from canopy.converter.dependencies import (
     get_config,
-    get_fox_validate,
     get_conversion_service,
+    get_formula_engine_validate,
 )
 from canopy.converter.services.conversion_service import (
     ConversionStats,
@@ -71,7 +71,7 @@ def test_requires_api_key():
 
 
 def test_formula_validation_warnings_are_surfaced():
-    """The route runs hoisted formulas through Fox and folds failures into warnings."""
+    """The route runs hoisted formulas through the Formula Engine and folds failures into warnings."""
     fake_result = ConversionResult(
         screen={"schemaVersion": "1.0", "id": "x"},
         warnings=["base warning"],
@@ -88,18 +88,18 @@ def test_formula_validation_warnings_are_surfaced():
         return FormulaValidationResult(valid=False, errors=["syntax error"])
 
     converter_app.dependency_overrides[get_conversion_service] = lambda: _FakeService()
-    converter_app.dependency_overrides[get_fox_validate] = lambda: _fake_validate
+    converter_app.dependency_overrides[get_formula_engine_validate] = lambda: _fake_validate
     try:
         with TestClient(app) as client:
             resp = _post(client)
     finally:
         converter_app.dependency_overrides.pop(get_conversion_service, None)
-        converter_app.dependency_overrides.pop(get_fox_validate, None)
+        converter_app.dependency_overrides.pop(get_formula_engine_validate, None)
 
     assert resp.status_code == 200
     warnings = resp.json()["warnings"]
     assert "base warning" in warnings
-    assert any("f-1" in w and "Fox validation" in w for w in warnings)
+    assert any("f-1" in w and "Formula Engine validation" in w for w in warnings)
 
 
 def test_validate_returns_diagnostics_only():

@@ -13,7 +13,7 @@ through in-process gateways, so the whole platform runs as one API process
 | `/mole` | Mole | Archiver Appliance proxy for historical PV data |
 | `/raccoon` | Raccoon | PV name-lookup proxy over the lab directory service |
 | `/vole` | [Vole](../vole/index.md) | In-memory per-PV buffers merging Hare live data with Mole history |
-| `/fox` | [Fox](../fox/index.md) | Formula engine — expressions over live and historical PV data |
+| `/formula-engine` | [Formula Engine](../formula-engine/index.md) | Expressions over live and historical PV data |
 | `/squirrel` | Squirrel | Machine-state snapshots: save, restore, and compare (Postgres-backed) |
 | `/jobs` | Jobs | Background-job status over the Arq/Redis queue |
 | `/converter` | Converter | Legacy screen converter — EDM `.edl` / Qt `.ui` to Canopy Screen IR |

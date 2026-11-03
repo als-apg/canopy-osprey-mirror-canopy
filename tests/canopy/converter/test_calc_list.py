@@ -119,7 +119,7 @@ def test_conversion_translates_a_named_calc_from_the_explicit_calc_list(named_ca
     assert _text_control_pv(untranslated.screen) == "CALC\\sum(PV:A, PV:B)"
     assert untranslated.formulas == []
     (formula,) = translated.formulas
-    assert _text_control_pv(translated.screen) == f"fox://{formula.name}"
+    assert _text_control_pv(translated.screen) == f"formula://{formula.name}"
     assert formula.expression == "A+B"
     assert formula.bindings == {"A": "PV:A", "B": "PV:B"}
 

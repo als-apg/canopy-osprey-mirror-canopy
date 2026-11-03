@@ -20,7 +20,7 @@ dependencies = [
     "alembic>=1.13",
     "arq>=0.26",
     "redis>=5.0",
-    "PyDMConverter>=1.0.7",
+    "PyDMConverter>=1.0.8",
     "python-multipart>=0.0.32",
     "prometheus-client>=0.20",
 ]
@@ -101,7 +101,7 @@ name = "Converter reaches other modules only through their public gateway"
 type = "forbidden"
 source_modules = ["canopy.converter"]
 forbidden_modules = [
-    "canopy.fox",
+    "canopy.formula_engine",
     "canopy.mole",
     "canopy.hare",
     "canopy.vole",
@@ -109,7 +109,7 @@ forbidden_modules = [
     "canopy.jobs",
 ]
 ignore_imports = [
-    "canopy.converter.dependencies -> canopy.fox.gateway",
+    "canopy.converter.dependencies -> canopy.formula_engine.gateway",
     "canopy.converter.api.v1.conversions -> canopy.jobs.gateway",
     "canopy.converter.tasks -> canopy.jobs.gateway",
 ]

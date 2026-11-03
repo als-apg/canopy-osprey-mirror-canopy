@@ -53,7 +53,7 @@ class ErrorCode(StrEnum):
     INVALID_QUERY = auto()
     ADAPTER_MISCONFIGURED = auto()
 
-    # Fox
+    # Formula Engine
     FORMULA_PARSE_ERROR = auto()
     FORMULA_UNSAFE = auto()
     FORMULA_INPUT_MISSING = auto()

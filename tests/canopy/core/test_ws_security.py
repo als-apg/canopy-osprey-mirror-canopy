@@ -45,7 +45,7 @@ def ws_app() -> FastAPI:
         await websocket.accept()
 
     sub_app = FastAPI()
-    tag_module(sub_app, "fox")
+    tag_module(sub_app, "formula-engine")
 
     @sub_app.websocket("/ws")
     async def sub_ws_route(websocket: WebSocket, key: APIKey = Security(ws_get_api_key)) -> None:
@@ -55,7 +55,7 @@ def ws_app() -> FastAPI:
     async def sub_ws_read_route(websocket: WebSocket, key: APIKey = Security(ws_require_read_access)) -> None:
         await websocket.accept()
 
-    app.mount("/fox", sub_app)
+    app.mount("/formula-engine", sub_app)
 
     return app
 
@@ -100,7 +100,7 @@ class TestWsAuth:
         client = TestClient(ws_app)
 
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            with client.websocket_connect("/fox/ws?api_key=t"):
+            with client.websocket_connect("/formula-engine/ws?api_key=t"):
                 pass
 
         assert exc_info.value.code == 1008
@@ -115,7 +115,7 @@ class TestWsAuth:
         client = TestClient(ws_app)
 
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            with client.websocket_connect("/fox/ws-read?api_key=t"):
+            with client.websocket_connect("/formula-engine/ws-read?api_key=t"):
                 pass
 
         assert exc_info.value.code == 1008

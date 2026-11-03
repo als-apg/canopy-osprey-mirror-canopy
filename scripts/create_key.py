@@ -12,7 +12,7 @@ Run::
     uv run python scripts/create_key.py "Trace Display" -r
     uv run python scripts/create_key.py operator-tools -r -w
     uv run python scripts/create_key.py ops -a
-    uv run python scripts/create_key.py trace -r -m mole -m fox   # scoped to two modules
+    uv run python scripts/create_key.py trace -r -m mole -m formula-engine   # scoped to two modules
 
     # In a container (local Docker Compose, or a facility instance where the
     # database is only reachable from the running api container):
