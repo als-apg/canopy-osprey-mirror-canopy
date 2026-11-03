@@ -9,6 +9,9 @@ adapter that has been pip-installed alongside Canopy.
 A misconfigured provider leaves the module disabled (with the reason logged
 and reported by every app's config route) instead of failing startup: e-log
 posting is an optional integration and must not take the rest of Canopy down.
+The config route needs no API key, so only an `ElogNotConfigured` message,
+written to be shown, reaches it; any other failure is reported as
+`PROVIDER_LOAD_FAILED` and logged in full.
 """
 
 import time
@@ -17,6 +20,7 @@ import logging
 import importlib
 
 from canopy.elog.config import ElogConfig
+from canopy.elog.errors import ElogNotConfigured
 from canopy.elog.validation import is_app
 from canopy.elog.adapters.base import (
     ElogAdapter,
@@ -25,6 +29,8 @@ from canopy.elog.adapters.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+PROVIDER_LOAD_FAILED = "The e-log provider failed to load; see the server log"
 
 
 class ElogRegistry:
@@ -89,26 +95,36 @@ def _resolve_provider_class(provider: str) -> type[ElogAdapter]:
     Two forms supported:
       - ``"<short_name>"`` -- a ``@register_elog_provider``-decorated class.
       - ``"module.path:ClassName"`` -- dynamic import for out-of-tree adapters.
+
+    Raises `ElogNotConfigured` with a message that names the setting's value
+    only, never text from the adapter module's own code.
     """
     if ":" in provider:
         module_path, _, class_name = provider.partition(":")
         try:
             module = importlib.import_module(module_path)
         except Exception as exc:  # a relative path is a TypeError, and the module's own code may raise anything
-            raise ValueError(f"Cannot import e-log adapter module '{module_path}': {exc}") from exc
+            raise ElogNotConfigured(f"Cannot import e-log adapter module '{module_path}'; see the server log") from exc
         cls = getattr(module, class_name, None)
         if cls is None:
-            raise ValueError(f"E-log adapter class '{class_name}' not found in '{module_path}'")
+            raise ElogNotConfigured(f"E-log adapter class '{class_name}' not found in '{module_path}'")
         if not isinstance(cls, type) or not callable(getattr(cls, "from_config", None)):
-            raise ValueError(f"'{provider}' is not an e-log adapter class (it has no from_config classmethod)")
+            raise ElogNotConfigured(f"'{provider}' is not an e-log adapter class (it has no from_config classmethod)")
         return cls
 
     cls = get_registered_provider(provider)
     if cls is None:
-        raise ValueError(
+        raise ElogNotConfigured(
             f"Unknown e-log provider '{provider}'. Use a registered short name or a 'module:Class' dotted path."
         )
     return cls
+
+
+def _disabled(exc: Exception, what: str) -> ElogRegistry:
+    """A disabled registry for ``exc``, logged in full but described to callers only as safe."""
+    logger.error("E-log disabled: %s failed: %s", what, exc, exc_info=exc)
+    reason = str(exc) if isinstance(exc, ElogNotConfigured) else PROVIDER_LOAD_FAILED
+    return ElogRegistry(None, disabled_reason=reason)
 
 
 def build_registry(config: ElogConfig) -> ElogRegistry:
@@ -123,8 +139,7 @@ def build_registry(config: ElogConfig) -> ElogRegistry:
     try:
         cls = _resolve_provider_class(config.provider)
     except Exception as exc:  # whatever resolving the provider raises, it may not abort startup
-        logger.error("E-log disabled: %s", exc)
-        return ElogRegistry(None, disabled_reason=str(exc))
+        return _disabled(exc, f"resolving provider '{config.provider}'")
 
     adapters: dict[str, ElogAdapter] = {}
     for app, app_config in sorted(config.apps.items()):
@@ -140,6 +155,5 @@ def build_registry(config: ElogConfig) -> ElogRegistry:
             # Provider-level config (base URL, ...) is shared by every app, so
             # one app failing here means they all would: disable the module.
             # Adapters built so far have sent nothing, so dropping them is enough.
-            logger.error("E-log disabled: building the '%s' adapter for app '%s' failed: %s", config.provider, app, exc)
-            return ElogRegistry(None, disabled_reason=str(exc))
+            return _disabled(exc, f"building the '{config.provider}' adapter for app '{app}'")
     return ElogRegistry(config.provider, adapters)

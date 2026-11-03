@@ -54,7 +54,9 @@ startup: an unknown provider, a dotted path that isn't an adapter class, a
 missing base URL, or a `CANOPY_ELOG__*` value that doesn't parse (a
 non-numeric `TIMEOUT_S`, a `DEFAULT_LOGBOOK_IDS` that isn't a JSON list). The
 startup log says why, and so does every app's `config` route (`reason`). The
-reason names the offending variables, never their values.
+reason names the offending variables, never their values. An out-of-tree
+adapter that fails to import or build for any other reason is reported only as
+failing to load, with the details in the startup log.
 
 ## Minting an elog-plus application token
 

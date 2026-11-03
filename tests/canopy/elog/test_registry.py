@@ -6,7 +6,11 @@ import pytest
 
 from canopy.elog.config import ElogConfig, ElogAppConfig, ElogPlusConfig
 from tests.canopy.elog._fakes import FakeElogAdapter
-from canopy.elog.adapters.registry import ElogRegistry, build_registry
+from canopy.elog.adapters.registry import (
+    PROVIDER_LOAD_FAILED,
+    ElogRegistry,
+    build_registry,
+)
 from canopy.elog.adapters.elog_plus import ElogPlusAdapter
 
 FAKE_PATH = "tests.canopy.elog._fakes:FakeElogAdapter"
@@ -86,13 +90,17 @@ def test_dotted_path_to_something_that_is_not_an_adapter_disables_the_module(pro
     assert "is not an e-log adapter class" in registry.disabled_reason
 
 
-def test_adapter_factory_failure_of_any_kind_disables_the_module():
+def test_adapter_factory_failure_of_any_kind_disables_the_module(caplog):
+    caplog.set_level(logging.ERROR, logger="canopy.elog.adapters.registry")
+
     registry = build_registry(
         _config(provider="tests.canopy.elog._fakes:ExplodingElogAdapter", apps={"squirrel": ElogAppConfig(token="t")})
     )
 
     assert registry.enabled is False
-    assert registry.disabled_reason == "adapter factory blew up"
+    # The config route needs no key, so an adapter's own error text stays in the log.
+    assert registry.disabled_reason == PROVIDER_LOAD_FAILED
+    assert "adapter factory blew up" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -105,12 +113,15 @@ def test_adapter_factory_failure_of_any_kind_disables_the_module():
         ("tests.canopy.elog._raises_on_import:Adapter", "adapter module needs SOME_SETTING"),
     ],
 )
-def test_dotted_path_whose_module_will_not_import_disables_the_module(provider, error):
+def test_dotted_path_whose_module_will_not_import_disables_the_module(provider, error, caplog):
+    caplog.set_level(logging.ERROR, logger="canopy.elog.adapters.registry")
+
     registry = build_registry(_config(provider=provider, apps={"squirrel": ElogAppConfig(token="t")}))
 
     assert registry.enabled is False
     assert registry.disabled_reason.startswith("Cannot import e-log adapter module")
-    assert error in registry.disabled_reason
+    assert error not in registry.disabled_reason
+    assert error in caplog.text
 
 
 async def test_close_all_closes_every_adapter():
