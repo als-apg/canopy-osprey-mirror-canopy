@@ -5,14 +5,32 @@ is private implementation. Each function is a thin facade over ``FormulaService`
 
 ``bind()`` wires the service singleton at app startup; ``get_service()`` is exposed
 for ``dependencies.py``. Tests can re-bind a fake service freely.
+
+``make_offline_validator()`` builds a standalone service for processes that only
+parse formulas (the canopy_mcp lint pass): it never reads data, so it needs no
+Vole and no app startup.
 """
 
 from canopy.contracts.formula import FormulaSpec, FormulaResult, FormulaValidationResult
+from canopy.formula_engine.ports import NullDataSource
+from canopy.formula_engine.config import FormulaEngineConfig
+from canopy.formula_engine.services.parser import Parser
 from canopy.formula_engine.services.formula_service import FormulaService
 from canopy.formula_engine.services.subscription_manager import SubscriptionManager
 
 _service: FormulaService | None = None
 _sub_manager: SubscriptionManager | None = None
+
+
+def make_offline_validator(config: FormulaEngineConfig | None = None) -> FormulaService:
+    """A ``FormulaService`` for parse-only use, independent of the bound singleton.
+
+    Its data source raises on any read, so only ``validate()`` is meaningful;
+    ``evaluate()`` fails with ``FormulaInputMissing``.
+    """
+    config = config or FormulaEngineConfig()
+    parser = Parser(max_expression_len=config.max_expression_len)
+    return FormulaService(NullDataSource(), parser, config)
 
 
 def bind(service: FormulaService | None) -> None:

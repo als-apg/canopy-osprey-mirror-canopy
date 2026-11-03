@@ -1,0 +1,20 @@
+{
+  "type": "subscribe",
+  "t0Ns": -600000000000,
+  "spec": {
+    "kind": "table",
+    "index": "grid",
+    "mode": "raw",
+    "align": "last",
+    "gridDtNs": 1000000000,
+    "bindings": {
+      "x": "SR01C:HCM1:SP",
+      "y": "SR01C:BPM1:X"
+    },
+    "columns": {
+      "x": "{x}",
+      "y": "{y}"
+    },
+    "maxPoints": 500
+  }
+}

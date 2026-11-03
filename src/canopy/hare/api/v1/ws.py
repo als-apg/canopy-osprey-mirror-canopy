@@ -48,6 +48,10 @@ async def ws_pvs(websocket: WebSocket, broker: PVBrokerDep) -> None:
       ``writes`` its statement (see `ConnectorStatement`); each is ``null`` when the
       connector makes no claim.
     - ``{"type": "pong", "timestamp": T}``
+    - ``{"type": "flush", "timestamp": T}`` -- never sent on this socket. The broker
+      sends it after every flush only to an in-process channel that sets
+      ``wants_flush_marker`` (see `ClientChannel`), so that channel knows every
+      update up to then has been delivered.
     - ``{"type": "error", "code": "bad_request", "message": "..."}`` (``code`` is an
       `ErrorCode`, matching the REST error envelope's ``code`` field). On a
       ``subscribe`` with malformed names the error carries ``code`` ``invalid_pv_name``

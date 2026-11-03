@@ -13,10 +13,10 @@ import sys
 import numpy as np
 import pytest
 
-from canopy.formula_engine.ports import RingSlice, SampleRecord
 from canopy.vole.adapter import VoleDataSource
 from canopy.contracts.sample import Sample, AlarmSeverity
 from canopy.vole.buffer.ring import BYTES_PER_SAMPLE, StoredSample, measure_sample_bytes
+from canopy.formula_engine.ports import RingSlice, SampleRecord
 
 PV = "SR:BPM:01:X"
 S = 1_000_000_000

@@ -12,7 +12,7 @@ class AlarmSeverity(StrEnum):
 
 
 #: ``AlarmSeverity`` as a small integer, in declaration order: the severity code
-#: of Mole's ``ArchiveBlock`` and of Fox's ``RingSlice`` arrays.
+#: of Mole's ``ArchiveBlock`` and of the Formula Engine's ``RingSlice`` arrays.
 SEVERITY_ORDINAL: dict[AlarmSeverity, int] = {sev: i for i, sev in enumerate(AlarmSeverity)}
 
 

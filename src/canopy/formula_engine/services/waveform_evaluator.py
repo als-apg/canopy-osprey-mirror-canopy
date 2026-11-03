@@ -16,7 +16,11 @@ from canopy.formula_engine.errors import (
     FormulaDimensionMismatch,
 )
 from canopy.formula_engine.services.parser import ParsedFormula
-from canopy.formula_engine.services.evaluator import evaluate_array, worst_severity
+from canopy.formula_engine.services.evaluator import (
+    evaluate_array,
+    worst_severity,
+    raise_on_open_outage,
+)
 
 
 async def evaluate_waveform_formula(
@@ -31,6 +35,8 @@ async def evaluate_waveform_formula(
     timestamps: list[int] = []
     missing: list[str] = []
     lengths: set[int] = set()
+
+    raise_on_open_outage(spec, parsed, data_source)
 
     for i, token in enumerate(parsed.tokens):
         pv = spec.bindings[token]
@@ -57,7 +63,7 @@ async def evaluate_waveform_formula(
         timestamps.append(sample.ts_ns)
 
     if missing:
-        raise FormulaInputMissing(f"PVs not available: {missing}")
+        raise FormulaInputMissing.for_pvs(missing)
 
     if len(lengths) > 1:
         raise FormulaDimensionMismatch(f"Waveform inputs have mismatched lengths: {sorted(lengths)}")

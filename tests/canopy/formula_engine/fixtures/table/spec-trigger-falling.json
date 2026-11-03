@@ -1,0 +1,24 @@
+{
+  "type": "subscribe",
+  "t0Ns": -3600000000000,
+  "spec": {
+    "kind": "table",
+    "index": "first_input",
+    "mode": "raw",
+    "align": "last",
+    "bindings": {
+      "x": "SR01C:HCM1:SP",
+      "y1": "SR01C:BPM1:X",
+      "y2": "SR01C:BPM2:X",
+      "trig": "SR:TRIGGER:COUNT"
+    },
+    "columns": {
+      "x": "{x}",
+      "y1": "{y1}",
+      "y2": "{y2} * 1000"
+    },
+    "trigger": "trig",
+    "triggerEdge": "falling",
+    "maxPoints": 1000
+  }
+}

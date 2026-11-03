@@ -4,8 +4,10 @@ All compute is CPU-bound and runs via ``asyncio.to_thread`` to avoid blocking
 the event loop. Timeout is enforced via ``asyncio.wait_for``.
 """
 
+import re
 import asyncio
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
+from collections.abc import Mapping, Iterable
 
 import numpy as np
 import numexpr as ne
@@ -16,12 +18,17 @@ from canopy.formula_engine.errors import (
     FormulaTypeError,
     FormulaEngineError,
     FormulaEvalTimeout,
+    FormulaInputOutage,
 )
 from canopy.formula_engine.services.parser import ParsedFormula
 from canopy.formula_engine.language.namespace import (
     NUMEXPR_NAME_MAP,
     build_eval_namespace,
 )
+
+if TYPE_CHECKING:
+    from canopy.contracts.formula import FormulaSpec
+    from canopy.formula_engine.ports import DataSource
 
 _SEVERITY_ORDER = [AlarmSeverity.NO_ALARM, AlarmSeverity.MINOR, AlarmSeverity.MAJOR, AlarmSeverity.INVALID]
 
@@ -47,6 +54,37 @@ def worst_severity_arrays(severity_arrays: list[np.ndarray]) -> list[AlarmSeveri
     stacked = np.stack(severity_arrays, axis=0)
     max_ordinals = np.max(stacked, axis=0)
     return [_SEVERITY_ORDER[int(o)] for o in max_ordinals]
+
+
+_BARE_BINDING_RE = re.compile(r"\s*\{([^{}]+)\}\s*")
+
+
+def bare_binding(expression: str, bindings: Mapping[str, str]) -> str | None:
+    """The binding a column passes through unchanged (``"{x}"``), else None.
+
+    A bare-binding table column needs no parse and no numexpr call: its cells
+    are the input's values as they are, so the table path skips
+    ``evaluate_array`` for it. Scalar/timeseries/waveform formulas are unchanged.
+    """
+    match = _BARE_BINDING_RE.fullmatch(expression)
+    if match is None or match.group(1) not in bindings:
+        return None
+    return match.group(1)
+
+
+def raise_on_open_outage(spec: "FormulaSpec", parsed: ParsedFormula, data_source: "DataSource") -> None:
+    """Raise ``FormulaInputOutage`` naming every bound input whose connection is down now.
+
+    The scalar and waveform paths call this before any ``read_latest``: the
+    ring still holds the last sample from before the drop, and a read of a
+    missing ring may refill it from the archive -- neither is the PV's current
+    value. The timeseries path does not: its window is history, and the samples
+    it already holds stay true; an outage only stops new ones from arriving.
+    """
+    pvs = dict.fromkeys(spec.bindings[t] for t in parsed.tokens)
+    in_outage = [pv for pv in pvs if data_source.in_open_outage(pv)]
+    if in_outage:
+        raise FormulaInputOutage.for_pvs(in_outage)
 
 
 def _numexpr_expr(parsed: ParsedFormula) -> str:
@@ -106,12 +144,18 @@ async def evaluate_array(
     naturally. The real resource bound is expression length + input size.
     """
 
-    def compute():
-        if parsed.is_numexpr_compatible:
-            return _evaluate_array_numexpr(parsed, variables)
-        return _evaluate_array_asteval(parsed, variables)
+    return await _run_compute(lambda: evaluate_array_sync(parsed, variables), timeout_s)
 
-    return await _run_compute(compute, timeout_s)
+
+def evaluate_array_sync(parsed: ParsedFormula, variables: dict[str, np.ndarray]) -> np.ndarray:
+    """Evaluate on the calling thread: numexpr if compatible, else asteval; no timeout, no error mapping.
+
+    For a caller that picks its own thread and handles failures itself: the
+    table store computes column arrays and nulls the cells it cannot compute.
+    """
+    if parsed.is_numexpr_compatible:
+        return _evaluate_array_numexpr(parsed, variables)
+    return _evaluate_array_asteval(parsed, variables)
 
 
 async def evaluate_scalar(

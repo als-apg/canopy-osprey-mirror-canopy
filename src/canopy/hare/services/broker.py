@@ -37,7 +37,14 @@ _EMPTY_META_FIELDS = PVMeta(pv="").model_dump(exclude={"pv"})
 
 @runtime_checkable
 class ClientChannel(Protocol):
-    """What the broker needs from a connected client (FastAPI WebSocket fits)."""
+    """What the broker needs from a connected client (FastAPI WebSocket fits).
+
+    A channel may also set ``wants_flush_marker = True`` to receive a
+    ``{"type": "flush", "timestamp": T}`` frame after every flush, empty ones
+    included, sent after the diff it covers. An in-process client (Vole's
+    ingest) takes its watermark from it; a channel without the attribute, such
+    as a browser socket, never receives it.
+    """
 
     async def send_json(self, data) -> None: ...
     async def close(self) -> None: ...
@@ -865,19 +872,27 @@ class PVBroker:
         }
 
     async def _flush(self) -> None:
+        """Send the buffered diffs, then a ``flush`` marker to the channels that ask for one.
+
+        The marker goes out on every flush, empty ones included, and after the
+        diff it covers (see `ClientChannel`).
+        """
         async with self._buffer_lock:
-            if not self._buffer:
-                return
             updates = self._buffer
             self._buffer = {}
-        per_client: dict[str, dict[str, dict]] = defaultdict(dict)
-        for pv, value in updates.items():
-            payload = value.model_dump(by_alias=True)
-            for client_id in self._registry.subscribers(pv):
-                per_client[client_id][pv] = payload
-        for client_id, data in per_client.items():
-            frame = {"type": "diff", "data": data, "count": len(data), "timestamp": time.time()}
-            await self._send(client_id, frame)
+        if updates:
+            per_client: dict[str, dict[str, dict]] = defaultdict(dict)
+            for pv, value in updates.items():
+                payload = value.model_dump(by_alias=True)
+                for client_id in self._registry.subscribers(pv):
+                    per_client[client_id][pv] = payload
+            for client_id, data in per_client.items():
+                frame = {"type": "diff", "data": data, "count": len(data), "timestamp": time.time()}
+                await self._send(client_id, frame)
+        marker = {"type": "flush", "timestamp": time.time()}
+        for client_id, channel in list(self._channels.items()):
+            if getattr(channel, "wants_flush_marker", False):
+                await self._send(client_id, marker)
 
     async def _heartbeat_loop(self) -> None:
         while self._running:

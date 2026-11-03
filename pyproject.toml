@@ -16,6 +16,9 @@ dependencies = [
     "asteval>=1.0",
     "jsonschema>=4.21,<5",
     "python-multipart>=0.0.32",
+    # The oldest release the live-frame encoding is tested with: numpy
+    # arrays serialised natively, non-finite numbers as null.
+    "orjson>=3.9.3",
     "markdown>=3.5",
     # GET /metrics and the per-route HTTP middleware (canopy.core.metrics) run in every process.
     "prometheus-client>=0.20",
