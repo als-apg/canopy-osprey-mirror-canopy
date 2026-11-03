@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "two-unknown",
+  "metadata": {
+    "title": "Two unknown widgets",
+    "source": { "type": "bob-converter", "sourceFile": "two-unknown.bob" },
+    "size": { "width": 400, "height": 200 }
+  },
+  "macros": [],
+  "root": {
+    "id": "root",
+    "type": "group",
+    "props": {},
+    "geometry": { "x": 0, "y": 0, "width": 400, "height": 200 },
+    "children": [
+      {
+        "id": "tank_1",
+        "type": "unknown-widget",
+        "props": { "originalClass": "tank" },
+        "geometry": { "x": 10, "y": 10, "width": 80, "height": 150 }
+      },
+      {
+        "id": "tank_2",
+        "type": "unknown-widget",
+        "props": { "originalClass": "tank" },
+        "geometry": { "x": 110, "y": 10, "width": 80, "height": 150 }
+      },
+      {
+        "id": "Label_3",
+        "type": "label",
+        "props": { "text": "Water level" },
+        "geometry": { "x": 210, "y": 10, "width": 120, "height": 20 },
+        "warnings": ["converter: font 'Liberation Sans' mapped to the default font"]
+      }
+    ]
+  }
+}

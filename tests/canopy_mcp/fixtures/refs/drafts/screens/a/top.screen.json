@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "a/top",
+  "metadata": {
+    "title": "top",
+    "source": {
+      "type": "native"
+    },
+    "size": {
+      "width": 100,
+      "height": 100
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "a-top-root",
+    "type": "group",
+    "props": {},
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 10,
+      "height": 10
+    },
+    "children": [
+      {
+        "id": "top-embed",
+        "type": "embedded-display",
+        "props": {
+          "file": "sub/child.screen.json"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 10,
+          "height": 10
+        }
+      }
+    ]
+  }
+}
