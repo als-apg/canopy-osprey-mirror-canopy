@@ -85,14 +85,15 @@ Checks (before anything is built; each refuses the build on a mismatch):
 
   one SDK     after the installs (which resolve @slaclab/canopy-* to the packs),
               the pnpm-lock.yaml of the runtime and Trace exports must resolve
-              exactly client, react, screen-ir and shell (runtime), client and
-              shell (Trace), each to a pack in SDK_PACKS with that pack's
-              integrity, and nothing else; any lockfile line naming @slaclab
-              that is not recognised is refused. Every package both resolve
-              must have the same version and integrity, each version must be
-              the one packages/*/package.json holds at SDK_SHA, and SDK must
-              hold the tag v<version> naming SDK_SHA; STAGED.json records them
-              as "sdk_packages". Runs before the viewer or Trace is built
+              exactly client, react, screen-ir and shell (runtime), charts,
+              client, react, shell and vite (Trace), each to a pack in
+              SDK_PACKS with that pack's integrity, and nothing else; any
+              lockfile line naming @slaclab that is not recognised is refused.
+              Every package both resolve must have the same version and
+              integrity, each version must be the one packages/*/package.json
+              holds at SDK_SHA, and SDK must hold the tag v<version> naming
+              SDK_SHA; STAGED.json records them as "sdk_packages". Runs before
+              the viewer or Trace is built
 
 Options:
   --no-trace  ship an empty trace/ (TRACE and TRACE_REF are then ignored)
@@ -386,7 +387,7 @@ import base64, hashlib, json, os, re, subprocess, sys
 
 sdk, sha, rt_sha, trace_sha, rt_src, trace_src, packs = sys.argv[1:]
 RUNTIME_PACKAGES = {"@slaclab/canopy-" + p for p in ("client", "react", "screen-ir", "shell")}
-TRACE_PACKAGES = {"@slaclab/canopy-" + p for p in ("client", "shell")}
+TRACE_PACKAGES = {"@slaclab/canopy-" + p for p in ("charts", "client", "react", "shell", "vite")}
 NAME = r"@slaclab/canopy-[a-z-]+"
 VERSION = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?"
 PACK = rf"slaclab-canopy-([a-z]+(?:-[a-z]+)*)-({VERSION})\.tgz"
@@ -422,7 +423,7 @@ def resolved(label, directory, wanted, held):
     def bad(number, line, why):
         refuse(f"the {label} pnpm-lock.yaml, line {number}, {why}: {line.strip()}")
 
-    found, used, section, entry, importer = {}, [], None, None, None
+    found, used, section, entry, importer, peers = {}, [], None, None, None, False
     for number, line in enumerate(lines, 1):
         names_us = "slaclab" in line
         if not line.strip():
@@ -454,7 +455,7 @@ def resolved(label, directory, wanted, held):
                 importer = {"name": key.group(1), "fields": []}
         elif section == "packages":
             if not line.startswith("   "):
-                entry = None
+                entry, peers = None, False
                 if names_us:
                     key = re.fullmatch(rf"  \x27({NAME})@({VERSION})\x27:", line)
                     if not key:
@@ -464,9 +465,15 @@ def resolved(label, directory, wanted, held):
                     entry = {"version": key.group(2), "integrity": None}
                     found.setdefault(key.group(1), []).append(entry)
             elif names_us:
-                bad(number, line, "is not a form this check reads")
+                # A package of the set may name another as a peer (charts names shell).
+                peer = re.fullmatch(rf"      \x27({NAME})\x27: [\^~]?{VERSION}", line)
+                if not (entry and peers and peer):
+                    bad(number, line, "is not a form this check reads")
+                if peer.group(1) not in wanted:
+                    bad(number, line, "names a peer outside the fixed package set")
             elif entry and not line.startswith("     "):
                 field = re.match(r"    ([A-Za-z]+):", line)
+                peers = bool(field) and field.group(1) == "peerDependencies"
                 integrity = re.fullmatch(r"    resolution: \{integrity: (sha512-[A-Za-z0-9+/=]+)\}", line)
                 if integrity:
                     entry["integrity"] = integrity.group(1)

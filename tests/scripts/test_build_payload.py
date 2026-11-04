@@ -26,7 +26,8 @@ REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "build-payload.sh"
 SDK_VERSION = "0.3.1-als.1"
 # The pack bytes of each SDK package, and the integrity pnpm records for them.
-PACK_BYTES = {package: f"pack of {package}\n".encode() for package in ("client", "react", "screen-ir", "shell")}
+PACKAGES = ("charts", "client", "react", "screen-ir", "shell", "vite")
+PACK_BYTES = {package: f"pack of {package}\n".encode() for package in PACKAGES}
 INTEGRITY = {
     package: "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode()
     for package, data in PACK_BYTES.items()
@@ -87,9 +88,18 @@ def sdk_lock(*packages: str, workspace: tuple[str, ...] = (), **changed: tuple[s
 
 
 RT_PACKAGES = ("client", "react", "screen-ir", "shell")
-TRACE_PACKAGES = ("client", "shell")
+TRACE_PACKAGES = ("charts", "client", "react", "shell", "vite")
 RT_LOCK = sdk_lock(*RT_PACKAGES, workspace=("screen-runtime",))
-TRACE_LOCK = sdk_lock(*TRACE_PACKAGES)
+CHARTS_PEERS = f"  '@slaclab/canopy-charts@{SDK_VERSION}':\n    resolution: {{integrity: {INTEGRITY['charts']}}}\n    peerDependencies:\n"
+
+
+def trace_lock(lock: str, peer: str = "shell") -> str:
+    """``lock`` laid out as react-trace's: charts names ``peer`` as a peer, vite is a dev dependency."""
+    lock = lock.replace(CHARTS_PEERS, f"{CHARTS_PEERS}      '@slaclab/canopy-{peer}': ^{SDK_VERSION}\n", 1)
+    return lock.replace("      '@slaclab/canopy-vite':", "    devDependencies:\n      '@slaclab/canopy-vite':", 1)
+
+
+TRACE_LOCK = trace_lock(sdk_lock(*TRACE_PACKAGES))
 
 UV_STUB = r"""#!/bin/sh
 printf 'uv\t%s\t%s\tTOKEN=%s\n' "$PWD" "$*" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
@@ -1205,8 +1215,8 @@ def test_the_same_version_with_another_integrity_is_refused(world):
 def test_a_package_on_one_side_only_is_not_compared_but_is_recorded(world):
     ok(build(world))
     packages = staged(world)["sdk_packages"]
-    assert "@slaclab/canopy-react" in packages["runtime"]
-    assert "@slaclab/canopy-react" not in packages["trace"]
+    assert "@slaclab/canopy-screen-ir" in packages["runtime"]
+    assert "@slaclab/canopy-screen-ir" not in packages["trace"]
 
 
 def test_no_trace_records_only_the_runtime_and_compares_nothing(world):
@@ -1220,7 +1230,7 @@ def test_no_trace_records_only_the_runtime_and_compares_nothing(world):
 @pytest.mark.parametrize("repo,label", [("rt", "runtime"), ("trace", "Trace")])
 def test_a_lockfile_without_the_sdk_is_refused(world, repo, label):
     commit(world[repo], {"pnpm-lock.yaml": lockfile({})}, "no sdk")
-    refused_before_any_install(world, build(world), f"the {label} ", "does not resolve @slaclab/canopy-client")
+    refused_before_any_install(world, build(world), f"the {label} ", "does not resolve @slaclab/", "canopy-client")
 
 
 def test_a_package_missing_from_the_fixed_set_is_refused(world):
@@ -1229,9 +1239,30 @@ def test_a_package_missing_from_the_fixed_set_is_refused(world):
 
 
 def test_a_package_outside_the_fixed_set_is_refused(world):
-    # canopy-react is the runtime's, not Trace's, even though the SDK holds it.
-    commit(world["trace"], {"pnpm-lock.yaml": sdk_lock("client", "react", "shell")}, "extra")
-    refused_before_any_install(world, build(world), "@slaclab/canopy-react is neither in the fixed set")
+    # canopy-screen-ir is the runtime's, not Trace's, even though the SDK holds it.
+    commit(world["trace"], {"pnpm-lock.yaml": trace_lock(sdk_lock(*TRACE_PACKAGES, "screen-ir"))}, "extra")
+    refused_before_any_install(world, build(world), "@slaclab/canopy-screen-ir is neither in the fixed set")
+
+
+def test_the_trace_takes_charts_react_and_vite_from_the_one_sdk(world):
+    # react-trace's three pages: charts (with shell as its peer), react, and vite as a dev dependency.
+    assert f"      '@slaclab/canopy-shell': ^{SDK_VERSION}\n" in TRACE_LOCK
+    assert "    devDependencies:\n      '@slaclab/canopy-vite':" in TRACE_LOCK
+    ok(build(world))
+    trace = staged(world)["sdk_packages"]["trace"]
+    assert trace == {f"@slaclab/canopy-{p}": resolved_entry(p) for p in TRACE_PACKAGES}
+
+
+def test_a_peer_outside_the_fixed_set_is_refused(world):
+    commit(world["trace"], {"pnpm-lock.yaml": trace_lock(sdk_lock(*TRACE_PACKAGES), peer="screen-ir")}, "peer")
+    refused_before_any_install(world, build(world), "names a peer outside the fixed package set", "canopy-screen-ir")
+
+
+def test_an_sdk_peer_of_a_package_outside_the_sdk_is_refused(world):
+    other = "  '@rolldown/pluginutils@1.0.1':\n    resolution: {integrity: sha512-other==}\n"
+    peer = f"    peerDependencies:\n      '@slaclab/canopy-shell': ^{SDK_VERSION}\n"
+    commit(world["trace"], {"pnpm-lock.yaml": TRACE_LOCK.replace(other, other + peer, 1)}, "peer")
+    refused_before_any_install(world, build(world), "is not a form this check reads", "canopy-shell")
 
 
 def test_a_transitive_package_outside_the_fixed_set_is_refused(world):
