@@ -125,7 +125,9 @@ node="$(git rev-parse HEAD | cut -c1-7)"
 if grep -q PyDMConverter pyproject.toml; then echo "4.5.6+g$node"; else echo "1.2.3.dev4+g$node"; fi
 """
 
+# ``pnpm --version`` answers STUB_PNPM_VERSION (default 11.1.1) and is not logged.
 PNPM_STUB = r"""#!/bin/sh
+[ "$*" != "--version" ] || { echo "${STUB_PNPM_VERSION:-11.1.1}"; exit 0; }
 printf 'pnpm\t%s\t%s\tTRACE=%s HUSKY=%s PM=%s TOKEN=%s\n' "$PWD" "$*" "${TRACE:-unset}" "${HUSKY:-unset}" "${pnpm_config_manage_package_manager_versions:-unset}" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
 case "$*" in
     "install --no-frozen-lockfile --ignore-scripts --ignore-pnpmfile")
@@ -1518,3 +1520,121 @@ def test_help_names_the_one_sdk_check(world):
     assert "sdk_packages" in proc.stdout
     assert "no default" in proc.stdout
     assert "vendor/canopy-sdk-js" not in proc.stdout
+
+
+# --- SDK packs from a release ---------------------------------------------------------
+
+
+def sha512sums(packs: Path) -> str:
+    return "".join(
+        f"{hashlib.sha512(pack.read_bytes()).hexdigest()}  {pack.name}\n" for pack in sorted(packs.glob("*.tgz"))
+    )
+
+
+def release(world: dict, tmp_path: Path, tag: str = "v1") -> Path:
+    """The packs and their SHA512SUMS laid out as a GitHub release's downloads."""
+    downloads = tmp_path / "release" / "releases" / "download" / tag
+    shutil.copytree(world["packs"], downloads)
+    (downloads / "SHA512SUMS").write_text(sha512sums(downloads))
+    return downloads
+
+
+def refused_before_any_tool(world: dict, proc, fragment: str) -> None:
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert fragment in proc.stderr, proc.stderr
+    assert not [c for c in calls(world) if c[0] == "pnpm"]
+    assert not (world["out"] / "STAGED.json").exists()
+
+
+@pytest.mark.parametrize("page", ["download", "tag"])
+def test_packs_are_fetched_from_a_release_url(world, tmp_path, page):
+    downloads = release(world, tmp_path)
+    ok(build(world, SDK_PACKS=f"file://{downloads.parent.parent}/{page}/v1/"))
+    assert staged(world)["sdk_packages"]["runtime"]["@slaclab/canopy-client"] == resolved_entry("client")
+    written = Path(f"{world['log']}.workspace").read_text()
+    assert str(world["packs"]) not in written
+    assert written.count(f"/packs/slaclab-canopy-client-{SDK_VERSION}.tgz\n") == 2
+
+
+def test_a_release_without_sha512sums_is_refused(world, tmp_path):
+    downloads = release(world, tmp_path)
+    (downloads / "SHA512SUMS").unlink()
+    refused_before_any_tool(world, build(world, SDK_PACKS=f"file://{downloads}"), "SHA512SUMS")
+
+
+def test_a_release_pack_not_matching_its_digest_is_refused(world, tmp_path):
+    downloads = release(world, tmp_path)
+    (downloads / f"slaclab-canopy-shell-{SDK_VERSION}.tgz").write_bytes(b"swapped\n")
+    proc = build(world, SDK_PACKS=f"file://{downloads}")
+    refused_before_any_tool(world, proc, f"slaclab-canopy-shell-{SDK_VERSION}.tgz does not match its SHA512SUMS digest")
+
+
+def test_a_release_listing_a_missing_pack_is_refused(world, tmp_path):
+    downloads = release(world, tmp_path)
+    (downloads / f"slaclab-canopy-vite-{SDK_VERSION}.tgz").unlink()
+    proc = build(world, SDK_PACKS=f"file://{downloads}")
+    refused_before_any_tool(world, proc, f"cannot fetch file://{downloads}/slaclab-canopy-vite-{SDK_VERSION}.tgz")
+
+
+@pytest.mark.parametrize("name", ["../slaclab-canopy-client-0.3.1.tgz", "SHA512SUMS", "README.md"])
+def test_a_sha512sums_line_naming_anything_but_a_pack_is_refused(world, tmp_path, name):
+    downloads = release(world, tmp_path)
+    with (downloads / "SHA512SUMS").open("a") as f:
+        f.write(f"{'0' * 128}  {name}\n")
+    refused_before_any_tool(world, build(world, SDK_PACKS=f"file://{downloads}"), "SHA512SUMS line 7 is not")
+
+
+def test_a_pack_directory_with_sha512sums_is_checked(world):
+    (world["packs"] / "SHA512SUMS").write_text(sha512sums(world["packs"]))
+    ok(build(world))
+    (world["packs"] / f"slaclab-canopy-react-{SDK_VERSION}.tgz").write_bytes(b"swapped\n")
+    shutil.rmtree(world["out"])
+    world["log"].unlink()
+    refused_before_any_tool(world, build(world), "does not match its SHA512SUMS digest")
+
+
+def test_a_pack_directory_with_a_pack_its_sha512sums_omits_is_refused(world):
+    (world["packs"] / "SHA512SUMS").write_text(sha512sums(world["packs"]).split("\n", 1)[1])
+    refused_before_any_tool(world, build(world), "is not listed in SHA512SUMS")
+
+
+def test_sdk_packs_neither_a_directory_nor_a_url_is_refused(world):
+    proc = build(world, SDK_PACKS="http://example.invalid/packs")
+    assert proc.returncode != 0
+    assert "is not a directory or an https:// or file:// URL" in proc.stderr
+    assert calls(world) == []
+
+
+def test_each_install_exempts_the_packs_from_release_age_policies(world):
+    ok(build(world))
+    written = Path(f"{world['log']}.workspace").read_text()
+    exempt = "minimumReleaseAgeExclude:\n" + "".join(f"  - '@slaclab/canopy-{p}'\n" for p in PACKAGES)
+    assert written.count(exempt) == 2
+
+
+# --- the pnpm that runs ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("repo,label", [("rt", "runtime"), ("trace", "Trace")])
+def test_a_pnpm_other_than_the_package_manager_named_is_refused(world, repo, label):
+    commit(world[repo], {"package.json": '{"packageManager": "pnpm@11.1.1"}\n'}, "pin pnpm")
+    proc = build(world, STUB_PNPM_VERSION="12.5.1")
+    assert proc.returncode != 0
+    assert f"pnpm 12.5.1 is on PATH, but the {label} (" in proc.stderr
+    assert "names pnpm@11.1.1 in packageManager" in proc.stderr
+    assert not [c for c in calls(world) if c[0] == "pnpm"]
+
+
+def test_the_package_manager_named_with_its_hash_passes(world):
+    for repo in ("rt", "trace"):
+        commit(world[repo], {"package.json": '{"packageManager": "pnpm@11.1.1+sha512.abc"}\n'}, "pin pnpm")
+    proc = build(world)
+    ok(proc)
+    assert "pnpm    11.1.1" in proc.stderr
+
+
+def test_help_says_which_pnpm_runs(world):
+    proc = build(world, "--help", out=False)
+    ok(proc)
+    assert "pnpm runs as found on PATH" in proc.stdout
+    assert "releases/download/<tag>" in proc.stdout

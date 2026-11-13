@@ -11,15 +11,16 @@
 # so nothing is built in a checkout and an uncommitted edit never enters the
 # build. Before anything is built, the fixtures Canopy shares with the runtime
 # and the SDK are compared at the recorded commits (check_shared_fixtures). The
-# runtime and Trace take the SDK from local packs (SDK_PACKS, `pnpm pack` of
-# SDK_SHA), never from a registry; once installed, their lockfiles must resolve
-# one SDK, the packs of the release tagged at SDK_SHA (check_one_sdk), before
-# anything of theirs is built.
+# runtime and Trace take the SDK from packs (SDK_PACKS, `pnpm pack` of SDK_SHA,
+# in a directory or fetched from a release with its SHA512SUMS), never from a
+# registry; once installed, their lockfiles must resolve one SDK, the packs of
+# the release tagged at SDK_SHA (check_one_sdk), before anything of theirs is
+# built.
 #
 # What the payload holds and how a host uses it: docs/deployment/appliance.md.
-# Inputs and checks: --help. Needs git, tar, uv/uvx, pnpm, python3 and
-# sha256sum or shasum. Put the pnpm the commits' packageManager names on PATH: a
-# commit cannot switch it here.
+# Inputs and checks: --help. Needs git, tar, uv/uvx, pnpm, python3, sha256sum or
+# shasum, and curl when SDK_PACKS is a URL. The pnpm on PATH runs, and it must be
+# the version the commits' packageManager names (a commit cannot switch it here).
 set -euo pipefail
 
 PROG=build-payload
@@ -45,7 +46,12 @@ Required inputs (environment):
   SDK_PACKS   directory of the SDK's packs, slaclab-canopy-<package>-<version>.tgz
               (pnpm pack of SDK_SHA; a prerelease such as 0.3.1-als.1 included),
               one per package, one version; the runtime and Trace install them
-              in place of any registry copy
+              in place of any registry copy. Or an https:// (or file://) URL of a
+              release, e.g. https://github.com/<owner>/<repo>/releases/download/<tag>
+              (a .../releases/tag/<tag> page URL is read as that): its SHA512SUMS
+              and every pack it lists are fetched. A SHA512SUMS (lines
+              "<sha512 hex>  <pack>"), required from a release and optional in a
+              directory, must list every pack with its digest, and nothing else
   TRACE       react-trace checkout (required unless --no-trace)
   TRACE_REF   git ref in TRACE to build (required unless --no-trace)
 
@@ -62,7 +68,9 @@ Optional inputs (environment):
                   (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
                   unset means no spec/ and both recorded as null
 
-pnpm runs as found on PATH, whatever a commit's packageManager names: use that version.
+pnpm runs as found on PATH; a commit's packageManager never switches it. When the
+runtime or Trace commit names pnpm@<version> there, the pnpm on PATH must be that
+version, or the build is refused before any install.
 
 Checks (before anything is built; each refuses the build on a mismatch):
   fixtures    when RT_SHA has apps/viewer/e2e/fixtures/collections/, its
@@ -125,8 +133,20 @@ for var in "${required[@]}"; do
     [ -n "${!var:-}" ] || die "set $var (see --help)"
 done
 dirs=(PYDM RT SDK)
-[ -d "$SDK_PACKS" ] || die "SDK_PACKS=$SDK_PACKS is not a directory"
-SDK_PACKS="$(cd "$SDK_PACKS" && pwd)"
+# A release URL is fetched once the temp root exists (fetch_packs).
+SDK_PACKS_URL=""
+case "$SDK_PACKS" in
+    https://*|file://*)
+        SDK_PACKS_URL="${SDK_PACKS%/}"
+        case "$SDK_PACKS_URL" in */releases/tag/*)
+            SDK_PACKS_URL="${SDK_PACKS_URL%%/releases/tag/*}/releases/download/${SDK_PACKS_URL#*/releases/tag/}" ;;
+        esac
+        ;;
+    *)
+        [ -d "$SDK_PACKS" ] || die "SDK_PACKS=$SDK_PACKS is not a directory or an https:// or file:// URL"
+        SDK_PACKS="$(cd "$SDK_PACKS" && pwd)"
+        ;;
+esac
 [ "$NO_TRACE" = 1 ] || dirs+=(TRACE)
 for var in "${dirs[@]}"; do
     [ -d "${!var}" ] || die "$var=${!var} is not a directory"
@@ -360,6 +380,62 @@ EXPORTS="$WORK/exports"
 STAGE="$WORK/payload"
 mkdir -p "$STAGE"
 
+# --- SDK packs: a release's are fetched, a SHA512SUMS is checked -------------
+# SHA512SUMS lines are "<sha512 hex>  <pack>" (sha512sum's form; " *" also read).
+# With "list", prints the packs it names; otherwise every pack in <dir> must be
+# listed with its digest, and every listed pack must be in <dir>.
+check_sums() { # <dir> [list]
+    python3 -I -c '
+import hashlib, os, re, sys
+directory, mode = sys.argv[1], sys.argv[2]
+PACK = r"slaclab-canopy-[a-z]+(?:-[a-z]+)*-[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?\.tgz"
+def refuse(message):
+    sys.exit(f"build-payload: {message}")
+sums = {}
+with open(os.path.join(directory, "SHA512SUMS"), encoding="utf-8") as f:
+    for number, line in enumerate(f, 1):
+        if not line.strip():
+            continue
+        entry = re.fullmatch(rf"([0-9a-f]{{128}}) [ *]({PACK})", line.rstrip("\n"))
+        if not entry:
+            refuse(f"SHA512SUMS line {number} is not \"<sha512 hex>  slaclab-canopy-<package>-<version>.tgz\": {line.strip()}")
+        sums[entry.group(2)] = entry.group(1)
+if not sums:
+    refuse("SHA512SUMS lists no slaclab-canopy-*.tgz pack")
+if mode == "list":
+    print("\n".join(sorted(sums)))
+    sys.exit()
+held = sorted(name for name in os.listdir(directory) if re.fullmatch(PACK, name))
+for name in held:
+    if name not in sums:
+        refuse(f"pack {name} is not listed in SHA512SUMS")
+    with open(os.path.join(directory, name), "rb") as f:
+        if hashlib.sha512(f.read()).hexdigest() != sums[name]:
+            refuse(f"pack {name} does not match its SHA512SUMS digest")
+for name in sorted(set(sums) - set(held)):
+    refuse(f"SHA512SUMS lists {name}, which is not among the packs")
+' "$1" "${2:-verify}"
+}
+fetch() { curl -fsSL --proto '=https,file' --proto-redir '=https' -o "$2" "$1"; }
+fetch_packs() { # <release url> <dir>
+    local names name
+    mkdir -p "$2"
+    fetch "$1/SHA512SUMS" "$2/SHA512SUMS" || die "cannot fetch $1/SHA512SUMS (SDK_PACKS names a release, which must hold one)"
+    names="$(check_sums "$2" list)" || exit 1
+    for name in $names; do
+        fetch "$1/$name" "$2/$name" || die "cannot fetch $1/$name, listed in its SHA512SUMS"
+    done
+}
+if [ -n "$SDK_PACKS_URL" ]; then
+    SDK_PACKS="$WORK/packs"
+    fetch_packs "$SDK_PACKS_URL" "$SDK_PACKS"
+    echo "$PROG: packs   fetched from $SDK_PACKS_URL" >&2
+fi
+if [ -e "$SDK_PACKS/SHA512SUMS" ]; then
+    check_sums "$SDK_PACKS" || exit 1
+    echo "$PROG: packs   match their SHA512SUMS" >&2
+fi
+
 export_repo() { # <checkout> <sha> <repo dir name>; prints the export's path
     local dest="$EXPORTS/$3"
     mkdir -p "$dest"
@@ -574,11 +650,13 @@ ls "$STAGE"/canopy-*.whl >/dev/null 2>&1 || die "no canopy wheel was built"
 # The install reads an empty .npmrc written here (a commit's own .npmrc never
 # applies), runs no package scripts or pnpmfile, and no commit picks the pnpm
 # that runs. Every @slaclab/canopy-* package is overridden by its pack, so the
-# lockfile is re-resolved (not frozen) and checked right after (check_one_sdk).
+# lockfile is re-resolved (not frozen) and checked right after (check_one_sdk);
+# a pack is no registry release, so registry release-age policies skip it.
 js() { env -u TRACE HUSKY=0 pnpm_config_manage_package_manager_versions=false "$@"; }
 js_install() { # in an export's directory, in a subshell
     rm -f .npmrc
     : > .npmrc
+    local names=()
     {
         echo
         echo "overrides:"
@@ -587,12 +665,35 @@ js_install() { # in an export's directory, in a subshell
             name="$(basename "$pack")"
             name="${name#slaclab-}"
             name="${name%%-[0-9]*.tgz}"
+            names+=("$name")
             echo "  '@slaclab/$name': file:$pack"
+        done
+        echo
+        echo "minimumReleaseAgeExclude:"
+        for name in "${names[@]}"; do
+            echo "  - '@slaclab/$name'"
         done
     } >> pnpm-workspace.yaml
     js pnpm install --no-frozen-lockfile --ignore-scripts --ignore-pnpmfile
 }
 ls "$SDK_PACKS"/slaclab-canopy-*.tgz >/dev/null 2>&1 || die "SDK_PACKS=$SDK_PACKS holds no slaclab-canopy-*.tgz pack"
+PNPM_VERSION="$(cd "$RT_SRC" && js pnpm --version)" || die "pnpm --version failed"
+pnpm_named() { # <export>: the version its packageManager names for pnpm, or nothing
+    python3 -I -c '
+import json, sys
+manager = json.load(open(sys.argv[1], encoding="utf-8")).get("packageManager") or ""
+print(manager[len("pnpm@"):].split("+")[0] if manager.startswith("pnpm@") else "")
+' "$1/package.json"
+}
+check_pnpm() { # <label> <export>
+    local named
+    named="$(pnpm_named "$2")" || die "cannot read packageManager in the $1 export"
+    [ -z "$named" ] || [ "$named" = "$PNPM_VERSION" ] \
+        || die "pnpm $PNPM_VERSION is on PATH, but the $1 names pnpm@$named in packageManager; put pnpm $named first on PATH"
+}
+check_pnpm "runtime (RT_SHA=$RT_SHA)" "$RT_SRC"
+[ "$NO_TRACE" = 1 ] || check_pnpm "Trace (TRACE_SHA=$TRACE_SHA)" "$TRACE_SRC"
+echo "$PROG: pnpm    $PNPM_VERSION" >&2
 (cd "$RT_SRC" && js_install) \
     || die "installing the runtime export of $RT_SHA failed (pnpm install --no-frozen-lockfile --ignore-scripts --ignore-pnpmfile)"
 if [ "$NO_TRACE" = 0 ]; then
