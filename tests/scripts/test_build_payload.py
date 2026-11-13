@@ -116,8 +116,8 @@ cat marker.txt > "$out/$name-$version-py3-none-any.whl"
 ls > "$out/$name.files"
 """
 
-# Like setuptools_scm, the version names the checkout's HEAD as ``+g<7 hex>``;
-# STUB_SCM_VERSION replaces it outright.
+# Like setuptools_scm, the version names the HEAD of the directory it runs in as
+# ``+g<7 hex>``; STUB_SCM_VERSION replaces it outright.
 UVX_STUB = r"""#!/bin/sh
 printf 'uvx\t%s\t%s\tTOKEN=%s\n' "$PWD" "$*" "${NODE_AUTH_TOKEN:+set}" >> "$STUB_LOG"
 [ -z "${STUB_SCM_VERSION:-}" ] || { echo "$STUB_SCM_VERSION"; exit 0; }
@@ -242,6 +242,9 @@ def world(tmp_path: Path) -> dict:
     commit(canopy, {"marker.txt": "canopy v2\n"}, "two")
 
     pydm = make_repo(src / "pydm-converter-tool", {"pyproject.toml": "[project]\nname='PyDMConverter'\n"})
+    # A version is computed only from a commit a tag is reachable from.
+    git(canopy, "tag", "v1.2.2", "HEAD~1")
+    git(pydm, "tag", "v4.5.5", "HEAD~1")
     sdk = make_repo(
         src / "canopy-sdk-js",
         {
@@ -402,7 +405,7 @@ def test_recorded_shas_are_built_instead_of_head(world):
         "SDK_SHA": first(world["sdk"]),
         "PYDM_SHA": first(world["pydm"]),
     }
-    # A computed version would name HEAD, not the recorded commit; given versions are used as is.
+    # Given versions are used as is, whichever commit is built.
     versions = {"CANOPY_VERSION": "1.2.2", "PYDM_VERSION": "4.5.5"}
     ok(build(world, **shas, **versions, TRACE_REF="feature"))
     out = world["out"]
@@ -501,7 +504,9 @@ def test_temp_root_is_removed(world):
 def test_versions_come_from_the_source_checkouts_and_are_pretended(world):
     ok(build(world))
     scm = [(cwd, argv) for tool, cwd, argv, _ in calls(world) if tool == "uvx"]
-    assert [cwd for cwd, _ in scm] == [world["canopy"].resolve(), world["pydm"]]
+    # Each runs in a throwaway clone under the one temp root, never in the checkout.
+    assert [cwd.name for cwd, _ in scm] == ["canopy", "PyDMConverter"]
+    assert all(world["scratch"].resolve() in cwd.parents for cwd, _ in scm)
     assert all("setuptools_scm" in argv for _, argv in scm)
     # The uv stub names each wheel after the pretended version it was handed.
     names = sorted(p.name for p in world["out"].glob("*.whl"))
@@ -615,14 +620,92 @@ def test_a_trace_dist_failing_check_dist_leaves_no_payload(world):
     assert not world["out"].exists() or list(world["out"].iterdir()) == []
 
 
+def test_versions_are_computed_at_the_recorded_shas_not_head(world):
+    canopy, pydm = first(world["canopy"]), first(world["pydm"])
+    before = {r: (git(r, "rev-parse", "HEAD"), git(r, "for-each-ref"), git(r, "worktree", "list", "--porcelain"))
+              for r in (world["canopy"], world["pydm"])}  # fmt: skip
+    proc = build(world, CANOPY_SHA=canopy, PYDM_SHA=pydm)
+    ok(proc)
+    s = staged(world)
+    assert (s["canopy_version"], s["pydm_version"]) == (f"1.2.3.dev4+g{canopy[:7]}", f"4.5.6+g{pydm[:7]}")
+    assert f"canopy version 1.2.3.dev4+g{canopy[:7]} (setuptools_scm at {canopy}, from tag v1.2.2)" in proc.stderr
+    assert (world["out"] / f"canopy-1.2.3.dev4+g{canopy[:7]}-py3-none-any.whl").read_text() == "canopy v1\n"
+    # The checkouts keep their HEAD, refs and worktrees: the clone is thrown away with the temp root.
+    after = {r: (git(r, "rev-parse", "HEAD"), git(r, "for-each-ref"), git(r, "worktree", "list", "--porcelain"))
+             for r in (world["canopy"], world["pydm"])}  # fmt: skip
+    assert after == before
+    assert list(world["scratch"].iterdir()) == []
+
+
 def test_refuses_scm_version_not_matching_staged_sha(world):
     recorded = first(world["canopy"])
-    proc = build(world, CANOPY_SHA=recorded)
+    proc = build(world, CANOPY_SHA=recorded, STUB_SCM_VERSION=f"1.2.3.dev4+g{head(world['canopy'])[:7]}")
     assert proc.returncode != 0
     assert f"+g{head(world['canopy'])[:7]}" in proc.stderr
     assert recorded in proc.stderr
     assert "CANOPY_VERSION" in proc.stderr
     assert [c[0] for c in calls(world)] == ["uvx"]  # refused before any export is built
+    assert not world["out"].exists()
+
+
+@pytest.mark.parametrize(
+    ("repo", "label", "var", "where"),
+    [
+        ("canopy", "canopy", "CANOPY_VERSION", "v0.0.1 onward in https://github.com/slaclab/canopy"),
+        ("pydm", "PyDMConverter", "PYDM_VERSION", "https://github.com/slaclab/pydm-converter-tool"),
+    ],
+)
+def test_a_commit_without_a_reachable_tag_is_refused(world, repo, label, var, where):
+    git(world[repo], "tag", "-d", "v1.2.2" if repo == "canopy" else "v4.5.5")
+    proc = build(world)
+    assert proc.returncode != 0
+    assert f"no tag in {world[repo]} is reachable from {head(world[repo])}" in proc.stderr
+    assert f"would make up the {label} version" in proc.stderr
+    assert where in proc.stderr
+    assert f"fetch <that repository> tag <tag>" in proc.stderr
+    assert var in proc.stderr
+    assert not [c for c in calls(world) if c[0] != "uvx"]  # never a made-up version, never a build
+    assert not world["out"].exists()
+    assert list(world["scratch"].iterdir()) == []
+
+
+def test_a_tag_only_after_the_recorded_commit_is_refused(world):
+    git(world["canopy"], "tag", "-d", "v1.2.2")
+    git(world["canopy"], "tag", "v1.2.3", "HEAD")
+    proc = build(world, CANOPY_SHA=first(world["canopy"]))
+    assert proc.returncode != 0
+    assert "no tag in" in proc.stderr
+    assert not world["out"].exists()
+
+
+def test_a_given_version_needs_no_tag_and_wins_over_the_computed_one(world):
+    git(world["canopy"], "tag", "-d", "v1.2.2")
+    git(world["pydm"], "tag", "-d", "v4.5.5")
+    proc = build(world, CANOPY_SHA=first(world["canopy"]), CANOPY_VERSION="9.9.9", PYDM_VERSION="8.8.8",
+                 STUB_SCM_VERSION="0.1.dev1+gdeadbee")  # fmt: skip
+    ok(proc)
+    assert not [c for c in calls(world) if c[0] == "uvx"]
+    assert (staged(world)["canopy_version"], staged(world)["pydm_version"]) == ("9.9.9", "8.8.8")
+
+
+def test_one_given_version_leaves_the_other_computed(world):
+    proc = build(world, PYDM_VERSION="8.8.8")
+    ok(proc)
+    assert [cwd.name for tool, cwd, _, _ in calls(world) if tool == "uvx"] == ["canopy"]
+    assert (staged(world)["canopy_version"], staged(world)["pydm_version"]) == (canopy_version(world), "8.8.8")
+
+
+def test_a_shallow_checkout_is_refused(world, tmp_path):
+    shallow = tmp_path / "shallow" / "canopy"
+    git(tmp_path, "clone", "-q", "--depth", "1", f"file://{world['canopy']}", str(shallow))
+    shutil.copy2(world["canopy"] / "scripts" / "build-payload.sh", shallow / "scripts" / "build-payload.sh")
+    argv = ["bash", str(shallow / "scripts" / "build-payload.sh"), str(world["out"])]
+    env = {**world["env"], "SDK_SHA": head(world["sdk"])}
+    git(world["sdk"], "tag", "-f", f"v{SDK_VERSION}", "HEAD")
+    proc = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=120)
+    assert proc.returncode != 0
+    assert "is a shallow clone" in proc.stderr
+    assert "CANOPY_VERSION" in proc.stderr
     assert not world["out"].exists()
 
 

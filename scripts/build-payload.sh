@@ -59,10 +59,13 @@ Optional inputs (environment):
   CANOPY_SHA      commit of this checkout to build (default: its HEAD)
   RT_SHA          commit of RT to build (default: its HEAD)
   PYDM_SHA        commit of PYDM to build (default: its HEAD)
-  CANOPY_VERSION  PEP 440 version of canopy (default: setuptools_scm on this checkout,
-                  whose +g<node> must be a prefix of CANOPY_SHA)
-  PYDM_VERSION    PEP 440 version of PyDMConverter (default: setuptools_scm on PYDM,
-                  whose +g<node> must be a prefix of PYDM_SHA)
+  CANOPY_VERSION  PEP 440 version of canopy (default: setuptools_scm at CANOPY_SHA,
+                  in a throwaway clone of this checkout; a tag must be reachable
+                  from CANOPY_SHA: canopy's release tags, v0.0.1 onward, are in
+                  https://github.com/slaclab/canopy)
+  PYDM_VERSION    PEP 440 version of PyDMConverter (default: setuptools_scm at
+                  PYDM_SHA, in a throwaway clone of PYDM; a tag must be reachable
+                  from PYDM_SHA)
   SPEC            staged spec directory (ir/, widgets/, SPEC-SOURCE naming repo and
                   SHA), copied to <out>/spec/ and recorded in STAGED.json as "spec"
                   (the SPEC-SOURCE SHA) and "spec-digest" (a digest of the tree);
@@ -345,33 +348,6 @@ else
     echo "$PROG: vectors absent (neither commit holds $VECTOR_FILES)" >&2
 fi
 
-# PEP 440 versions from the source checkouts (an export has no .git).
-# setuptools_scm describes the checkout's HEAD, not the recorded commit, so a
-# computed version must name the commit that is built: its local `+g<node>`
-# has to be a prefix of that commit's SHA, or the wheel would claim a commit it
-# was not built from. A version passed in explicitly is used as given.
-scm_version() { (cd "$1" && uvx --from setuptools-scm python -m setuptools_scm); }
-NODE_RE='\+g([0-9a-f]+)(\.|$)'
-pick_version() { # <label> <given version> <checkout> <sha> <variable name>; prints the version
-    local version node
-    if [ -n "$2" ]; then
-        echo "$PROG: $1 version $2 (given by $5, used as is)" >&2
-        printf '%s\n' "$2"
-        return
-    fi
-    version="$(scm_version "$3")" || die "setuptools_scm failed in $3 (set $5)"
-    [ -n "$version" ] || die "no $1 version (set $5)"
-    [[ "$version" =~ $NODE_RE ]] \
-        || die "$1 version $version from setuptools_scm has no +g<commit>; it cannot be matched to $4 (set $5)"
-    node="${BASH_REMATCH[1]}"
-    [ "${4#"$node"}" != "$4" ] \
-        || die "$1 version $version from setuptools_scm names +g$node, but the commit built is $4 (set $5, or build the checkout's HEAD)"
-    echo "$PROG: $1 version $version (setuptools_scm, +g$node matches $4)" >&2
-    printf '%s\n' "$version"
-}
-CANOPY_VERSION="$(pick_version canopy "${CANOPY_VERSION:-}" "$ROOT" "$CANOPY_SHA" CANOPY_VERSION)"
-PYDM_VERSION="$(pick_version PyDMConverter "${PYDM_VERSION:-}" "$PYDM" "$PYDM_SHA" PYDM_VERSION)"
-
 # --- detached exports (one temp root, removed on exit) -----------------------
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/canopy-payload.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
@@ -379,6 +355,46 @@ WORK="$(cd "$WORK" && pwd -P)"
 EXPORTS="$WORK/exports"
 STAGE="$WORK/payload"
 mkdir -p "$STAGE"
+
+# PEP 440 versions from the source checkouts (an export has no .git).
+# setuptools_scm describes HEAD, so it runs at the recorded commit in a
+# throwaway clone (sharing the checkout's objects, holding its tags), never in
+# the checkout itself. Its version counts from the nearest tag the commit
+# descends from: a commit with no tag in reach, or a shallow checkout, would get
+# a made-up version, so either is refused. The local `+g<node>` must still be a
+# prefix of the commit built. A version passed in explicitly is used as given.
+scm_version() { (cd "$1" && uvx --from setuptools-scm python -m setuptools_scm); }
+NODE_RE='\+g([0-9a-f]+)(\.|$)'
+pick_version() { # <label> <given version> <checkout> <sha> <variable name> <where its tags are>; prints the version
+    local version node at tag
+    if [ -n "$2" ]; then
+        echo "$PROG: $1 version $2 (given by $5, used as is)" >&2
+        printf '%s\n' "$2"
+        return
+    fi
+    [ "$(git -C "$3" rev-parse --is-shallow-repository)" = false ] \
+        || die "$3 is a shallow clone: setuptools_scm cannot count the commits since the $1 tag (fetch with --unshallow, or set $5)"
+    at="$WORK/scm/$1"
+    git clone --quiet --shared --no-checkout "$3" "$at" >&2 \
+        && git -C "$at" -c advice.detachedHead=false checkout --quiet --detach "$4" >&2 \
+        || die "cannot check out $4 of $3 to compute the $1 version (set $5)"
+    tag="$(git -C "$at" describe --tags --abbrev=0 HEAD 2>/dev/null)" \
+        || die "no tag in $3 is reachable from $4, so setuptools_scm would make up the $1 version; fetch the release tag it descends from ($6: git -C $3 fetch <that repository> tag <tag>), or set $5"
+    version="$(scm_version "$at")" || die "setuptools_scm failed at $4 of $3 (set $5)"
+    rm -rf "$at"
+    [ -n "$version" ] || die "no $1 version (set $5)"
+    [[ "$version" =~ $NODE_RE ]] \
+        || die "$1 version $version from setuptools_scm has no +g<commit>; it cannot be matched to $4 (set $5)"
+    node="${BASH_REMATCH[1]}"
+    [ "${4#"$node"}" != "$4" ] \
+        || die "$1 version $version from setuptools_scm names +g$node, but the commit built is $4 (set $5)"
+    echo "$PROG: $1 version $version (setuptools_scm at $4, from tag $tag)" >&2
+    printf '%s\n' "$version"
+}
+CANOPY_VERSION="$(pick_version canopy "${CANOPY_VERSION:-}" "$ROOT" "$CANOPY_SHA" CANOPY_VERSION \
+    "canopy's are v0.0.1 onward in https://github.com/slaclab/canopy")"
+PYDM_VERSION="$(pick_version PyDMConverter "${PYDM_VERSION:-}" "$PYDM" "$PYDM_SHA" PYDM_VERSION \
+    "PyDMConverter's are v1.0.0 onward in https://github.com/slaclab/pydm-converter-tool")"
 
 # --- SDK packs: a release's are fetched, a SHA512SUMS is checked -------------
 # SHA512SUMS lines are "<sha512 hex>  <pack>" (sha512sum's form; " *" also read).
