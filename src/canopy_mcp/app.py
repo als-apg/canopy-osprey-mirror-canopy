@@ -3,8 +3,8 @@
 ``/mcp`` is FastMCP's streamable-HTTP route, lifted onto this app (rather than
 mounted) so ``POST /mcp`` answers directly instead of redirecting to
 ``/mcp/``. The viewer and draft routes come from :mod:`canopy_mcp.static` and
-the API forward (two WebSocket relays, the Mole GET, the Formula Engine POSTs and, with
-``CANOPY_PUT_RELAY`` on, the one PV write) from :mod:`canopy_mcp.forward`. The
+the API forward (two WebSocket relays, the Mole GET, the Formula Engine POSTs, the e-log
+and, with ``CANOPY_PUT_RELAY`` on, the one PV write) from :mod:`canopy_mcp.forward`. The
 shared screen library (saved views, collections and, with ``CANOPY_WORKSPACE``
 on, the workspace hub) is added by :func:`~canopy_mcp.shared_library.mount_library`.
 

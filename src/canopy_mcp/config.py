@@ -10,8 +10,8 @@ an explicit environment. Two rules hold for every variable:
   ``CANOPY_DRAFTS_DIR`` and ``CANOPY_PV_MODE``, which must say something.
 - A secret named by a ``*_FILE`` variable comes only from that file: one that
   cannot supply it raises :class:`~canopy_mcp.access.CredentialFileError`
-  instead of falling back, and the PUT relay switched on without its secrets
-  raises :class:`RelayConfigError`. Either way nothing is served.
+  instead of falling back, and the PUT or e-log relay switched on without its
+  secrets raises :class:`RelayConfigError`. Either way nothing is served.
 """
 
 import re
@@ -118,6 +118,12 @@ class Settings(BaseSettings):
     # (``chromium_sandbox=True``); off by default, since the sandbox needs
     # privileges a container usually lacks.
     browser_sandbox: bool = False
+    # Whether ``/elog/v1/`` is relayed to the backend; on only when the backend
+    # mounts the e-log module. Off, the server answers the e-log as disabled.
+    elog_relay: bool = False
+    # File holding the e-log write key the relay sends upstream on its POSTs.
+    # Required with the e-log relay on; there is no environment form of this key.
+    elog_write_api_key_file: Path | None = None
     # Whether ``PUT /hare/v1/pvs/{pv}`` is relayed to the backend (the one
     # write route); off leaves it a 405 like every other mutating path.
     put_relay: bool = False
@@ -165,6 +171,7 @@ class Settings(BaseSettings):
     library_ignored_names: str = ""
 
     _write_api_key: str = PrivateAttr(default="")
+    _elog_write_api_key: str = PrivateAttr(default="")
 
     @field_validator("*", mode="before")
     @classmethod
@@ -235,13 +242,24 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _read_the_elog_write_key_file(self) -> "Settings":
+        # Like the PV write key: a file that is named must supply the key, relay on or off.
+        if self.elog_write_api_key_file is not None:
+            self._elog_write_api_key = read_secret_file("CANOPY_ELOG_WRITE_API_KEY_FILE", self.elog_write_api_key_file)
+        return self
+
+    @model_validator(mode="after")
     def _refuse_a_relay_without_its_secrets(self) -> "Settings":
-        if not self.put_relay:
-            return self
-        if self.write_api_key_file is None:
-            raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_WRITE_API_KEY_FILE is not set")
-        if self.access_token_file is None:
-            raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_ACCESS_TOKEN_FILE is not set")
+        if self.put_relay:
+            if self.write_api_key_file is None:
+                raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_WRITE_API_KEY_FILE is not set")
+            if self.access_token_file is None:
+                raise RelayConfigError("CANOPY_PUT_RELAY is on but CANOPY_ACCESS_TOKEN_FILE is not set")
+        if self.elog_relay:
+            if self.elog_write_api_key_file is None:
+                raise RelayConfigError("CANOPY_ELOG_RELAY is on but CANOPY_ELOG_WRITE_API_KEY_FILE is not set")
+            if self.access_token_file is None:
+                raise RelayConfigError("CANOPY_ELOG_RELAY is on but CANOPY_ACCESS_TOKEN_FILE is not set")
         return self
 
     @property
@@ -284,6 +302,11 @@ class Settings(BaseSettings):
     def write_api_key(self) -> str:
         """The key the PUT relay sends upstream; empty when no write-key file is configured."""
         return self._write_api_key
+
+    @property
+    def elog_write_api_key(self) -> str:
+        """The key the e-log relay sends upstream on its POSTs; empty when no e-log write-key file is configured."""
+        return self._elog_write_api_key
 
 
 def parse_name_list(text: str) -> frozenset[str]:

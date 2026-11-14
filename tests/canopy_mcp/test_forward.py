@@ -236,10 +236,10 @@ def test_other_websocket_paths_are_refused(client: TestClient, upstream: FakeUps
     assert upstream.requests == []
 
 
-@pytest.mark.parametrize("path", ["/elog/v1/apps/trace/config", "/elog/v1/health/summary"])
-def test_e_log_is_not_relayed(client: TestClient, upstream: FakeUpstream, path: str) -> None:
-    """E-log is not among the forwarded services: a client behind this server sees no e-log."""
-    assert client.get(path, headers={"X-API-Key": CLIENT_KEY}).status_code == 404
+@pytest.mark.parametrize(("path", "status"), [("/elog/v1/apps/trace/config", 200), ("/elog/v1/health/summary", 503)])
+def test_e_log_is_not_relayed(client: TestClient, upstream: FakeUpstream, path: str, status: int) -> None:
+    """With CANOPY_ELOG_RELAY off, the e-log answers as a disabled module and nothing goes upstream."""
+    assert client.get(path, headers={"X-API-Key": CLIENT_KEY}).status_code == status
     assert upstream.requests == []
 
 

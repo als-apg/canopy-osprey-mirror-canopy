@@ -153,6 +153,8 @@ changes only on the host: a user asks for a screen to be added with
 | `CANOPY_CORRELATION_DEFAULT_QUERY` | empty | The query the correlation page opens with when the URL carries none (`x=...&y=...`). |
 | `CANOPY_WAVEFORM_DEFAULT_QUERY` | empty | The query the waveform page opens with when the URL carries none (`pv=...`). |
 | `CANOPY_CHANNELS_FILE` | unset | A JSON array of channel addresses, served on `GET /channels` for the PV autocomplete of the Trace pages. |
+| `CANOPY_ELOG_RELAY` | `0` | `1` relays the e-log to DATA, for a DATA that mounts `elog`: `GET /elog/v1/...` with the read key (which then needs the `elog` scope), and only `POST /elog/v1/apps/{app}/entries` and `.../attachments` with the e-log write key. It needs `CANOPY_ACCESS_TOKEN_FILE` and `CANOPY_ELOG_WRITE_API_KEY_FILE`; without either FRONT does not start. `0` answers the e-log as a disabled module does, so Trace's e-log config lookup gets `enabled: false` and a reason instead of a 404. |
+| `CANOPY_ELOG_WRITE_API_KEY_FILE` | unset | File holding the key, with `elog` write scope, the e-log relay sends upstream on its POSTs. There is no environment form of this key. |
 | `CANOPY_HOME_SCREEN` | unset | The library screen the viewer opens on, as its id under `CANOPY_LIBRARY_DIR` (`facility/overview`). FRONT hands it to the viewer in `config.json` as `home`; unset, the key is absent. A value with a leading slash, a `.`, `..` or empty segment, or a backslash stops FRONT at startup. |
 | `CANOPY_THEME_FILE` | unset | The color scheme, as described under [Color schemes](color-schemes.md). FRONT hands it to the viewer in `config.json`. |
 

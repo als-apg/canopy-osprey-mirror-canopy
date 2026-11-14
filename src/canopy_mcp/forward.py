@@ -1,4 +1,4 @@
-"""The forward of the CANOPY API: two WebSocket relays, the Mole reads, two Formula Engine POSTs and the opt-in PV write.
+"""The forward of the CANOPY API: two WebSocket relays, the Mole reads, two Formula Engine POSTs, the e-log and the opt-in PV write.
 
 The served viewer reads live values over ``WS /hare/v1/ws/pvs`` and
 ``WS /formula-engine/v1/ws/formulas``. Both are relayed to ``CANOPY_BASE_URL`` with the
@@ -42,6 +42,26 @@ empty PV path 404 and an oversized body 413 are the server's own refusals
 ``CANOPY_PUT_RELAY_TIMEOUT_S`` is 504 and one that cannot be reached 502, both
 ``pv_write_unknown``, since the write may or may not have happened.
 
+The e-log (``/elog/...``) keeps canopy's own contract whichever way DATA is set
+up. FRONT cannot see which modules DATA mounts, so ``CANOPY_ELOG_RELAY`` says
+it. On, and only behind the access credential (like the PUT relay, it does not
+start without ``CANOPY_ACCESS_TOKEN_FILE``), ``GET /elog/v1/{path}`` is relayed
+as the Mole reads are, with the server's read key, and exactly the two e-log
+writes, ``POST /elog/v1/apps/{app}/entries`` and ``.../attachments``, with the
+e-log write key (``CANOPY_ELOG_WRITE_API_KEY_FILE``), never the read key. Only
+``Content-Type``, ``Accept`` and the key go upstream and ``api_key`` is dropped;
+a GET path that would leave ``/elog/v1/`` is 404, a malformed ``{app}`` on a
+POST 400 ``invalid_app_name``, a cross-site POST 403 and a body over
+:data:`ELOG_BODY_MAX_BYTES` 413, and every other method or path under
+``/elog`` 405. An upstream that does not answer within :data:`ELOG_TIMEOUT` seconds is
+504 ``elog_upstream_timeout`` and one that cannot be reached 502
+``elog_upstream_error``. Off, FRONT answers the e-log itself as a disabled module
+does: ``GET /elog/v1/apps/{app}/config`` is 200 with ``enabled: false`` and a
+reason (the shape of the e-log module's ``ElogConfigDTO``), a malformed ``{app}``
+is 400 ``invalid_app_name`` and every other e-log path 503
+``elog_not_configured``. A client such as Trace then hides its "Post to e-log"
+button instead of asking again on every open.
+
 Every other method and path under the backend's service prefixes answers 405,
 in particular ``PUT /hare/v1/pvs/*`` with the relay off,
 ``POST /squirrel/*/restore`` and every Formula Engine path but the two POSTs above. WebSocket connections to any other path fall
@@ -75,6 +95,7 @@ from canopy.contracts import load_write_outcome_vectors
 from canopy_mcp.client import API_KEY_HEADER, auth_headers
 from canopy_mcp.config import Settings
 from canopy.core.errors import ErrorCode
+from canopy.core.app_names import APP_NAME_RULE, is_app
 
 RELAYED_PATHS = ("/hare/v1/ws/pvs", "/formula-engine/v1/ws/formulas")
 SERVICE_PREFIXES = ("hare", "formula-engine", "squirrel", "raccoon", "mole")
@@ -87,6 +108,18 @@ FORMULA_ENGINE_BODY_MAX_BYTES = 256 * 1024
 # Evaluate may read an archive window before computing, so it gets longer than a Mole read.
 FORMULA_ENGINE_TIMEOUT = 30.0
 FORMULA_ENGINE_UNAVAILABLE = "formula_service_unavailable"
+ELOG_PREFIX = "/elog/v1/"
+ELOG_CONFIG_PATH = "/elog/v1/apps/{app}/config"
+# The e-log's only write routes (canopy.elog.api.v1.apps), relayed with the e-log write key.
+ELOG_WRITE_SUFFIXES = ("entries", "attachments")
+# Above the e-log module's default attachment limit (20 MiB) plus multipart framing;
+# DATA enforces its own limit on what gets through.
+ELOG_BODY_MAX_BYTES = 24 * 1024 * 1024
+# The e-log module waits 15 s for its provider; an upload may take longer on the way.
+ELOG_TIMEOUT = 30.0
+# A function endpoint without ``methods`` answers GET only; these answer every method.
+ANY_METHOD = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+ELOG_NOT_RELAYED = "E-log is not relayed by this server (CANOPY_ELOG_RELAY is off)"
 PVS_PREFIX = "/hare/v1/pvs/"
 # Largest PV write body the relay accepts (a JSON ``{"value": ...}``).
 PUT_BODY_MAX_BYTES = 64 * 1024
@@ -326,14 +359,117 @@ def make_formula_engine_post(settings: Settings, path: str) -> Callable[[Request
             )
         query = _query_without_api_key(request.scope.get("query_string", b""))
         url = base.copy_with(raw_path=base_path + path.encode("ascii") + (b"?" + query if query else b""))
-        # Built from scratch: no client header but Content-Type and Accept, and the server key.
-        upstream_headers = {"Accept": request.headers.get("accept", "*/*")}
-        if "content-type" in request.headers:
-            upstream_headers["Content-Type"] = request.headers["content-type"]
-        upstream_headers.update(headers)
-        return await _relay_http(request, "POST", url, upstream_headers, body, timeout, timed_out, unreachable)
+        return await _relay_http(
+            request, "POST", url, _relay_headers(request, headers), body, timeout, timed_out, unreachable
+        )
 
     return forward
+
+
+def _relay_headers(request: Request, headers: dict[str, str]) -> dict[str, str]:
+    """Built from scratch: no client header but ``Content-Type`` and ``Accept``, and the server key."""
+    upstream_headers = {"Accept": request.headers.get("accept", "*/*")}
+    if "content-type" in request.headers:
+        upstream_headers["Content-Type"] = request.headers["content-type"]
+    upstream_headers.update(headers)
+    return upstream_headers
+
+
+def _elog_timed_out() -> Response:
+    return _error_response(ErrorCode.ELOG_UPSTREAM_TIMEOUT, f"the e-log did not answer within {ELOG_TIMEOUT:g} s", 504)
+
+
+def _elog_unreachable(exc: httpx.TransportError) -> Response:
+    return _error_response(ErrorCode.ELOG_UPSTREAM_ERROR, f"the CANOPY API is unreachable: {exc}", 502)
+
+
+def make_elog_get(settings: Settings) -> Callable[[Request], Awaitable[Response]]:
+    """The ``GET /elog/v1/{path}`` endpoint forwarding e-log reads to the backend with the read key."""
+    base, base_path = _upstream_base(settings)
+    headers = auth_headers(settings)
+    timeout = httpx.Timeout(ELOG_TIMEOUT)
+
+    async def forward(request: Request) -> Response:
+        path = contained_upstream_path(request.scope["path"], request.scope.get("raw_path"), ELOG_PREFIX)
+        if path is None:
+            return _error_response(ErrorCode.NOT_FOUND, f"path is not under {ELOG_PREFIX}", 404)
+        query = _query_without_api_key(request.scope.get("query_string", b""))
+        url = base.copy_with(raw_path=base_path + path.encode("ascii") + (b"?" + query if query else b""))
+        upstream_headers = {"Accept": request.headers.get("accept", "*/*"), **headers}
+        return await _relay_http(
+            request, "GET", url, upstream_headers, None, timeout, _elog_timed_out, _elog_unreachable
+        )
+
+    return forward
+
+
+def make_elog_post(settings: Settings, suffix: str) -> Callable[[Request], Awaitable[Response]]:
+    """The ``POST /elog/v1/apps/{app}/<suffix>`` endpoint relaying one e-log write with the e-log write key."""
+    base, base_path = _upstream_base(settings)
+    headers = {API_KEY_HEADER: settings.elog_write_api_key}
+    timeout = httpx.Timeout(ELOG_TIMEOUT)
+
+    async def forward(request: Request) -> Response:
+        if is_cross_site(request):
+            return _error_response(ErrorCode.BAD_REQUEST, "cross-site requests are not relayed", 403)
+        app = request.path_params["app"]
+        if not is_app(app):
+            return _invalid_app_name(app)
+        body = await read_capped_body(request, ELOG_BODY_MAX_BYTES)
+        if body is None:
+            return _error_response(ErrorCode.BAD_REQUEST, f"the request body exceeds {ELOG_BODY_MAX_BYTES} bytes", 413)
+        # Built from the validated app name and the route's fixed suffix, never the client's path.
+        path = f"{ELOG_PREFIX}apps/{app}/{suffix}".encode("ascii")
+        query = _query_without_api_key(request.scope.get("query_string", b""))
+        url = base.copy_with(raw_path=base_path + path + (b"?" + query if query else b""))
+        return await _relay_http(
+            request, "POST", url, _relay_headers(request, headers), body, timeout, _elog_timed_out, _elog_unreachable
+        )
+
+    return forward
+
+
+def elog_disabled_config(reason: str) -> dict[str, Any]:
+    """The e-log module's ``ElogConfigDTO`` of a disabled module, as it goes on the wire."""
+    return {"enabled": False, "provider": None, "defaultLogbookIds": [], "reason": reason}
+
+
+def _invalid_app_name(app: str) -> Response:
+    return _error_response(ErrorCode.INVALID_APP_NAME, f"Invalid app name '{app}' ({APP_NAME_RULE})", 400)
+
+
+async def elog_config_not_relayed(request: Request) -> Response:
+    """``GET /elog/v1/apps/{app}/config`` with the relay off: 200, the e-log disabled."""
+    app = request.path_params["app"]
+    if not is_app(app):
+        return _invalid_app_name(app)
+    return JSONResponse(elog_disabled_config(ELOG_NOT_RELAYED))
+
+
+async def elog_not_relayed(request: Request) -> Response:
+    """Every other e-log path with the relay off: 503, as a disabled e-log module answers."""
+    app = request.path_params.get("app")
+    if app is not None and not is_app(app):
+        return _invalid_app_name(app)
+    return _error_response(ErrorCode.ELOG_NOT_CONFIGURED, ELOG_NOT_RELAYED, 503)
+
+
+def build_elog_routes(settings: Settings) -> list[BaseRoute]:
+    """The e-log forward with ``CANOPY_ELOG_RELAY`` on, else FRONT's own disabled-module answers."""
+    if settings.elog_relay:
+        return [
+            *(
+                Route(f"{ELOG_PREFIX}apps/{{app}}/{suffix}", make_elog_post(settings, suffix), methods=["POST"])
+                for suffix in ELOG_WRITE_SUFFIXES
+            ),
+            Route(ELOG_PREFIX + "{path:path}", make_elog_get(settings), methods=["GET"]),
+        ]
+    return [
+        Route(ELOG_CONFIG_PATH, elog_config_not_relayed, methods=["GET"]),
+        Route("/elog/v1/apps/{app}/{path:path}", elog_not_relayed, methods=ANY_METHOD),
+        Route("/elog", elog_not_relayed, methods=ANY_METHOD),
+        Route("/elog/{path:path}", elog_not_relayed, methods=ANY_METHOD),
+    ]
 
 
 def _vector_reply(rows: dict[str, Any], row: str, status_code: int | None = None) -> Callable[[], JSONResponse]:
@@ -381,6 +517,8 @@ def make_not_allowed(settings: Settings) -> Callable[[Request], Awaitable[PlainT
     relayed = (
         "the PV and formula WebSockets, GET /mole/v1/, POST /formula-engine/v1/validate and /formula-engine/v1/evaluate"
     )
+    if settings.elog_relay:
+        relayed += f", GET {ELOG_PREFIX} and POST {ELOG_PREFIX}apps/<app>/entries and /attachments"
     if settings.put_relay:
         text = f"canopy_mcp relays only {relayed} and PUT {PVS_PREFIX}<pv>"
     else:
@@ -393,7 +531,7 @@ def make_not_allowed(settings: Settings) -> Callable[[Request], Awaitable[PlainT
 
 
 def build_forward_routes(settings: Settings) -> list[BaseRoute]:
-    """The two relays, the Mole GET, the Formula Engine POSTs and (relay on) the PV PUT, then a 405 for everything else."""
+    """The two relays, the Mole GET, the Formula Engine POSTs, the e-log and (relay on) the PV PUT, then a 405 for everything else."""
     routes: list[BaseRoute] = [WebSocketRoute(path, make_relay(settings, path)) for path in RELAYED_PATHS]
     routes.append(Route(MOLE_PREFIX + "{path:path}", make_mole_forward(settings), methods=["GET"]))
     routes.extend(
@@ -401,8 +539,9 @@ def build_forward_routes(settings: Settings) -> list[BaseRoute]:
     )
     if settings.put_relay:
         routes.append(Route(PVS_PREFIX + "{pv:path}", make_put_relay(settings), methods=["PUT"]))
+    routes.extend(build_elog_routes(settings))
     not_allowed = make_not_allowed(settings)
-    for service in SERVICE_PREFIXES:
+    for service in SERVICE_PREFIXES + (("elog",) if settings.elog_relay else ()):
         routes.append(Route(f"/{service}", not_allowed, methods=None))
         routes.append(Route(f"/{service}/{{path:path}}", not_allowed, methods=None))
     return routes

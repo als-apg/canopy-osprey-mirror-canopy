@@ -128,10 +128,14 @@ MUTATING = {"PUT", "POST", "DELETE", "PATCH"}
 READ_ONLY_POSTS = {("POST", "/formula-engine/v1/validate"), ("POST", "/formula-engine/v1/evaluate")}
 
 
+# Endpoints that answer on their own and send nothing upstream.
+REFUSALS = {"not_allowed", "elog_not_relayed"}
+
+
 def _forwarded_mutating_pairs(settings: Settings) -> set[tuple[str, str]]:
     pairs = set()
     for route in build_forward_routes(settings):
-        if not isinstance(route, Route) or route.endpoint.__name__ == "not_allowed":
+        if not isinstance(route, Route) or route.endpoint.__name__ in REFUSALS:
             continue
         for method in route.methods or ():
             if method in MUTATING:
@@ -152,6 +156,16 @@ def test_relay_on_forwards_exactly_one_write_pair(tmp_path: Path) -> None:
 
 def test_relay_off_forwards_no_write_pair(tmp_path: Path) -> None:
     assert _forwarded_mutating_pairs(_settings(tmp_path, put_relay=False)) - READ_ONLY_POSTS == set()
+
+
+def test_the_elog_relay_adds_only_the_two_elog_writes(tmp_path: Path) -> None:
+    settings = _settings(
+        tmp_path, put_relay=False, elog_relay=True, elog_write_api_key_file=_secret(tmp_path, "elog.write", "k")
+    )
+    assert _forwarded_mutating_pairs(settings) - READ_ONLY_POSTS == {
+        ("POST", "/elog/v1/apps/{app}/entries"),
+        ("POST", "/elog/v1/apps/{app}/attachments"),
+    }
 
 
 @pytest.mark.parametrize("method", ["GET", "POST", "DELETE", "PATCH"])
