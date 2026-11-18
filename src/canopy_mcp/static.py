@@ -384,13 +384,25 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             headers={"Cache-Control": NO_CACHE, "Access-Control-Allow-Origin": "*"},
         )
 
+    # The last manifest served: (listing, its encoded body, the sha256 of the body).
+    served: list[tuple[dict[str, Any], bytes, str]] = []
+
     async def manifest(request: Request) -> Response:
-        """The drafts, then the library's screens as ``{id, category: "library", path: "library/screens/..."}``."""
+        """The drafts, then the library's screens as ``{id, category: "library", path: "library/screens/..."}``.
+
+        The listing is taken on every request. It is encoded and hashed again only
+        when it differs from the last one served, so the poll of an unchanged
+        store costs the listing and one comparison.
+        """
         listing = store.manifest()
         if library is not None:
             listing = {"screens": [*listing["screens"], *library.manifest()["screens"]]}
-        body = json.dumps(listing, ensure_ascii=False).encode("utf-8")
-        rev = hashlib.sha256(body).hexdigest()
+        if served and served[0][0] == listing:
+            _, body, rev = served[0]
+        else:
+            body = json.dumps(listing, ensure_ascii=False).encode("utf-8")
+            rev = hashlib.sha256(body).hexdigest()
+            served[:] = [(listing, body, rev)]
         return _revved(request, rev, lambda: Response(body, media_type="application/json"))
 
     async def draft_file(request: Request) -> Response:

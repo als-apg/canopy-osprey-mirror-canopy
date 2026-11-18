@@ -139,6 +139,14 @@ authoring tool refuses a library screen with `read_only_store`. The library
 changes only on the host: a user asks for a screen to be added with
 `request_push`, and an administrator reviews that request there.
 
+The viewer asks for the manifest again every few seconds. Each request lists
+the `screens/` trees and takes the stat of every screen; a screen is read only
+when its inode, modification time or size is not the one it was last read
+under, so a large library that does not change costs no reads. A screen that is
+added, removed, renamed or replaced shows on the next request. A rewrite that
+keeps all three (the same file, the same size, the modification time put
+back) does not show until the server restarts.
+
 ### Viewer and Trace
 
 | Variable | Default | Meaning |

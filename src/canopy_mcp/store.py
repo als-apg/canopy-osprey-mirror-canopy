@@ -18,6 +18,7 @@ store that cannot be written answers ``ReadOnlyStore``.
 import os
 import re
 import json
+import stat
 import errno
 import fcntl
 import asyncio
@@ -38,6 +39,8 @@ from canopy_mcp.text import (  # noqa: F401
 )
 
 ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*")
+# One segment of an id: a directory under ``screens/`` named otherwise holds no draft.
+ID_SEGMENT = re.compile(r"[A-Za-z0-9_-]+")
 SCREEN_SUFFIX = ".screen.json"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico"})
 MAX_ASSET_BYTES = 5 * 2**20
@@ -390,6 +393,10 @@ class DraftStore:
         self._lock = asyncio.Lock()
         # path -> ((st_ino, st_mtime_ns, st_size), rev); a changed stat means re-hash.
         self._revs: dict[Path, tuple[tuple[int, int, int], str]] = {}
+        # id -> (stat key, rev, title, description): what the manifest says of each screen
+        # the last ``manifest()`` listed, under the stat-key rule of ``_revs``. It holds no
+        # document, and a screen that is no longer listed leaves it.
+        self._listed: dict[str, tuple[tuple[int, int, int], str, str, str]] = {}
 
     # --- ids and paths ------------------------------------------------------
 
@@ -622,7 +629,7 @@ class DraftStore:
     # --- listing ------------------------------------------------------------
 
     def manifest(self, *, descriptions: bool = False) -> dict[str, list[dict[str, Any]]]:
-        """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape, computed fresh on each call.
+        """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape, current on each call.
 
         Entries carry the store's ``category``. ``path`` is what the viewer fetches under
         ``/drafts/``: ``screens/<id>.screen.json`` for a personal store, and
@@ -632,39 +639,78 @@ class DraftStore:
         With ``descriptions``, each entry also carries ``description``: the first
         sentence of ``metadata.description``, at most ``DESCRIPTION_MAX`` characters,
         ``""`` when the screen has none. The viewer's manifest leaves it out.
+
+        Every call lists the tree and takes the stat of every screen. A screen is
+        opened only when its stat key ``(st_ino, st_mtime_ns, st_size)`` is not the
+        one its listed rev, title and description were read under: the rule the rev
+        cache follows, so a manifest of an unchanged store opens no screen. A screen
+        that could not be read is tried again on every call.
         """
-        prefix = "" if self.category == DRAFTS else f"{self.category}/"
+        # ``path_for(id)`` under the root, spelled without building a path per screen.
+        prefix = ("" if self.category == DRAFTS else f"{self.category}/") + "screens/"
         screens = []
-        for draft_id in self.list():
-            path = self.path_for(draft_id)
-            try:
-                doc, rev = self.read(draft_id)
-            except (DraftNotFound, FileNotFoundError):
-                continue  # deleted between listing and reading
-            except OSError as exc:
-                _warn_manifest_once(path, exc, "left out of the manifest")
-                continue
-            except ValueError as exc:
-                _warn_manifest_once(path, exc, "listed with its id as the title")
-                doc, rev = None, self._rev_of(path)
-            metadata = doc.get("metadata") if isinstance(doc, dict) else None
-            if not isinstance(metadata, dict):
-                metadata = {}
-            title = metadata.get("title")
-            if not isinstance(title, str) or not title:
-                title = draft_id
+        listed: dict[str, tuple[tuple[int, int, int], str, str, str]] = {}
+        for draft_id, found, plain in sorted(self._walk()):
+            key = self._listing_key(draft_id, found, plain)
+            known = self._listed.get(draft_id)
+            if key is not None and known is not None and known[0] == key:
+                # The cheap path: an unchanged stat answers without opening the file.
+                listed[draft_id] = known
+                _, rev, title, description = known
+            else:
+                path = self.path_for(draft_id)
+                try:
+                    doc, rev = self.read(draft_id)
+                except (DraftNotFound, FileNotFoundError):
+                    continue  # no draft after all, or deleted between listing and reading
+                except OSError as exc:
+                    _warn_manifest_once(path, exc, "left out of the manifest")
+                    continue
+                except ValueError as exc:
+                    _warn_manifest_once(path, exc, "listed with its id as the title")
+                    doc, rev = None, self._rev_of(path)
+                metadata = doc.get("metadata") if isinstance(doc, dict) else None
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                title = metadata.get("title")
+                if not isinstance(title, str) or not title:
+                    title = draft_id
+                description = summarize_description(metadata.get("description"))
+                # ``read`` remembered the stat key of the bytes it hashed, unless the file
+                # changed under it; only what was read under a known key is kept.
+                remembered = self._revs.get(path)
+                if rev is not None and remembered is not None and remembered[1] == rev:
+                    listed[draft_id] = (remembered[0], rev, title, description)
             entry = {
                 "id": draft_id,
                 "kind": "ir",
                 "category": self.category,
                 "title": title,
-                "path": prefix + path.relative_to(self.root).as_posix(),
+                "path": f"{prefix}{draft_id}{SCREEN_SUFFIX}",
                 "rev": rev,
             }
             if descriptions:
-                entry["description"] = summarize_description(metadata.get("description"))
+                entry["description"] = description
             screens.append(entry)
+        self._listed = listed
         return {"screens": screens}
+
+    def _listing_key(self, draft_id: str, found: str, plain: bool) -> tuple[int, int, int] | None:
+        """The stat key of the file a walked entry resolves to, or ``None`` when it cannot be told.
+
+        A plain entry (``_walk``) is its own target, so one ``lstat`` of ``found``
+        answers; one that has become something else since the listing, and every
+        other entry, is resolved through ``_contained`` first, as every read is.
+        """
+        try:
+            if plain:
+                st = os.lstat(found)
+                if stat.S_ISREG(st.st_mode):
+                    return _stat_key(st)
+            target = self._contained(self.path_for(draft_id))
+            return None if target is None else _stat_key(target.stat())
+        except OSError:
+            return None
 
     def resolve_static(self, relpath: str) -> Path | None:
         """The file under ``root`` a viewer request names, or ``None`` when it is missing or refused.
@@ -697,14 +743,50 @@ class DraftStore:
         Ids under a reserved first segment are left out, and so is any screen file
         that resolves outside the store (a symlink pointing elsewhere).
         """
+        return sorted(
+            draft_id
+            for draft_id, _, plain in self._walk()
+            if plain or self._contained(self.path_for(draft_id)) is not None
+        )
+
+    def _walk(self) -> Iterator[tuple[str, str, bool]]:
+        """``(id, path, plain)`` of every entry under ``screens/`` named as a draft of this store, unordered.
+
+        The walk is the one ``screens.rglob("*.screen.json")`` makes: it descends
+        directories, never a symlink to one. It also passes over a directory whose
+        name no id can hold, and the reserved first segments. An entry is yielded
+        for any kind of file, so the caller decides whether it is a draft.
+
+        ``plain`` says the directory listing itself shows a regular file with no
+        symlink between the store root and it: such an entry resolves to itself
+        inside the store, so it is a draft without ``_contained``. Every other
+        entry (a symlink, another kind of file, anything under a symlinked
+        ``screens``) is a draft only when ``_contained`` says so.
+        """
         if not self.screens.is_dir():
-            return []
-        ids = []
-        for path in self.screens.rglob(f"*{SCREEN_SUFFIX}"):
-            rel = path.relative_to(self.screens).as_posix()[: -len(SCREEN_SUFFIX)]
-            if ID_PATTERN.fullmatch(rel) and not self.reserves(rel) and self._contained(path) is not None:
-                ids.append(rel)
-        return sorted(ids)
+            return
+        direct = not self.screens.is_symlink()
+        pending = [(os.fspath(self.screens), "")]
+        while pending:
+            directory, id_prefix = pending.pop()
+            try:
+                entries = os.scandir(directory)
+            except OSError:
+                continue  # removed or closed to us since its parent was listed
+            with entries:
+                for entry in entries:
+                    name = entry.name
+                    try:
+                        if name.endswith(SCREEN_SUFFIX):
+                            draft_id = id_prefix + name[: -len(SCREEN_SUFFIX)]
+                            if ID_PATTERN.fullmatch(draft_id) and not self.reserves(draft_id):
+                                plain = direct and entry.is_file(follow_symlinks=False)
+                                yield draft_id, entry.path, plain
+                        if entry.is_dir(follow_symlinks=False) and ID_SEGMENT.fullmatch(name):
+                            if id_prefix or name not in self.reserved:
+                                pending.append((entry.path, f"{id_prefix}{name}/"))
+                    except OSError:
+                        continue
 
 
 def open_stores(drafts_dir: Path | str, library_dir: Path | str | None) -> tuple[DraftStore, DraftStore | None]:
