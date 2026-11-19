@@ -123,6 +123,24 @@ async def test_valid_formula_no_finding(httpx_mock, client):
     assert result.findings == []
 
 
+async def test_formula_with_a_vector_token_no_finding(httpx_mock, client):
+    """The lint parses with the engine, so ``{*}`` and ``severity()`` need no rule of their own."""
+    bindings = {str(i): f"DEV:{i}:STATE" for i in range(300)}
+    httpx_mock.add_response(url=URL, method="POST", json={"known": list(bindings.values()), "unknown": []})
+    doc = _doc(formulas=[{"name": "worst", "kind": "scalar", "expression": "max(severity({*}))", "bindings": bindings}])
+    result = await check_lint(doc, _catalog(), client=client)
+    assert result.findings == []
+
+
+async def test_formula_over_the_vector_input_cap_errors(httpx_mock, client):
+    bindings = {str(i): f"DEV:{i}:STATE" for i in range(1001)}
+    httpx_mock.add_response(url=URL, method="POST", json={"known": list(bindings.values()), "unknown": []})
+    doc = _doc(formulas=[{"name": "worst", "kind": "scalar", "expression": "max(severity({*}))", "bindings": bindings}])
+    result = await check_lint(doc, _catalog(), client=client)
+    assert _codes(result.findings) == [(None, "invalid_formula", "error")]
+    assert "at most 1000" in result.findings[0].message
+
+
 async def test_invalid_formula_errors():
     doc = _doc(formulas=[{"name": "f", "expression": "{a} +* (", "bindings": {"a": "loc://x"}}])
     result = await check_lint(doc, _catalog())  # loc:// binding: no raccoon call
