@@ -308,6 +308,23 @@ The formula re-evaluates immediately whenever any of its input PVs receive new d
 
 The formula re-evaluates on a fixed timer (every `intervalMs` milliseconds) regardless of whether input data has changed. Use this when you want a predictable update cadence rather than per-sample updates.
 
+### Formulas with a vector token
+
+A formula with a vector token (`{*}`, `{g.*}`) has many inputs, so it is paced
+by the server setting `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` (default 500):
+
+- In push mode it is evaluated when a member changes, connects or disconnects,
+  but at most once per interval. Changes inside the interval are evaluated
+  together. In the first second after the subscribe it follows its members
+  more closely (every 50 ms at most), because a member whose first value has
+  not arrived yet is read as disconnected.
+- In poll mode `intervalMs` is raised to the interval when it is smaller.
+
+A subscribe whose vector tokens name more channels than
+`CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS` is answered with an `invalid_spec`
+error frame, and no channel is subscribed. See
+[Formulas over many channels](index.md#formulas-over-many-channels).
+
 ### One-shot mode
 
 ```json

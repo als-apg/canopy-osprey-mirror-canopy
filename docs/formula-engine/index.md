@@ -48,9 +48,146 @@ All functions operate element-wise on arrays (timeseries data) and accept scalar
 | Rounding | `floor`, `ceil` |
 | Angle conversion | `radians`, `degrees` |
 | Reductions | `mean`, `sum`, `min`, `max`, `std`, `var`, `ptp`, `count_nonzero` |
+| Reductions that skip `nan` | `nanmean`, `nansum`, `nanmin`, `nanmax` |
+| Size | `count` (number of elements) |
+| Channel status | `severity({x})`, `connected({x})` (see [Formulas over many channels](#formulas-over-many-channels)) |
 | Element-wise | `where(condition, x, y)`, `clip(value, low, high)` |
 
 Functions use NumPy implementations internally. You can access `np.*` and `math.*` constants directly (e.g., `np.pi`), but only the allowlisted functions above are callable — other attributes like `math.factorial` are **not** exposed.
+
+## Formulas over many channels
+
+A `scalar` formula can read many channels through one short expression. Two
+additions to the expression language make this possible: vector tokens, and the
+status functions `severity()` and `connected()`. Both are for `scalar` formulas
+only; a `timeseries`, `waveform` or `table` formula that uses them is a parse
+error.
+
+### Vector tokens
+
+A vector token names several bindings at once:
+
+| Token | Members |
+|-------|---------|
+| `{*}` | every binding of the formula |
+| `{g.*}` | the bindings whose key starts with `g.` |
+
+The members are ordered by binding key (string order), whatever the order the
+bindings were written in. A vector token must be reduced to one value with a
+reduction function:
+
+```json
+{
+  "kind": "scalar",
+  "expression": "max({*})",
+  "bindings": {"0": "PUMP:1:CURRENT", "1": "PUMP:2:CURRENT", "2": "PUMP:3:CURRENT"}
+}
+```
+
+Named groups keep sets of channels apart in one formula:
+
+```json
+{
+  "kind": "scalar",
+  "expression": "max(abs({set.*} - {read.*}))",
+  "bindings": {
+    "set.1": "PUMP:1:SETPOINT", "read.1": "PUMP:1:CURRENT",
+    "set.2": "PUMP:2:SETPOINT", "read.2": "PUMP:2:CURRENT"
+  }
+}
+```
+
+Two groups with the same key suffixes pair up member by member, because both are
+ordered by key.
+
+Rules:
+
+- A vector token counts as a use of each of its members. Every binding must
+  still be used by some token, and a vector token that matches no binding is a
+  parse error.
+- A token that is itself a binding key is an ordinary token, not a vector token.
+- The result must be one value. An expression that leaves a vector unreduced
+  (`{*} + 1`) fails with `formula_type_error`.
+- `and`, `or`, `not` and the ternary do not work element by element. Combine
+  element-wise conditions with `*` (and) and `+` (or), or with `where(...)`:
+  `count_nonzero(({*} > 5) * (severity({*}) < 2))`.
+
+### `severity()` and `connected()`
+
+| Function | Result |
+|----------|--------|
+| `severity({x})` | The channel's alarm severity as a number: 0 `NO_ALARM`, 1 `MINOR`, 2 `MAJOR`, 3 `INVALID` |
+| `connected({x})` | 1 while the channel is connected and has a value, else 0 |
+
+The argument is exactly one token, plain or vector. On a vector token the
+function gives one number per member:
+
+| Aggregate | Expression |
+|-----------|------------|
+| Worst state of all channels | `max(severity({*}))` |
+| Number of channels in alarm | `count_nonzero(severity({*}) >= 1)` |
+| Number of channels in a state | `count_nonzero({*} == 2)` |
+| Number of connected channels | `sum(connected({*}))` |
+| All connected (1 or 0) | `min(connected({*}))` |
+| Any connected (1 or 0) | `max(connected({*}))` |
+| Number of channels | `count({*})` |
+| Largest, smallest, total | `max({*})`, `min({*})`, `sum({*})` |
+
+### Channels without a value
+
+A plain token still fails the whole formula when its channel is disconnected or
+has no data (`formula_input_missing`). A member of a vector token, and a token
+that the expression reads only through `severity()` or `connected()`, never
+fails the formula. It is read as follows:
+
+| Channel | Value | `severity()` | `connected()` |
+|---------|-------|--------------|---------------|
+| Has a sample | its number | 0 to 3 | 1 |
+| Disconnected | `nan` | 3 | 0 |
+| No sample yet | `nan` | 3 | 0 |
+| Sample that is not a number (text, array) | `nan` | as sampled | 1 |
+
+So that a channel without a value is always visible:
+
+- `max(severity(...))` gives 3 as soon as one member is disconnected.
+- `max`, `min`, `sum` and `mean` over values are `nan` while a member has no
+  value. A formula whose result is `nan` for that reason fails with
+  `formula_input_missing`, and the message names the members without a value.
+  This is the error of a plain formula. A live subscription retries it.
+- Use `nanmax`, `nanmin`, `nansum` or `nanmean` to leave such members out.
+- Comparisons with `nan` are false. `count_nonzero({*} == 2)` does not count a
+  member without a value, and `max({*}) > 5` is false, not an error.
+- A result that is `nan` or infinite for another reason (a channel whose own
+  value is `nan`) fails with `formula_type_error`. The result of a formula with
+  a vector token or a status function is always a finite number, a boolean or
+  text.
+- The result's own `severity` is the worst over all inputs, and an input
+  without a sample counts as `INVALID`, whatever the expression computes.
+- `inputsUsed` lists only the inputs that had a sample. With none, the result's
+  `tsNs` is the time of evaluation.
+
+A token that is also read as a plain value (`severity({x}) + {x}`) follows the
+rule of plain tokens.
+
+### Limits and update rate
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS` | 1000 | Most channels the vector tokens of one formula may name. A formula above it is refused with `invalid_spec`, and the message names this limit. A live subscription is refused before any channel is subscribed. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` | 500 | Shortest time between two evaluations of a live formula with a vector token. |
+
+The limit on the expression length (`CANOPY_FORMULA_ENGINE__MAX_EXPRESSION_LEN`)
+is not affected by the number of bindings.
+
+A live formula with a vector token is evaluated when one of its members
+changes, connects or disconnects, but at most once per
+`VECTOR_INTERVAL_MS`; changes inside the interval are taken together. A
+subscription that asks for a poll interval gets at least this interval.
+Subscriptions with the same spec share one evaluation. The spec is compared as
+written, so the same bindings in another order are a different spec.
+
+Every member is one live channel on the server. A vector token removes the
+limit on the expression, not the cost of the connections.
 
 ## Constants
 
@@ -111,6 +248,7 @@ Determines which set of timestamps to evaluate the formula at.
 | `formula_dimension_mismatch` | 422 | Array shape incompatibility between inputs |
 | `formula_eval_timeout` | 504 | Computation exceeded time limit |
 | `formula_circular_reference` | 400 | Cyclic dependency detected |
+| `invalid_spec` | 400 | A server-side limit is exceeded, e.g. more vector inputs than `MAX_VECTOR_INPUTS` |
 
 All errors return JSON with `code` and `detail` fields:
 
