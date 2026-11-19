@@ -109,18 +109,27 @@ class ParsedFormula:
         return list(dict.fromkeys(key for members in self.vector_tokens.values() for key in members))
 
 
-def _split_strings(expression: str) -> list[tuple[bool, str]]:
+def _split_strings(expression: str, *, strict: bool = False) -> list[tuple[bool, str]]:
     """The expression as ``(is_string_literal, text)`` pieces, in order.
 
     A literal starts at a quote (or three of the same) and ends at the next
-    one that no backslash escapes; one that never ends takes the rest, and
-    ``ast.parse`` reports it. Joining the pieces gives the expression back.
+    one that no backslash escapes. A ``#`` in code starts a comment, which runs
+    to the end of the line and stays code: a quote inside it opens nothing, and
+    it is rewritten as it always was (Python then ignores it). Joining the
+    pieces gives the expression back.
+
+    A literal that never ends takes the rest; with ``strict`` it is the syntax
+    error it is, reported before anything is concluded from the tokens found.
     """
     pieces: list[tuple[bool, str]] = []
     start = i = 0
     n = len(expression)
     while i < n:
         char = expression[i]
+        if char == "#":
+            newline = expression.find("\n", i)
+            i = n if newline < 0 else newline
+            continue
         if char not in "'\"":
             i += 1
             continue
@@ -128,6 +137,8 @@ def _split_strings(expression: str) -> list[tuple[bool, str]]:
         end = i + len(quote)
         while end < n and not expression.startswith(quote, end):
             end += 2 if expression[end] == "\\" else 1
+        if end >= n and strict:
+            raise FormulaParseError("Syntax error in expression: unterminated string literal")
         end = min(end + len(quote), n)
         if i > start:
             pieces.append((False, expression[start:i]))
@@ -171,7 +182,7 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
     if not expression or not expression.strip():
         raise FormulaParseError("Expression is empty")
 
-    pieces = _split_strings(expression)
+    pieces = _split_strings(expression, strict=True)
     if any(_NESTED_BRACE_RE.search(text) for is_string, text in pieces if not is_string):
         raise FormulaParseError("Nested braces are not allowed in expressions")
 

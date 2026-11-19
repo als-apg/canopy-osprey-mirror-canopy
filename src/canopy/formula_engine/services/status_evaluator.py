@@ -249,9 +249,18 @@ async def _read_inputs(
     try:
         _, late = await asyncio.wait(tasks.values(), timeout=config.vector_read_timeout_ms / 1000.0)
     finally:
+        # Whatever ends this (the time limit, or a cancel of the evaluation):
+        # no read is left running, and every outcome is collected, so no
+        # failure of a read goes unretrieved.
         for task in tasks.values():
             task.cancel()
-    return {key: None if task in late else task.result() for key, task in tasks.items()}
+        outcomes = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    for outcome in outcomes:
+        if isinstance(outcome, Exception):  # the first failed read, in input order
+            raise outcome
+    return {
+        key: None if task in late else outcome for (key, task), outcome in zip(tasks.items(), outcomes, strict=True)
+    }
 
 
 def _input_error(

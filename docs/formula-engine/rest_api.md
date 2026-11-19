@@ -72,7 +72,7 @@ Returned when `kind` is `"scalar"`:
 | `value` | float \| int \| bool \| string | Computed value |
 | `severity` | string | Alarm severity (`NO_ALARM`, `MINOR`, `MAJOR`, `INVALID`) |
 | `inputsUsed` | object | Map of binding name --> sample count used |
-| `vectorInputs` | object | Only for a formula with a vector token: `count`, `missing`, `more` (see [Formulas over many channels](index.md#the-result-of-a-formula-with-a-vector-token)) |
+| `vectorInputs` | object | Only for a formula with a vector token: `count`, `missing`, `more` (see [Formulas over many channels](index.md#the-result-of-a-formula-with-a-vector-token)) This endpoint reads the members, and tokens read only through `severity()` or `connected()`, from the live side and does not fetch them from the archive: a channel no live subscription has connected is named in `missing`. |
 
 ### Response — timeseries result
 

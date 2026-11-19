@@ -189,9 +189,20 @@ A member without a number never passes for a number:
   with `nan` is false and `count_nonzero` counts `nan`, so the member would be
   taken for a value. A live subscription retries the error.
 - A use is guarded by a `nan*` reduction only when nothing but `+ - * /` and
-  the element-wise functions (`abs`, `sqrt`, `exp`, `log`, the trigonometric
-  functions, `floor`, `ceil`, `radians`, `degrees`) stands between the token
-  and the reduction: `nansum(abs({*}))` is guarded, `nansum({*} > 1)` is not.
+  the element-wise functions (`abs`, `sqrt`, `exp`, `log`, `log10`, `ln`, the
+  trigonometric and hyperbolic functions, `floor`, `ceil`, `radians`,
+  `degrees`) stands between the token and the reduction, and the reduction
+  has that one argument. `nansum(abs({*}))` and `nanmax(({*} - 1) * 2)` are
+  guarded; `nansum({*} > 1)` is not. The check is made on the text of the
+  formula and is strict: a form it does not know is unguarded, also one that
+  would be sound, such as `nanmax({*} ** 2)` or `nanmax(clip({*}, 0, 9))`.
+  Write those with the accepted forms (`nanmax({*} * {*})`).
+- When every member is missing, the `nan*` reductions have nothing to reduce.
+  `nansum` then gives 0 and `count` the number of members, both with severity
+  `INVALID`: a quiet value, not an alarm. `nanmax`, `nanmin` and `nanmean`
+  fail with `formula_input_missing`. A light therefore reads `severity()` or
+  `connected()`, and the result's `severity`, never the value of a `nan*`
+  reduction alone.
 - A channel whose own value is infinite is a number. A formula whose result is
   not finite because of it fails with `formula_input_missing` naming it.
 - A result that is `nan` or infinite although every input value is finite
@@ -278,10 +289,23 @@ Every member is one live channel on the server. A vector token removes the
 limit on the expression, not the cost of the connections.
 
 The members of a vector token, and a token read only through `severity()` or
-`connected()`, are read from the live side only. A one-time evaluation (REST,
-or a subscription with a fixed window) does not ask the archive for them: a
-member the server holds no live value for is without a value and is named.
-Evaluate a roll-up through a live subscription, which connects its members.
+`connected()`, are read from the live side only. A one-time evaluation
+(`POST /evaluate`, or a subscription with a fixed window) does not connect
+them and does not ask the archive for them. What the caller sees for a channel
+the server holds no live value for (no subscription of any client has it
+connected):
+
+- under `severity()`: 3; under `connected()`: 0;
+- the result's `severity` is `INVALID`, and `vectorInputs.missing` names it;
+- an expression over its values fails with `formula_input_missing`,
+  `PVs not available: [...]`.
+
+So a one-time evaluation of a roll-up tells the state of the channels that are
+live on the server at that moment, and names the others; it is no test that a
+channel exists. A plain token (`{x}`, also through `label()`) is still read as
+in a plain formula, archive included. Evaluate a roll-up through a live
+subscription, which connects its members and holds its first result until
+they have answered.
 
 ## Constants
 

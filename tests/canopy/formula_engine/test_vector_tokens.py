@@ -501,9 +501,42 @@ class TestStringLiterals:
     def test_tokens_inside_a_literal_are_not_extracted(self):
         assert Parser().extract_tokens("{a} == '{b}' and {c} > 0") == ["a", "c"]
 
-    def test_a_literal_that_never_ends_is_a_syntax_error(self):
-        with pytest.raises(FormulaParseError, match="Syntax error"):
-            Parser().parse("{a} == 'open", {"a": "DEV:A"})
+    @pytest.mark.parametrize(
+        ("expression", "bindings"),
+        [
+            ("{a} == 'open", {"a": "DEV:A"}),
+            # The token after the quote is not found; that must not be what is reported.
+            ("{a} == 'open && {b} > 0", {"a": "DEV:A", "b": "DEV:B"}),
+            ('{a} == "open && {b} > 0', {"a": "DEV:A", "b": "DEV:B"}),
+            ("{a} == '''open' && {b} > 0", {"a": "DEV:A", "b": "DEV:B"}),
+        ],
+    )
+    def test_a_literal_that_never_ends_is_a_syntax_error(self, expression, bindings):
+        with pytest.raises(FormulaParseError, match="Syntax error in expression: unterminated string literal"):
+            Parser().parse(expression, bindings)
+
+    @pytest.mark.parametrize(
+        ("expression", "tokens", "placeholder"),
+        [
+            # A comment is code as it always was: its tokens count, a quote in it opens nothing.
+            ("{a} + 1 # don't && {b}", ["a", "b"], "__v0 + 1 # don't  and  __v1"),
+            ("{a} + 1 # it's {b}", ["a", "b"], "__v0 + 1 # it's __v1"),
+            ("({a} # don't\n + {b})", ["a", "b"], "(__v0 # don't\n + __v1)"),
+            ("{a} + 1  # plain", ["a"], "__v0 + 1  # plain"),
+            # A hash inside a literal is text, and the literal ends where it ends.
+            ("{a} == '#1' && {b} > 0", ["a", "b"], "__v0 == '#1'  and  __v1 > 0"),
+        ],
+    )
+    def test_a_comment_is_read_as_before(self, expression, tokens, placeholder):
+        parsed = Parser().parse(expression, {t: f"DEV:{t.upper()}" for t in tokens})
+        assert parsed.tokens == tokens
+        assert parsed.placeholder_expr == placeholder
+
+    async def test_a_formula_with_a_comment_evaluates(self):
+        source = _source(**{"DEV:A": _sample(2.0), "DEV:B": _sample(5.0)})
+        service = _service(source)
+        spec = _spec("{a} + 1 # don't && {b}", {"a": "DEV:A", "b": "DEV:B"})
+        assert (await service.evaluate(spec, t0_ns=0, t1_ns=0)).scalar.value == 3.0
 
 
 class TestStatusOfOneChannel:
@@ -628,6 +661,47 @@ class TestBoundedReads:
         source.stuck = frozenset({"DEV:0001"})
         with pytest.raises(FormulaInputMissing, match="DEV:0001"):
             await _scalar(source, "severity({0000}) + {0001}", bindings, vector_read_timeout_ms=100)
+
+    async def test_every_failed_read_is_collected_and_no_read_is_left_running(self, caplog):
+        """Two reads fail, one never answers: one error comes out, nothing is left behind."""
+        import gc
+        import logging
+
+        running: set[str] = set()
+
+        class _Failing(FakeDataSource):
+            async def read_latest(self, pv: str):
+                running.add(pv)
+                try:
+                    if pv in ("DEV:0001", "DEV:0003"):
+                        await asyncio.sleep(0.01)
+                        raise RuntimeError(f"read of {pv} failed")
+                    if pv == "DEV:0004":
+                        await asyncio.sleep(3600)
+                    return _sample(1.0)
+                finally:
+                    running.discard(pv)
+
+        bindings = {f"{i:04d}": f"DEV:{i:04d}" for i in range(5)}
+        with caplog.at_level(logging.ERROR, logger="asyncio"):
+            with pytest.raises(RuntimeError, match="read of DEV:0001 failed"):
+                await _scalar(_Failing(), "sum(connected({*}))", bindings, vector_read_timeout_ms=200)
+            assert running == set()  # the read that never answers was cancelled and awaited
+            gc.collect()
+            await asyncio.sleep(0)
+        assert "never retrieved" not in caplog.text
+
+    async def test_a_cancelled_evaluation_leaves_no_read_running(self):
+        source, bindings = self._many(3)
+        source.stuck = frozenset(bindings.values())
+        before = len(asyncio.all_tasks())
+        evaluation = asyncio.ensure_future(_scalar(source, "sum(connected({*}))", bindings))
+        await asyncio.sleep(0.05)
+        assert len(asyncio.all_tasks()) > before + 1
+        evaluation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await evaluation
+        assert len(asyncio.all_tasks()) == before
 
     async def test_the_time_limit_is_a_setting(self):
         assert FormulaEngineConfig().vector_read_timeout_ms == 2000
