@@ -42,3 +42,15 @@ def test_no_warning_without_legacy_env_vars(monkeypatch, caplog):
         warn_legacy_env()
 
     assert caplog.records == []
+
+
+def test_vector_token_limits_have_defaults_and_env_names(monkeypatch):
+    config = FormulaEngineConfig(_env_file=None)
+    assert (config.max_vector_inputs, config.vector_interval_ms) == (1000, 500)
+    # The limit on the expression is not the limit on the inputs.
+    assert config.max_expression_len == 2048
+
+    monkeypatch.setenv("CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS", "250")
+    monkeypatch.setenv("CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS", "1000")
+    config = FormulaEngineConfig(_env_file=None)
+    assert (config.max_vector_inputs, config.vector_interval_ms) == (250, 1000)

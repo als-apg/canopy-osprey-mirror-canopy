@@ -7,12 +7,23 @@ Steps:
 4. Walk AST against ALLOWED_NODES + SAFE_FUNCS
 5. Detect numexpr compatibility
 6. Return ParsedFormula
+
+Two additions serve formulas over many channels:
+
+* A *vector token* names several bindings at once: ``{*}`` every binding,
+  ``{g.*}`` the bindings whose key starts with ``g.``. Its placeholder holds an
+  array at evaluation time. A token that is itself a binding key is never a
+  vector token.
+* ``severity({x})`` and ``connected({x})`` read a token's alarm severity and
+  connection state instead of its value. Each call is lifted to its own
+  placeholder (``__s0``, ``__c0``) before the AST is built, so the argument can
+  only ever be one token.
 """
 
 import re
 import ast
 from functools import lru_cache
-from dataclasses import dataclass
+from dataclasses import field, dataclass
 
 from canopy.formula_engine.errors import FormulaParseError, FormulaUnsafeError
 from canopy.formula_engine.language.grammar import check_ast_safety
@@ -24,6 +35,11 @@ from canopy.formula_engine.language.namespace import (
 )
 
 _TOKEN_RE = re.compile(r"\{([^{}]+)\}")
+# ``severity({x})`` / ``connected({x})``: a status function applied to one token.
+STATUS_FUNCS: dict[str, str] = {"severity": "__s", "connected": "__c"}
+_STATUS_CALL_RE = re.compile(r"(?<![\w.])(severity|connected)\s*\(\s*\{([^{}]+)\}\s*\)")
+_VECTOR_ALL = "*"
+_VECTOR_SUFFIX = ".*"
 _NESTED_BRACE_RE = re.compile(r"\{[^}]*\{")
 
 # Reject constant exponents above this. numexpr folds a constant power like
@@ -48,6 +64,30 @@ class ParsedFormula:
     tokens: list[str]
     placeholder_expr: str
     is_numexpr_compatible: bool
+    # Vector token -> the binding keys it names, sorted. Empty for a plain formula.
+    vector_tokens: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # (placeholder, function, token) for every distinct ``severity({x})`` / ``connected({x})``.
+    status_symbols: tuple[tuple[str, str, str], ...] = ()
+    # Tokens whose value the expression reads (they appear outside a status function).
+    value_tokens: frozenset[str] = frozenset()
+
+    @property
+    def uses_status(self) -> bool:
+        """True when the formula has a vector token or a status function.
+
+        Such a formula is evaluated on the scalar path that tolerates inputs
+        without a value; every other formula takes the paths it always took.
+        """
+        return bool(self.vector_tokens or self.status_symbols)
+
+    @property
+    def status_only(self) -> frozenset[str]:
+        """Scalar tokens read only through ``severity()`` / ``connected()``."""
+        return frozenset(t for t in self.tokens if t not in self.value_tokens and t not in self.vector_tokens)
+
+    def member_keys(self) -> list[str]:
+        """Every binding key a vector token names, each once."""
+        return list(dict.fromkeys(key for members in self.vector_tokens.values() for key in members))
 
 
 class Parser:
@@ -81,19 +121,33 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
     if not tokens:
         raise FormulaParseError("Expression must contain at least one {variable} token")
 
-    missing = set(tokens) - binding_keys
+    vector_tokens = _vector_tokens(tokens, binding_keys)
+
+    missing = set(tokens) - binding_keys - set(vector_tokens)
     if missing:
         raise FormulaParseError(f"Unbound variables: {sorted(missing)}")
 
-    extra = binding_keys - set(tokens)
+    used = set(tokens).union(*vector_tokens.values())
+    extra = binding_keys - used
     if extra:
         raise FormulaParseError(f"Bindings provided but not used in expression: {sorted(extra)}")
 
-    token_to_placeholder: dict[str, str] = {}
-    for i, tok in enumerate(dict.fromkeys(tokens)):
-        token_to_placeholder[tok] = f"__v{i}"
+    token_index = {tok: i for i, tok in enumerate(dict.fromkeys(tokens))}
 
-    placeholder_expr = _TOKEN_RE.sub(lambda m: token_to_placeholder[m.group(1)], expression)
+    # Lift ``severity({x})`` / ``connected({x})`` to placeholders of their own. A
+    # formula without them is substituted exactly as before.
+    status_symbols: dict[str, tuple[str, str, str]] = {}
+
+    def _lift_status(match: re.Match[str]) -> str:
+        func, token = match.group(1), match.group(2)
+        name = f"{STATUS_FUNCS[func]}{token_index[token]}"
+        status_symbols[name] = (name, func, token)
+        return name
+
+    lifted = _STATUS_CALL_RE.sub(_lift_status, expression)
+    value_tokens = frozenset(_TOKEN_RE.findall(lifted))
+
+    placeholder_expr = _TOKEN_RE.sub(lambda m: f"__v{token_index[m.group(1)]}", lifted)
 
     for pattern, replacement in _BOOL_REPLACEMENTS:
         placeholder_expr = pattern.sub(replacement, placeholder_expr)
@@ -118,6 +172,7 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         if violations:
             raise FormulaUnsafeError(f"Unsafe expression: {'; '.join(violations)}")
 
+        _check_status_calls(tree)
         _check_function_calls(tree)
         _check_exponents(tree)
 
@@ -130,7 +185,43 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         tokens=list(dict.fromkeys(tokens)),
         placeholder_expr=placeholder_expr,
         is_numexpr_compatible=is_numexpr,
+        vector_tokens=vector_tokens,
+        status_symbols=tuple(status_symbols.values()),
+        value_tokens=value_tokens,
     )
+
+
+def _vector_tokens(tokens: list[str], binding_keys: frozenset[str]) -> dict[str, tuple[str, ...]]:
+    """The vector tokens among ``tokens`` and the binding keys each one names.
+
+    Members are sorted by key, so the result does not depend on the order the
+    bindings were written in and two groups with the same key suffixes pair up
+    element by element. A token that is itself a binding key stays a plain token.
+    """
+    found: dict[str, tuple[str, ...]] = {}
+    for token in dict.fromkeys(tokens):
+        if token in binding_keys:
+            continue
+        if token == _VECTOR_ALL:
+            members = sorted(binding_keys)
+        elif token.endswith(_VECTOR_SUFFIX) and len(token) > len(_VECTOR_SUFFIX):
+            prefix = token[: -len(_VECTOR_ALL)]
+            members = sorted(key for key in binding_keys if key.startswith(prefix))
+        else:
+            continue
+        if not members:
+            raise FormulaParseError(f"Vector token {{{token}}} matches no binding")
+        found[token] = tuple(members)
+    return found
+
+
+def _check_status_calls(tree: ast.AST) -> None:
+    """Refuse a ``severity`` / ``connected`` call that was not lifted: its argument is not one token."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _resolve_call_name(node) in STATUS_FUNCS:
+            raise FormulaParseError(
+                f"{_resolve_call_name(node)}() takes exactly one token, e.g. {_resolve_call_name(node)}({{x}})"
+            )
 
 
 def _check_function_calls(tree: ast.AST) -> None:

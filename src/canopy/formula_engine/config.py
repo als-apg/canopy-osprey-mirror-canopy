@@ -46,6 +46,14 @@ class FormulaEngineConfig(BaseSettings):
     # re-subscribe); above this the oldest lingering store is dropped.
     table_max_lingering: int = 64
 
+    # --- vector tokens --- #
+    # Most channels the vector tokens of one formula may name ({*}, {g.*}).
+    # Above it the formula is ``invalid_spec``; each member is a live channel.
+    max_vector_inputs: int = 1_000
+    # Shortest time between two evaluations of a live formula with a vector
+    # token: member changes inside it are evaluated together.
+    vector_interval_ms: int = 500
+
     # --- live tables --- #
     # A table row is final this long (receive clock) after it arrived, or once
     # every input has moved past it; newer rows are a provisional tail.

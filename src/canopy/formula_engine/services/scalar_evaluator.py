@@ -15,6 +15,7 @@ from canopy.formula_engine.services.evaluator import (
     evaluate_scalar,
     raise_on_open_outage,
 )
+from canopy.formula_engine.services.status_evaluator import evaluate_status_formula
 
 
 async def evaluate_scalar_formula(
@@ -24,6 +25,10 @@ async def evaluate_scalar_formula(
     config: FormulaEngineConfig,
 ) -> ScalarResult:
     """Evaluate a scalar formula against latest values from the data source."""
+    if parsed.uses_status:
+        # Vector tokens and status functions tolerate inputs without a value.
+        return await evaluate_status_formula(spec, parsed, data_source, config)
+
     variables: dict[str, float | int | bool | str] = {}
     severities: list[AlarmSeverity] = []
     inputs_used: dict[str, int] = {}

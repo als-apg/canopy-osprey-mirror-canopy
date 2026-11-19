@@ -44,6 +44,13 @@ SAFE_FUNCS: dict[str, object] = {
     "var": np.var,
     "ptp": np.ptp,
     "count_nonzero": np.count_nonzero,
+    # Reductions that leave NaN out: a vector member without a value is NaN.
+    "nanmean": np.nanmean,
+    "nansum": np.nansum,
+    "nanmin": np.nanmin,
+    "nanmax": np.nanmax,
+    # Number of elements (of a vector token: its members).
+    "count": np.size,
     # Elementwise
     "where": np.where,
     "clip": np.clip,

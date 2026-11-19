@@ -34,6 +34,8 @@ from canopy.formula_engine.services.timeseries_evaluator import (
 
 logger = logging.getLogger(__name__)
 
+_SCALAR_ONLY = "vector tokens, severity() and connected() are for 'scalar' formulas only"
+
 
 class FormulaService:
     """Public business logic. Routes call this; gateway facades wrap this."""
@@ -59,7 +61,46 @@ class FormulaService:
 
     def _parse_column(self, expression: str, tokens: list[str], bindings: dict[str, str]) -> ParsedFormula:
         """Parse one column expression against the bindings it references (its ``tokens``)."""
-        return self._parser.parse(expression, {t: bindings[t] for t in tokens if t in bindings})
+        parsed = self._parser.parse(expression, {t: bindings[t] for t in tokens if t in bindings})
+        if parsed.uses_status:
+            raise FormulaParseError(_SCALAR_ONLY)
+        return parsed
+
+    def _parse(self, spec: FormulaSpec) -> ParsedFormula:
+        """Parse a non-table spec and apply the rules of vector tokens and status functions.
+
+        They are for ``scalar`` formulas only, and the vector tokens of one
+        formula name at most ``max_vector_inputs`` channels.
+        """
+        parsed = self._parser.parse(spec.expression, spec.bindings)
+        if not parsed.uses_status:
+            return parsed
+        if spec.kind != "scalar":
+            raise FormulaParseError(_SCALAR_ONLY)
+        members = len(parsed.member_keys())
+        cap = self._config.max_vector_inputs
+        if members > cap:
+            raise InvalidSpec(
+                f"the vector tokens of one formula take at most {cap} channels (got {members}); "
+                "the limit is CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS"
+            )
+        return parsed
+
+    def vector_input_count(self, spec: FormulaSpec) -> int:
+        """How many channels a spec's vector tokens name; 0 for a formula without one.
+
+        The subscription manager asks before it subscribes anything. Raises
+        ``InvalidSpec`` above ``max_vector_inputs``. Any other fault of the spec
+        answers 0 here: the evaluation reports it, as for every formula.
+        """
+        if spec.kind == "table" or spec.expression is None:
+            return 0
+        try:
+            return len(self._parse(spec).member_keys())
+        except InvalidSpec:
+            raise
+        except Exception:
+            return 0
 
     async def evaluate(self, spec: FormulaSpec, *, t0_ns: int, t1_ns: int) -> FormulaResult:
         # One guard covers REST evaluate, the WS one-shot and the in-process
@@ -74,7 +115,7 @@ class FormulaService:
             t0_ns = t1_ns + t0_ns
 
         self._validate_bindings(spec)
-        parsed = self._parser.parse(spec.expression, spec.bindings)
+        parsed = self._parse(spec)
 
         match spec.kind:
             case "scalar":
@@ -93,7 +134,7 @@ class FormulaService:
             if spec.kind == "table":
                 return FormulaValidationResult(valid=True, tokens=self.check_table(spec))
             self._validate_bindings(spec)
-            parsed = self._parser.parse(spec.expression, spec.bindings)
+            parsed = self._parse(spec)
             return FormulaValidationResult(valid=True, tokens=parsed.tokens)
         except FormulaCircularReference as exc:
             return FormulaValidationResult(valid=False, errors=[str(exc)])

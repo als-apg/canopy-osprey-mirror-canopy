@@ -62,6 +62,9 @@ from canopy.formula_engine.services.formula_service import FormulaService
 _INPUT_RETRY_DELAY_S = 0.25
 # Codes retried at `_INPUT_RETRY_DELAY_S`; every other transient code backs off.
 _INPUT_WAIT_CODES = frozenset({ErrorCode.FORMULA_INPUT_MISSING, ErrorCode.PV_NOT_BUFFERED})
+# Shortest time between two evaluations of a formula with a vector token while
+# its eval is younger than ``input_wait_notify_s``.
+_VECTOR_STARTUP_SETTLE_S = 0.05
 # Ceiling of the push-mode backoff for the other transient codes (archiver, timeout, unhandled).
 _MAX_RETRY_DELAY_S = 5.0
 
@@ -194,6 +197,10 @@ class _SharedEval:
     waiting_since: float | None = None
     # Vole pin holder of a scalar/timeseries eval.
     holder: str | None = None
+    # Push mode: shortest time between two evaluations; 0 for none. Set for a
+    # formula with a vector token, whose many members would otherwise each
+    # start an evaluation.
+    settle_s: float = 0.0
     # Table evals: the resolved spec, the row store and the store version last sent.
     view: TableView | None = None
     store: TableStore | None = None
@@ -225,6 +232,7 @@ class SubscriptionManager:
         input_wait_notify_s: float = 1.0,
         table_port: TablePort | None = None,
         table_settings: TableSettings | None = None,
+        vector_interval_ms: int | None = None,
     ) -> None:
         """Wire the manager to the Formula Engine's formula service and Vole's change notifications.
 
@@ -244,6 +252,9 @@ class SubscriptionManager:
         self._min_interval_ms = min_interval_ms
         self._max_subscriptions_per_client = max_subscriptions_per_client
         self._input_wait_notify_s = input_wait_notify_s
+        self._vector_interval_ms = (
+            vector_interval_ms if vector_interval_ms is not None else formula_service.config.vector_interval_ms
+        )
         self._shared_evals: dict[str, _SharedEval] = {}
         self._client_subs: dict[str, dict[str, str]] = {}
         self._clock_ns = table_port.now_ns if table_port is not None else time.time_ns
@@ -320,6 +331,8 @@ class SubscriptionManager:
         # Floor the poll interval so a client can't request a CPU-pinning loop.
         if 0 < interval_ms < self._min_interval_ms:
             interval_ms = self._min_interval_ms
+        # Refuses a formula over the vector input cap before anything is touched.
+        interval_ms, settle_s = self._vector_pacing(spec, interval_ms)
 
         existing = self._client_subs.get(client_id, {})
         if sub_id not in existing and len(existing) >= self._max_subscriptions_per_client:
@@ -349,7 +362,7 @@ class SubscriptionManager:
             listener = self._new_listener(joined, client_id, sub_id, send_fn)
             self._join_shared(joined, listener)
         else:
-            shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms)
+            shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms, settle_s=settle_s)
             listener = self._new_listener(shared, client_id, sub_id, send_fn)
             shared.listeners.append(listener)
             try:
@@ -384,6 +397,21 @@ class SubscriptionManager:
         if spec.index == "grid" and spec.grid_dt_ns:
             return max(spec.grid_dt_ns // 1_000_000, poll)
         return poll
+
+    def _vector_pacing(self, spec: FormulaSpec, interval_ms: int) -> tuple[int, float]:
+        """The poll interval and push-mode settle time of a live formula.
+
+        A formula with a vector token is evaluated at most once per
+        ``vector_interval_ms``: a poll interval is raised to it, and push mode
+        waits that long between evaluations. Every other formula keeps
+        ``interval_ms`` and no settle time. Raises ``InvalidSpec`` for a formula
+        over the vector input cap, before anything is pinned or subscribed.
+        """
+        if not self._formula_service.vector_input_count(spec):
+            return interval_ms, 0.0
+        if interval_ms > 0:
+            return max(interval_ms, self._vector_interval_ms), 0.0
+        return interval_ms, self._vector_interval_ms / 1000.0
 
     def _join_shared(self, shared: _SharedEval, listener: _Listener) -> None:
         """Attach a listener to an already-running shared evaluation.
@@ -523,6 +551,7 @@ class SubscriptionManager:
         if 0 < new_interval < self._min_interval_ms:
             new_interval = self._min_interval_ms
 
+        new_interval, settle_s = self._vector_pacing(new_spec, new_interval)
         new_key = _compute_key(new_spec, new_t0, new_interval)
         if new_key == key:
             return True
@@ -532,7 +561,9 @@ class SubscriptionManager:
         if joined is not None:
             self._join_shared(joined, listener)
         else:
-            new_shared = _SharedEval(key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval)
+            new_shared = _SharedEval(
+                key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval, settle_s=settle_s
+            )
             new_shared.listeners.append(listener)
             try:
                 await self._start_shared_eval(new_shared)
@@ -953,15 +984,36 @@ class SubscriptionManager:
         deterministic error is fanned out as final and waits for the next
         input change. Cancellation ends the loop quietly.
 
+        With ``shared.settle_s`` set (a formula with a vector token) two
+        evaluations are at least that far apart; the first is immediate. For
+        the first ``input_wait_notify_s`` the distance is
+        `_VECTOR_STARTUP_SETTLE_S` at most, so a result that still counts
+        members as disconnected because their first value is on its way is
+        replaced quickly.
+
         Parameters
         ----------
         shared : _SharedEval
             Shared evaluation to drive.
         """
         attempt = 0
+        loop = asyncio.get_running_loop()
+        started = next_eval_at = loop.time()
         try:
             while True:
                 await shared.dirty.wait()
+                if shared.settle_s:
+                    # Changes that arrive before the settle time is over stay in
+                    # ``dirty`` and are evaluated together.
+                    delay = next_eval_at - loop.time()
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    # Right after the subscribe the members' first values are
+                    # still arriving, and a member without one reads as
+                    # disconnected: follow them closely until they have landed.
+                    starting = loop.time() - started < self._input_wait_notify_s
+                    settle_s = min(shared.settle_s, _VECTOR_STARTUP_SETTLE_S) if starting else shared.settle_s
+                    next_eval_at = loop.time() + settle_s
                 shared.dirty.clear()
                 try:
                     result = await self._formula_service.evaluate(shared.spec, t0_ns=shared.t0_ns, t1_ns=0)
