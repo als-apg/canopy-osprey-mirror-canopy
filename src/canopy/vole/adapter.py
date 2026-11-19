@@ -211,6 +211,10 @@ class VoleDataSource:
         """True while ``name``'s Hare connection is down, whether or not it has a ring yet."""
         return self._buffer.in_open_outage(strip_protocol_prefix(name))
 
+    async def read_latest_live(self, pv: str) -> Sample | None:
+        """The ring's latest sample as it is; a name without a ring is never provisioned from the archive."""
+        return await self._buffer.read_latest(strip_protocol_prefix(pv))
+
     async def enum_labels(self, pv: str) -> list[str] | None:
         """The enum strings of ``pv`` from the live side; None when it has none or no live side is wired."""
         if self._enum_choices is None:

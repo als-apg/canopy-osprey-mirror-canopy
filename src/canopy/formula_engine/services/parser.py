@@ -18,12 +18,17 @@ Two additions serve formulas over many channels:
   connection state instead of its value. Each call is lifted to its own
   placeholder (``__s0``, ``__c0``) before the AST is built, so the argument can
   only ever be one token.
+
+Every rewrite of the text (tokens, status calls, ``&&`` / ``||`` / ``!``) is
+made on the code between string literals only (`_split_strings`): the text of
+a literal reaches the AST exactly as written.
 """
 
 import re
 import ast
 from functools import lru_cache
 from dataclasses import field, dataclass
+from collections.abc import Callable
 
 from canopy.formula_engine.errors import FormulaParseError, FormulaUnsafeError
 from canopy.formula_engine.language.grammar import check_ast_safety
@@ -76,6 +81,10 @@ class ParsedFormula:
     value_tokens: frozenset[str] = frozenset()
     # Tokens read through ``label()``: no placeholder of their own, but their value is read.
     label_tokens: frozenset[str] = frozenset()
+    # Vector tokens whose values the expression reads somewhere outside a
+    # ``nan*`` reduction (`_unguarded_vectors`): a member without a number
+    # would be taken for a number there.
+    unguarded_vectors: frozenset[str] = frozenset()
 
     @property
     def uses_status(self) -> bool:
@@ -100,6 +109,44 @@ class ParsedFormula:
         return list(dict.fromkeys(key for members in self.vector_tokens.values() for key in members))
 
 
+def _split_strings(expression: str) -> list[tuple[bool, str]]:
+    """The expression as ``(is_string_literal, text)`` pieces, in order.
+
+    A literal starts at a quote (or three of the same) and ends at the next
+    one that no backslash escapes; one that never ends takes the rest, and
+    ``ast.parse`` reports it. Joining the pieces gives the expression back.
+    """
+    pieces: list[tuple[bool, str]] = []
+    start = i = 0
+    n = len(expression)
+    while i < n:
+        char = expression[i]
+        if char not in "'\"":
+            i += 1
+            continue
+        quote = char * 3 if expression.startswith(char * 3, i) else char
+        end = i + len(quote)
+        while end < n and not expression.startswith(quote, end):
+            end += 2 if expression[end] == "\\" else 1
+        end = min(end + len(quote), n)
+        if i > start:
+            pieces.append((False, expression[start:i]))
+        pieces.append((True, expression[i:end]))
+        start = i = end
+    if start < n:
+        pieces.append((False, expression[start:]))
+    return pieces
+
+
+def _in_code(pieces: list[tuple[bool, str]], rewrite: Callable[[str], str]) -> list[tuple[bool, str]]:
+    """Apply ``rewrite`` to every piece that is not a string literal."""
+    return [(is_string, text if is_string else rewrite(text)) for is_string, text in pieces]
+
+
+def _code_tokens(pieces: list[tuple[bool, str]]) -> list[str]:
+    return [token for is_string, text in pieces if not is_string for token in _TOKEN_RE.findall(text)]
+
+
 class Parser:
     """Stateless expression parser with LRU caching."""
 
@@ -116,7 +163,7 @@ class Parser:
 
     def extract_tokens(self, expression: str) -> list[str]:
         """Extract ``{name}`` tokens without full validation."""
-        return _TOKEN_RE.findall(expression)
+        return _code_tokens(_split_strings(expression))
 
 
 @lru_cache(maxsize=256)
@@ -124,10 +171,11 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
     if not expression or not expression.strip():
         raise FormulaParseError("Expression is empty")
 
-    if _NESTED_BRACE_RE.search(expression):
+    pieces = _split_strings(expression)
+    if any(_NESTED_BRACE_RE.search(text) for is_string, text in pieces if not is_string):
         raise FormulaParseError("Nested braces are not allowed in expressions")
 
-    tokens = _TOKEN_RE.findall(expression)
+    tokens = _code_tokens(pieces)
     if not tokens:
         raise FormulaParseError("Expression must contain at least one {variable} token")
 
@@ -156,13 +204,13 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         status_symbols[name] = (name, func, token)
         return name
 
-    lifted = _STATUS_CALL_RE.sub(_lift_status, expression)
-    value_tokens = frozenset(_TOKEN_RE.findall(lifted))
+    pieces = _in_code(pieces, lambda code: _STATUS_CALL_RE.sub(_lift_status, code))
+    value_tokens = frozenset(_code_tokens(pieces))
 
-    placeholder_expr = _TOKEN_RE.sub(lambda m: f"__v{token_index[m.group(1)]}", lifted)
-
+    pieces = _in_code(pieces, lambda code: _TOKEN_RE.sub(lambda m: f"__v{token_index[m.group(1)]}", code))
     for pattern, replacement in _BOOL_REPLACEMENTS:
-        placeholder_expr = pattern.sub(replacement, placeholder_expr)
+        pieces = _in_code(pieces, lambda code, p=pattern, r=replacement: p.sub(r, code))
+    placeholder_expr = "".join(text for _, text in pieces)
 
     try:
         tree = ast.parse(placeholder_expr, mode="eval")
@@ -189,6 +237,7 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         _check_exponents(tree)
 
         is_numexpr = _check_numexpr_compatible(tree)
+        unguarded = _unguarded_vectors(tree, {f"__v{token_index[t]}": t for t in vector_tokens if t in value_tokens})
     except RecursionError:
         raise FormulaParseError("Expression is too complex to parse") from None
 
@@ -201,6 +250,7 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         status_symbols=tuple(status_symbols.values()),
         value_tokens=value_tokens,
         label_tokens=frozenset(token for _, func, token in status_symbols.values() if func == LABEL_FUNC),
+        unguarded_vectors=unguarded,
     )
 
 
@@ -226,6 +276,53 @@ def _vector_tokens(tokens: list[str], binding_keys: frozenset[str]) -> dict[str,
             raise FormulaParseError(f"Vector token {{{token}}} matches no binding")
         found[token] = tuple(members)
     return found
+
+
+# What may stand between a vector token and the reduction that guards it: only
+# what hands a NaN on. (``**`` does not: ``nan ** 0`` is 1.)
+_NAN_GUARDS = frozenset({"nanmax", "nanmin", "nansum", "nanmean", "count"})
+_NAN_KEEPING_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.UAdd, ast.USub)
+_NAN_KEEPING_FUNCS = frozenset(
+    {"abs", "sqrt", "exp", "log", "log10", "ln", "floor", "ceil", "radians", "degrees"}
+    | {"sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh"}
+)
+
+
+def _unguarded_vectors(tree: ast.AST, placeholders: dict[str, str]) -> frozenset[str]:
+    """The vector tokens with a value use that no ``nan*`` reduction guards.
+
+    A member without a value reads as NaN. A ``nan*`` reduction leaves it out
+    and ``count`` does not look at it. Everywhere else it would pass for a
+    number: a comparison with NaN is false, ``count_nonzero`` counts NaN as
+    nonzero, ``where`` picks a branch. A use is guarded only when nothing but
+    arithmetic and element-wise functions that keep a NaN stands between the
+    token and such a reduction. Whatever this cannot show to be guarded is
+    unguarded.
+    """
+    if not placeholders:
+        return frozenset()
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    unguarded: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in placeholders and not _is_guarded(node, parents):
+            unguarded.add(placeholders[node.id])
+    return frozenset(unguarded)
+
+
+def _is_guarded(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    while True:
+        parent = parents.get(node)
+        if isinstance(parent, ast.Call) and parent.args == [node] and not parent.keywords:
+            name = _resolve_call_name(parent)
+            if name in _NAN_GUARDS:
+                return True
+            if name not in _NAN_KEEPING_FUNCS:
+                return False
+        elif isinstance(parent, ast.BinOp | ast.UnaryOp) and isinstance(parent.op, _NAN_KEEPING_OPS):
+            pass
+        else:
+            return False
+        node = parent
 
 
 def _check_status_calls(tree: ast.AST) -> None:

@@ -248,7 +248,7 @@ class TestDisconnectedMembers:
             ("nanmax({*})", 4.0),
             ("nanmin({*})", 1.0),
             ("nansum({*})", 5.0),
-            ("count_nonzero({*} == 4)", 1),
+            ("nansum(abs({*}) * 2) / count({*})", 10 / 3),
         ],
     )
     async def test_a_member_without_a_value_does_not_fail_the_formula(self, make, expression, expected):
@@ -269,17 +269,46 @@ class TestDisconnectedMembers:
         assert not isinstance(caught.value, FormulaInputOutage)
         assert caught.value.detail == "PVs not available: ['DEV:B']"
 
-    async def test_a_comparison_with_a_member_without_a_value_is_false_not_an_error(self):
-        result = await _scalar(self._one_down(), "max({*}) > 3", THREE)
-        assert result.value is False
-        assert result.severity == AlarmSeverity.INVALID
+    @pytest.mark.parametrize("make", ["_one_down", "_one_never_seen"])
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "count_nonzero({*})",  # NaN is not zero: the member would be counted
+            "count_nonzero({*} == 4)",
+            "sum({*} != 0)",
+            "max({*}) > 3",  # a comparison with NaN is false: it would read as "not above"
+            "sum(where({*} > 1, 1, 0))",
+            "nansum(where({*} > 1, 1, 0))",  # the comparison comes before the guard
+            "nanmax({*} ** 0)",  # NaN ** 0 is 1
+            "nanmax(clip({*}, 0, 2))",
+            "1 if nanmax({*}) > 3 and min({*}) > 0 else 0",  # one use unguarded is enough
+            "nanmax({*}, 0)",  # not the plain one-argument call
+        ],
+    )
+    async def test_a_member_without_a_value_never_passes_for_a_number(self, make, expression):
+        with pytest.raises(FormulaInputMissing) as caught:
+            await _scalar(getattr(self, make)(), expression, THREE)
+        assert caught.value.detail == "PVs not available: ['DEV:B']"
+        assert isinstance(caught.value, FormulaInputOutage) is (make == "_one_down")
 
-    @pytest.mark.parametrize("value", [math.nan, math.inf])
-    async def test_a_non_finite_result_of_connected_members_is_a_type_error(self, value):
+    async def test_the_same_expressions_answer_when_every_member_has_a_value(self):
+        assert (await _scalar(_three(), "count_nonzero({*} == 4)", THREE)).value == 1
+        assert (await _scalar(_three(), "max({*}) > 3", THREE)).value is True
+
+    async def test_only_the_members_of_the_unguarded_token_count(self):
+        """A member down in a group that is only rolled up by status does not fail the other group's values."""
         source = _three()
-        source.latest["DEV:B"] = _sample(value)
-        with pytest.raises(FormulaTypeError, match="not a finite number"):
-            await _scalar(source, "max({*})", THREE)
+        source.outages.add("DEV:A")
+        bindings = {"s.0": "DEV:A", "v.0": "DEV:B", "v.1": "DEV:C"}
+        result = await _scalar(source, "max(severity({s.*})) * 100 + count_nonzero({v.*} > 1)", bindings)
+        assert result.value == 302
+
+    async def test_the_names_are_capped(self):
+        source = FakeDataSource()
+        bindings = {f"{i:02d}": f"DEV:{i:02d}" for i in range(30)}
+        with pytest.raises(FormulaInputMissing) as caught:
+            await _scalar(source, "count_nonzero({*})", bindings, vector_missing_listed=2)
+        assert caught.value.detail == "PVs not available: ['DEV:00', 'DEV:01'] and 28 more"
 
     async def test_a_member_in_outage_is_not_read(self):
         """Its last sample is stale; it must not reach the value or the timestamps."""
@@ -334,19 +363,129 @@ class TestDisconnectedMembers:
 # --------------------------------------------------------------------------- #
 
 
-class TestMembersThatAreText:
-    async def test_text_that_reads_as_a_number_is_that_number(self):
-        source = _three()
-        source.latest["DEV:B"] = _sample("5")
-        assert (await _scalar(source, "sum({*})", THREE)).value == 10.0
+class TestMembersWhoseValueIsNotFinite:
+    """Connected, but the value itself is NaN or infinite: the cause is live data, not the formula."""
 
-    async def test_other_text_has_no_number_but_is_connected(self):
+    @pytest.mark.parametrize(
+        ("func", "bad"),
+        [(f, math.nan) for f in ("max", "min", "sum", "mean")]
+        + [("max", math.inf), ("sum", math.inf), ("min", -math.inf), ("mean", -math.inf)],
+    )
+    async def test_a_plain_reduction_names_the_member_and_is_retryable(self, func, bad):
         source = _three()
-        source.latest["DEV:B"] = _sample("abc", severity=1)
+        source.latest["DEV:B"] = _sample(bad)
+        with pytest.raises(FormulaInputMissing, match=r"PVs not available: \['DEV:B'\]") as raised:
+            await _scalar(source, f"{func}({{*}})", THREE)
+        assert raised.value.error_code is ErrorCode.FORMULA_INPUT_MISSING
+
+    @pytest.mark.parametrize(("func", "value"), [("nanmax", 4.0), ("nanmin", 1.0), ("nansum", 5.0), ("nanmean", 2.5)])
+    async def test_a_nan_reduction_skips_a_nan(self, func, value):
+        source = _three()
+        source.latest["DEV:B"] = _sample(math.nan, severity=2)
+        result = await _scalar(source, f"{func}({{*}})", THREE)
+        assert result.value == value
+        assert result.severity is AlarmSeverity.MAJOR  # the member's own severity still counts
+        assert result.vector_inputs.missing == []  # it is connected
+
+    async def test_a_result_that_is_finite_all_the_same_is_given(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample(-math.inf)
+        assert (await _scalar(source, "max({*})", THREE)).value == 4.0
+
+    async def test_its_status_is_read_as_sampled(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample(math.nan, severity=1)
+        assert (await _scalar(source, "sum(connected({*})) * 10 + max(severity({*}))", THREE)).value == 31
+
+    async def test_members_without_a_sample_are_named_with_it(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample(math.nan)
+        del source.latest["DEV:C"]
+        with pytest.raises(FormulaInputMissing, match=r"\['DEV:B', 'DEV:C'\]|\['DEV:C', 'DEV:B'\]"):
+            await _scalar(source, "max({*})", THREE)
+
+    async def test_a_plain_token_beside_a_vector(self):
+        source = _three()
+        source.latest["DEV:C"] = _sample(math.nan)
+        bindings = {"g.0": "DEV:A", "g.1": "DEV:B", "limit": "DEV:C"}
+        with pytest.raises(FormulaInputMissing, match="DEV:C"):
+            await _scalar(source, "sum({g.*}) + {limit}", bindings)
+
+    async def test_a_non_finite_result_of_finite_inputs_stays_a_type_error(self):
+        source = _three(a=(0.0, 0))
+        with pytest.raises(FormulaTypeError, match="not a finite number"):
+            await _scalar(source, "log(min({*}))", THREE)
+
+
+class TestMembersThatAreNoNumber:
+    """Text (also text that looks like a number), an array or an empty sample: connected, but no number."""
+
+    @pytest.mark.parametrize("value", ["5", "abc", b"\x01\x02", None])
+    async def test_it_is_skipped_or_named_like_a_member_without_a_value(self, value):
+        source = _three()
+        source.latest["DEV:B"] = _sample(value, severity=1)
         assert (await _scalar(source, "nansum({*})", THREE)).value == 5.0
+        with pytest.raises(FormulaInputMissing, match=r"PVs not available: \['DEV:B'\]"):
+            await _scalar(source, "sum({*})", THREE)
+        with pytest.raises(FormulaInputMissing, match="DEV:B"):
+            await _scalar(source, "count_nonzero({*} == 5)", THREE)
+
+    async def test_it_stays_connected_with_its_own_severity(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample("5", severity=1)
         result = await _scalar(source, "sum(connected({*})) * 10 + max(severity({*}))", THREE)
         assert result.value == 31
         assert result.vector_inputs.missing == []
+
+    async def test_a_plain_token_keeps_its_text(self):
+        source = _source(**{"DEV:A": _sample("on")})
+        assert (await _scalar(source, "severity({a}) + (1 if {a} == 'on' else 0)", {"a": "DEV:A"})).value == 1
+
+    async def test_an_empty_sample_of_a_plain_token_is_no_zero(self):
+        source = _source(**{"DEV:A": _sample(None)})
+        with pytest.raises(FormulaInputMissing, match="DEV:A"):
+            await _scalar(source, "severity({a}) + {a}", {"a": "DEV:A"})
+        assert (await _scalar(source, "connected({a})", {"a": "DEV:A"})).value == 1
+
+
+class TestStringLiterals:
+    """The text of a string literal is never rewritten."""
+
+    @pytest.mark.parametrize(
+        ("expression", "text"),
+        [
+            ("{a} == 'Fault!'", "Fault!"),
+            ("{a} == 'A&&B'", "A&&B"),
+            ("{a} == 'a || b'", "a || b"),
+            ('{a} == "it\'s !ok"', "it's !ok"),
+            ("{a} == 'say \\'no!\\''", "say 'no!'"),
+            ("{a} == '{b}'", "{b}"),  # not a token: needs no binding
+            ("{a} == 'severity({a})'", "severity({a})"),
+            ("{a} == 'a{b{c'", "a{b{c"),
+            ("{a} == '''x && 'y' !'''", "x && 'y' !"),
+        ],
+    )
+    async def test_a_literal_reaches_the_comparison_as_written(self, expression, text):
+        source = _source(**{"DEV:A": _sample(text)})
+        assert (await _scalar(source, f"severity({{a}}) + (1 if {expression} else 0)", {"a": "DEV:A"})).value == 1
+        # the plain path too
+        service = _service(source)
+        plain = await service.evaluate(_spec(expression, {"a": "DEV:A"}), t0_ns=0, t1_ns=0)
+        assert plain.scalar.value is True
+
+    async def test_the_code_around_a_literal_is_still_rewritten(self):
+        source = _source(**{"DEV:A": _sample("A&&B"), "DEV:B": _sample(1.0)})
+        bindings = {"a": "DEV:A", "b": "DEV:B"}
+        service = _service(source)
+        for expression in ("{a} == 'A&&B' && {b} > 0", "!({a} != 'A&&B') || {b} < 0", "{a}=='A&&B'&&!({b}<0)"):
+            assert (await service.evaluate(_spec(expression, bindings), t0_ns=0, t1_ns=0)).scalar.value is True
+
+    def test_tokens_inside_a_literal_are_not_extracted(self):
+        assert Parser().extract_tokens("{a} == '{b}' and {c} > 0") == ["a", "c"]
+
+    def test_a_literal_that_never_ends_is_a_syntax_error(self):
+        with pytest.raises(FormulaParseError, match="Syntax error"):
+            Parser().parse("{a} == 'open", {"a": "DEV:A"})
 
 
 class TestStatusOfOneChannel:
@@ -428,6 +567,52 @@ class TestRuleLadders:
 # --------------------------------------------------------------------------- #
 # Limits and kinds
 # --------------------------------------------------------------------------- #
+
+
+class _SlowSource(FakeDataSource):
+    """Every read takes ``delay`` seconds; the names in ``stuck`` never answer."""
+
+    delay = 0.0
+    stuck: frozenset = frozenset()
+
+    async def read_latest(self, pv: str):
+        await asyncio.sleep(3600 if pv in self.stuck else self.delay)
+        return self.latest.get(pv)
+
+
+class TestBoundedReads:
+    """One evaluation reads its inputs together and does not wait for a slow one for ever."""
+
+    def _many(self, n: int) -> tuple[_SlowSource, dict[str, str]]:
+        bindings = {f"{i:04d}": f"DEV:{i:04d}" for i in range(n)}
+        return _SlowSource(latest={pv: _sample(1.0) for pv in bindings.values()}), bindings
+
+    async def test_the_members_are_read_together(self):
+        source, bindings = self._many(500)
+        source.delay = 0.05  # one after the other this would be 25 s
+        start = asyncio.get_running_loop().time()
+        result = await _scalar(source, "sum(connected({*}))", bindings)
+        assert result.value == 500
+        assert asyncio.get_running_loop().time() - start < 2.0
+
+    async def test_a_member_that_is_not_read_in_time_is_without_a_value(self):
+        source, bindings = self._many(5)
+        source.stuck = frozenset({"DEV:0002"})
+        start = asyncio.get_running_loop().time()
+        result = await _scalar(source, "sum(connected({*}))", bindings, vector_read_timeout_ms=100)
+        assert asyncio.get_running_loop().time() - start < 1.0
+        assert result.value == 4
+        assert result.severity == AlarmSeverity.INVALID
+        assert result.vector_inputs.missing == ["DEV:0002"]
+
+    async def test_a_plain_token_that_is_not_read_in_time_fails_the_formula(self):
+        source, bindings = self._many(2)
+        source.stuck = frozenset({"DEV:0001"})
+        with pytest.raises(FormulaInputMissing, match="DEV:0001"):
+            await _scalar(source, "severity({0000}) + {0001}", bindings, vector_read_timeout_ms=100)
+
+    async def test_the_time_limit_is_a_setting(self):
+        assert FormulaEngineConfig().vector_read_timeout_ms == 2000
 
 
 class TestLimits:
@@ -688,13 +873,43 @@ class TestFirstResult:
         finally:
             await manager.shutdown()
 
-    async def test_a_status_formula_on_one_channel_does_not_wait(self):
+    @pytest.mark.parametrize("expression", ["connected({a})", "0 if severity({a}) >= 2 else 1"])
+    async def test_a_status_formula_on_one_channel_waits_too(self, expression):
+        """No flash of the worst state when a screen with one such light opens."""
+        source, notifier, clock = FakeDataSource(), ChangeNotifier(), _Monotonic()
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec(expression, {"a": "DEV:A"}), 0, 0, out.send)
+            await asyncio.sleep(0.1)
+            assert out.messages == []
+            source.latest["DEV:A"] = _sample(1.0)
+            notifier.notify("DEV:A")
+            await _wait_for(lambda: out.values() == [1])
+        finally:
+            await manager.shutdown()
+
+    async def test_a_status_formula_on_one_channel_answers_when_the_window_ends(self):
         source, notifier, clock = FakeDataSource(), ChangeNotifier(), _Monotonic()
         manager, _ = self._start(source, notifier, clock)
         out = _Collector()
         try:
             await manager.add_subscription("c", "s", _spec("connected({a})", {"a": "DEV:A"}), 0, 0, out.send)
+            await asyncio.sleep(0.1)
+            assert out.messages == []
+            clock.now += 1.0
             await _wait_for(lambda: out.values() == [0])
+        finally:
+            await manager.shutdown()
+
+    async def test_a_plain_formula_is_never_held(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        manager, service = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("{0} + 1", {"0": "DEV:A"}), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [2.0])
+            assert service.evaluations == 1
         finally:
             await manager.shutdown()
 
@@ -765,6 +980,21 @@ class TestLive:
         finally:
             await manager.shutdown()
 
+    def test_a_table_keeps_the_order_of_its_bindings_in_the_key(self):
+        """Only a scalar formula finds its bindings by key alone."""
+        from canopy.formula_engine.services.subscription_manager import _compute_key
+
+        def table(bindings):
+            return FormulaSpec(
+                kind="table", columns={"a": "{a}", "b": "{b}"}, bindings=bindings, index="grid", grid_dt_ns=10**9
+            )
+
+        forward, backward = {"a": "DEV:A", "b": "DEV:B"}, {"b": "DEV:B", "a": "DEV:A"}
+        assert _compute_key(table(forward), -1, 0) != _compute_key(table(backward), -1, 0)
+        assert _compute_key(table(forward), -1, 0) == _compute_key(table(dict(forward)), -1, 0)
+        scalar = "{a} + {b}"
+        assert _compute_key(_spec(scalar, forward), 0, 0) == _compute_key(_spec(scalar, backward), 0, 0)
+
     async def test_other_bindings_do_not_share(self):
         source, notifier = _three(), ChangeNotifier()
         manager, _ = _manager(source, notifier)
@@ -811,18 +1041,60 @@ class TestLive:
 
     async def test_a_subscription_lives_on_after_an_error_that_is_not_retryable(self):
         """The error is the answer for now; the next change of a member is evaluated again."""
+        source, notifier = _three(a=(0.0, 0)), ChangeNotifier()
+        manager, service = _manager(source, notifier, vector_interval_ms=10)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("log(min({*}))", THREE), 0, 0, out.send)
+            await _wait_for(lambda: len(out.messages) == 1)
+            assert out.messages[0]["code"] == ErrorCode.FORMULA_TYPE_ERROR.value
+            assert out.messages[0]["retryable"] is False
+            # More samples that fail the same way: evaluated, but the error is not sent again.
+            for value in (3.0, 5.0):
+                source.latest["DEV:B"] = _sample(value)
+                notifier.notify("DEV:B")
+                await _wait_for(lambda n=service.evaluations: service.evaluations > n)
+            await asyncio.sleep(0.05)
+            assert len(out.messages) == 1
+            source.latest["DEV:A"] = _sample(1.0)
+            notifier.notify("DEV:A")
+            await _wait_for(lambda: out.values() == [0.0])
+            # The same error again is a new state and is sent again.
+            source.latest["DEV:A"] = _sample(0.0)
+            notifier.notify("DEV:A")
+            await _wait_for(lambda: len(out.messages) == 3)
+            assert out.messages[2] == out.messages[0]
+        finally:
+            await manager.shutdown()
+
+    async def test_a_polled_subscription_sends_a_repeated_error_once(self):
+        source, notifier = _three(a=(0.0, 0)), ChangeNotifier()
+        manager, service = _manager(source, notifier, vector_interval_ms=10)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("log(min({*}))", THREE), 0, 0, out.send, interval_ms=10)
+            await _wait_for(lambda: service.evaluations >= 4)
+            assert len(out.messages) == 1
+            source.latest["DEV:A"] = _sample(1.0)
+            await _wait_for(lambda: out.values()[:1] == [0.0])
+        finally:
+            await manager.shutdown()
+
+    async def test_a_member_whose_value_is_nan_is_reported_at_once_and_followed(self):
         source, notifier = _three(), ChangeNotifier()
-        source.latest["DEV:B"] = _sample(math.inf)
+        source.latest["DEV:B"] = _sample(math.nan)
         manager, _ = _manager(source, notifier, vector_interval_ms=10)
         out = _Collector()
         try:
             await manager.add_subscription("c", "s", _spec("max({*})", THREE), 0, 0, out.send)
-            await _wait_for(lambda: len(out.messages) == 1)
-            assert out.messages[0]["code"] == ErrorCode.FORMULA_TYPE_ERROR.value
-            assert not out.messages[0].get("retryable")
+            await _wait_for(lambda: len(out.messages) == 1, timeout=0.5)  # no input-wait silence
+            assert out.messages[0]["code"] == ErrorCode.FORMULA_INPUT_MISSING.value
+            assert out.messages[0]["retryable"] is True
+            assert "DEV:B" in out.messages[0]["message"]
             source.latest["DEV:B"] = _sample(2.0)
             notifier.notify("DEV:B")
             await _wait_for(lambda: out.values() == [4.0])
+            assert len(out.messages) == 2
         finally:
             await manager.shutdown()
 
@@ -925,23 +1197,46 @@ class TestWithTheRingStore:
         finally:
             await manager.shutdown()
 
-    async def test_a_member_that_never_connected_is_not_asked_of_the_archive(self):
+    async def test_no_member_is_asked_of_the_archive(self):
+        """Not one in outage, and not one the live side has never heard of: both are named instead."""
+        from canopy.vole.adapter import VoleDataSource
+
+        fetched: list[str] = []
+        subscribed: list[str] = []
+
+        async def fetch_window(pv, t0_ns, t1_ns, **kwargs):
+            fetched.append(pv)
+            return [_sample(9.0, ts_ns=t1_ns - 1)]
+
+        async def subscribe_live(pvs):
+            subscribed.extend(pvs)
+
+        buffer = self._buffer(ChangeNotifier())
+        await buffer.append("DEV:A", _sample(1.0, ts_ns=self.NOW))
+        buffer.open_outage("DEV:B", self.NOW)  # down before its first sample: no ring
+        source = VoleDataSource(buffer, fetch_window=fetch_window, subscribe_live=subscribe_live)
+        result = await _scalar(source, "sum(connected({*})) * 10 + severity({0})", THREE)
+        assert result.value == 10
+        assert result.vector_inputs.missing == ["DEV:B", "DEV:C"]
+        assert fetched == [] and subscribed == []
+
+    async def test_a_plain_token_is_still_provisioned_as_in_a_plain_formula(self):
         from canopy.vole.adapter import VoleDataSource
 
         fetched: list[str] = []
 
         async def fetch_window(pv, t0_ns, t1_ns, **kwargs):
             fetched.append(pv)
-            return []
+            return [_sample(9.0, ts_ns=t1_ns - 1)]
+
+        async def subscribe_live(pvs):
+            return None
 
         buffer = self._buffer(ChangeNotifier())
-        await buffer.append("DEV:A", _sample(1.0, ts_ns=self.NOW))
-        await buffer.append("DEV:C", _sample(1.0, ts_ns=self.NOW))
-        buffer.open_outage("DEV:B", self.NOW)  # down before its first sample: no ring
-        source = VoleDataSource(buffer, fetch_window=fetch_window)
-        result = await _scalar(source, "sum(connected({*}))", THREE)
-        assert result.value == 2
-        assert fetched == []
+        source = VoleDataSource(buffer, fetch_window=fetch_window, subscribe_live=subscribe_live)
+        result = await _scalar(source, "severity({a}) + {a}", {"a": "DEV:A"})
+        assert result.value == 9.0
+        assert fetched == ["DEV:A"]
 
 
 # --------------------------------------------------------------------------- #

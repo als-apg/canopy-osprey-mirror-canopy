@@ -35,7 +35,7 @@ PV names in bindings may optionally include `ca://` or `pva://` protocol prefixe
 | Unary | `+`, `-`, `not` / `!` |
 | Ternary | `x if condition else y` |
 
-C-style boolean operators (`&&`, `||`, `!`) are normalized to Python equivalents before evaluation.
+C-style boolean operators (`&&`, `||`, `!`) are normalized to Python equivalents before evaluation. The text of a string literal is never changed: `{state} == 'Fault!'` and `'A&&B'` compare as written, and a `{name}` inside quotes is text, not a token.
 
 ## Available functions
 
@@ -164,38 +164,49 @@ They are not re-read while it stays connected.
 
 A plain token still fails the whole formula when its channel is disconnected or
 has no data (`formula_input_missing`). A member of a vector token, and a token
-that the expression reads only through `severity()` or `connected()`, never
-fails the formula. It is read as follows:
+that the expression reads only through `severity()` or `connected()`, is read
+as follows:
 
 | Channel | Value | `severity()` | `connected()` |
 |---------|-------|--------------|---------------|
-| Has a sample | its number | 0 to 3 | 1 |
+| Has a number | its number | 0 to 3 | 1 |
 | Disconnected | `nan` | 3 | 0 |
 | No sample yet | `nan` | 3 | 0 |
-| Sample that is text which reads as a number (`"5"`) | that number | as sampled | 1 |
-| Sample that is not a number (other text, array) | `nan` | as sampled | 1 |
+| Sample that is no number (text, also `"5"`; an array; an empty sample) | `nan` | as sampled | 1 |
 
-So that a channel without a value is always visible:
+A member without a number never passes for a number:
 
-- `max(severity(...))` gives 3 as soon as one member is disconnected.
-- `max`, `min`, `sum` and `mean` over values are `nan` while a member has no
-  value. A formula whose result is `nan` for that reason fails with
-  `formula_input_missing`, and the message names the members without a value.
-  This is the error of a plain formula. A live subscription retries it.
-- Use `nanmax`, `nanmin`, `nansum` or `nanmean` to leave such members out.
-- Comparisons with `nan` are false. `count_nonzero({*} == 2)` does not count a
-  member without a value, and `max({*}) > 5` is false, not an error.
-- A result that is `nan` or infinite for another reason (a channel whose own
-  value is `nan`) fails with `formula_type_error`. The result of a formula with
-  a vector token or a status function is always a finite number, a boolean or
-  text.
+- `severity()` and `connected()` do not read the value. `max(severity(...))`
+  gives 3 as soon as one member is disconnected.
+- `nanmax`, `nanmin`, `nansum` and `nanmean` leave such members out, and
+  `count` does not look at the values.
+- Every other use of a vector token's values fails with
+  `formula_input_missing` while a member of that token has no number, and the
+  message names those members. This holds for the plain reductions
+  (`max({*})`), for comparisons (`count_nonzero({*} == 2)`, `max({*}) > 5`),
+  for `count_nonzero({*})`, `where`, `clip` and `**`. The reason: a comparison
+  with `nan` is false and `count_nonzero` counts `nan`, so the member would be
+  taken for a value. A live subscription retries the error.
+- A use is guarded by a `nan*` reduction only when nothing but `+ - * /` and
+  the element-wise functions (`abs`, `sqrt`, `exp`, `log`, the trigonometric
+  functions, `floor`, `ceil`, `radians`, `degrees`) stands between the token
+  and the reduction: `nansum(abs({*}))` is guarded, `nansum({*} > 1)` is not.
+- A channel whose own value is infinite is a number. A formula whose result is
+  not finite because of it fails with `formula_input_missing` naming it.
+- A result that is `nan` or infinite although every input value is finite
+  (`log(min({*}))` with a 0) fails with `formula_type_error`. The result of a
+  formula with a vector token or a status function is always a finite number,
+  a boolean or text.
 - The result's own `severity` is the worst over all inputs, and an input
   without a sample counts as `INVALID`, whatever the expression computes.
 - When no input has a sample, the result's `tsNs` is the time of evaluation.
 
 A roll-up that must always give a state uses `severity()`, `connected()` or the
-`nan*` reductions. A plain reduction over values (`max({*})`) is for a number
-that has no meaning while a member is missing.
+`nan*` reductions. Any other expression over values has no meaning while a
+member is missing, and says so.
+
+A plain token whose sample is there but empty fails a formula with a vector
+token or a status function in the same way; it is not read as 0.
 
 ### The result of a formula with a vector token
 
@@ -231,7 +242,8 @@ rule of plain tokens.
 |---------|---------|---------|
 | `CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS` | 1000 | Most channels the vector tokens of one formula may name. A formula above it is refused with `invalid_spec`, and the message names this limit. A live subscription is refused before any channel is subscribed. |
 | `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` | 500 | Shortest time between two evaluations of a live formula with a vector token. Inside the start window the shortest time is 50 ms. |
-| `CANOPY_FORMULA_ENGINE__VECTOR_START_WINDOW_MS` | 1000 | Longest time a live formula with a vector token holds its first result while members are pending (see below). 0 sends the first result as it is. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_START_WINDOW_MS` | 1000 | Longest time a live formula with a vector token or a status function holds its first result while inputs are pending (see below). 0 sends the first result as it is. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_READ_TIMEOUT_MS` | 2000 | One evaluation of such a formula reads its inputs together and waits this long for all of them. An input not read by then is without a value. |
 | `CANOPY_FORMULA_ENGINE__VECTOR_MISSING_LISTED` | 20 | Most channels without a value that a result or an error message names. The others are counted. |
 
 The limit on the expression length (`CANOPY_FORMULA_ENGINE__MAX_EXPRESSION_LEN`)
@@ -246,7 +258,8 @@ bindings are written does not matter.
 
 After a subscribe, the first values of the members arrive one after the other.
 A member is pending while it has neither a first sample nor a known connection
-failure. A live formula with a vector token sends no result while a member is
+failure. A live formula with a vector token, or with `severity()` or
+`connected()` of a plain token, sends no result while such an input is
 pending, so a display does not show the disconnected state for the moment it
 takes to connect. The first result goes out when no member is pending, or when
 the start window has passed. A member that is still pending then is read as
@@ -255,6 +268,12 @@ nothing is held.
 
 Every member is one live channel on the server. A vector token removes the
 limit on the expression, not the cost of the connections.
+
+The members of a vector token, and a token read only through `severity()` or
+`connected()`, are read from the live side only. A one-time evaluation (REST,
+or a subscription with a fixed window) does not ask the archive for them: a
+member the server holds no live value for is without a value and is named.
+Evaluate a roll-up through a live subscription, which connects its members.
 
 ## Constants
 

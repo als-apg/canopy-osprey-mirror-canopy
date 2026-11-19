@@ -54,6 +54,17 @@ class FormulaInputOutage(FormulaInputMissing):
     """
 
 
+class FormulaInputUnusable(FormulaInputMissing):
+    """An input is connected, but its value is no number the formula can use.
+
+    Its sample is NaN, infinite, empty or (for a member of a vector token)
+    text or an array, where the expression needs a number. The cause is the
+    live value, not the formula: the next sample may be a number again. So it shares ``FormulaInputMissing``'s code and wording and is
+    retryable on the wire; like an outage it is a fact, and a live subscription
+    forwards it at once.
+    """
+
+
 class FormulaTypeError(FormulaEngineError):
     status_code = 422
     error_code = ErrorCode.FORMULA_TYPE_ERROR

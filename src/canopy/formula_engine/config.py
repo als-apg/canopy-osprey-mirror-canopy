@@ -57,6 +57,10 @@ class FormulaEngineConfig(BaseSettings):
     # while a member has neither a first sample nor a known connection failure,
     # for at most this long. 0 sends the first result as it is.
     vector_start_window_ms: int = 1000
+    # One evaluation of a formula with a vector token or a status function reads
+    # its inputs together and waits this long for all of them. An input not
+    # read by then is taken as without a value.
+    vector_read_timeout_ms: int = 2000
     # Most members without a value a result (or an error) names; the rest are counted.
     vector_missing_listed: int = 20
 

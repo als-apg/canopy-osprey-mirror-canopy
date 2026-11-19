@@ -86,6 +86,15 @@ class FormulaService:
             )
         return parsed
 
+    def reads_status(self, spec: FormulaSpec) -> bool:
+        """Whether a spec has a vector token or a status function; False for a spec that does not parse."""
+        if spec.kind == "table" or spec.expression is None:
+            return False
+        try:
+            return self._parse(spec).uses_status
+        except Exception:
+            return False
+
     def vector_input_count(self, spec: FormulaSpec) -> int:
         """How many channels a spec's vector tokens name; 0 for a formula without one.
 

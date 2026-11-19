@@ -68,7 +68,6 @@ class TestTheString:
             (math.nan, ""),
             (math.inf, ""),
             (True, ""),  # a flag is not an index
-            (None, ""),
         ],
     )
     async def test_only_a_whole_number_inside_the_strings_has_a_label(self, value, label):
@@ -98,6 +97,14 @@ class TestWithoutAValue:
         with pytest.raises(FormulaInputMissing, match="DEV:V"):
             await _value(source, "label({v}) == 'Open'")
         assert source.asked == []
+
+    async def test_an_empty_sample_fails_the_formula(self):
+        with pytest.raises(FormulaInputMissing, match="DEV:V"):
+            await _value(_valve(None), "label({v}) == ''")
+
+    @pytest.mark.parametrize("text", ["Fault!", "A&&B", "a || b"])
+    async def test_a_label_with_operator_characters_is_compared_as_written(self, text):
+        assert (await _value(_valve(1, ["Closed", text]), f"label({{v}}) == '{text}'")).value is True
 
 
 class TestWhereItIsRefused:

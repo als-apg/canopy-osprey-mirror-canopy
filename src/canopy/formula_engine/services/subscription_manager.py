@@ -44,6 +44,7 @@ from canopy.formula_engine.errors import (
     TABLE_UPDATE_UNSUPPORTED_MESSAGE,
     TableLimit,
     FormulaInputOutage,
+    FormulaInputUnusable,
     TableUpdateUnsupported,
     SubscriptionLimitExceeded,
     is_retryable,
@@ -201,10 +202,10 @@ class _SharedEval:
     # formula with a vector token, whose many members would otherwise each
     # start an evaluation.
     settle_s: float = 0.0
-    # A formula with a vector token: its first result waits for its members
-    # (`SubscriptionManager._holds_first_result`). ``started_at`` is the
-    # manager's monotonic time when its loop began.
-    vector: bool = False
+    # A formula with a vector token or a status function: its first result
+    # waits for its inputs (`SubscriptionManager._holds_first_result`).
+    # ``started_at`` is the manager's monotonic time when its loop began.
+    waits_for_inputs: bool = False
     first_result_sent: bool = False
     started_at: float = 0.0
     # Table evals: the resolved spec, the row store and the store version last sent.
@@ -217,11 +218,13 @@ class _SharedEval:
 def _compute_key(spec: FormulaSpec, t0_ns: int, interval_ms: int) -> str:
     """The key equal subscriptions share one evaluation under.
 
-    A binding is found by its key, never by its position, so the bindings are
-    ordered by key first: the same bindings written in another order are the
-    same formula.
+    A scalar formula finds a binding by its key, never by its position, so its
+    bindings are ordered by key first: the same bindings written in another
+    order are the same formula. Other kinds keep the order as written (the
+    order of a table's bindings is the order of its inputs).
     """
-    spec = spec.model_copy(update={"bindings": dict(sorted(spec.bindings.items()))})
+    if spec.kind == "scalar":
+        spec = spec.model_copy(update={"bindings": dict(sorted(spec.bindings.items()))})
     raw = f"{spec.model_dump_json()}|{t0_ns}|{interval_ms}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -355,7 +358,7 @@ class SubscriptionManager:
         if 0 < interval_ms < self._min_interval_ms:
             interval_ms = self._min_interval_ms
         # Refuses a formula over the vector input cap before anything is touched.
-        interval_ms, settle_s, vector = self._vector_pacing(spec, interval_ms)
+        interval_ms, settle_s, waits = self._vector_pacing(spec, interval_ms)
 
         existing = self._client_subs.get(client_id, {})
         if sub_id not in existing and len(existing) >= self._max_subscriptions_per_client:
@@ -386,7 +389,7 @@ class SubscriptionManager:
             self._join_shared(joined, listener)
         else:
             shared = _SharedEval(
-                key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms, settle_s=settle_s, vector=vector
+                key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms, settle_s=settle_s, waits_for_inputs=waits
             )
             listener = self._new_listener(shared, client_id, sub_id, send_fn)
             shared.listeners.append(listener)
@@ -424,7 +427,7 @@ class SubscriptionManager:
         return poll
 
     def _vector_pacing(self, spec: FormulaSpec, interval_ms: int) -> tuple[int, float, bool]:
-        """The poll interval and push-mode settle time of a live formula, and whether it has a vector token.
+        """The poll interval and push-mode settle time of a live formula, and whether its first result waits for inputs.
 
         A formula with a vector token is evaluated at most once per
         ``vector_interval_ms``: a poll interval is raised to it, and push mode
@@ -433,25 +436,24 @@ class SubscriptionManager:
         over the vector input cap, before anything is pinned or subscribed.
         """
         if not self._formula_service.vector_input_count(spec):
-            return interval_ms, 0.0, False
+            return interval_ms, 0.0, self._formula_service.reads_status(spec)
         if interval_ms > 0:
             return max(interval_ms, self._vector_interval_ms), 0.0, True
         return interval_ms, self._vector_interval_ms / 1000.0, True
 
     def _holds_first_result(self, shared: _SharedEval, result: Any) -> bool:
-        """Whether a result must not go out yet: it is the first, and members are still pending.
+        """Whether a result must not go out yet: it is the first, and inputs are still pending.
 
-        A member with neither a sample nor a known connection failure reads as
+        An input with neither a sample nor a known connection failure reads as
         disconnected, though its first value is only on its way. The first
-        result of a formula with a vector token therefore waits until no member
-        is pending, or until the start window has passed. From the first result
+        result of a formula with a vector token or a status function therefore
+        waits until no input is pending, or until the start window has passed. From the first result
         on nothing is held.
         """
-        if not shared.vector or shared.first_result_sent:
+        if not shared.waits_for_inputs or shared.first_result_sent:
             return False
-        inputs = result.scalar.vector_inputs if result.scalar is not None else None
-        waited = self._monotonic() - shared.started_at
-        if inputs is not None and inputs.pending and waited < self._vector_start_window_s:
+        pending = result.scalar.pending if result.scalar is not None else 0
+        if pending and self._monotonic() - shared.started_at < self._vector_start_window_s:
             return True
         shared.first_result_sent = True
         return False
@@ -594,7 +596,7 @@ class SubscriptionManager:
         if 0 < new_interval < self._min_interval_ms:
             new_interval = self._min_interval_ms
 
-        new_interval, settle_s, vector = self._vector_pacing(new_spec, new_interval)
+        new_interval, settle_s, waits = self._vector_pacing(new_spec, new_interval)
         new_key = _compute_key(new_spec, new_t0, new_interval)
         if new_key == key:
             return True
@@ -610,7 +612,7 @@ class SubscriptionManager:
                 t0_ns=new_t0,
                 interval_ms=new_interval,
                 settle_s=settle_s,
-                vector=vector,
+                waits_for_inputs=waits,
             )
             new_shared.listeners.append(listener)
             try:
@@ -1013,7 +1015,8 @@ class SubscriptionManager:
             shared.waiting_since = now
         # An open outage is not a value on its way: the input's connection is down
         # now, so the client hears at once (still once per reason).
-        if not isinstance(exc, FormulaInputOutage) and now - shared.waiting_since < self._input_wait_notify_s:
+        known = isinstance(exc, FormulaInputOutage | FormulaInputUnusable)
+        if not known and now - shared.waiting_since < self._input_wait_notify_s:
             return
         frame = {"type": "error", "code": exc.error_code.value, "message": exc.detail, "retryable": True}
         if shared.last_frame == frame:
@@ -1079,7 +1082,9 @@ class SubscriptionManager:
                     code = exc.error_code
                     if code not in TRANSIENT_ERROR_CODES:
                         attempt = 0
-                        await self._fan_out(shared, {"type": "error", "code": code.value, "message": exc.detail})
+                        frame = {"type": "error", "code": code.value, "message": exc.detail, "retryable": False}
+                        if shared.last_frame != frame:  # once per state, not once per sample
+                            await self._fan_out(shared, frame)
                         continue
                     await self._note_input_wait(shared, exc)
                 except asyncio.CancelledError:
@@ -1123,9 +1128,10 @@ class SubscriptionManager:
                     if exc.error_code in TRANSIENT_ERROR_CODES:
                         await self._note_input_wait(shared, exc)
                     else:
-                        await self._fan_out(
-                            shared, {"type": "error", "code": exc.error_code.value, "message": exc.detail}
-                        )
+                        code = exc.error_code.value
+                        frame = {"type": "error", "code": code, "message": exc.detail, "retryable": False}
+                        if shared.last_frame != frame:  # once per state, not once per interval
+                            await self._fan_out(shared, frame)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:

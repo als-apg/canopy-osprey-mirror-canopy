@@ -71,6 +71,9 @@ class FakeDataSource:
     async def read_latest(self, pv: str) -> Sample | None:
         return self.latest.get(pv)
 
+    async def read_latest_live(self, pv: str) -> Sample | None:
+        return await self.read_latest(pv)
+
 
 @pytest.fixture
 def fake_data_source():

@@ -73,10 +73,12 @@ PLAIN = [
     ("{a} * 1", {"a": "DEV:NAN"}, "NaN"),
     ("log({z})", {"z": "DEV:ZERO"}, "-Infinity"),
 ]
+# An input whose own value is NaN is live data: the retryable error naming it.
+# A non-finite result of finite inputs is the formula's: a type error.
 VECTOR = [
-    ("max({*})", {"0": "DEV:NAN", "1": "DEV:ZERO"}),
-    ("log(max({*}))", {"0": "DEV:ZERO"}),
-    ("severity({a}) * {a}", {"a": "DEV:NAN"}),
+    ("max({*})", {"0": "DEV:NAN", "1": "DEV:ZERO"}, "formula_input_missing", "DEV:NAN"),
+    ("log(max({*}))", {"0": "DEV:ZERO"}, "formula_type_error", "not a finite number"),
+    ("severity({a}) * {a}", {"a": "DEV:NAN"}, "formula_input_missing", "DEV:NAN"),
 ]
 
 
@@ -110,19 +112,20 @@ def test_a_plain_formula_answers_null_over_rest(client, expression, bindings, wo
     assert _strict(response.text)["scalar"]["value"] is None
 
 
-@pytest.mark.parametrize(("expression", "bindings"), VECTOR)
-def test_a_vector_or_status_formula_never_sends_a_frame_that_is_not_json(client, expression, bindings):
+@pytest.mark.parametrize(("expression", "bindings", "code", "says"), VECTOR)
+def test_a_vector_or_status_formula_never_sends_a_frame_that_is_not_json(client, expression, bindings, code, says):
     frame = _strict(_first_frame(client, expression, bindings))
     assert frame["type"] == "error"
-    assert frame["code"] == "formula_type_error"
-    assert "not a finite number" in frame["message"]
+    assert frame["code"] == code
+    assert frame["retryable"] is (code == "formula_input_missing")
+    assert says in frame["message"]
 
 
-@pytest.mark.parametrize(("expression", "bindings"), VECTOR)
-def test_a_vector_or_status_formula_answers_the_error_over_rest(client, expression, bindings):
+@pytest.mark.parametrize(("expression", "bindings", "code", "says"), VECTOR)
+def test_a_vector_or_status_formula_answers_the_error_over_rest(client, expression, bindings, code, says):
     response = _evaluate(client, expression, bindings)
     assert response.status_code == 422
-    assert _strict(response.text)["code"] == "formula_type_error"
+    assert _strict(response.text)["code"] == code
 
 
 def test_a_roll_up_over_rest_has_the_summary_and_a_plain_formula_does_not(client):

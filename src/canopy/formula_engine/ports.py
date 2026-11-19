@@ -120,6 +120,14 @@ class DataSource(Protocol):
         """
         ...
 
+    async def read_latest_live(self, pv: str) -> Sample | None:
+        """The latest sample the live side holds for ``pv``, or None. Never asks the archive.
+
+        For the members of a vector token and for status reads: a formula over
+        a thousand channels must not start a thousand archive requests.
+        """
+        ...
+
     async def enum_labels(self, pv: str) -> list[str] | None:
         """The enum strings of ``pv``, indexed by its value; None when it has none (or they are not known)."""
         ...
@@ -161,6 +169,9 @@ class NullDataSource:
 
     def in_open_outage(self, name: str) -> bool:
         return False
+
+    async def read_latest_live(self, pv: str) -> Sample | None:
+        return None
 
     async def enum_labels(self, pv: str) -> list[str] | None:
         return None

@@ -124,9 +124,6 @@ class VectorInputs(CanopyModel):
     count: int
     missing: list[str]
     more: int = 0
-    # Members with neither a sample nor a known connection failure: their first
-    # value can still arrive. For the server's own use, never sent.
-    pending: int = Field(default=0, exclude=True)
 
 
 def without_absent_vector_inputs(model: CanopyModel, data: dict) -> dict:
@@ -148,6 +145,9 @@ class ScalarResult(CanopyModel):
     # are not listed here; ``vector_inputs`` sums them up.
     inputs_used: dict[str, int]
     vector_inputs: VectorInputs | None = None
+    # Inputs with neither a sample nor a known connection failure: their first
+    # value can still arrive. For the server's own use, never sent.
+    pending: int = Field(default=0, exclude=True)
 
     @model_serializer(mode="wrap")
     def _serialize(self, handler: SerializerFunctionWrapHandler) -> dict:
