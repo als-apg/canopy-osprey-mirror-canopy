@@ -3265,6 +3265,202 @@
       "value": true,
       "severity": "NO_ALARM",
       "vectorInputs": null
+    },
+    {
+      "name": "a text member fails a value reduction and is named",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "fault",
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "a conditional around a nan reduction leaves it guarded",
+      "expression": "nansum({*}) if count({*}) > 0 else 0",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "a vector token as a branch of a conditional is not guarded",
+      "expression": "nansum({*} if 1 else {*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "a power is not guarded",
+      "expression": "nansum({*} ** 2)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "where() and clip() are not guarded",
+      "expression": "nansum(where({a.*} > 0, 1, 0)) + nanmax(clip({b.*}, 0, 1))",
+      "bindings": {
+        "a.0": "DEV:A",
+        "a.1": "DEV:B",
+        "b.0": "DEV:C",
+        "b.1": "DEV:D"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B', 'DEV:D']"
+    },
+    {
+      "name": "the unguarded use is found whatever the values",
+      "expression": "({t} + 1) * max({g.*})",
+      "bindings": {
+        "t": "DEV:A",
+        "g.0": "DEV:B",
+        "g.1": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": "text",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "a plain token with an empty sample is named",
+      "expression": "{x} + max(severity({*}))",
+      "bindings": {
+        "x": "DEV:X",
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        },
+        "DEV:X": {
+          "value": null,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:X']"
+    },
+    {
+      "name": "label() of an empty sample is named",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": null,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Open"
+          ]
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:V']"
     }
   ]
 }
