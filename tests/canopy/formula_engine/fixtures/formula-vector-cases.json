@@ -2381,6 +2381,153 @@
         }
       },
       "error": "parse_error"
+    },
+    {
+      "name": "label(): a whole number written as a float indexes",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2.0,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a fraction has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 1.5,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a negative index has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": -1,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a value that is not a number has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "nonFinite": "nan",
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): an infinite value has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "nonFinite": "inf",
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a boolean is a flag, not an index",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": true,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a formula may answer the string itself",
+      "expression": "label({v})",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": "Open",
+      "severity": "NO_ALARM",
+      "vectorInputs": null
     }
   ]
 }

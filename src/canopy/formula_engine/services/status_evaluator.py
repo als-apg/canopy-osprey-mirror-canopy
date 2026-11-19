@@ -14,6 +14,9 @@ no sample yet               NaN      3           0
 sample without a number     NaN      as sampled  1
 ==========================  =======  ==========  =============
 
+Text that reads as a number (``"5"``) is that number; other text and arrays
+have none.
+
 That holds for every member of a vector token and for a token the expression
 reads only through ``severity()`` or ``connected()``. A token whose value the
 expression reads directly (``{x}`` outside a status function) keeps the rule of

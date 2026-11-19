@@ -60,7 +60,7 @@ def _source(channels: dict[str, dict]) -> _Channels:
 
 
 def test_the_table_is_the_one_this_test_was_written_for():
-    assert len(CASES) == 87
+    assert len(CASES) == 94
     assert len({case["name"] for case in CASES}) == len(CASES)
 
 

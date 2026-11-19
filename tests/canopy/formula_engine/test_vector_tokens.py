@@ -334,6 +334,21 @@ class TestDisconnectedMembers:
 # --------------------------------------------------------------------------- #
 
 
+class TestMembersThatAreText:
+    async def test_text_that_reads_as_a_number_is_that_number(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample("5")
+        assert (await _scalar(source, "sum({*})", THREE)).value == 10.0
+
+    async def test_other_text_has_no_number_but_is_connected(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample("abc", severity=1)
+        assert (await _scalar(source, "nansum({*})", THREE)).value == 5.0
+        result = await _scalar(source, "sum(connected({*})) * 10 + max(severity({*}))", THREE)
+        assert result.value == 31
+        assert result.vector_inputs.missing == []
+
+
 class TestStatusOfOneChannel:
     async def test_severity_and_connected_of_a_live_channel(self):
         source = FakeDataSource(latest={"DEV:A": _sample(7.0, severity=2)})
@@ -791,6 +806,23 @@ class TestLive:
             source.latest["DEV:A"] = _sample(11.0)
             notifier.notify("DEV:A")
             await _wait_for(lambda: out.values() == [7.0, 17.0], timeout=0.5)
+        finally:
+            await manager.shutdown()
+
+    async def test_a_subscription_lives_on_after_an_error_that_is_not_retryable(self):
+        """The error is the answer for now; the next change of a member is evaluated again."""
+        source, notifier = _three(), ChangeNotifier()
+        source.latest["DEV:B"] = _sample(math.inf)
+        manager, _ = _manager(source, notifier, vector_interval_ms=10)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("max({*})", THREE), 0, 0, out.send)
+            await _wait_for(lambda: len(out.messages) == 1)
+            assert out.messages[0]["code"] == ErrorCode.FORMULA_TYPE_ERROR.value
+            assert not out.messages[0].get("retryable")
+            source.latest["DEV:B"] = _sample(2.0)
+            notifier.notify("DEV:B")
+            await _wait_for(lambda: out.values() == [4.0])
         finally:
             await manager.shutdown()
 

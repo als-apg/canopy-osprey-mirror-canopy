@@ -172,7 +172,8 @@ fails the formula. It is read as follows:
 | Has a sample | its number | 0 to 3 | 1 |
 | Disconnected | `nan` | 3 | 0 |
 | No sample yet | `nan` | 3 | 0 |
-| Sample that is not a number (text, array) | `nan` | as sampled | 1 |
+| Sample that is text which reads as a number (`"5"`) | that number | as sampled | 1 |
+| Sample that is not a number (other text, array) | `nan` | as sampled | 1 |
 
 So that a channel without a value is always visible:
 
