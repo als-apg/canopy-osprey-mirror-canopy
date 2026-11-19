@@ -47,6 +47,7 @@ def test_no_warning_without_legacy_env_vars(monkeypatch, caplog):
 def test_vector_token_limits_have_defaults_and_env_names(monkeypatch):
     config = FormulaEngineConfig(_env_file=None)
     assert (config.max_vector_inputs, config.vector_interval_ms, config.vector_missing_listed) == (1000, 500, 20)
+    assert config.vector_start_window_ms == 1000
     # The limit on the expression is not the limit on the inputs.
     assert config.max_expression_len == 2048
 

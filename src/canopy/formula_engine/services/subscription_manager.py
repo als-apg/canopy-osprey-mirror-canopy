@@ -62,8 +62,8 @@ from canopy.formula_engine.services.formula_service import FormulaService
 _INPUT_RETRY_DELAY_S = 0.25
 # Codes retried at `_INPUT_RETRY_DELAY_S`; every other transient code backs off.
 _INPUT_WAIT_CODES = frozenset({ErrorCode.FORMULA_INPUT_MISSING, ErrorCode.PV_NOT_BUFFERED})
-# Shortest time between two evaluations of a formula with a vector token while
-# its eval is younger than ``input_wait_notify_s``.
+# Shortest time between two evaluations of a formula with a vector token inside
+# its start window, and how often a held first result is looked at again.
 _VECTOR_STARTUP_SETTLE_S = 0.05
 # Ceiling of the push-mode backoff for the other transient codes (archiver, timeout, unhandled).
 _MAX_RETRY_DELAY_S = 5.0
@@ -201,6 +201,12 @@ class _SharedEval:
     # formula with a vector token, whose many members would otherwise each
     # start an evaluation.
     settle_s: float = 0.0
+    # A formula with a vector token: its first result waits for its members
+    # (`SubscriptionManager._holds_first_result`). ``started_at`` is the
+    # manager's monotonic time when its loop began.
+    vector: bool = False
+    first_result_sent: bool = False
+    started_at: float = 0.0
     # Table evals: the resolved spec, the row store and the store version last sent.
     view: TableView | None = None
     store: TableStore | None = None
@@ -240,6 +246,8 @@ class SubscriptionManager:
         table_port: TablePort | None = None,
         table_settings: TableSettings | None = None,
         vector_interval_ms: int | None = None,
+        vector_start_window_ms: int | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         """Wire the manager to the Formula Engine's formula service and Vole's change notifications.
 
@@ -262,6 +270,14 @@ class SubscriptionManager:
         self._vector_interval_ms = (
             vector_interval_ms if vector_interval_ms is not None else formula_service.config.vector_interval_ms
         )
+        window_ms = (
+            vector_start_window_ms
+            if vector_start_window_ms is not None
+            else formula_service.config.vector_start_window_ms
+        )
+        self._vector_start_window_s = window_ms / 1000.0
+        # The clock the start window is read from; a test passes its own.
+        self._monotonic = monotonic
         self._shared_evals: dict[str, _SharedEval] = {}
         self._client_subs: dict[str, dict[str, str]] = {}
         self._clock_ns = table_port.now_ns if table_port is not None else time.time_ns
@@ -339,7 +355,7 @@ class SubscriptionManager:
         if 0 < interval_ms < self._min_interval_ms:
             interval_ms = self._min_interval_ms
         # Refuses a formula over the vector input cap before anything is touched.
-        interval_ms, settle_s = self._vector_pacing(spec, interval_ms)
+        interval_ms, settle_s, vector = self._vector_pacing(spec, interval_ms)
 
         existing = self._client_subs.get(client_id, {})
         if sub_id not in existing and len(existing) >= self._max_subscriptions_per_client:
@@ -369,7 +385,9 @@ class SubscriptionManager:
             listener = self._new_listener(joined, client_id, sub_id, send_fn)
             self._join_shared(joined, listener)
         else:
-            shared = _SharedEval(key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms, settle_s=settle_s)
+            shared = _SharedEval(
+                key=key, spec=spec, t0_ns=t0_ns, interval_ms=interval_ms, settle_s=settle_s, vector=vector
+            )
             listener = self._new_listener(shared, client_id, sub_id, send_fn)
             shared.listeners.append(listener)
             try:
@@ -405,8 +423,8 @@ class SubscriptionManager:
             return max(spec.grid_dt_ns // 1_000_000, poll)
         return poll
 
-    def _vector_pacing(self, spec: FormulaSpec, interval_ms: int) -> tuple[int, float]:
-        """The poll interval and push-mode settle time of a live formula.
+    def _vector_pacing(self, spec: FormulaSpec, interval_ms: int) -> tuple[int, float, bool]:
+        """The poll interval and push-mode settle time of a live formula, and whether it has a vector token.
 
         A formula with a vector token is evaluated at most once per
         ``vector_interval_ms``: a poll interval is raised to it, and push mode
@@ -415,10 +433,28 @@ class SubscriptionManager:
         over the vector input cap, before anything is pinned or subscribed.
         """
         if not self._formula_service.vector_input_count(spec):
-            return interval_ms, 0.0
+            return interval_ms, 0.0, False
         if interval_ms > 0:
-            return max(interval_ms, self._vector_interval_ms), 0.0
-        return interval_ms, self._vector_interval_ms / 1000.0
+            return max(interval_ms, self._vector_interval_ms), 0.0, True
+        return interval_ms, self._vector_interval_ms / 1000.0, True
+
+    def _holds_first_result(self, shared: _SharedEval, result: Any) -> bool:
+        """Whether a result must not go out yet: it is the first, and members are still pending.
+
+        A member with neither a sample nor a known connection failure reads as
+        disconnected, though its first value is only on its way. The first
+        result of a formula with a vector token therefore waits until no member
+        is pending, or until the start window has passed. From the first result
+        on nothing is held.
+        """
+        if not shared.vector or shared.first_result_sent:
+            return False
+        inputs = result.scalar.vector_inputs if result.scalar is not None else None
+        waited = self._monotonic() - shared.started_at
+        if inputs is not None and inputs.pending and waited < self._vector_start_window_s:
+            return True
+        shared.first_result_sent = True
+        return False
 
     def _join_shared(self, shared: _SharedEval, listener: _Listener) -> None:
         """Attach a listener to an already-running shared evaluation.
@@ -558,7 +594,7 @@ class SubscriptionManager:
         if 0 < new_interval < self._min_interval_ms:
             new_interval = self._min_interval_ms
 
-        new_interval, settle_s = self._vector_pacing(new_spec, new_interval)
+        new_interval, settle_s, vector = self._vector_pacing(new_spec, new_interval)
         new_key = _compute_key(new_spec, new_t0, new_interval)
         if new_key == key:
             return True
@@ -569,7 +605,12 @@ class SubscriptionManager:
             self._join_shared(joined, listener)
         else:
             new_shared = _SharedEval(
-                key=new_key, spec=new_spec, t0_ns=new_t0, interval_ms=new_interval, settle_s=settle_s
+                key=new_key,
+                spec=new_spec,
+                t0_ns=new_t0,
+                interval_ms=new_interval,
+                settle_s=settle_s,
+                vector=vector,
             )
             new_shared.listeners.append(listener)
             try:
@@ -992,11 +1033,11 @@ class SubscriptionManager:
         input change. Cancellation ends the loop quietly.
 
         With ``shared.settle_s`` set (a formula with a vector token) two
-        evaluations are at least that far apart; the first is immediate. For
-        the first ``input_wait_notify_s`` the distance is
-        `_VECTOR_STARTUP_SETTLE_S` at most, so a result that still counts
-        members as disconnected because their first value is on its way is
-        replaced quickly.
+        evaluations are at least that far apart; the first is immediate. Its
+        first result is held while members are pending
+        (`_holds_first_result`), and inside the start window the distance is
+        `_VECTOR_STARTUP_SETTLE_S` at most, so first values that arrive late
+        are followed quickly.
 
         Parameters
         ----------
@@ -1005,7 +1046,8 @@ class SubscriptionManager:
         """
         attempt = 0
         loop = asyncio.get_running_loop()
-        started = next_eval_at = loop.time()
+        next_eval_at = loop.time()
+        shared.started_at = self._monotonic()
         try:
             while True:
                 await shared.dirty.wait()
@@ -1018,13 +1060,19 @@ class SubscriptionManager:
                     # Right after the subscribe the members' first values are
                     # still arriving, and a member without one reads as
                     # disconnected: follow them closely until they have landed.
-                    starting = loop.time() - started < self._input_wait_notify_s
+                    starting = self._monotonic() - shared.started_at < self._vector_start_window_s
                     settle_s = min(shared.settle_s, _VECTOR_STARTUP_SETTLE_S) if starting else shared.settle_s
                     next_eval_at = loop.time() + settle_s
                 shared.dirty.clear()
                 try:
                     result = await self._formula_service.evaluate(shared.spec, t0_ns=shared.t0_ns, t1_ns=0)
                     attempt = 0
+                    if self._holds_first_result(shared, result):
+                        # Look again soon: a member's failure to connect may
+                        # come without a change, and the window ends by itself.
+                        await asyncio.sleep(_VECTOR_STARTUP_SETTLE_S)
+                        shared.dirty.set()
+                        continue
                     await self._fan_out(shared, {"type": "result", "data": result.model_dump(by_alias=True)})
                     continue
                 except CanopyError as exc:
@@ -1061,11 +1109,15 @@ class SubscriptionManager:
             Shared evaluation to drive.
         """
         interval_s = shared.interval_ms / 1000.0
+        shared.started_at = self._monotonic()
 
         try:
             while True:
                 try:
                     result = await self._formula_service.evaluate(shared.spec, t0_ns=shared.t0_ns, t1_ns=0)
+                    if self._holds_first_result(shared, result):
+                        await asyncio.sleep(_VECTOR_STARTUP_SETTLE_S)
+                        continue
                     await self._fan_out(shared, {"type": "result", "data": result.model_dump(by_alias=True)})
                 except CanopyError as exc:
                     if exc.error_code in TRANSIENT_ERROR_CODES:

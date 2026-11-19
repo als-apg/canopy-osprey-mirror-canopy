@@ -486,6 +486,16 @@ class _Collector:
         return [m["data"]["scalar"]["value"] for m in self.messages if m["type"] == "result"]
 
 
+class _Monotonic:
+    """A clock the test moves: the manager's start window is read from it."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
 class _CountingService(FormulaService):
     evaluations = 0
 
@@ -515,6 +525,163 @@ def _manager(source: FakeDataSource, notifier: ChangeNotifier, **kwargs):
         **kwargs,
     )
     return manager, service
+
+
+class TestFirstResult:
+    """No result goes out while a member's first value can still arrive.
+
+    A member with neither a sample nor a known connection failure is pending.
+    Until every member is settled, or the start window has passed, a formula
+    with a vector token sends nothing, so a light does not show the
+    disconnected state for the moment a screen takes to connect.
+    """
+
+    WINDOW_MS = 1000
+
+    def _start(self, source, notifier, clock, **kwargs):
+        return _manager(
+            source, notifier, vector_interval_ms=10, vector_start_window_ms=self.WINDOW_MS, monotonic=clock, **kwargs
+        )
+
+    async def test_nothing_is_sent_while_a_member_is_pending(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        late = source.latest.pop("DEV:C")
+        manager, service = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
+            await _wait_for(lambda: service.evaluations >= 3)  # it keeps looking
+            clock.now += 0.999
+            await asyncio.sleep(0.1)
+            assert out.messages == []
+            source.latest["DEV:C"] = late
+            notifier.notify("DEV:C")
+            await _wait_for(lambda: out.values() == [3])
+        finally:
+            await manager.shutdown()
+
+    async def test_a_complete_first_result_is_sent_at_once(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        manager, service = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [3])
+            assert service.evaluations == 1
+            assert clock.now == 0.0
+        finally:
+            await manager.shutdown()
+
+    async def test_a_known_connection_failure_is_settled_not_pending(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        del source.latest["DEV:C"]
+        source.outages.add("DEV:C")
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [2])
+            assert clock.now == 0.0
+        finally:
+            await manager.shutdown()
+
+    async def test_the_failure_of_the_last_pending_member_releases_the_result(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        del source.latest["DEV:C"]
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("max(severity({*}))", THREE), 0, 0, out.send)
+            await asyncio.sleep(0.1)
+            assert out.messages == []
+            source.outages.add("DEV:C")
+            notifier.notify("DEV:C")
+            await _wait_for(lambda: out.values() == [3])
+        finally:
+            await manager.shutdown()
+
+    async def test_the_start_window_ends_the_wait(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        del source.latest["DEV:C"]
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
+            await asyncio.sleep(0.1)
+            assert out.messages == []
+            clock.now += 1.0
+            await _wait_for(lambda: out.values() == [2])
+            (frame,) = out.messages
+            assert frame["data"]["scalar"]["vectorInputs"] == {"count": 3, "missing": ["DEV:C"], "more": 0}
+        finally:
+            await manager.shutdown()
+
+    async def test_after_the_first_result_a_pending_member_holds_nothing(self):
+        """A member that is added to the picture later (its ring evicted, say) does not silence the formula."""
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [3])
+            del source.latest["DEV:C"]
+            notifier.notify("DEV:C")
+            await _wait_for(lambda: out.values() == [3, 2])
+            assert clock.now == 0.0
+        finally:
+            await manager.shutdown()
+
+    async def test_a_window_of_zero_sends_the_first_result_as_it_is(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        del source.latest["DEV:C"]
+        manager, _ = _manager(source, notifier, vector_interval_ms=10, vector_start_window_ms=0, monotonic=clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [2])
+        finally:
+            await manager.shutdown()
+
+    async def test_a_polled_roll_up_waits_too(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        late = source.latest.pop("DEV:C")
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription(
+                "c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send, interval_ms=5000
+            )
+            await asyncio.sleep(0.1)
+            assert out.messages == []
+            source.latest["DEV:C"] = late
+            await _wait_for(lambda: out.values() == [3], timeout=1.0)
+        finally:
+            await manager.shutdown()
+
+    async def test_a_late_joiner_of_a_waiting_roll_up_gets_the_first_result(self):
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        late = source.latest.pop("DEV:C")
+        manager, _ = self._start(source, notifier, clock)
+        first, second = _Collector(), _Collector()
+        spec = _spec("sum(connected({*}))", THREE)
+        try:
+            await manager.add_subscription("c1", "s", spec, 0, 0, first.send)
+            await manager.add_subscription("c2", "s", spec, 0, 0, second.send)
+            source.latest["DEV:C"] = late
+            notifier.notify("DEV:C")
+            await _wait_for(lambda: first.values() == [3] and second.values() == [3])
+        finally:
+            await manager.shutdown()
+
+    async def test_a_status_formula_on_one_channel_does_not_wait(self):
+        source, notifier, clock = FakeDataSource(), ChangeNotifier(), _Monotonic()
+        manager, _ = self._start(source, notifier, clock)
+        out = _Collector()
+        try:
+            await manager.add_subscription("c", "s", _spec("connected({a})", {"a": "DEV:A"}), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [0])
+        finally:
+            await manager.shutdown()
 
 
 class TestLive:
@@ -597,7 +764,7 @@ class TestLive:
 
     async def test_a_burst_of_member_changes_is_evaluated_once_per_interval(self):
         source, notifier = _three(), ChangeNotifier()
-        manager, service = _manager(source, notifier, vector_interval_ms=200, input_wait_notify_s=0.0)
+        manager, service = _manager(source, notifier, vector_interval_ms=200, vector_start_window_ms=0)
         out = _Collector()
         try:
             await manager.add_subscription("c", "s", _spec("sum({*})", THREE), 0, 0, out.send)
@@ -613,18 +780,17 @@ class TestLive:
         finally:
             await manager.shutdown()
 
-    async def test_first_values_that_arrive_after_the_subscribe_are_followed_quickly(self):
-        """A member without its first value reads as disconnected; that must not last an interval."""
-        source, notifier = _three(), ChangeNotifier()
-        late = source.latest.pop("DEV:C")
-        manager, _ = _manager(source, notifier, vector_interval_ms=5000)
+    async def test_changes_inside_the_start_window_are_followed_quickly(self):
+        """Values still settle while a screen opens; the long interval starts after the window."""
+        source, notifier, clock = _three(), ChangeNotifier(), _Monotonic()
+        manager, _ = _manager(source, notifier, vector_interval_ms=5000, vector_start_window_ms=1000, monotonic=clock)
         out = _Collector()
         try:
-            await manager.add_subscription("c", "s", _spec("sum(connected({*}))", THREE), 0, 0, out.send)
-            await _wait_for(lambda: out.values() == [2])
-            source.latest["DEV:C"] = late
-            notifier.notify("DEV:C")
-            await _wait_for(lambda: out.values() == [2, 3], timeout=0.5)
+            await manager.add_subscription("c", "s", _spec("sum({*})", THREE), 0, 0, out.send)
+            await _wait_for(lambda: out.values() == [7.0])
+            source.latest["DEV:A"] = _sample(11.0)
+            notifier.notify("DEV:A")
+            await _wait_for(lambda: out.values() == [7.0, 17.0], timeout=0.5)
         finally:
             await manager.shutdown()
 

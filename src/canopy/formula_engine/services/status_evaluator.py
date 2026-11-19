@@ -163,16 +163,29 @@ async def evaluate_status_formula(
         severity=worst_severity(severities),
         # Plain tokens are listed as in every scalar result; members are summed up.
         inputs_used={spec.bindings[t]: samples[t].ts_ns for t in scalar_tokens if samples[t] is not None},
-        vector_inputs=_vector_inputs(spec, parsed, samples, config.vector_missing_listed),
+        vector_inputs=_vector_inputs(spec, parsed, samples, data_source, config.vector_missing_listed),
     )
 
 
 def _vector_inputs(
-    spec: FormulaSpec, parsed: ParsedFormula, samples: dict[str, Sample | None], listed: int
+    spec: FormulaSpec,
+    parsed: ParsedFormula,
+    samples: dict[str, Sample | None],
+    data_source: DataSource,
+    listed: int,
 ) -> VectorInputs | None:
-    """The members counted, and the first ``listed`` of those without a sample named."""
+    """The members counted, and the first ``listed`` of those without a sample named.
+
+    ``pending`` counts the members without a sample whose connection is not
+    known to be down: nothing has been heard of them yet.
+    """
     members = parsed.member_keys()
     if not members:
         return None
     missing = [spec.bindings[key] for key in members if samples[key] is None]
-    return VectorInputs(count=len(members), missing=missing[:listed], more=max(len(missing) - listed, 0))
+    return VectorInputs(
+        count=len(members),
+        missing=missing[:listed],
+        more=max(len(missing) - listed, 0),
+        pending=sum(1 for pv in missing if not data_source.in_open_outage(pv)),
+    )

@@ -53,6 +53,10 @@ class FormulaEngineConfig(BaseSettings):
     # Shortest time between two evaluations of a live formula with a vector
     # token: member changes inside it are evaluated together.
     vector_interval_ms: int = 500
+    # After a subscribe, a live formula with a vector token sends no result
+    # while a member has neither a first sample nor a known connection failure,
+    # for at most this long. 0 sends the first result as it is.
+    vector_start_window_ms: int = 1000
     # Most members without a value a result (or an error) names; the rest are counted.
     vector_missing_listed: int = 20
 

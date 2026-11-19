@@ -315,9 +315,12 @@ by the server setting `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` (default 500):
 
 - In push mode it is evaluated when a member changes, connects or disconnects,
   but at most once per interval. Changes inside the interval are evaluated
-  together. In the first second after the subscribe it follows its members
-  more closely (every 50 ms at most), because a member whose first value has
-  not arrived yet is read as disconnected.
+  together. Inside the start window
+  (`CANOPY_FORMULA_ENGINE__VECTOR_START_WINDOW_MS`, default 1000) it follows
+  its members more closely (every 50 ms at most).
+- Its first result is sent when every member has a first sample or a known
+  connection failure, or when the start window has passed. Until then the
+  subscription has its `subscribed` frame and no result.
 - In poll mode `intervalMs` is raised to the interval when it is smaller.
 
 A subscribe whose vector tokens name more channels than

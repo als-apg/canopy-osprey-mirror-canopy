@@ -202,7 +202,8 @@ rule of plain tokens.
 | Setting | Default | Meaning |
 |---------|---------|---------|
 | `CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS` | 1000 | Most channels the vector tokens of one formula may name. A formula above it is refused with `invalid_spec`, and the message names this limit. A live subscription is refused before any channel is subscribed. |
-| `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` | 500 | Shortest time between two evaluations of a live formula with a vector token. In the first second after the subscribe the shortest time is 50 ms. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` | 500 | Shortest time between two evaluations of a live formula with a vector token. Inside the start window the shortest time is 50 ms. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_START_WINDOW_MS` | 1000 | Longest time a live formula with a vector token holds its first result while members are pending (see below). 0 sends the first result as it is. |
 | `CANOPY_FORMULA_ENGINE__VECTOR_MISSING_LISTED` | 20 | Most channels without a value that a result or an error message names. The others are counted. |
 
 The limit on the expression length (`CANOPY_FORMULA_ENGINE__MAX_EXPRESSION_LEN`)
@@ -214,6 +215,15 @@ changes, connects or disconnects, but at most once per
 subscription that asks for a poll interval gets at least this interval.
 Subscriptions with the same spec share one evaluation. The order in which the
 bindings are written does not matter.
+
+After a subscribe, the first values of the members arrive one after the other.
+A member is pending while it has neither a first sample nor a known connection
+failure. A live formula with a vector token sends no result while a member is
+pending, so a display does not show the disconnected state for the moment it
+takes to connect. The first result goes out when no member is pending, or when
+the start window has passed. A member that is still pending then is read as
+disconnected and named in `vectorInputs.missing`. After the first result
+nothing is held.
 
 Every member is one live channel on the server. A vector token removes the
 limit on the expression, not the cost of the connections.

@@ -124,6 +124,9 @@ class VectorInputs(CanopyModel):
     count: int
     missing: list[str]
     more: int = 0
+    # Members with neither a sample nor a known connection failure: their first
+    # value can still arrive. For the server's own use, never sent.
+    pending: int = Field(default=0, exclude=True)
 
 
 def without_absent_vector_inputs(model: CanopyModel, data: dict) -> dict:
