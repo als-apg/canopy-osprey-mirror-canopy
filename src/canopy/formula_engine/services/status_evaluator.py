@@ -27,7 +27,9 @@ read the value, or leave a NaN out. Everywhere else a NaN would be taken for a
 value (a comparison with NaN is false, ``count_nonzero`` counts it), so a
 formula that reads a vector token's values any other way
 (``ParsedFormula.unguarded_vectors``) fails while a member of that token has no
-number, with the retryable input error naming those members.
+number, with the retryable input error naming those members. A ``nan*``
+reduction over a token of which no member has a number fails in the same way:
+it has nothing to reduce (``count`` still answers).
 
 The result's own severity is the worst over all inputs, and an input without a
 sample counts as INVALID. A formula with one member down therefore never looks
@@ -160,6 +162,11 @@ async def evaluate_status_formula(
     exposed = [key for key in parsed.member_keys() if key in unguarded and math.isnan(_number(samples[key]))]
     if exposed:
         raise _input_error(spec, exposed, samples, data_source, config)
+    # A nan* reduction with no member left to reduce has no answer either:
+    # nansum would say 0, and a comparison around nanmax would say "no".
+    for token in parsed.tokens:
+        if token in parsed.nan_reduced_vectors and all(math.isnan(_number(samples[key])) for key in vectors[token]):
+            raise _input_error(spec, list(vectors[token]), samples, data_source, config)
 
     # Binding keys whose value (not only whose status) the expression reads.
     read_by_value = {key for t in parsed.value_tokens for key in vectors.get(t, (t,))}

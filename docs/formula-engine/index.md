@@ -197,12 +197,12 @@ A member without a number never passes for a number:
   formula and is strict: a form it does not know is unguarded, also one that
   would be sound, such as `nanmax({*} ** 2)` or `nanmax(clip({*}, 0, 9))`.
   Write those with the accepted forms (`nanmax({*} * {*})`).
-- When every member is missing, the `nan*` reductions have nothing to reduce.
-  `nansum` then gives 0 and `count` the number of members, both with severity
-  `INVALID`: a quiet value, not an alarm. `nanmax`, `nanmin` and `nanmean`
-  fail with `formula_input_missing`. A light therefore reads `severity()` or
-  `connected()`, and the result's `severity`, never the value of a `nan*`
-  reduction alone.
+- When no member of a vector token has a number, a `nan*` reduction over it has
+  nothing to reduce and does not answer: the formula fails with
+  `formula_input_missing` naming the members, also when the reduction sits
+  inside a comparison or a conditional (`nanmax({*}) > 5` is not false while
+  nothing is known). With at least one member that has a number, the others
+  are skipped. `count({*})` always answers.
 - A channel whose own value is infinite is a number. A formula whose result is
   not finite because of it fails with `formula_input_missing` naming it.
 - A result that is `nan` or infinite although every input value is finite

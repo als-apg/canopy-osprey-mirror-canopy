@@ -82,9 +82,12 @@ class ParsedFormula:
     # Tokens read through ``label()``: no placeholder of their own, but their value is read.
     label_tokens: frozenset[str] = frozenset()
     # Vector tokens whose values the expression reads somewhere outside a
-    # ``nan*`` reduction (`_unguarded_vectors`): a member without a number
+    # ``nan*`` reduction (`_vector_value_uses`): a member without a number
     # would be taken for a number there.
     unguarded_vectors: frozenset[str] = frozenset()
+    # Vector tokens whose values a ``nanmax`` / ``nanmin`` / ``nansum`` /
+    # ``nanmean`` reduces: with no member that has a number, it has no answer.
+    nan_reduced_vectors: frozenset[str] = frozenset()
 
     @property
     def uses_status(self) -> bool:
@@ -248,7 +251,9 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         _check_exponents(tree)
 
         is_numexpr = _check_numexpr_compatible(tree)
-        unguarded = _unguarded_vectors(tree, {f"__v{token_index[t]}": t for t in vector_tokens if t in value_tokens})
+        unguarded, reduced = _vector_value_uses(
+            tree, {f"__v{token_index[t]}": t for t in vector_tokens if t in value_tokens}
+        )
     except RecursionError:
         raise FormulaParseError("Expression is too complex to parse") from None
 
@@ -262,6 +267,7 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         value_tokens=value_tokens,
         label_tokens=frozenset(token for _, func, token in status_symbols.values() if func == LABEL_FUNC),
         unguarded_vectors=unguarded,
+        nan_reduced_vectors=reduced,
     )
 
 
@@ -291,7 +297,8 @@ def _vector_tokens(tokens: list[str], binding_keys: frozenset[str]) -> dict[str,
 
 # What may stand between a vector token and the reduction that guards it: only
 # what hands a NaN on. (``**`` does not: ``nan ** 0`` is 1.)
-_NAN_GUARDS = frozenset({"nanmax", "nanmin", "nansum", "nanmean", "count"})
+_COUNT = "count"
+_NAN_GUARDS = frozenset({"nanmax", "nanmin", "nansum", "nanmean", _COUNT})
 _NAN_KEEPING_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.UAdd, ast.USub)
 _NAN_KEEPING_FUNCS = frozenset(
     {"abs", "sqrt", "exp", "log", "log10", "ln", "floor", "ceil", "radians", "degrees"}
@@ -299,8 +306,8 @@ _NAN_KEEPING_FUNCS = frozenset(
 )
 
 
-def _unguarded_vectors(tree: ast.AST, placeholders: dict[str, str]) -> frozenset[str]:
-    """The vector tokens with a value use that no ``nan*`` reduction guards.
+def _vector_value_uses(tree: ast.AST, placeholders: dict[str, str]) -> tuple[frozenset[str], frozenset[str]]:
+    """The vector tokens with an unguarded value use, and those reduced by a ``nan*`` function.
 
     A member without a value reads as NaN. A ``nan*`` reduction leaves it out
     and ``count`` does not look at it. Everywhere else it would pass for a
@@ -309,30 +316,41 @@ def _unguarded_vectors(tree: ast.AST, placeholders: dict[str, str]) -> frozenset
     arithmetic and element-wise functions that keep a NaN stands between the
     token and such a reduction. Whatever this cannot show to be guarded is
     unguarded.
+
+    A token under ``nanmax`` / ``nanmin`` / ``nansum`` / ``nanmean`` (not
+    ``count``) is reported too: with no member left to reduce, the reduction
+    has no answer.
     """
     if not placeholders:
-        return frozenset()
+        return frozenset(), frozenset()
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     unguarded: set[str] = set()
+    reduced: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id in placeholders and not _is_guarded(node, parents):
+        if not (isinstance(node, ast.Name) and node.id in placeholders):
+            continue
+        guard = _guard_of(node, parents)
+        if guard is None:
             unguarded.add(placeholders[node.id])
-    return frozenset(unguarded)
+        elif guard != _COUNT:
+            reduced.add(placeholders[node.id])
+    return frozenset(unguarded), frozenset(reduced)
 
 
-def _is_guarded(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+def _guard_of(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str | None:
+    """The reduction that guards this use of a vector token, or None."""
     while True:
         parent = parents.get(node)
         if isinstance(parent, ast.Call) and parent.args == [node] and not parent.keywords:
             name = _resolve_call_name(parent)
             if name in _NAN_GUARDS:
-                return True
+                return name
             if name not in _NAN_KEEPING_FUNCS:
-                return False
+                return None
         elif isinstance(parent, ast.BinOp | ast.UnaryOp) and isinstance(parent.op, _NAN_KEEPING_OPS):
             pass
         else:
-            return False
+            return None
         node = parent
 
 

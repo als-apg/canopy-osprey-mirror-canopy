@@ -3539,6 +3539,261 @@
         ],
         "more": 0
       }
+    },
+    {
+      "name": "nanmax with no member sampled does not answer",
+      "expression": "nanmax({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {},
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "nanmin with every sample empty does not answer",
+      "expression": "nanmin({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": null,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs without a number: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "nanmean with every member down does not answer",
+      "expression": "nanmean({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "down": true
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "down": true
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "nansum with no member sampled does not answer",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {},
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "nansum with every sample empty does not answer",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": null,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs without a number: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "a comparison of nanmax with nothing known does not read false",
+      "expression": "nanmax({*}) > 5",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {},
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "a conditional on nanmax with nothing known does not take a branch",
+      "expression": "1 if nanmax({*}) > 5 else 0",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": null,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs without a number: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "a nan reduction in a branch of a conditional with nothing known does not answer",
+      "expression": "nansum({*}) if count({*}) > 0 else 0",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {},
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+    },
+    {
+      "name": "some members absent, the others empty: the absent ones are named",
+      "expression": "nanmax({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:C']"
+    },
+    {
+      "name": "the members of a nan reduction with nothing known are named up to the cap",
+      "expression": "nanmax({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {},
+      "missingListed": 2,
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:A', 'DEV:B'] and 1 more"
+    },
+    {
+      "name": "count with no member sampled still answers with the number of members",
+      "expression": "count({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {},
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:A",
+          "DEV:B",
+          "DEV:C"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "count with every sample empty still answers with the number of members",
+      "expression": "count({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": null,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:A",
+          "DEV:B",
+          "DEV:C"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one usable member is enough for a nan reduction",
+      "expression": "nanmax({*}) > 5",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:B": {
+          "value": 7.0,
+          "severity": 0
+        }
+      },
+      "value": true,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:A",
+          "DEV:C"
+        ],
+        "more": 0
+      }
     }
   ]
 }

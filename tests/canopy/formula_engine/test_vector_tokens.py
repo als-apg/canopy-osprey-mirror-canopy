@@ -426,6 +426,71 @@ class TestMembersWhoseValueIsNotFinite:
             await _scalar(source, "log(min({*}))", THREE)
 
 
+class TestNothingToReduce:
+    """A nan* reduction over members of which none has a number does not answer."""
+
+    EXPRESSIONS = [
+        "nanmax({*})",
+        "nanmin({*})",
+        "nanmean({*})",
+        "nansum({*})",
+        "nanmax({*}) > 5",  # must not read False while nothing is known
+        "1 if nansum({*}) > 0 else 0",
+        "nansum(abs({*}) * 2) + count({*})",
+    ]
+
+    @pytest.mark.parametrize("expression", EXPRESSIONS)
+    async def test_all_members_without_a_sample(self, expression):
+        with pytest.raises(FormulaInputMissing) as caught:
+            await _scalar(FakeDataSource(), expression, THREE)
+        assert caught.value.detail == "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+
+    @pytest.mark.parametrize("expression", EXPRESSIONS)
+    async def test_all_members_down(self, expression):
+        source = _three()
+        source.outages.update(THREE.values())
+        with pytest.raises(FormulaInputOutage) as caught:
+            await _scalar(source, expression, THREE)
+        assert caught.value.detail == "PVs not available: ['DEV:A', 'DEV:B', 'DEV:C']"
+
+    @pytest.mark.parametrize("expression", EXPRESSIONS)
+    @pytest.mark.parametrize("value", [None, math.nan, "text"])
+    async def test_all_members_with_a_sample_that_is_no_number(self, expression, value):
+        source = _source(**{pv: _sample(value) for pv in THREE.values()})
+        with pytest.raises(FormulaInputMissing) as caught:
+            await _scalar(source, expression, THREE)
+        assert caught.value.detail == "PVs without a number: ['DEV:A', 'DEV:B', 'DEV:C']"
+        assert caught.value.error_code is ErrorCode.FORMULA_INPUT_MISSING
+
+    async def test_the_members_that_are_not_there_are_named_alone(self):
+        source = _source(**{"DEV:A": _sample(None)})
+        with pytest.raises(FormulaInputMissing) as caught:
+            await _scalar(source, "nanmax({*})", THREE)
+        assert caught.value.detail == "PVs not available: ['DEV:B', 'DEV:C']"
+
+    @pytest.mark.parametrize(
+        ("expression", "value"), [("nanmax({*})", 4.0), ("nansum({*})", 4.0), ("nanmax({*}) > 5", False)]
+    )
+    async def test_one_member_with_a_number_is_enough(self, expression, value):
+        source = _source(**{"DEV:C": _sample(4.0)})
+        result = await _scalar(source, expression, THREE)
+        assert result.value == value
+        assert result.severity is AlarmSeverity.INVALID
+
+    async def test_count_and_the_status_functions_keep_answering(self):
+        result = await _scalar(
+            FakeDataSource(), "count({*}) * 100 + max(severity({*})) * 10 + sum(connected({*}))", THREE
+        )
+        assert result.value == 330
+
+    async def test_only_the_reduced_token_counts(self):
+        source = _source(**{"DEV:C": _sample(4.0)})
+        bindings = {"a.0": "DEV:A", "a.1": "DEV:B", "b.0": "DEV:C"}
+        assert (await _scalar(source, "count({a.*}) + nansum({b.*})", bindings)).value == 6.0
+        with pytest.raises(FormulaInputMissing, match=r"\['DEV:A', 'DEV:B'\]"):
+            await _scalar(source, "nansum({a.*}) + nansum({b.*})", bindings)
+
+
 class TestMembersThatAreNoNumber:
     """Text (also text that looks like a number), an array or an empty sample: connected, but no number."""
 
