@@ -1,5 +1,5 @@
 {
-  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold: nan, inf or -inf. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error, invalid_spec. missingListed sets the cap on listed members (default 20), maxVectorInputs the most members the vector tokens may name (default 1000). A value may be an array: a sample that is not one number.",
+  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold: nan, inf or -inf. A channel listed with value null has an empty sample: it is there, without a number. The detail of input_missing says \"PVs not available\" for inputs with no sample or a lost connection, else \"PVs without a number\". Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error, invalid_spec. missingListed sets the cap on listed members (default 20), maxVectorInputs the most members the vector tokens may name (default 1000). A value may be an array: a sample that is not one number.",
   "cases": [
     {
       "name": "reduction: max({*})",
@@ -1448,7 +1448,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:B']"
+      "detail": "PVs without a number: ['DEV:B']"
     },
     {
       "name": "an infinite member makes the result infinite and is named",
@@ -1473,7 +1473,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:B']"
+      "detail": "PVs without a number: ['DEV:B']"
     },
     {
       "name": "the list of members without a value is capped",
@@ -2569,7 +2569,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:B']"
+      "detail": "PVs without a number: ['DEV:B']"
     },
     {
       "name": "an array read as a plain value is a type error",
@@ -2611,7 +2611,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:B']"
+      "detail": "PVs without a number: ['DEV:B']"
     },
     {
       "name": "numeric text is left out by a nan reduction",
@@ -3038,7 +3038,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:C']"
+      "detail": "PVs without a number: ['DEV:C']"
     },
     {
       "name": "a result that is not finite from finite inputs is a type error",
@@ -3289,7 +3289,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:B']"
+      "detail": "PVs without a number: ['DEV:B']"
     },
     {
       "name": "a conditional around a nan reduction leaves it guarded",
@@ -3441,7 +3441,7 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:X']"
+      "detail": "PVs without a number: ['DEV:X']"
     },
     {
       "name": "label() of an empty sample is named",
@@ -3460,7 +3460,53 @@
         }
       },
       "error": "input_missing",
-      "detail": "PVs not available: ['DEV:V']"
+      "detail": "PVs without a number: ['DEV:V']"
+    },
+    {
+      "name": "a member with an empty sample fails a value reduction: without a number",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs without a number: ['DEV:B']"
+    },
+    {
+      "name": "members not available and members without a number: the not available ones are named",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "fault",
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:C']"
     }
   ]
 }

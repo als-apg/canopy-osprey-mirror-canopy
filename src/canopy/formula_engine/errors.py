@@ -25,6 +25,7 @@ class FormulaUnsafeError(FormulaEngineError):
 
 
 INPUT_MISSING_PREFIX = "PVs not available: "
+NO_NUMBER_PREFIX = "PVs without a number: "
 
 
 class FormulaInputMissing(FormulaEngineError):
@@ -61,8 +62,13 @@ class FormulaInputUnusable(FormulaInputMissing):
     text or an array, where the expression needs a number. The cause is the
     live value, not the formula: the next sample may be a number again. So it shares ``FormulaInputMissing``'s code and wording and is
     retryable on the wire; like an outage it is a fact, and a live subscription
-    forwards it at once.
+    forwards it at once. Its wording differs, so a reader can tell a channel
+    that is there with a bad value from one that is not there.
     """
+
+    @classmethod
+    def for_pvs(cls, pvs: Iterable[str]) -> Self:
+        return cls(f"{NO_NUMBER_PREFIX}{list(pvs)}")
 
 
 class FormulaTypeError(FormulaEngineError):

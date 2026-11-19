@@ -55,6 +55,7 @@ from canopy.contracts.formula import FormulaSpec, ScalarResult, VectorInputs
 from canopy.formula_engine.ports import DataSource
 from canopy.formula_engine.config import FormulaEngineConfig
 from canopy.formula_engine.errors import (
+    NO_NUMBER_PREFIX,
     INPUT_MISSING_PREFIX,
     FormulaTypeError,
     FormulaInputOutage,
@@ -253,21 +254,23 @@ def _input_error(
     data_source: DataSource,
     config: FormulaEngineConfig,
 ) -> FormulaInputMissing:
-    """The retryable error naming the inputs ``keys`` (capped), by the reason that weighs most.
+    """The retryable error for the inputs ``keys``, names capped.
 
-    A lost connection first, then a sample still on its way, then a value that
-    is there but unusable. The wording is one for all three.
+    Inputs that are not there (connection lost, or no sample yet) are named
+    first and alone: "PVs not available". Only when every input is there, the
+    ones whose sample is no usable number are named: "PVs without a number".
     """
-    absent = [spec.bindings[key] for key in keys if samples[key] is None]
-    if any(data_source.in_open_outage(pv) for pv in absent):
-        error: type[FormulaInputMissing] = FormulaInputOutage
+    absent = list(dict.fromkeys(spec.bindings[key] for key in keys if samples[key] is None))
+    if absent:
+        down = any(data_source.in_open_outage(pv) for pv in absent)
+        error: type[FormulaInputMissing] = FormulaInputOutage if down else FormulaInputMissing
+        named, prefix = absent, INPUT_MISSING_PREFIX
     else:
-        error = FormulaInputMissing if absent else FormulaInputUnusable
-    named = list(dict.fromkeys(spec.bindings[key] for key in keys))
+        error = FormulaInputUnusable
+        named, prefix = list(dict.fromkeys(spec.bindings[key] for key in keys)), NO_NUMBER_PREFIX
     listed = named[: config.vector_missing_listed]
-    if len(listed) == len(named):
-        return error.for_pvs(named)
-    return error(f"{INPUT_MISSING_PREFIX}{listed} and {len(named) - len(listed)} more")
+    more = f" and {len(named) - len(listed)} more" if len(listed) < len(named) else ""
+    return error(f"{prefix}{listed}{more}")
 
 
 def _vector_inputs(

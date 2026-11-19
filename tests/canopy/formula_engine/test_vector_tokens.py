@@ -374,8 +374,9 @@ class TestMembersWhoseValueIsNotFinite:
     async def test_a_plain_reduction_names_the_member_and_is_retryable(self, func, bad):
         source = _three()
         source.latest["DEV:B"] = _sample(bad)
-        with pytest.raises(FormulaInputMissing, match=r"PVs not available: \['DEV:B'\]") as raised:
+        with pytest.raises(FormulaInputMissing) as raised:
             await _scalar(source, f"{func}({{*}})", THREE)
+        assert raised.value.detail == "PVs without a number: ['DEV:B']"
         assert raised.value.error_code is ErrorCode.FORMULA_INPUT_MISSING
 
     @pytest.mark.parametrize(("func", "value"), [("nanmax", 4.0), ("nanmin", 1.0), ("nansum", 5.0), ("nanmean", 2.5)])
@@ -397,12 +398,20 @@ class TestMembersWhoseValueIsNotFinite:
         source.latest["DEV:B"] = _sample(math.nan, severity=1)
         assert (await _scalar(source, "sum(connected({*})) * 10 + max(severity({*}))", THREE)).value == 31
 
-    async def test_members_without_a_sample_are_named_with_it(self):
+    async def test_members_that_are_not_there_are_named_first_and_alone(self):
         source = _three()
         source.latest["DEV:B"] = _sample(math.nan)
         del source.latest["DEV:C"]
-        with pytest.raises(FormulaInputMissing, match=r"\['DEV:B', 'DEV:C'\]|\['DEV:C', 'DEV:B'\]"):
+        with pytest.raises(FormulaInputMissing) as raised:
             await _scalar(source, "max({*})", THREE)
+        assert raised.value.detail == "PVs not available: ['DEV:C']"
+
+    async def test_the_names_are_capped_in_the_same_way(self):
+        bindings = {f"{i:02d}": f"DEV:{i:02d}" for i in range(30)}
+        source = _source(**{pv: _sample(math.nan) for pv in bindings.values()})
+        with pytest.raises(FormulaInputMissing) as raised:
+            await _scalar(source, "max({*})", bindings, vector_missing_listed=2)
+        assert raised.value.detail == "PVs without a number: ['DEV:00', 'DEV:01'] and 28 more"
 
     async def test_a_plain_token_beside_a_vector(self):
         source = _three()
@@ -425,7 +434,7 @@ class TestMembersThatAreNoNumber:
         source = _three()
         source.latest["DEV:B"] = _sample(value, severity=1)
         assert (await _scalar(source, "nansum({*})", THREE)).value == 5.0
-        with pytest.raises(FormulaInputMissing, match=r"PVs not available: \['DEV:B'\]"):
+        with pytest.raises(FormulaInputMissing, match=r"PVs without a number: \['DEV:B'\]"):
             await _scalar(source, "sum({*})", THREE)
         with pytest.raises(FormulaInputMissing, match="DEV:B"):
             await _scalar(source, "count_nonzero({*} == 5)", THREE)

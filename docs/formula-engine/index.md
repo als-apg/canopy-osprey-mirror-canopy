@@ -201,6 +201,13 @@ A member without a number never passes for a number:
   without a sample counts as `INVALID`, whatever the expression computes.
 - When no input has a sample, the result's `tsNs` is the time of evaluation.
 
+The message of the error tells the two causes apart. `PVs not available:
+['A']` names channels that are disconnected or have no sample yet. `PVs without
+a number: ['A']` names channels that are connected, but whose sample is no
+number the formula can use (`nan`, infinite, text, an array, empty). When both
+occur, the channels that are not available are named. The code is
+`formula_input_missing` for both.
+
 A roll-up that must always give a state uses `severity()`, `connected()` or the
 `nan*` reductions. Any other expression over values has no meaning while a
 member is missing, and says so.
