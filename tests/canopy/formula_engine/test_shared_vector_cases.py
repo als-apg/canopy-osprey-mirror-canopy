@@ -72,7 +72,10 @@ def test_the_table_is_the_one_this_test_was_written_for():
 @pytest.mark.parametrize("case", CASES, ids=[f"{i:02d} {case['name']}" for i, case in enumerate(CASES, 1)])
 async def test_the_server_evaluates_the_shared_case(case):
     config = FormulaEngineConfig(
-        vector_missing_listed=case.get("missingListed", 20), max_vector_inputs=case.get("maxVectorInputs", 1000)
+        vector_missing_listed=case.get("missingListed", 20),
+        max_vector_inputs=case.get("maxVectorInputs", 1000),
+        # The table is about results, not about speed: a busy machine must not time a case out.
+        eval_timeout_ms=10_000,
     )
     service = FormulaService(_source(case["channels"]), Parser(), config)
     spec_fields = {"kind": "scalar", "expression": case["expression"], "bindings": case["bindings"]}
