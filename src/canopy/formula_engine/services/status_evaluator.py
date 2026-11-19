@@ -148,11 +148,10 @@ async def evaluate_status_formula(
         raise FormulaInputUnusable.for_pvs(empty)
 
     # A member without a number must not pass for one outside a nan* reduction.
-    exposed = dict.fromkeys(
-        key for token in parsed.unguarded_vectors for key in vectors[token] if math.isnan(_number(samples[key]))
-    )
+    unguarded = {key for token in parsed.unguarded_vectors for key in vectors[token]}
+    exposed = [key for key in parsed.member_keys() if key in unguarded and math.isnan(_number(samples[key]))]
     if exposed:
-        raise _input_error(spec, list(exposed), samples, data_source, config)
+        raise _input_error(spec, exposed, samples, data_source, config)
 
     # Binding keys whose value (not only whose status) the expression reads.
     read_by_value = {key for t in parsed.value_tokens for key in vectors.get(t, (t,))}

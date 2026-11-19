@@ -686,6 +686,16 @@ class _Collector:
         return [m["data"]["scalar"]["value"] for m in self.messages if m["type"] == "result"]
 
 
+def _only(out: "_Collector", value) -> bool:
+    """Results have come and every one is ``value``.
+
+    A change that is noticed while an evaluation is under way is evaluated
+    again, so the same result may come twice.
+    """
+    values = out.values()
+    return bool(values) and all(v == value for v in values)
+
+
 class _Monotonic:
     """A clock the test moves: the manager's start window is read from it."""
 
@@ -756,7 +766,7 @@ class TestFirstResult:
             assert out.messages == []
             source.latest["DEV:C"] = late
             notifier.notify("DEV:C")
-            await _wait_for(lambda: out.values() == [3])
+            await _wait_for(lambda: _only(out, 3))
         finally:
             await manager.shutdown()
 
@@ -796,7 +806,7 @@ class TestFirstResult:
             assert out.messages == []
             source.outages.add("DEV:C")
             notifier.notify("DEV:C")
-            await _wait_for(lambda: out.values() == [3])
+            await _wait_for(lambda: _only(out, 3))
         finally:
             await manager.shutdown()
 
@@ -869,7 +879,7 @@ class TestFirstResult:
             await manager.add_subscription("c2", "s", spec, 0, 0, second.send)
             source.latest["DEV:C"] = late
             notifier.notify("DEV:C")
-            await _wait_for(lambda: first.values() == [3] and second.values() == [3])
+            await _wait_for(lambda: _only(first, 3) and _only(second, 3))
         finally:
             await manager.shutdown()
 
@@ -885,7 +895,7 @@ class TestFirstResult:
             assert out.messages == []
             source.latest["DEV:A"] = _sample(1.0)
             notifier.notify("DEV:A")
-            await _wait_for(lambda: out.values() == [1])
+            await _wait_for(lambda: _only(out, 1))
         finally:
             await manager.shutdown()
 
