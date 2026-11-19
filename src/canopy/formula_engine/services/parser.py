@@ -36,8 +36,11 @@ from canopy.formula_engine.language.namespace import (
 
 _TOKEN_RE = re.compile(r"\{([^{}]+)\}")
 # ``severity({x})`` / ``connected({x})``: a status function applied to one token.
-STATUS_FUNCS: dict[str, str] = {"severity": "__s", "connected": "__c"}
-_STATUS_CALL_RE = re.compile(r"(?<![\w.])(severity|connected)\s*\(\s*\{([^{}]+)\}\s*\)")
+# ``label({x})``: the enum string of one channel's value. It reads the value,
+# so its token is held to the rule of a plain value token.
+STATUS_FUNCS: dict[str, str] = {"severity": "__s", "connected": "__c", "label": "__l"}
+LABEL_FUNC = "label"
+_STATUS_CALL_RE = re.compile(r"(?<![\w.])(severity|connected|label)\s*\(\s*\{([^{}]+)\}\s*\)")
 _VECTOR_ALL = "*"
 _VECTOR_SUFFIX = ".*"
 _NESTED_BRACE_RE = re.compile(r"\{[^}]*\{")
@@ -66,10 +69,13 @@ class ParsedFormula:
     is_numexpr_compatible: bool
     # Vector token -> the binding keys it names, sorted. Empty for a plain formula.
     vector_tokens: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # (placeholder, function, token) for every distinct ``severity({x})`` / ``connected({x})``.
+    # (placeholder, function, token) for every distinct ``severity({x})`` /
+    # ``connected({x})`` / ``label({x})``.
     status_symbols: tuple[tuple[str, str, str], ...] = ()
     # Tokens whose value the expression reads (they appear outside a status function).
     value_tokens: frozenset[str] = frozenset()
+    # Tokens read through ``label()``: no placeholder of their own, but their value is read.
+    label_tokens: frozenset[str] = frozenset()
 
     @property
     def uses_status(self) -> bool:
@@ -83,7 +89,11 @@ class ParsedFormula:
     @property
     def status_only(self) -> frozenset[str]:
         """Scalar tokens read only through ``severity()`` / ``connected()``."""
-        return frozenset(t for t in self.tokens if t not in self.value_tokens and t not in self.vector_tokens)
+        return frozenset(
+            t
+            for t in self.tokens
+            if t not in self.value_tokens and t not in self.vector_tokens and t not in self.label_tokens
+        )
 
     def member_keys(self) -> list[str]:
         """Every binding key a vector token names, each once."""
@@ -140,6 +150,8 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
 
     def _lift_status(match: re.Match[str]) -> str:
         func, token = match.group(1), match.group(2)
+        if func == LABEL_FUNC and token in vector_tokens:
+            raise FormulaParseError(f"label() takes one channel, not the vector token {{{token}}}")
         name = f"{STATUS_FUNCS[func]}{token_index[token]}"
         status_symbols[name] = (name, func, token)
         return name
@@ -188,6 +200,7 @@ def _cached_parse(expression: str, binding_keys: frozenset[str]) -> ParsedFormul
         vector_tokens=vector_tokens,
         status_symbols=tuple(status_symbols.values()),
         value_tokens=value_tokens,
+        label_tokens=frozenset(token for _, func, token in status_symbols.values() if func == LABEL_FUNC),
     )
 
 
@@ -216,7 +229,7 @@ def _vector_tokens(tokens: list[str], binding_keys: frozenset[str]) -> dict[str,
 
 
 def _check_status_calls(tree: ast.AST) -> None:
-    """Refuse a ``severity`` / ``connected`` call that was not lifted: its argument is not one token."""
+    """Refuse a ``severity`` / ``connected`` / ``label`` call that was not lifted: its argument is not one token."""
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _resolve_call_name(node) in STATUS_FUNCS:
             raise FormulaParseError(

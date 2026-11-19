@@ -188,6 +188,11 @@ async def subscribe_latest(pvs: list[str]) -> None:
     await ingest.subscribe(pvs)
 
 
+async def enum_choices(pv: str) -> list[str] | None:
+    """The enum strings of a channel, indexed by its value; None when it has none."""
+    return await get_ingest().enum_choices(pv)
+
+
 async def unsubscribe_live(pvs: list[str]) -> None:
     """Unsubscribe from live updates for these PVs."""
     await get_ingest().unsubscribe(pvs)

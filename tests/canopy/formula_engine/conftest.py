@@ -29,6 +29,9 @@ class FakeDataSource:
     def in_open_outage(self, name: str) -> bool:
         return name in self.outages
 
+    async def enum_labels(self, pv: str) -> list[str] | None:
+        return None
+
     async def read_aligned(
         self,
         pvs: list[str],

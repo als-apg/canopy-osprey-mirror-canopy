@@ -29,6 +29,14 @@ def _is_live_fed(name: str) -> bool:
         return False
 
 
+async def _enum_choices(name: str) -> list[str] | None:
+    """The enum strings of ``name`` from Vole's ingest; None without one."""
+    try:
+        return await vole_gateway.enum_choices(name)
+    except IngestUnavailable:
+        return None
+
+
 @asynccontextmanager
 async def formula_engine_lifespan():
     """Startup: build the parser, construct the service, bind to the gateway.
@@ -45,6 +53,7 @@ async def formula_engine_lifespan():
         subscribe_live=vole_gateway.subscribe_live,
         clock=SystemClock(),
         is_live_fed=_is_live_fed,
+        enum_choices=_enum_choices,
     )
     parser = Parser(max_expression_len=config.max_expression_len)
     service = FormulaService(data_source, parser, config)

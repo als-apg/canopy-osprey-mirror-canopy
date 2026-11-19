@@ -66,6 +66,7 @@ class VoleDataSource:
         subscribe_live: SubscribeLiveFn | None = None,
         clock: Clock | None = None,
         is_live_fed: Callable[[str], bool] | None = None,
+        enum_choices: Callable[[str], Awaitable[list[str] | None]] | None = None,
     ) -> None:
         self._buffer = buffer_service
         self._fetch_window = fetch_window
@@ -73,6 +74,7 @@ class VoleDataSource:
         self._subscribe_live = subscribe_live
         self._clock = clock
         self._is_live_fed = is_live_fed or _never
+        self._enum_choices = enum_choices
         self._provisioning_locks: dict[str, asyncio.Lock] = {}
 
     # --- sample-record port ------------------------------------------------ #
@@ -208,6 +210,12 @@ class VoleDataSource:
     def in_open_outage(self, name: str) -> bool:
         """True while ``name``'s Hare connection is down, whether or not it has a ring yet."""
         return self._buffer.in_open_outage(strip_protocol_prefix(name))
+
+    async def enum_labels(self, pv: str) -> list[str] | None:
+        """The enum strings of ``pv`` from the live side; None when it has none or no live side is wired."""
+        if self._enum_choices is None:
+            return None
+        return await self._enum_choices(pv)
 
     async def read_latest(self, pv: str) -> Sample | None:
         # Latest-value reads (scalar/waveform inputs on subscribe_latest's size-1

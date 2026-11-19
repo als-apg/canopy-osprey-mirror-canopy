@@ -120,6 +120,10 @@ class DataSource(Protocol):
         """
         ...
 
+    async def enum_labels(self, pv: str) -> list[str] | None:
+        """The enum strings of ``pv``, indexed by its value; None when it has none (or they are not known)."""
+        ...
+
 
 class NullDataSource:
     """Placeholder used until Vole ships. Always signals inputs unavailable."""
@@ -157,3 +161,6 @@ class NullDataSource:
 
     def in_open_outage(self, name: str) -> bool:
         return False
+
+    async def enum_labels(self, pv: str) -> list[str] | None:
+        return None

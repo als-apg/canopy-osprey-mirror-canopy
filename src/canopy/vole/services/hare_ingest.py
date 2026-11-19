@@ -153,6 +153,24 @@ class HareIngestService:
         """True while some subscribed name feeds ``name``'s ring (compared on canonical names)."""
         return strip_protocol_prefix(name) in self._by_canonical
 
+    async def enum_choices(self, name: str) -> list[str] | None:
+        """The enum strings the broker holds for ``name``; None when it has none or they cannot be read.
+
+        A subscribed channel's metadata is read by the broker once it connects,
+        so this is a look-up. Only when the broker has none yet does it ask the
+        control system.
+        """
+        canonical = strip_protocol_prefix(name)
+        for subscribed in sorted(self._by_canonical.get(canonical, {name})):
+            try:
+                meta = await self._broker.get_describe(subscribed)
+            except Exception as exc:
+                logger.debug("No metadata for %s: %s", subscribed, exc)
+                continue
+            if meta.enum_choices:
+                return list(meta.enum_choices)
+        return None
+
     @property
     def subscribed_pvs(self) -> set[str]:
         return set(self._subscribed_pvs)

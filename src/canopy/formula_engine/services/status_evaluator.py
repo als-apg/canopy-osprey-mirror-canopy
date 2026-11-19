@@ -47,7 +47,7 @@ from canopy.formula_engine.errors import (
     FormulaInputOutage,
     FormulaInputMissing,
 )
-from canopy.formula_engine.services.parser import ParsedFormula
+from canopy.formula_engine.services.parser import LABEL_FUNC, ParsedFormula
 from canopy.formula_engine.services.evaluator import worst_severity, evaluate_scalar
 
 _INVALID = SEVERITY_ORDINAL[AlarmSeverity.INVALID]
@@ -77,6 +77,23 @@ def _plain_value(pv: str, sample: Sample) -> float | int | bool | str:
         ) from exc
 
 
+def _label(sample: Sample | None, labels: list[str] | None) -> str:
+    """``label()``: the enum string the channel's value stands for.
+
+    A value that is text already is its own label. A whole number that indexes
+    the channel's enum strings gives that string. Everything else (a channel
+    without enum strings, an index outside them, a fraction) gives ``''``.
+    """
+    value = None if sample is None else sample.value
+    if isinstance(value, str):
+        return value
+    if labels and not isinstance(value, bool) and isinstance(value, int | float) and math.isfinite(value):
+        index = int(value)
+        if index == value and 0 <= index < len(labels):
+            return labels[index]
+    return ""
+
+
 def _severity(sample: Sample | None) -> int:
     return _INVALID if sample is None else SEVERITY_ORDINAL[sample.severity]
 
@@ -103,7 +120,7 @@ async def evaluate_status_formula(
     """Evaluate a scalar formula that has vector tokens or status functions."""
     vectors = parsed.vector_tokens
     scalar_tokens = [t for t in parsed.tokens if t not in vectors]
-    strict = [t for t in scalar_tokens if t in parsed.value_tokens]
+    strict = [t for t in scalar_tokens if t in parsed.value_tokens or t in parsed.label_tokens]
 
     # A directly read value fails in outage before any read, as in a plain formula.
     strict_pvs = dict.fromkeys(spec.bindings[t] for t in strict)
@@ -134,6 +151,10 @@ async def evaluate_status_formula(
             variables[f"__v{idx}"] = _plain_value(spec.bindings[token], samples[token])
 
     for name, func, token in parsed.status_symbols:
+        if func == LABEL_FUNC:
+            pv = spec.bindings[token]
+            variables[name] = _label(samples[token], await data_source.enum_labels(pv))
+            continue
         read = _severity if func == "severity" else (lambda sample: 0 if sample is None else 1)
         if token in vectors:
             variables[name] = np.fromiter(

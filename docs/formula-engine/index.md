@@ -51,6 +51,7 @@ All functions operate element-wise on arrays (timeseries data) and accept scalar
 | Reductions that skip `nan` | `nanmean`, `nansum`, `nanmin`, `nanmax` |
 | Size | `count` (number of elements) |
 | Channel status | `severity({x})`, `connected({x})` (see [Formulas over many channels](#formulas-over-many-channels)) |
+| Enum string | `label({x})` (see [`label()`](#label)) |
 | Element-wise | `where(condition, x, y)`, `clip(value, low, high)` |
 
 Functions use NumPy implementations internally. You can access `np.*` and `math.*` constants directly (e.g., `np.pi`), but only the allowlisted functions above are callable — other attributes like `math.factorial` are **not** exposed.
@@ -132,6 +133,32 @@ function gives one number per member:
 | Any connected (1 or 0) | `max(connected({*}))` |
 | Number of channels | `count({*})` |
 | Largest, smallest, total | `max({*})`, `min({*})`, `sum({*})` |
+
+### `label()`
+
+The value of a discrete channel is an index. `label({x})` gives the enum string
+the control system holds for that index, so a formula compares on the meaning
+and does not restate the index of every state:
+
+```
+label({valve}) == 'Open'
+0 if label({valve}) == 'Open' else (1 if label({valve}) == 'Moving' else -1)
+```
+
+| Channel | `label({x})` |
+|---|---|
+| Value is a whole number that indexes the channel's enum strings | That string |
+| Value is text | The text itself |
+| No enum strings, or the index is outside them, or the value is not a whole number | `''` |
+| Connection lost, or no value yet | The formula fails with `formula_input_missing`, as for `{x}` |
+
+`label()` takes exactly one token, not a vector token and not an expression, and
+is for `scalar` formulas. It reads the channel's value, so it follows the rule
+of a plain token and not the rule of `severity()` and `connected()`. The result
+of a formula can be the string itself (`label({valve})`).
+
+The enum strings are read from the control system when the channel connects.
+They are not re-read while it stays connected.
 
 ### Channels without a value
 
