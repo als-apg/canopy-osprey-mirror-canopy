@@ -1,0 +1,2386 @@
+{
+  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error. missingListed sets the cap on listed members (default 20).",
+  "cases": [
+    {
+      "name": "reduction: max({*})",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 4.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: min({*})",
+      "expression": "min({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: sum({*})",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 7.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: mean({*})",
+      "expression": "mean({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 2.3333333333333335,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: count({*})",
+      "expression": "count({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: count_nonzero({*} == 2)",
+      "expression": "count_nonzero({*} == 2)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: count_nonzero({*} >= 2)",
+      "expression": "count_nonzero({*} >= 2)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 2,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: max(severity({*}))",
+      "expression": "max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: count_nonzero(severity({*}) >= 1)",
+      "expression": "count_nonzero(severity({*}) >= 1)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: sum(connected({*}))",
+      "expression": "sum(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: min(connected({*}))",
+      "expression": "min(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "reduction: max({*}) - min({*})",
+      "expression": "max({*}) - min({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "a plain token beside a vector",
+      "expression": "count_nonzero({g.*} < {limit})",
+      "bindings": {
+        "g.0": "DEV:A",
+        "g.1": "DEV:B",
+        "limit": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 2,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 2,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "a status function on one channel has no vector summary",
+      "expression": "severity({0}) + {1} + {2}",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 6.0,
+      "severity": "MINOR",
+      "vectorInputs": null
+    },
+    {
+      "name": "groups reduce separately",
+      "expression": "sum({g.*}) * 10 + sum({h.*})",
+      "bindings": {
+        "g.0": "DEV:A",
+        "g.1": "DEV:B",
+        "h.0": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 34.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "two groups pair by sorted key",
+      "expression": "max(abs({s.*} - {r.*}))",
+      "bindings": {
+        "r.2": "R:2",
+        "s.1": "S:1",
+        "r.1": "R:1",
+        "s.2": "S:2"
+      },
+      "channels": {
+        "S:1": {
+          "value": 10.0,
+          "severity": 0
+        },
+        "S:2": {
+          "value": 20.0,
+          "severity": 0
+        },
+        "R:1": {
+          "value": 9.0,
+          "severity": 0
+        },
+        "R:2": {
+          "value": 23.0,
+          "severity": 0
+        }
+      },
+      "value": 3.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 4,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "members are ordered by key as text",
+      "expression": "sum(({a.*} - {b.*}) * ({a.*} - {b.*}))",
+      "bindings": {
+        "a.10": "P:1",
+        "a.2": "P:2",
+        "b.10": "Q:1",
+        "b.2": "Q:2"
+      },
+      "channels": {
+        "P:1": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "P:2": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "Q:1": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "Q:2": {
+          "value": 2.0,
+          "severity": 0
+        }
+      },
+      "value": 0.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 4,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "an unreduced vector is a type error",
+      "expression": "{*} + 1",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "a one-member vector still needs a reduction",
+      "expression": "{*} + 1",
+      "bindings": {
+        "0": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "bool and integer members are numbers",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": true,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 0,
+          "severity": 0
+        }
+      },
+      "value": 3.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "a nested group is inside its parent group",
+      "expression": "sum({f.g.*}) * 100 + sum({f.*})",
+      "bindings": {
+        "f.g.0": "DEV:A",
+        "f.g.1": "DEV:B",
+        "f.h.0": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 307.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: max(severity({*}))",
+      "expression": "max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: count_nonzero(severity({*}) == 3)",
+      "expression": "count_nonzero(severity({*}) == 3)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: sum(connected({*}))",
+      "expression": "sum(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 2,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: min(connected({*}))",
+      "expression": "min(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: max(connected({*}))",
+      "expression": "max(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: count({*})",
+      "expression": "count({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: nanmax({*})",
+      "expression": "nanmax({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 4.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: nanmin({*})",
+      "expression": "nanmin({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: nansum({*})",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: count_nonzero({*} == 4)",
+      "expression": "count_nonzero({*} == 4)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member down: max({*}) names it",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member down: min({*}) names it",
+      "expression": "min({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member down: sum({*}) names it",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member down: mean({*}) names it",
+      "expression": "mean({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member no sample: max(severity({*}))",
+      "expression": "max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: count_nonzero(severity({*}) == 3)",
+      "expression": "count_nonzero(severity({*}) == 3)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: sum(connected({*}))",
+      "expression": "sum(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 2,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: min(connected({*}))",
+      "expression": "min(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: max(connected({*}))",
+      "expression": "max(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: count({*})",
+      "expression": "count({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: nanmax({*})",
+      "expression": "nanmax({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 4.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: nanmin({*})",
+      "expression": "nanmin({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: nansum({*})",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: count_nonzero({*} == 4)",
+      "expression": "count_nonzero({*} == 4)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "one member no sample: max({*}) names it",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member no sample: min({*}) names it",
+      "expression": "min({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member no sample: sum({*}) names it",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "one member no sample: mean({*}) names it",
+      "expression": "mean({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "a comparison with a member without a value is false",
+      "expression": "max({*}) > 3",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true,
+          "value": 1000.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": false,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "a nan value of a connected member is a type error",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "nonFinite": "nan",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "a inf value of a connected member is a type error",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "nonFinite": "inf",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "the list of members without a value is capped",
+      "expression": "sum(connected({*}))",
+      "bindings": {
+        "00": "DEV:00",
+        "01": "DEV:01",
+        "02": "DEV:02",
+        "03": "DEV:03",
+        "04": "DEV:04",
+        "05": "DEV:05",
+        "06": "DEV:06",
+        "07": "DEV:07",
+        "08": "DEV:08",
+        "09": "DEV:09",
+        "10": "DEV:10",
+        "11": "DEV:11",
+        "12": "DEV:12",
+        "13": "DEV:13",
+        "14": "DEV:14",
+        "15": "DEV:15",
+        "16": "DEV:16",
+        "17": "DEV:17",
+        "18": "DEV:18",
+        "19": "DEV:19",
+        "20": "DEV:20",
+        "21": "DEV:21",
+        "22": "DEV:22",
+        "23": "DEV:23",
+        "24": "DEV:24",
+        "25": "DEV:25",
+        "26": "DEV:26",
+        "27": "DEV:27",
+        "28": "DEV:28",
+        "29": "DEV:29"
+      },
+      "channels": {
+        "DEV:00": {
+          "down": true
+        },
+        "DEV:01": {
+          "down": true
+        },
+        "DEV:02": {
+          "down": true
+        },
+        "DEV:03": {
+          "down": true
+        },
+        "DEV:04": {
+          "down": true
+        },
+        "DEV:05": {
+          "down": true
+        },
+        "DEV:06": {
+          "down": true
+        },
+        "DEV:07": {
+          "down": true
+        },
+        "DEV:08": {
+          "down": true
+        },
+        "DEV:09": {
+          "down": true
+        },
+        "DEV:10": {
+          "down": true
+        },
+        "DEV:11": {
+          "down": true
+        },
+        "DEV:12": {
+          "down": true
+        },
+        "DEV:13": {
+          "down": true
+        },
+        "DEV:14": {
+          "down": true
+        },
+        "DEV:15": {
+          "down": true
+        },
+        "DEV:16": {
+          "down": true
+        },
+        "DEV:17": {
+          "down": true
+        },
+        "DEV:18": {
+          "down": true
+        },
+        "DEV:19": {
+          "down": true
+        },
+        "DEV:20": {
+          "down": true
+        },
+        "DEV:21": {
+          "down": true
+        },
+        "DEV:22": {
+          "down": true
+        },
+        "DEV:23": {
+          "down": true
+        },
+        "DEV:24": {
+          "down": true
+        },
+        "DEV:25": {
+          "down": true
+        },
+        "DEV:26": {
+          "down": true
+        },
+        "DEV:27": {
+          "down": true
+        },
+        "DEV:28": {
+          "down": true
+        },
+        "DEV:29": {
+          "down": true
+        }
+      },
+      "missingListed": 4,
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 30,
+        "missing": [
+          "DEV:00",
+          "DEV:01",
+          "DEV:02",
+          "DEV:03"
+        ],
+        "more": 26
+      }
+    },
+    {
+      "name": "the error of a value reduction is capped too",
+      "expression": "max({*})",
+      "bindings": {
+        "00": "DEV:00",
+        "01": "DEV:01",
+        "02": "DEV:02",
+        "03": "DEV:03",
+        "04": "DEV:04",
+        "05": "DEV:05",
+        "06": "DEV:06",
+        "07": "DEV:07",
+        "08": "DEV:08",
+        "09": "DEV:09",
+        "10": "DEV:10",
+        "11": "DEV:11",
+        "12": "DEV:12",
+        "13": "DEV:13",
+        "14": "DEV:14",
+        "15": "DEV:15",
+        "16": "DEV:16",
+        "17": "DEV:17",
+        "18": "DEV:18",
+        "19": "DEV:19",
+        "20": "DEV:20",
+        "21": "DEV:21",
+        "22": "DEV:22",
+        "23": "DEV:23",
+        "24": "DEV:24",
+        "25": "DEV:25",
+        "26": "DEV:26",
+        "27": "DEV:27",
+        "28": "DEV:28",
+        "29": "DEV:29"
+      },
+      "channels": {
+        "DEV:00": {
+          "down": true
+        },
+        "DEV:01": {
+          "down": true
+        },
+        "DEV:02": {
+          "down": true
+        },
+        "DEV:03": {
+          "down": true
+        },
+        "DEV:04": {
+          "down": true
+        },
+        "DEV:05": {
+          "down": true
+        },
+        "DEV:06": {
+          "down": true
+        },
+        "DEV:07": {
+          "down": true
+        },
+        "DEV:08": {
+          "down": true
+        },
+        "DEV:09": {
+          "down": true
+        },
+        "DEV:10": {
+          "down": true
+        },
+        "DEV:11": {
+          "down": true
+        },
+        "DEV:12": {
+          "down": true
+        },
+        "DEV:13": {
+          "down": true
+        },
+        "DEV:14": {
+          "down": true
+        },
+        "DEV:15": {
+          "down": true
+        },
+        "DEV:16": {
+          "down": true
+        },
+        "DEV:17": {
+          "down": true
+        },
+        "DEV:18": {
+          "down": true
+        },
+        "DEV:19": {
+          "down": true
+        },
+        "DEV:20": {
+          "down": true
+        },
+        "DEV:21": {
+          "down": true
+        },
+        "DEV:22": {
+          "down": true
+        },
+        "DEV:23": {
+          "down": true
+        },
+        "DEV:24": {
+          "down": true
+        },
+        "DEV:25": {
+          "down": true
+        },
+        "DEV:26": {
+          "down": true
+        },
+        "DEV:27": {
+          "down": true
+        },
+        "DEV:28": {
+          "down": true
+        },
+        "DEV:29": {
+          "down": true
+        }
+      },
+      "missingListed": 2,
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:00', 'DEV:01'] and 28 more"
+    },
+    {
+      "name": "all members down still answers",
+      "expression": "max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "down": true
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "down": true
+        }
+      },
+      "value": 3,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:A",
+          "DEV:B",
+          "DEV:C"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "a text member has no number",
+      "expression": "nansum({*}) + 100 * sum(connected({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "fault",
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 305.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "severity and connected of a live channel",
+      "expression": "severity({a}) * 10 + connected({a})",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 7.0,
+          "severity": 2
+        }
+      },
+      "value": 21,
+      "severity": "MAJOR",
+      "vectorInputs": null
+    },
+    {
+      "name": "a channel read only for status does not fail when down",
+      "expression": "severity({a}) * 10 + connected({a})",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "down": true,
+          "value": 7.0,
+          "severity": 0
+        }
+      },
+      "value": 30,
+      "severity": "INVALID",
+      "vectorInputs": null
+    },
+    {
+      "name": "a channel read only for status does not fail without a sample",
+      "expression": "connected({a})",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {},
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": null
+    },
+    {
+      "name": "a value read keeps the error when down",
+      "expression": "severity({a}) + {a}",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "down": true,
+          "value": 7.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing"
+    },
+    {
+      "name": "a value read keeps the error without a sample",
+      "expression": "severity({a}) + {a}",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {},
+      "error": "input_missing"
+    },
+    {
+      "name": "a value token beside a vector keeps the error",
+      "expression": "count_nonzero({g.*} < {limit})",
+      "bindings": {
+        "g.0": "DEV:A",
+        "g.1": "DEV:B",
+        "limit": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "down": true
+        }
+      },
+      "error": "input_missing"
+    },
+    {
+      "name": "a plain formula still fails on a missing input",
+      "expression": "{a} + {b}",
+      "bindings": {
+        "a": "DEV:A",
+        "b": "DEV:B"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing"
+    },
+    {
+      "name": "a ladder on one channel's severity 0",
+      "expression": "0 if (severity({0}) >= 2) else (1 if (severity({0}) == 1) else (-1))",
+      "bindings": {
+        "0": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "value": -1,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "a ladder on one channel's severity 1",
+      "expression": "0 if (severity({0}) >= 2) else (1 if (severity({0}) == 1) else (-1))",
+      "bindings": {
+        "0": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 1
+        }
+      },
+      "value": 1,
+      "severity": "MINOR",
+      "vectorInputs": null
+    },
+    {
+      "name": "a ladder on one channel's severity 2",
+      "expression": "0 if (severity({0}) >= 2) else (1 if (severity({0}) == 1) else (-1))",
+      "bindings": {
+        "0": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 2
+        }
+      },
+      "value": 0,
+      "severity": "MAJOR",
+      "vectorInputs": null
+    },
+    {
+      "name": "a ladder on one channel's severity 3",
+      "expression": "0 if (severity({0}) >= 2) else (1 if (severity({0}) == 1) else (-1))",
+      "bindings": {
+        "0": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 3
+        }
+      },
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": null
+    },
+    {
+      "name": "a ladder on a disconnected channel takes the worst arm",
+      "expression": "0 if (severity({0}) >= 2) else (1 if (severity({0}) == 1) else (-1))",
+      "bindings": {
+        "0": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "down": true
+        }
+      },
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": null
+    },
+    {
+      "name": "a ladder over a roll-up inlined under its formula name",
+      "expression": "0 if ((max(severity({worst.*}))) >= 2) else (1 if ((max(severity({worst.*}))) == 1 and {2} > 0) else (-1))",
+      "bindings": {
+        "worst.0": "DEV:A",
+        "worst.1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 2,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "the same ladder with one member down",
+      "expression": "0 if ((max(severity({worst.*}))) >= 2) else (1 if ((max(severity({worst.*}))) == 1 and {2} > 0) else (-1))",
+      "bindings": {
+        "worst.0": "DEV:A",
+        "worst.1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "down": true
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 2,
+        "missing": [
+          "DEV:A"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "a status function takes exactly one token: severity({a} + 1)",
+      "expression": "severity({a} + 1)",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "a status function takes exactly one token: severity(1) + {a}",
+      "expression": "severity(1) + {a}",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "a status function takes exactly one token: connected({a}, {a})",
+      "expression": "connected({a}, {a})",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "a status function takes exactly one token: severity() + {a}",
+      "expression": "severity() + {a}",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "a status function takes exactly one token: severity(max({a}))",
+      "expression": "severity(max({a}))",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "a group without members is refused",
+      "expression": "max({g.*}) + {a}",
+      "bindings": {
+        "a": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "a binding named like a vector token stays plain",
+      "expression": "{x.*} + 1",
+      "bindings": {
+        "x.*": "DEV:A"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "value": 2.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): the enum string of the value",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): another string is not it",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 1,
+          "severity": 1,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": false,
+      "severity": "MINOR",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a ladder on the enum string",
+      "expression": "0 if (label({v}) == 'Open') else (1 if (label({v}) == 'Moving') else (-1))",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 1,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": 1,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a value that is text already is its own label",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": "Open",
+          "severity": 0
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a value without an enum string has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 7,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a channel without enum strings has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): reads the value, so a channel that is down fails the formula",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "down": true,
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "error": "input_missing"
+    },
+    {
+      "name": "label(): beside a roll-up",
+      "expression": "max(severity({g.*})) * 10 + (1 if label({v}) == 'Open' else 0)",
+      "bindings": {
+        "g.0": "DEV:A",
+        "g.1": "DEV:B",
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 1.0,
+          "severity": 2
+        },
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": 21,
+      "severity": "MAJOR",
+      "vectorInputs": {
+        "count": 2,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "label(): takes exactly one token",
+      "expression": "label({v} + 1) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "label(): not of a vector token",
+      "expression": "count_nonzero(label({*}) == 'Open')",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "error": "parse_error"
+    }
+  ]
+}
