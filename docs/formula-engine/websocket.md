@@ -358,7 +358,7 @@ sequenceDiagram
 
 ## Shared evaluation
 
-Multiple clients subscribing to the same formula with identical parameters (`spec`, `t0Ns`, `intervalMs`) share a single evaluation loop. Results are fanned out to all listeners. This deduplicates computation when many clients watch the same formula.
+Multiple clients subscribing to the same formula with identical parameters (`spec`, `t0Ns`, `intervalMs`) share a single evaluation loop. Two specs that differ only in the order of their `bindings` are identical. Results are fanned out to all listeners. This deduplicates computation when many clients watch the same formula.
 
 When a subscription is updated, the listener is moved to a new shared eval (or an existing one with matching parameters). Other listeners on the old shared eval are unaffected.
 

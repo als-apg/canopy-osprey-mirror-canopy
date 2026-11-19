@@ -209,6 +209,13 @@ class _SharedEval:
 
 
 def _compute_key(spec: FormulaSpec, t0_ns: int, interval_ms: int) -> str:
+    """The key equal subscriptions share one evaluation under.
+
+    A binding is found by its key, never by its position, so the bindings are
+    ordered by key first: the same bindings written in another order are the
+    same formula.
+    """
+    spec = spec.model_copy(update={"bindings": dict(sorted(spec.bindings.items()))})
     raw = f"{spec.model_dump_json()}|{t0_ns}|{interval_ms}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
