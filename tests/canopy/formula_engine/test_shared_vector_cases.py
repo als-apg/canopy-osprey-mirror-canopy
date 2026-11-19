@@ -12,6 +12,7 @@ import math
 from pathlib import Path
 from dataclasses import field, dataclass
 
+import numpy as np
 import pytest
 
 from canopy.core.errors import ErrorCode, CanopyError
@@ -25,12 +26,14 @@ from canopy.formula_engine.services.formula_service import FormulaService
 TABLE = json.loads((Path(__file__).parent / "fixtures" / "formula-vector-cases.json").read_text(encoding="utf-8"))
 CASES = TABLE["cases"]
 
+EXPECTED_CASES = 121
 SEVERITIES = [AlarmSeverity.NO_ALARM, AlarmSeverity.MINOR, AlarmSeverity.MAJOR, AlarmSeverity.INVALID]
 NON_FINITE = {"nan": math.nan, "inf": math.inf, "-inf": -math.inf}
 ERROR_CLASS = {
     ErrorCode.FORMULA_INPUT_MISSING: "input_missing",
     ErrorCode.FORMULA_TYPE_ERROR: "type_error",
     ErrorCode.FORMULA_PARSE_ERROR: "parse_error",
+    ErrorCode.INVALID_SPEC: "invalid_spec",
 }
 
 
@@ -52,6 +55,8 @@ def _source(channels: dict[str, dict]) -> _Channels:
         if "severity" in channel:
             # A lost connection may keep its stale sample in the store; it must not be read.
             value = NON_FINITE[channel["nonFinite"]] if "nonFinite" in channel else channel.get("value")
+            if isinstance(value, list):  # an array sample is stored as bytes
+                value = np.asarray(value, dtype=np.float64).tobytes()
             severity = SEVERITIES[channel["severity"]]
             source.latest[name] = Sample(ts_ns=1000, value=value, severity=severity, source="live")
         if "labels" in channel:
@@ -60,13 +65,15 @@ def _source(channels: dict[str, dict]) -> _Channels:
 
 
 def test_the_table_is_the_one_this_test_was_written_for():
-    assert len(CASES) == 94
+    assert len(CASES) == EXPECTED_CASES
     assert len({case["name"] for case in CASES}) == len(CASES)
 
 
 @pytest.mark.parametrize("case", CASES, ids=[f"{i:02d} {case['name']}" for i, case in enumerate(CASES, 1)])
 async def test_the_server_evaluates_the_shared_case(case):
-    config = FormulaEngineConfig(vector_missing_listed=case.get("missingListed", 20))
+    config = FormulaEngineConfig(
+        vector_missing_listed=case.get("missingListed", 20), max_vector_inputs=case.get("maxVectorInputs", 1000)
+    )
     service = FormulaService(_source(case["channels"]), Parser(), config)
     spec_fields = {"kind": "scalar", "expression": case["expression"], "bindings": case["bindings"]}
 
@@ -80,7 +87,12 @@ async def test_the_server_evaluates_the_shared_case(case):
 
     result = await service.evaluate(FormulaSpec(**spec_fields), t0_ns=0, t1_ns=0)
     scalar = result.model_dump(by_alias=True, mode="json")["scalar"]
-    assert scalar["value"] == case["value"]
-    assert type(scalar["value"]) is type(case["value"]) or {type(scalar["value"]), type(case["value"])} == {int, float}
+    got, want = scalar["value"], case["value"]
+    if isinstance(want, float) and isinstance(got, int | float) and not isinstance(got, bool):
+        # Two evaluators may round the last bit of a float differently.
+        assert got == pytest.approx(want, rel=1e-12, abs=0)
+    else:
+        assert got == want
+        assert type(got) is type(want) or {type(got), type(want)} == {int, float}
     assert scalar["severity"] == case["severity"]
     assert scalar.get("vectorInputs") == case["vectorInputs"]

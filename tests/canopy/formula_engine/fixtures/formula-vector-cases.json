@@ -1,5 +1,5 @@
 {
-  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error. missingListed sets the cap on listed members (default 20).",
+  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold: nan, inf or -inf. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error, invalid_spec. missingListed sets the cap on listed members (default 20), maxVectorInputs the most members the vector tokens may name (default 1000). A value may be an array: a sample that is not one number.",
   "cases": [
     {
       "name": "reduction: max({*})",
@@ -913,7 +913,7 @@
       }
     },
     {
-      "name": "one member down: count_nonzero({*} == 4)",
+      "name": "one member down: count_nonzero({*} == 4) names it",
       "expression": "count_nonzero({*} == 4)",
       "bindings": {
         "0": "DEV:A",
@@ -935,15 +935,8 @@
           "severity": 0
         }
       },
-      "value": 1,
-      "severity": "INVALID",
-      "vectorInputs": {
-        "count": 3,
-        "missing": [
-          "DEV:B"
-        ],
-        "more": 0
-      }
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
     },
     {
       "name": "one member down: max({*}) names it",
@@ -1302,7 +1295,7 @@
       }
     },
     {
-      "name": "one member no sample: count_nonzero({*} == 4)",
+      "name": "one member no sample: count_nonzero({*} == 4) names it",
       "expression": "count_nonzero({*} == 4)",
       "bindings": {
         "0": "DEV:A",
@@ -1319,15 +1312,8 @@
           "severity": 0
         }
       },
-      "value": 1,
-      "severity": "INVALID",
-      "vectorInputs": {
-        "count": 3,
-        "missing": [
-          "DEV:B"
-        ],
-        "more": 0
-      }
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
     },
     {
       "name": "one member no sample: max({*}) names it",
@@ -1414,7 +1400,7 @@
       "detail": "PVs not available: ['DEV:B']"
     },
     {
-      "name": "a comparison with a member without a value is false",
+      "name": "a comparison with a member without a value names it",
       "expression": "max({*}) > 3",
       "bindings": {
         "0": "DEV:A",
@@ -1436,18 +1422,11 @@
           "severity": 0
         }
       },
-      "value": false,
-      "severity": "INVALID",
-      "vectorInputs": {
-        "count": 3,
-        "missing": [
-          "DEV:B"
-        ],
-        "more": 0
-      }
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
     },
     {
-      "name": "a nan value of a connected member is a type error",
+      "name": "a member whose own value is nan fails a value reduction and is named",
       "expression": "max({*})",
       "bindings": {
         "0": "DEV:A",
@@ -1468,10 +1447,11 @@
           "severity": 0
         }
       },
-      "error": "type_error"
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
     },
     {
-      "name": "a inf value of a connected member is a type error",
+      "name": "an infinite member makes the result infinite and is named",
       "expression": "max({*})",
       "bindings": {
         "0": "DEV:A",
@@ -1492,7 +1472,8 @@
           "severity": 0
         }
       },
-      "error": "type_error"
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
     },
     {
       "name": "the list of members without a value is capped",
@@ -2526,6 +2507,762 @@
         }
       },
       "value": "Open",
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "an array member has no number, its own severity and is connected",
+      "expression": "nansum({*}) + 100 * sum(connected({*})) + 1000 * max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": [
+            1.0,
+            2.0
+          ],
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1305.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "an array member fails a value reduction and is named",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": [
+            1.0,
+            2.0
+          ],
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "an array read as a plain value is a type error",
+      "expression": "severity({a}) + {a}",
+      "bindings": {
+        "a": "DEV:B"
+      },
+      "channels": {
+        "DEV:B": {
+          "value": [
+            1.0,
+            2.0
+          ],
+          "severity": 1
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "numeric text of a member is not a number",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "5",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "numeric text is left out by a nan reduction",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "5",
+          "severity": 2
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "MAJOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "empty text has no number",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "ptp: largest minus smallest",
+      "expression": "ptp({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "var: population variance",
+      "expression": "var({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.5555555555555556,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "std: population standard deviation",
+      "expression": "std({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.247219128924647,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "clip: each member into a range",
+      "expression": "sum(clip({*}, 2, 3))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 7.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "std over a member without a value names it",
+      "expression": "std({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "more members than the cap is refused",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:0",
+        "1": "DEV:1",
+        "2": "DEV:2",
+        "3": "DEV:3",
+        "4": "DEV:4",
+        "5": "DEV:5"
+      },
+      "channels": {
+        "DEV:0": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:1": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:2": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:3": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:4": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:5": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "maxVectorInputs": 5,
+      "error": "invalid_spec"
+    },
+    {
+      "name": "as many members as the cap evaluates",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:0",
+        "1": "DEV:1",
+        "2": "DEV:2",
+        "3": "DEV:3",
+        "4": "DEV:4"
+      },
+      "channels": {
+        "DEV:0": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:1": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:2": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:3": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:4": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "maxVectorInputs": 5,
+      "value": 5.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 5,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "the cap does not count plain tokens",
+      "expression": "{0} + {1} + {2}",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "maxVectorInputs": 1,
+      "value": 7.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "a nan member is left out by a nan reduction, with its own severity",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "nonFinite": "nan",
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "a nan member does not disturb severity() and count()",
+      "expression": "max(severity({*})) * 10 + count({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "nonFinite": "nan",
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 13,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "a member at minus infinity leaves max finite",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "nonFinite": "-inf",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 4.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "a plain token that is nan beside a vector is named",
+      "expression": "sum({g.*}) + {limit}",
+      "bindings": {
+        "g.0": "DEV:A",
+        "g.1": "DEV:B",
+        "limit": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "nonFinite": "nan",
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:C']"
+    },
+    {
+      "name": "a result that is not finite from finite inputs is a type error",
+      "expression": "log(min({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 0.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "a member without a number and an unguarded use: named before the evaluation",
+      "expression": "{*} + 1",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "a guarded and an unguarded token: only the unguarded one is checked",
+      "expression": "nansum({a.*}) + count_nonzero({b.*} > 0)",
+      "bindings": {
+        "a.0": "DEV:A",
+        "a.1": "DEV:B",
+        "b.0": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 2.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "a function of one number keeps a nan reduction guarded",
+      "expression": "nanmax(abs(0 - {*}) * 2)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 8.0,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
+    },
+    {
+      "name": "a comparison inside a nan reduction is not guarded",
+      "expression": "nansum({*} > 2)",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "text in quotes is literal: Fault!",
+      "expression": "label({v}) == 'Fault!'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 1,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Fault!",
+            "A&&B",
+            "a || b",
+            "{x}"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "text in quotes is literal: A&&B",
+      "expression": "label({v}) == 'A&&B'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Fault!",
+            "A&&B",
+            "a || b",
+            "{x}"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "text in quotes is literal: a || b",
+      "expression": "label({v}) == 'a || b'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 3,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Fault!",
+            "A&&B",
+            "a || b",
+            "{x}"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "text in quotes is literal: {x}",
+      "expression": "label({v}) == '{x}'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 4,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Fault!",
+            "A&&B",
+            "a || b",
+            "{x}"
+          ]
+        }
+      },
+      "value": true,
       "severity": "NO_ALARM",
       "vectorInputs": null
     }
