@@ -6,7 +6,12 @@ Squirrel (delta-vs-snapshot), and notebooks (ad-hoc evaluation).
 
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import (
+    Field,
+    SerializerFunctionWrapHandler,
+    model_validator,
+    model_serializer,
+)
 
 from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
@@ -107,11 +112,43 @@ class FormulaSpec(CanopyModel):
         return self
 
 
+class VectorInputs(CanopyModel):
+    """The members of a scalar formula's vector tokens, summed up.
+
+    A formula over a thousand channels does not list them in every result:
+    ``count`` is how many it has, ``missing`` names those that are disconnected
+    or have no sample (the first few, in member order) and ``more`` is how many
+    further ones are not named.
+    """
+
+    count: int
+    missing: list[str]
+    more: int = 0
+
+
+def without_absent_vector_inputs(model: CanopyModel, data: dict) -> dict:
+    """Leave ``vector_inputs`` out of a serialized result that has none, in either spelling.
+
+    A formula without a vector token then serializes to the keys it always had.
+    """
+    if model.vector_inputs is None:
+        data.pop("vector_inputs", None)
+        data.pop("vectorInputs", None)
+    return data
+
+
 class ScalarResult(CanopyModel):
     ts_ns: int
     value: float | int | bool | str
     severity: AlarmSeverity
+    # Input name -> timestamp of the sample used. The members of a vector token
+    # are not listed here; ``vector_inputs`` sums them up.
     inputs_used: dict[str, int]
+    vector_inputs: VectorInputs | None = None
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> dict:
+        return without_absent_vector_inputs(self, handler(self))
 
 
 class TimeseriesResult(CanopyModel):

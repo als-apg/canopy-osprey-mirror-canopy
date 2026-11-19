@@ -1,6 +1,6 @@
 """Formula Engine wire DTOs for the formula endpoints."""
 
-from pydantic import Field
+from pydantic import Field, SerializerFunctionWrapHandler, model_serializer
 
 from canopy.contracts.base import CanopyModel
 from canopy.contracts.sample import AlarmSeverity
@@ -8,7 +8,9 @@ from canopy.contracts.formula import (
     FormulaKind,
     FormulaSpec,
     TableHistory,
+    VectorInputs,
     TableInputState,
+    without_absent_vector_inputs,
 )
 
 
@@ -25,6 +27,14 @@ class ScalarResultDTO(CanopyModel):
     value: float | int | bool | str
     severity: AlarmSeverity
     inputs_used: dict[str, int]
+    vector_inputs: VectorInputs | None = Field(
+        default=None,
+        description="Only for a formula with a vector token: its members, counted, and those without a value",
+    )
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> dict:
+        return without_absent_vector_inputs(self, handler(self))
 
 
 class TimeseriesResultDTO(CanopyModel):

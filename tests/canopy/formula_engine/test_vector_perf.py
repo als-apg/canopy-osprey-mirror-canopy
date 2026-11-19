@@ -67,5 +67,7 @@ async def test_evaluation_cost(n: int) -> None:
         print(
             f"\n{n:5d} inputs  {expression:28s} median {median:6.2f} ms  max {worst:6.2f} ms  frame {len(frame):6d} bytes"
         )
-        assert len(result.scalar.inputs_used) == n
+        assert result.scalar.vector_inputs.count == n
+        # The members are counted, not listed: the frame does not grow with them.
+        assert len(frame) < 400
         assert median < BOUND_MS[n]

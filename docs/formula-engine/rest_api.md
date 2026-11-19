@@ -72,6 +72,7 @@ Returned when `kind` is `"scalar"`:
 | `value` | float \| int \| bool \| string | Computed value |
 | `severity` | string | Alarm severity (`NO_ALARM`, `MINOR`, `MAJOR`, `INVALID`) |
 | `inputsUsed` | object | Map of binding name --> sample count used |
+| `vectorInputs` | object | Only for a formula with a vector token: `count`, `missing`, `more` (see [Formulas over many channels](index.md#the-result-of-a-formula-with-a-vector-token)) |
 
 ### Response — timeseries result
 

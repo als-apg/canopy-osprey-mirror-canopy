@@ -53,6 +53,8 @@ class FormulaEngineConfig(BaseSettings):
     # Shortest time between two evaluations of a live formula with a vector
     # token: member changes inside it are evaluated together.
     vector_interval_ms: int = 500
+    # Most members without a value a result (or an error) names; the rest are counted.
+    vector_missing_listed: int = 20
 
     # --- live tables --- #
     # A table row is final this long (receive clock) after it arrived, or once

@@ -38,10 +38,11 @@ import time
 import numpy as np
 
 from canopy.contracts.sample import SEVERITY_ORDINAL, Sample, AlarmSeverity
-from canopy.contracts.formula import FormulaSpec, ScalarResult
+from canopy.contracts.formula import FormulaSpec, ScalarResult, VectorInputs
 from canopy.formula_engine.ports import DataSource
 from canopy.formula_engine.config import FormulaEngineConfig
 from canopy.formula_engine.errors import (
+    INPUT_MISSING_PREFIX,
     FormulaTypeError,
     FormulaInputOutage,
     FormulaInputMissing,
@@ -143,18 +144,35 @@ async def evaluate_status_formula(
 
     value = _one_value(await evaluate_scalar(parsed, variables, config.eval_timeout_ms / 1000.0))
     if isinstance(value, float) and not math.isfinite(value):
-        absent = [spec.bindings[key] for key, s in samples.items() if s is None]
+        absent = list(dict.fromkeys(spec.bindings[key] for key, s in samples.items() if s is None))
         if absent and math.isnan(value):
             down = any(data_source.in_open_outage(pv) for pv in absent)
-            raise (FormulaInputOutage if down else FormulaInputMissing).for_pvs(absent)
+            error = FormulaInputOutage if down else FormulaInputMissing
+            listed = absent[: config.vector_missing_listed]
+            if len(listed) == len(absent):
+                raise error.for_pvs(absent)
+            raise error(f"{INPUT_MISSING_PREFIX}{listed} and {len(absent) - len(listed)} more")
         raise FormulaTypeError(f"The result is not a finite number ({value})")
 
-    inputs_used = {spec.bindings[key]: s.ts_ns for key, s in samples.items() if s is not None}
+    stamps = [s.ts_ns for s in samples.values() if s is not None]
     severities = [AlarmSeverity.INVALID if s is None else s.severity for s in samples.values()]
     return ScalarResult(
         # With no input sample at all the result still needs a time: now.
-        ts_ns=max(inputs_used.values()) if inputs_used else time.time_ns(),
+        ts_ns=max(stamps) if stamps else time.time_ns(),
         value=value,
         severity=worst_severity(severities),
-        inputs_used=inputs_used,
+        # Plain tokens are listed as in every scalar result; members are summed up.
+        inputs_used={spec.bindings[t]: samples[t].ts_ns for t in scalar_tokens if samples[t] is not None},
+        vector_inputs=_vector_inputs(spec, parsed, samples, config.vector_missing_listed),
     )
+
+
+def _vector_inputs(
+    spec: FormulaSpec, parsed: ParsedFormula, samples: dict[str, Sample | None], listed: int
+) -> VectorInputs | None:
+    """The members counted, and the first ``listed`` of those without a sample named."""
+    members = parsed.member_keys()
+    if not members:
+        return None
+    missing = [spec.bindings[key] for key in members if samples[key] is None]
+    return VectorInputs(count=len(members), missing=missing[:listed], more=max(len(missing) - listed, 0))

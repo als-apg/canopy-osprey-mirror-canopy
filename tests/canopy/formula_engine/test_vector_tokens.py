@@ -168,6 +168,22 @@ class TestAggregates:
         result = await _scalar(_three(), "max({*})", THREE)
         assert result.severity == AlarmSeverity.MINOR
         assert result.ts_ns == 3000
+
+    async def test_members_are_counted_not_listed(self):
+        """A thousand members would make every update a 30 kB frame."""
+        result = await _scalar(_three(), "max({*})", THREE)
+        assert result.inputs_used == {}
+        assert result.vector_inputs.model_dump() == {"count": 3, "missing": [], "more": 0}
+
+    async def test_a_plain_token_beside_a_vector_is_still_listed(self):
+        bindings = {"g.0": "DEV:A", "g.1": "DEV:B", "limit": "DEV:C"}
+        result = await _scalar(_three(), "count_nonzero({g.*} < {limit})", bindings)
+        assert result.inputs_used == {"DEV:C": 2000}
+        assert result.vector_inputs.count == 2
+
+    async def test_a_status_function_on_one_channel_has_no_vector_summary(self):
+        result = await _scalar(_three(), "severity({0}) + {1} + {2}", THREE)
+        assert result.vector_inputs is None
         assert result.inputs_used == {"DEV:A": 1000, "DEV:B": 3000, "DEV:C": 2000}
 
     async def test_groups_reduce_separately(self):
@@ -267,9 +283,34 @@ class TestDisconnectedMembers:
 
     async def test_a_member_in_outage_is_not_read(self):
         """Its last sample is stale; it must not reach the value or the timestamps."""
-        result = await _scalar(self._one_down(), "nansum({*})", THREE)
-        assert result.inputs_used == {"DEV:A": 1000, "DEV:C": 2000}
+        source = self._one_down()
+        source.latest["DEV:B"] = _sample(1000.0, ts_ns=9000)
+        result = await _scalar(source, "nansum({*})", THREE)
+        assert result.value == pytest.approx(5.0)
         assert result.ts_ns == 2000
+
+    @pytest.mark.parametrize("make", ["_one_down", "_one_never_seen"])
+    async def test_the_members_without_a_value_are_named(self, make):
+        result = await _scalar(getattr(self, make)(), "max(severity({*}))", THREE)
+        assert result.vector_inputs.model_dump() == {"count": 3, "missing": ["DEV:B"], "more": 0}
+
+    async def test_the_list_of_members_without_a_value_is_capped(self):
+        bindings = {f"{i:02d}": f"DEV:{i:02d}" for i in range(30)}
+        source = FakeDataSource(outages=set(bindings.values()))
+        result = await _scalar(source, "sum(connected({*}))", bindings, vector_missing_listed=4)
+        assert result.value == 0
+        assert result.vector_inputs.model_dump() == {
+            "count": 30,
+            "missing": ["DEV:00", "DEV:01", "DEV:02", "DEV:03"],
+            "more": 26,
+        }
+
+    async def test_the_error_of_a_value_reduction_is_capped_too(self):
+        bindings = {f"{i:02d}": f"DEV:{i:02d}" for i in range(30)}
+        source = FakeDataSource(outages=set(bindings.values()))
+        with pytest.raises(FormulaInputOutage) as caught:
+            await _scalar(source, "max({*})", bindings, vector_missing_listed=2)
+        assert caught.value.detail == "PVs not available: ['DEV:00', 'DEV:01'] and 28 more"
 
     async def test_all_members_down_still_answers(self):
         source = _three()
@@ -278,6 +319,7 @@ class TestDisconnectedMembers:
         assert result.value == 3
         assert result.severity == AlarmSeverity.INVALID
         assert result.inputs_used == {}
+        assert result.vector_inputs.missing == ["DEV:A", "DEV:B", "DEV:C"]
         assert result.ts_ns > 0
 
     async def test_a_text_member_has_no_number(self):
@@ -509,6 +551,50 @@ class TestLive:
         finally:
             await manager.shutdown()
 
+    async def test_the_same_bindings_in_another_order_share_one_evaluation(self):
+        source, notifier = _three(), ChangeNotifier()
+        manager, service = _manager(source, notifier, vector_interval_ms=10)
+        first, second = _Collector(), _Collector()
+        backward = dict(reversed(THREE.items()))
+        assert list(backward) != list(THREE)
+        try:
+            await manager.add_subscription("c1", "s", _spec("max(severity({*}))", THREE), 0, 0, first.send)
+            await _wait_for(lambda: first.values() == [1])
+            await manager.add_subscription("c2", "s", _spec("max(severity({*}))", backward), 0, 0, second.send)
+            await _wait_for(lambda: second.values() == [1])
+            assert service.evaluations == 1
+            assert len(manager._shared_evals) == 1
+        finally:
+            await manager.shutdown()
+
+    async def test_plain_formulas_share_across_binding_order_too(self):
+        source, notifier = _three(), ChangeNotifier()
+        manager, service = _manager(source, notifier)
+        first, second = _Collector(), _Collector()
+        expression = "{0} + {1} * 10 + {2} * 100"
+        try:
+            await manager.add_subscription("c1", "s", _spec(expression, THREE), 0, 0, first.send)
+            await _wait_for(lambda: first.values() == [421.0])
+            await manager.add_subscription(
+                "c2", "s", _spec(expression, dict(reversed(THREE.items()))), 0, 0, second.send
+            )
+            await _wait_for(lambda: second.values() == [421.0])
+            assert service.evaluations == 1
+        finally:
+            await manager.shutdown()
+
+    async def test_other_bindings_do_not_share(self):
+        source, notifier = _three(), ChangeNotifier()
+        manager, _ = _manager(source, notifier)
+        out = _Collector()
+        swapped = {"0": "DEV:B", "1": "DEV:A", "2": "DEV:C"}
+        try:
+            await manager.add_subscription("c1", "s", _spec("{0} + {1} * 10 + {2} * 100", THREE), 0, 0, out.send)
+            await manager.add_subscription("c2", "s", _spec("{0} + {1} * 10 + {2} * 100", swapped), 0, 0, out.send)
+            assert len(manager._shared_evals) == 2
+        finally:
+            await manager.shutdown()
+
     async def test_a_burst_of_member_changes_is_evaluated_once_per_interval(self):
         source, notifier = _three(), ChangeNotifier()
         manager, service = _manager(source, notifier, vector_interval_ms=200, input_wait_notify_s=0.0)
@@ -701,8 +787,23 @@ class TestWebSocket:
         source.outages.add("DEV:C")
         frame = _subscribe(socket, "max(severity({*}))", THREE)
         assert frame["type"] == "result"
-        assert frame["data"]["scalar"]["value"] == 3
-        assert frame["data"]["scalar"]["severity"] == "INVALID"
+        assert frame["data"]["scalar"] == {
+            "tsNs": 3000,
+            "value": 3,
+            "severity": "INVALID",
+            "inputsUsed": {},
+            "vectorInputs": {"count": 3, "missing": ["DEV:C"], "more": 0},
+        }
+
+    def test_a_plain_formula_frame_has_the_keys_it_always_had(self, ws):
+        socket, _ = ws
+        frame = _subscribe(socket, "{0} + {1} + {2}", THREE)
+        assert frame["data"]["scalar"] == {
+            "tsNs": 3000,
+            "value": 7.0,
+            "severity": "MINOR",
+            "inputsUsed": {"DEV:A": 1000, "DEV:B": 3000, "DEV:C": 2000},
+        }
 
     def test_a_value_reduction_over_a_member_in_outage_is_a_retryable_error_frame(self, ws):
         """Never a ``NaN`` literal: that is not JSON, and a client drops the frame."""

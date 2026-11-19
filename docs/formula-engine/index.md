@@ -163,8 +163,36 @@ So that a channel without a value is always visible:
   text.
 - The result's own `severity` is the worst over all inputs, and an input
   without a sample counts as `INVALID`, whatever the expression computes.
-- `inputsUsed` lists only the inputs that had a sample. With none, the result's
-  `tsNs` is the time of evaluation.
+- When no input has a sample, the result's `tsNs` is the time of evaluation.
+
+A roll-up that must always give a state uses `severity()`, `connected()` or the
+`nan*` reductions. A plain reduction over values (`max({*})`) is for a number
+that has no meaning while a member is missing.
+
+### The result of a formula with a vector token
+
+The members of a vector token are not listed in `inputsUsed`. That map holds
+only the plain tokens of the formula. The members are summed up in
+`vectorInputs`, which only a formula with a vector token has:
+
+```json
+{
+  "tsNs": 1700000000000000000,
+  "value": 3,
+  "severity": "INVALID",
+  "inputsUsed": {},
+  "vectorInputs": {"count": 240, "missing": ["PUMP:17:CURRENT"], "more": 0}
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `count` | Number of channels the vector tokens name |
+| `missing` | Channels that are disconnected or have no sample, in member order. At most `VECTOR_MISSING_LISTED` names. |
+| `more` | Number of further such channels that are not named |
+
+The `formula_input_missing` message of a value reduction names the channels in
+the same way: `PVs not available: ['A', 'B'] and 28 more`.
 
 A token that is also read as a plain value (`severity({x}) + {x}`) follows the
 rule of plain tokens.
@@ -174,7 +202,8 @@ rule of plain tokens.
 | Setting | Default | Meaning |
 |---------|---------|---------|
 | `CANOPY_FORMULA_ENGINE__MAX_VECTOR_INPUTS` | 1000 | Most channels the vector tokens of one formula may name. A formula above it is refused with `invalid_spec`, and the message names this limit. A live subscription is refused before any channel is subscribed. |
-| `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` | 500 | Shortest time between two evaluations of a live formula with a vector token. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_INTERVAL_MS` | 500 | Shortest time between two evaluations of a live formula with a vector token. In the first second after the subscribe the shortest time is 50 ms. |
+| `CANOPY_FORMULA_ENGINE__VECTOR_MISSING_LISTED` | 20 | Most channels without a value that a result or an error message names. The others are counted. |
 
 The limit on the expression length (`CANOPY_FORMULA_ENGINE__MAX_EXPRESSION_LEN`)
 is not affected by the number of bindings.
@@ -183,8 +212,8 @@ A live formula with a vector token is evaluated when one of its members
 changes, connects or disconnects, but at most once per
 `VECTOR_INTERVAL_MS`; changes inside the interval are taken together. A
 subscription that asks for a poll interval gets at least this interval.
-Subscriptions with the same spec share one evaluation. The spec is compared as
-written, so the same bindings in another order are a different spec.
+Subscriptions with the same spec share one evaluation. The order in which the
+bindings are written does not matter.
 
 Every member is one live channel on the server. A vector token removes the
 limit on the expression, not the cost of the connections.
