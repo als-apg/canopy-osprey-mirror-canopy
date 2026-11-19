@@ -37,9 +37,11 @@ class FormulaInputMissing(FormulaEngineError):
         """The error naming every input the formula cannot read, in the one wording.
 
         Every evaluator raises through here, so a client sees one sentence for
-        the one code it retries on, whether an input has no sample yet or its
+        an input that is not there, whether it has no sample yet or its
         connection is down right now; ``FormulaInputOutage`` keeps the class
-        distinction for the subscription manager, never a second wording.
+        distinction for the subscription manager, never a second wording. Only
+        ``FormulaInputUnusable`` (an input that is there, with a value that is
+        no number) has a wording of its own.
         """
         return cls(f"{INPUT_MISSING_PREFIX}{list(pvs)}")
 
@@ -60,10 +62,12 @@ class FormulaInputUnusable(FormulaInputMissing):
 
     Its sample is NaN, infinite, empty or (for a member of a vector token)
     text or an array, where the expression needs a number. The cause is the
-    live value, not the formula: the next sample may be a number again. So it shares ``FormulaInputMissing``'s code and wording and is
-    retryable on the wire; like an outage it is a fact, and a live subscription
-    forwards it at once. Its wording differs, so a reader can tell a channel
-    that is there with a bad value from one that is not there.
+    live value, not the formula: the next sample may be a number again. So it
+    shares ``FormulaInputMissing``'s code and is retryable on the wire; like an
+    outage it is a fact, and a live subscription forwards it at once.
+
+    Its wording is its own ("PVs without a number"), so a reader can tell a
+    channel that is there with a bad value from one that is not there.
     """
 
     @classmethod
