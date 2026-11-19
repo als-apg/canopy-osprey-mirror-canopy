@@ -430,7 +430,7 @@ class TestMembersThatAreNoNumber:
     """Text (also text that looks like a number), an array or an empty sample: connected, but no number."""
 
     @pytest.mark.parametrize("value", ["5", "abc", b"\x01\x02", None])
-    async def test_it_is_skipped_or_named_like_a_member_without_a_value(self, value):
+    async def test_it_is_skipped_or_named(self, value):
         source = _three()
         source.latest["DEV:B"] = _sample(value, severity=1)
         assert (await _scalar(source, "nansum({*})", THREE)).value == 5.0
@@ -445,6 +445,15 @@ class TestMembersThatAreNoNumber:
         result = await _scalar(source, "sum(connected({*})) * 10 + max(severity({*}))", THREE)
         assert result.value == 31
         assert result.vector_inputs.missing == []
+
+    async def test_an_empty_sample_is_connected_but_never_healthy(self):
+        source = _three()
+        source.latest["DEV:B"] = _sample(None, severity=0)
+        result = await _scalar(source, "sum(connected({*})) * 10 + max(severity({*}))", THREE)
+        assert result.value == 33
+        assert result.severity is AlarmSeverity.INVALID
+        assert result.vector_inputs.missing == ["DEV:B"]
+        assert result.pending == 0  # it has answered: nothing to wait for
 
     async def test_a_plain_token_keeps_its_text(self):
         source = _source(**{"DEV:A": _sample("on")})

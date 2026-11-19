@@ -11,6 +11,7 @@ has a number                number   0 to 3      1
 connection down (outage)    NaN      3           0
 no sample yet               NaN      3           0
 sample that is no number    NaN      as sampled  1
+empty sample                NaN      3           1
 ==========================  =======  ==========  =============
 
 "No number" is text (also text that looks like a number), an array, or an empty
@@ -104,8 +105,14 @@ def _label(sample: Sample | None, labels: list[str] | None) -> str:
     return ""
 
 
+def _has_value(sample: Sample | None) -> bool:
+    """A sample is there and is not empty."""
+    return sample is not None and sample.value is not None
+
+
 def _severity(sample: Sample | None) -> int:
-    return _INVALID if sample is None else SEVERITY_ORDINAL[sample.severity]
+    """``severity()``: as sampled; INVALID for no sample and for an empty one, whatever severity it carries."""
+    return SEVERITY_ORDINAL[sample.severity] if _has_value(sample) else _INVALID
 
 
 def _one_value(value: object) -> float | int | bool | str:
@@ -200,7 +207,7 @@ async def evaluate_status_formula(
         raise FormulaTypeError(f"The result is not a finite number ({value})")
 
     stamps = [s.ts_ns for s in samples.values() if s is not None]
-    severities = [AlarmSeverity.INVALID if s is None else s.severity for s in samples.values()]
+    severities = [s.severity if _has_value(s) else AlarmSeverity.INVALID for s in samples.values()]
     return ScalarResult(
         # With no input sample at all the result still needs a time: now.
         ts_ns=max(stamps) if stamps else time.time_ns(),
@@ -276,9 +283,9 @@ def _input_error(
 def _vector_inputs(
     spec: FormulaSpec, parsed: ParsedFormula, samples: dict[str, Sample | None], listed: int
 ) -> VectorInputs | None:
-    """The members counted, and the first ``listed`` of those without a sample named."""
+    """The members counted, and the first ``listed`` of those without a sample (or with an empty one) named."""
     members = parsed.member_keys()
     if not members:
         return None
-    missing = [spec.bindings[key] for key in members if samples[key] is None]
+    missing = [spec.bindings[key] for key in members if not _has_value(samples[key])]
     return VectorInputs(count=len(members), missing=missing[:listed], more=max(len(missing) - listed, 0))

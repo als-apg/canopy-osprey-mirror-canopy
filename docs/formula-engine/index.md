@@ -172,7 +172,8 @@ as follows:
 | Has a number | its number | 0 to 3 | 1 |
 | Disconnected | `nan` | 3 | 0 |
 | No sample yet | `nan` | 3 | 0 |
-| Sample that is no number (text, also `"5"`; an array; an empty sample) | `nan` | as sampled | 1 |
+| Sample that is no number (text, also `"5"`; an array) | `nan` | as sampled | 1 |
+| Empty sample (the channel answers, but with no value) | `nan` | 3 | 1 |
 
 A member without a number never passes for a number:
 
@@ -234,7 +235,7 @@ only the plain tokens of the formula. The members are summed up in
 | Field | Meaning |
 |-------|---------|
 | `count` | Number of channels the vector tokens name |
-| `missing` | Channels that are disconnected or have no sample, in member order. At most `VECTOR_MISSING_LISTED` names. |
+| `missing` | Channels that are disconnected, have no sample, or have an empty sample, in member order. At most `VECTOR_MISSING_LISTED` names. |
 | `more` | Number of further such channels that are not named |
 
 The `formula_input_missing` message of a value reduction names the channels in

@@ -3507,6 +3507,38 @@
       },
       "error": "input_missing",
       "detail": "PVs not available: ['DEV:C']"
+    },
+    {
+      "name": "a member with an empty sample: connected, severity invalid, named among the missing",
+      "expression": "sum(connected({*})) * 10 + max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": null,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 33,
+      "severity": "INVALID",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [
+          "DEV:B"
+        ],
+        "more": 0
+      }
     }
   ]
 }

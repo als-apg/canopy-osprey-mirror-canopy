@@ -26,7 +26,7 @@ from canopy.formula_engine.services.formula_service import FormulaService
 TABLE = json.loads((Path(__file__).parent / "fixtures" / "formula-vector-cases.json").read_text(encoding="utf-8"))
 CASES = TABLE["cases"]
 
-EXPECTED_CASES = 131
+EXPECTED_CASES = 132
 SEVERITIES = [AlarmSeverity.NO_ALARM, AlarmSeverity.MINOR, AlarmSeverity.MAJOR, AlarmSeverity.INVALID]
 NON_FINITE = {"nan": math.nan, "inf": math.inf, "-inf": -math.inf}
 ERROR_CLASS = {
