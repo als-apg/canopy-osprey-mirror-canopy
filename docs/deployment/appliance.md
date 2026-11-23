@@ -159,7 +159,9 @@ itself is not served. A file over 256 KiB, nested deeper than 8 levels, with
 more than 2000 entries, a label over 120 characters or any other key is ignored
 with a logged warning, and the sidebar shows the folder tree as it does without
 one. A screen the file names and the library does not hold is left out by the
-viewer. A change to the file shows on the next manifest request.
+viewer. A change to the file shows on the next manifest request. The file has
+to be a regular file; the [library report](../how_to/library_report.md) does
+not cover it, so a change to it leaves the report current.
 
 The viewer asks for the manifest again every few seconds. Each request lists
 the `screens/` trees and takes the stat of every screen; a screen is read only

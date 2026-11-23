@@ -4,8 +4,11 @@
 
 ``<root>`` is a store root, the directory that holds ``screens/``. The report is
 the review record of a screen library: ``LIBRARY-REPORT.json`` and, as tables,
-``LIBRARY-REPORT.md``, written beside ``screens/``. The listing it is computed over
-leaves out the deployment's own ignored names, ``CANOPY_LIBRARY_IGNORED_NAMES``
+``LIBRARY-REPORT.md``, written beside ``screens/``. A library's own
+``navigation.json`` (:mod:`canopy_mcp.navigation`) may lie beside them: the
+listing admits it and does not list it, so it is in no row and no digest, no mode
+reads it, and a change to it leaves the report current. The listing the report is
+computed over leaves out the deployment's own ignored names, ``CANOPY_LIBRARY_IGNORED_NAMES``
 (:func:`canopy_mcp.listing.ignored_names_from_env`).
 
 - ``--emit`` prints one JSON object ``{"json": <report>, "md": <markdown>}`` on

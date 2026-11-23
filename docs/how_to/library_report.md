@@ -77,6 +77,12 @@ A library served by the panel-builder server is named by `CANOPY_LIBRARY_DIR`
 its `screens/` subtree, so the two report files are never reachable from a
 browser.
 
+A library may also hold a `navigation.json` beside `screens/`, which orders
+its screens for the viewer's sidebar. The report does not cover it: the file is
+in no row and not under the digest, so changing it does not make the report
+stale, and no mode reads what it holds. The server checks its shape when it
+serves the library.
+
 ## What the report lists
 
 | Key | Rows |
@@ -104,7 +110,8 @@ character in any string, with `invalid_text: <file> <json pointer>`.
 `--check` also refuses:
 
 - an entry that does not belong in a library: anything beside `screens/`
-  other than the two report files, a symbolic link, a dotfile or a leftover
+  other than the two report files and a regular file named `navigation.json`,
+  a symbolic link, a dotfile or a leftover
   temporary file, a file that is neither a screen nor an image, or names
   that differ only in case;
 - any `.svg` file;

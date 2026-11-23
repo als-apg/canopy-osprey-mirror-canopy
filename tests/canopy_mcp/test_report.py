@@ -533,6 +533,57 @@ def test_write_then_check_passes(library: Path, capsys: pytest.CaptureFixture[st
     assert _run(str(library), "--write") == 0 and _run(str(library), "--check") == 0
 
 
+def test_a_navigation_file_is_admitted_and_is_no_part_of_the_report(
+    library: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The report neither lists nor reads the file: adding, changing or breaking it leaves the report current."""
+    assert _run(str(library), "--write") == 0
+    stored = {name: (library / name).read_bytes() for name in report.REPORT_NAMES}
+    navigation = library / listing.NAVIGATION_NAME
+    for content in (b'[{"screen": "library/top/Main"}]\n', b'[{"screen": "library/absent"}]\n', b"not json"):
+        navigation.write_bytes(content)
+        capsys.readouterr()
+        assert _run(str(library), "--check") == 0
+        captured = capsys.readouterr()
+        assert captured.out == "report is current (8 files, --served-at library)\n" and captured.err == ""
+        assert _run(str(library), "--emit") == 0
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        assert _without_version(json.loads(captured.out)["json"]) == GOLDEN[report.SCHEMA]["library"]["report"]
+    assert _run(str(library), "--write") == 0
+    assert {name: (library / name).read_bytes() for name in report.REPORT_NAMES} == stored
+    assert navigation.read_bytes() == b"not json"
+
+
+def test_check_runs_isolated_on_a_library_holding_a_navigation_file(library: Path) -> None:
+    """As an image build runs it on the tree it copied in: ``python -I``."""
+    assert _run(str(library), "--write") == 0
+    (library / listing.NAVIGATION_NAME).write_bytes(b'[{"screen": "library/top/Main", "label": "Start here"}]\n')
+    done = subprocess.run(
+        [sys.executable, "-I", "-m", "canopy_mcp.report", str(library), "--served-at", "library", "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory"])
+def test_check_refuses_a_navigation_name_that_is_not_a_regular_file(library: Path, capsys, kind: str) -> None:
+    assert _run(str(library), "--write") == 0
+    navigation = library / listing.NAVIGATION_NAME
+    if kind == "symlink":
+        navigation.symlink_to("LIBRARY-REPORT.json")
+    else:
+        navigation.mkdir()
+    capsys.readouterr()
+    assert _run(str(library), "--check") == report.EXIT_REFUSED
+    code = "symlink" if kind == "symlink" else "outside_screens"
+    assert f"refused: {code}: navigation.json: " in capsys.readouterr().err
+    assert _run(str(library), "--emit") == 0
+    assert f"{code}: navigation.json: " in capsys.readouterr().err
+
+
 def test_the_written_files_end_in_one_newline_and_have_no_trailing_whitespace(library: Path) -> None:
     command = "trailing space \nand a tab\t"
     button = {"id": "b", "type": "regular-button", "props": {"actions": [{"type": "execute", "command": command}]}}

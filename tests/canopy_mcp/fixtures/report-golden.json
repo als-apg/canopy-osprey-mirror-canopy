@@ -779,7 +779,7 @@
         ]
       },
       "refusals": [
-        "outside_screens: README.md: a library root holds only screens/ and the LIBRARY-REPORT files; delete it",
+        "outside_screens: README.md: a library root holds only screens/, the LIBRARY-REPORT files and navigation.json; delete it",
         "suffix: screens/notes.txt: neither a *.screen.json file nor an image; delete it",
         "svg: screens/a/icon.svg: SVG is markup a browser runs; delete it or convert it to a raster image",
         "crossRootRefs: screen a/top node cross at /root/children/0/props/file: ../../../screens/p.screen.json",

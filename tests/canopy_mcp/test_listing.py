@@ -18,6 +18,7 @@ import pytest
 
 from canopy_mcp import listing
 from canopy_mcp.store import write_atomic, is_reserved_segment
+from canopy_mcp.navigation import NAVIGATION_FILE
 
 VECTORS_PATH = Path(__file__).parent / "fixtures" / "listing-vectors.json"
 VECTORS_BYTES = VECTORS_PATH.read_bytes()
@@ -86,6 +87,9 @@ def test_the_vector_file_holds_the_cases_the_contract_names() -> None:
         ".DS_Store",
         "screens/.DS_Store",
         "README.md",
+        "navigation.json",
+        "Navigation.json",
+        "screens/navigation.json",
         "screens/prefetched-models/a.screen.json",
         "screens/img.log/a.png",
         "screens/Common/a.screen.json",
@@ -140,6 +144,26 @@ def test_the_list_sorts_by_utf8_bytes_not_utf16_units() -> None:
     names = [line.split("  ", 1)[1] for line in lines]
     assert names[-2:] == ["screens/～.png", "screens/\U0001f600.png"]
     assert sorted(names[-2:], key=lambda name: name.encode("utf-16-be")) == list(reversed(names[-2:]))
+
+
+def test_the_navigation_file_has_the_name_the_server_reads() -> None:
+    assert listing.NAVIGATION_NAME == NAVIGATION_FILE == "navigation.json"
+
+
+def test_a_navigation_file_at_the_root_is_admitted_and_not_listed() -> None:
+    with_file = CASES["navigation.json beside screens/ is admitted and not listed"]
+    assert with_file["expect"]["refusals"] == [] and "navigation" not in with_file["expect"]["list"]
+    without = [entry for entry in with_file["entries"] if entry["path"] != listing.NAVIGATION_NAME]
+    assert listing.judge(without).digest == with_file["expect"]["digest"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "code"), [("symlink", "symlink"), ("dir", "outside_screens"), ("other", "outside_screens")]
+)
+def test_a_navigation_name_that_is_not_a_regular_file_is_refused(kind: str, code: str) -> None:
+    judged = listing.judge([{"path": listing.NAVIGATION_NAME, "kind": kind, "mode": 0o755}])
+    assert list(judged.refusals) == [{"path": listing.NAVIGATION_NAME, "code": code}]
+    assert "navigation.json" in listing.refusal_text({"path": "README.md", "code": "outside_screens"})
 
 
 def test_a_ds_store_file_is_neither_listed_nor_refused() -> None:
@@ -275,6 +299,29 @@ def test_scan_then_judge_equals_the_ported_list_on_a_clean_tree(tmp_path: Path) 
     assert judged.refusals == ()
     assert judged.list_bytes == _library_list_2c(tmp_path)
     assert judged.digest == "sha256:" + _sha(_library_list_2c(tmp_path))
+
+
+def test_scan_then_judge_admits_a_navigation_file_and_refuses_a_link_or_a_directory(tmp_path: Path) -> None:
+    _tree(tmp_path)
+    clean = listing.judge(listing.scan(tmp_path))
+    navigation = tmp_path / listing.NAVIGATION_NAME
+    navigation.write_bytes(b"[]\n")
+    judged = listing.judge(listing.scan(tmp_path))
+    assert judged.refusals == () and judged.files == clean.files and judged.digest == clean.digest
+    navigation.unlink()
+    (tmp_path / "elsewhere.json").write_bytes(b"[]\n")
+    navigation.symlink_to("elsewhere.json")
+    assert {(r["path"], r["code"]) for r in listing.judge(listing.scan(tmp_path)).refusals} == {
+        ("elsewhere.json", "outside_screens"),
+        (listing.NAVIGATION_NAME, "symlink"),
+    }
+    navigation.unlink()
+    (tmp_path / "elsewhere.json").unlink()
+    navigation.mkdir()
+    (navigation / "a.screen.json").write_bytes(b"{}\n")
+    assert list(listing.judge(listing.scan(tmp_path)).refusals) == [
+        {"path": listing.NAVIGATION_NAME, "code": "outside_screens"}
+    ]
 
 
 def test_an_interrupted_write_leaves_what_the_listing_refuses(tmp_path: Path, monkeypatch) -> None:
