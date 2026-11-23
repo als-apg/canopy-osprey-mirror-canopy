@@ -36,6 +36,7 @@ from canopy_mcp.store import (
 )
 from canopy_mcp.config import Settings
 from canopy_mcp.validate import TOOL_IDS
+from canopy_mcp.navigation import NavigationFile
 from canopy.contracts.health import (
     DATA_DEGRADED,
     DATA_UNAVAILABLE,
@@ -384,11 +385,16 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             headers={"Cache-Control": NO_CACHE, "Access-Control-Allow-Origin": "*"},
         )
 
+    # The library's own ordering of its screens, when its root holds a valid ``navigation.json``.
+    navigation = NavigationFile(library.root) if library is not None else None
     # The last manifest served: (listing, its encoded body, the sha256 of the body).
     served: list[tuple[dict[str, Any], bytes, str]] = []
 
     async def manifest(request: Request) -> Response:
         """The drafts, then the library's screens as ``{id, category: "library", path: "library/screens/..."}``.
+
+        A library whose root holds a valid ``navigation.json`` adds it as ``navigation``
+        (``canopy_mcp.navigation``); the key is absent otherwise.
 
         The listing is taken on every request. It is encoded and hashed again only
         when it differs from the last one served, so the poll of an unchanged
@@ -397,6 +403,9 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
         listing = store.manifest()
         if library is not None:
             listing = {"screens": [*listing["screens"], *library.manifest()["screens"]]}
+            ordered = navigation.read()
+            if ordered is not None:
+                listing["navigation"] = ordered
         if served and served[0][0] == listing:
             _, body, rev = served[0]
         else:

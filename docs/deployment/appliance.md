@@ -139,6 +139,28 @@ authoring tool refuses a library screen with `read_only_store`. The library
 changes only on the host: a user asks for a screen to be added with
 `request_push`, and an administrator reviews that request there.
 
+The library may order its own screens for the viewer's sidebar with a
+`navigation.json` at its root, beside `screens/`. It is a JSON list of entries.
+A leaf is `{"screen": "library/<id>", "label": "..."}`, the label optional. A
+group is `{"label": "...", "children": [...]}` and may name a `screen` of its
+own, which its name then opens:
+
+```json
+[
+  {"screen": "library/overview", "label": "Start here"},
+  {"label": "Pumps", "screen": "library/pumps/all", "children": [
+    {"screen": "library/pumps/p1"}
+  ]}
+]
+```
+
+A valid file is handed to the viewer as the manifest's `navigation`; the file
+itself is not served. A file over 256 KiB, nested deeper than 8 levels, with
+more than 2000 entries, a label over 120 characters or any other key is ignored
+with a logged warning, and the sidebar shows the folder tree as it does without
+one. A screen the file names and the library does not hold is left out by the
+viewer. A change to the file shows on the next manifest request.
+
 The viewer asks for the manifest again every few seconds. Each request lists
 the `screens/` trees and takes the stat of every screen; a screen is read only
 when its inode, modification time or size is not the one it was last read
