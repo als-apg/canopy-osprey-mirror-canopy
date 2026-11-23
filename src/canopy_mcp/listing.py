@@ -1,7 +1,9 @@
 """The listing of a screen library: which files it holds, their digest, and what does not belong.
 
 A library root holds ``screens/`` and, beside it, the two report files
-``LIBRARY-REPORT.json`` and ``LIBRARY-REPORT.md`` (:mod:`canopy_mcp.report`). The
+``LIBRARY-REPORT.json`` and ``LIBRARY-REPORT.md`` (:mod:`canopy_mcp.report`) and,
+when the library orders its own screens, ``navigation.json``
+(:mod:`canopy_mcp.navigation`). The
 listing is the one definition of "the files of the library": the report is
 computed over it, a deployment's build can recompute it, and comparing digests
 tells a stale report. It is two functions:
@@ -25,8 +27,13 @@ segment of its path is refused.
 **Refusals.** Every other entry is refused by path and code, and the text of a
 refusal says what to do with it:
 
-- ``outside_screens``: an entry of the root other than ``screens/`` and the two
-  report files (reported once, by its top-level name).
+- ``outside_screens``: an entry of the root other than ``screens/``, the two
+  report files and ``navigation.json`` (reported once, by its top-level name).
+  Each of the three files is admitted as a regular file only: a symlink of
+  that name is a ``symlink`` refusal and a directory of that name is refused
+  with this code. None of them is on the list, so none moves the digest, and
+  the listing does not read them: whether ``navigation.json`` is a valid
+  navigation is :mod:`canopy_mcp.navigation`'s to say.
 - ``symlink``, ``not_regular``: a symlink anywhere; a socket, pipe or device.
 - ``bad_name``: a name holding a forbidden character (the name rule of
   :mod:`canopy_mcp.text`), which the list could not carry on one line.
@@ -48,8 +55,9 @@ skipped, neither listed nor refused, since version control and builds drop it.
 A deployment adds names of its own through ``ignored_names`` (``CANOPY_LIBRARY_IGNORED_NAMES``,
 read by :func:`ignored_names_from_env` where no settings object is at hand); empty by default.
 
-Stdlib only, besides ``canopy_mcp.store`` for the suffix sets and ``canopy_mcp.text``
-for the name rule and the case collisions.
+Stdlib only, besides ``canopy_mcp.store`` for the suffix sets, ``canopy_mcp.text``
+for the name rule and the case collisions, and ``canopy_mcp.navigation`` for the
+name of the navigation file.
 """
 
 from __future__ import annotations
@@ -69,8 +77,10 @@ from canopy_mcp.store import (
     RESERVED_ENDINGS,
     RESERVED_SEGMENTS,
 )
+from canopy_mcp.navigation import NAVIGATION_FILE
 
 __all__ = [
+    "NAVIGATION_NAME",
     "REPORT_NAMES",
     "SCREENS_DIRNAME",
     "Entry",
@@ -86,15 +96,20 @@ __all__ = [
 ]
 
 SCREENS_DIRNAME = "screens"
-#: The only entries a library root may hold beside ``screens/``.
+#: The report files a library root holds beside ``screens/``.
 REPORT_NAMES = ("LIBRARY-REPORT.json", "LIBRARY-REPORT.md")
+#: The one other file a library root may hold: the library's own ordering of its
+#: screens for the viewer's sidebar. Optional.
+NAVIGATION_NAME = NAVIGATION_FILE
+#: Every file a library root may hold beside ``screens/``, each as a regular file.
+_ROOT_FILE_NAMES = (*REPORT_NAMES, NAVIGATION_NAME)
 #: The one name that is skipped: neither listed nor refused.
 SKIPPED_NAME = ".DS_Store"
 #: The variable that names a deployment's own ignored names (whitespace-separated).
 IGNORED_NAMES_ENV = "CANOPY_LIBRARY_IGNORED_NAMES"
 
 _REASONS = {
-    "outside_screens": "a library root holds only screens/ and the LIBRARY-REPORT files; delete it",
+    "outside_screens": "a library root holds only screens/, the LIBRARY-REPORT files and navigation.json; delete it",
     "symlink": "a symlink; delete it, or replace it with the file it points at",
     "not_regular": "not a regular file; delete it",
     "bad_name": "its name holds a control or format character; delete or rename it",
@@ -267,7 +282,7 @@ def judge(entries: Iterable[Entry], *, ignored_names: Iterable[str] = ()) -> Jud
             if path == SCREENS_DIRNAME:
                 if kind != "dir":
                     refused.add((path, "symlink" if kind == "symlink" else "outside_screens"))
-            elif path in REPORT_NAMES and kind in ("file", "symlink"):
+            elif path in _ROOT_FILE_NAMES and kind in ("file", "symlink"):
                 if kind == "symlink":
                     refused.add((path, "symlink"))
             elif len(parts) == 1 and _name_code(path, ignored) == "leftover_tmp":
