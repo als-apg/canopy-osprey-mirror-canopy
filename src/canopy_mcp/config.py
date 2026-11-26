@@ -142,6 +142,9 @@ class Settings(BaseSettings):
     # Library screen id the viewer opens on (config.json ``home``); unset means
     # the viewer's own default. A relative path inside the library only.
     home_screen: str | None = None
+    # The page about one PV, opened from a PV's menu in the viewer (config.json
+    # ``pvDetails``): an http(s) or viewer-relative URL with ``{pv}`` for the name.
+    pv_details_url: str | None = None
     # The deployment's color scheme file, the one canopy.core.color_scheme serves;
     # set, ``convert_legacy`` overwrites only with conversions made against it.
     theme_file: Path | None = None
@@ -224,6 +227,18 @@ class Settings(BaseSettings):
                 f"CANOPY_HOME_SCREEN {value!r} is not a library screen id "
                 "(a relative path without a leading slash or a '.', '..' or empty segment)"
             )
+        return value
+
+    @field_validator("pv_details_url")
+    @classmethod
+    def _refuse_a_pv_page_the_viewer_would_not_open(cls, value: str | None) -> str | None:
+        # The viewer opens http(s) pages only and fills the PV name in for
+        # ``{pv}``; a URL it would drop stops the server here instead.
+        if value is None:
+            return value
+        scheme = value.split(":", 1)[0].lower() if ":" in value.split("/", 1)[0] else ""
+        if "{pv}" not in value or scheme not in ("", "http", "https"):
+            raise ValueError(f"CANOPY_PV_DETAILS_URL {value!r} is not an http(s) or relative URL holding '{{pv}}'")
         return value
 
     @model_validator(mode="after")

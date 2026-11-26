@@ -56,6 +56,7 @@ unset.
 | `CANOPY_DRAFTS_DIR` | `drafts` | The store the tools write to. Screens are `<dir>/screens/<id>.screen.json`. |
 | `CANOPY_LIBRARY_DIR` | unset | A read-only screen library served beside the drafts. Its screens are `library/<id>` to the tools and `/embed/library/<id>` to the viewer. Only its `screens/` subtree is served. An optional `navigation.json` at its root orders its screens for the viewer's sidebar and is passed on as the manifest's `navigation` (format in `navigation.py` and the appliance guide). |
 | `CANOPY_HOME_SCREEN` | unset | The library screen the viewer opens on, as its id under `CANOPY_LIBRARY_DIR` (`facility/overview`). Handed to the viewer as `config.json`'s `home`. A value that is not a relative path of plain segments (a leading slash, a `.`, `..` or empty segment, a backslash) stops the server at startup. |
+| `CANOPY_PV_DETAILS_URL` | unset | The page about one PV, opened from a PV's right-click menu in the viewer: an http(s) or viewer-relative URL in which `{pv}` stands for the PV name. Handed to the viewer as `config.json`'s `pvDetails`; unset, the menu has no such entry. A URL without `{pv}` or with another scheme stops the server at startup. |
 | `CANOPY_AUTHORING` | `1` | `0` takes the authoring tools off the server. |
 | `CANOPY_PUSH_DIR` | unset | Where `request_push` writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |

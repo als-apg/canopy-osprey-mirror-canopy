@@ -143,6 +143,8 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     * ``confirmWrites`` (``CANOPY_CONFIRM_WRITES``): whether the viewer asks
       before each write under a backend whose write state is ``on`` (at
       ``asked`` it asks either way); ``home`` the configured home screen;
+    * ``pvDetails`` (``CANOPY_PV_DETAILS_URL``): the page about one PV that a
+      PV's menu opens, omitted when unset;
     * each tool of :func:`configured_tools` as ``{path, query}``, ``query``
       being its default query;
     * ``colorScheme``: the flat scheme plus ``meta`` this server sees
@@ -163,6 +165,8 @@ def viewer_config(settings: Settings) -> dict[str, Any]:
     }
     if settings.home_screen is not None:
         config["home"] = {"screen": settings.home_screen}
+    if settings.pv_details_url is not None:
+        config["pvDetails"] = {"url": settings.pv_details_url}
     for tool in configured_tools(settings):
         config[tool] = {"path": TOOL_PAGES[tool][1], "query": _default_query(settings, tool)}
     flat = get_color_scheme().flat_json
