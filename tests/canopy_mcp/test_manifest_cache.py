@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+import canopy_mcp.store as store_module
 import canopy_mcp.static as static_module
 from canopy_mcp.app import create_app
 from canopy_mcp.store import (
@@ -285,7 +286,7 @@ def test_what_is_remembered_follows_the_listing(tree):
     assert all(isinstance(value, (int, str)) for entry in store._listed.values() for value in (*entry[0], *entry[1:]))
 
 
-def test_a_screen_that_cannot_be_read_is_tried_again(tree, opened):
+def test_a_screen_that_cannot_be_read_is_left_alone_until_it_changes(tree, opened, monkeypatch):
     store = DraftStore(tree, reserved=("library",))
     path = store.path_for("ring/overview")
     path.chmod(0o000)
@@ -295,10 +296,20 @@ def test_a_screen_that_cannot_be_read_is_tried_again(tree, opened):
         ids = [entry["id"] for entry in store.manifest()["screens"]]
         assert "ring/overview" not in ids
         del opened[:]
+        for _ in range(3):
+            assert "ring/overview" not in [entry["id"] for entry in store.manifest()["screens"]]
+        assert opened == []
+        # Past the retry time it is tried once more, as it is.
+        monkeypatch.setattr(store_module, "FAILED_RETRY_S", 0.0)
         store.manifest()
         assert [os.path.realpath(name) for name in opened] == [os.path.realpath(path)]
+        monkeypatch.setattr(store_module, "FAILED_RETRY_S", 60.0)
+        del opened[:]
+        store.manifest()
+        assert opened == []
     finally:
         path.chmod(0o644)
+    # The mode is part of what the failure was remembered under: readable again, it is read at once.
     assert store.manifest() == from_scratch(store)
 
 

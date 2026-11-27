@@ -323,6 +323,8 @@ async def test_manifest_warns_once_for_os_error_and_drops_entry(store, tmp_path,
 
 async def test_manifest_warns_once_per_exception_type_on_one_path(store, monkeypatch, caplog):
     await store.write("flaky", _doc("Flaky"), None)
+    # A failed read is otherwise left alone while the file's stat stays as it was.
+    monkeypatch.setattr(store_module, "FAILED_RETRY_S", 0.0)
     with caplog.at_level(logging.WARNING, logger=STORE_LOGGER):
         _fail_read_for(monkeypatch, "flaky", PermissionError(13, "Permission denied"))
         store.manifest()
