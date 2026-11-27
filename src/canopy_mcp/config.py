@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     proxy_mark_headers: str = ""
     # Directory holding the draft screens this server writes and serves.
     drafts_dir: Path = Path("drafts")
+    # Directory the stores keep their screen listings in between runs, one small file
+    # per store; unset means ``<drafts_dir>/.cache``. Read it from ``listing_cache_dir``.
+    cache_dir: Path | None = None
+    # Seconds a listing of the screens is answered again without looking at the disk;
+    # 0 looks on every request. A write through this server always shows at once.
+    manifest_max_age_s: float = Field(default=1.0, ge=0)
     # Built canopy-screen-runtime viewer (holds index.html and ir-map.json).
     viewer_dist: Path | None = None
     # PV source the served viewer uses: live hare, or the mock service.
@@ -285,6 +291,13 @@ class Settings(BaseSettings):
         if self.viewer_dist is not None:
             return Path(self.viewer_dist).parent / "spec"
         return None
+
+    @property
+    def listing_cache_dir(self) -> Path:
+        """Where the screen listings are kept between runs: ``cache_dir``, else ``<drafts_dir>/.cache``."""
+        if self.cache_dir is not None:
+            return Path(self.cache_dir)
+        return Path(self.drafts_dir) / ".cache"
 
     @property
     def personal_collections_dir(self) -> Path:

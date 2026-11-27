@@ -21,7 +21,7 @@ import logging
 from typing import Any, Literal
 from pathlib import Path
 from datetime import UTC, datetime
-from collections.abc import Mapping, Iterable
+from collections.abc import Mapping, Callable, Iterable
 
 from starlette.routing import Route
 from starlette.requests import Request
@@ -939,8 +939,21 @@ async def _json_body(request: Request, cap: int) -> tuple[Any, Response | None]:
         return None, _error(400, "invalid_json", "the body is not valid JSON")
 
 
-def build_collection_routes(personal: CollectionStore, facility: FacilityCollections | None = None) -> list[Route]:
-    """``/collections``, ``/collections/{id}`` and ``/collections-state`` over both stores."""
+def build_collection_routes(
+    personal: CollectionStore,
+    facility: FacilityCollections | None = None,
+    *,
+    changed: Callable[[], None] | None = None,
+) -> list[Route]:
+    """``/collections``, ``/collections/{id}`` and ``/collections-state`` over both stores.
+
+    ``changed`` is called after every write these routes made (a collection put or
+    deleted, an op applied to the state), so the caller can tell whoever shows them.
+    """
+
+    def wrote() -> None:
+        if changed is not None:
+            changed()
 
     async def collection(request: Request) -> Response:
         if request.method not in ("GET", "HEAD"):
@@ -966,6 +979,7 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
             return _error(412, CollectionStale.code, f"collection {collection_id!r} has changed")
         except ReadOnlyStore:
             return _read_only()
+        wrote()
         return _json(doc, 201 if created else 200)
 
     async def item(request: Request) -> Response:
@@ -989,6 +1003,7 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         try:
             if method == "DELETE":
                 await personal.delete(collection_id, if_match=if_match)
+                wrote()
                 return Response(status_code=204, headers={"Cache-Control": COLLECTIONS_CACHE_CONTROL})
             return _json(await asyncio.to_thread(personal.get, collection_id))
         except CollectionNotFound:
@@ -1010,7 +1025,7 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
         if failed is not None:
             return failed
         try:
-            return _json(await personal.apply_op(body))
+            state = await personal.apply_op(body)
         except InvalidStateOp as exc:
             return _error(400, "invalid_op", str(exc))
         except StateTooLarge as exc:
@@ -1019,6 +1034,8 @@ def build_collection_routes(personal: CollectionStore, facility: FacilityCollect
             return _error(409, exc.code, exc.detail)
         except ReadOnlyStore:
             return _read_only()
+        wrote()
+        return _json(state)
 
     return [
         Route(f"/{COLLECTIONS_PATH}", collection, methods=ALL_METHODS),

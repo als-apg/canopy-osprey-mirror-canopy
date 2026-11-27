@@ -49,9 +49,8 @@ from canopy_mcp.tools._common import (
     route,
     refused,
     draft_ref,
-    get_store,
     read_draft,
-    get_library_store,
+    get_manifests,
     read_only_refusal,
     unwritable_refusal,
 )
@@ -374,12 +373,11 @@ async def list_drafts() -> dict[str, Any]:
     ``library/<id>``; they can be read, checked and screenshotted, not changed.
     """
     settings = get_settings()
-    listed = [(entry["id"], entry) for entry in get_store(settings).manifest(descriptions=True)["screens"]]
-    library = get_library_store(settings)
+    # The listing walks the store, so it is taken off the event loop, from the cache the routes share.
+    personal, library = await get_manifests(settings).read_listings(descriptions=True)
+    listed = [(entry["id"], entry) for entry in personal]
     if library is not None:
-        listed += [
-            (f"{library.category}/{entry['id']}", entry) for entry in library.manifest(descriptions=True)["screens"]
-        ]
+        listed += [(f"{entry['category']}/{entry['id']}", entry) for entry in library]
     drafts = [
         {
             "draftId": tool_id,

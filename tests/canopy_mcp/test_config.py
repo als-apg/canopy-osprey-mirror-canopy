@@ -106,6 +106,20 @@ def test_the_collection_dirs_are_documented_settings(doc, name):
     assert f"| `{name}` |" in (_ROOT / doc).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("doc", _DOCUMENTED_IN)
+@pytest.mark.parametrize("name", ["CANOPY_CACHE_DIR", "CANOPY_MANIFEST_MAX_AGE_S"])
+def test_the_listing_settings_are_documented_settings(doc, name):
+    assert name.removeprefix("CANOPY_").lower() in Settings.model_fields
+    assert f"| `{name}` |" in (_ROOT / doc).read_text(encoding="utf-8")
+
+
+def test_the_listing_cache_dir_defaults_to_a_directory_beside_the_drafts(monkeypatch, tmp_path):
+    monkeypatch.setenv("CANOPY_DRAFTS_DIR", str(tmp_path / "drafts"))
+    assert Settings().listing_cache_dir == tmp_path / "drafts" / ".cache"
+    monkeypatch.setenv("CANOPY_CACHE_DIR", str(tmp_path / "elsewhere"))
+    assert Settings().listing_cache_dir == tmp_path / "elsewhere"
+
+
 def test_settings_read_the_file_and_self_url_variables(monkeypatch, tmp_path):
     key_file = tmp_path / "front.read"
     key_file.write_text("file-read-key\n")

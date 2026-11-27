@@ -17,7 +17,6 @@ tree turns out not to be writable gives the same reason at the write
 from __future__ import annotations
 
 from typing import Any
-from pathlib import Path
 
 from fastmcp.exceptions import ToolError
 
@@ -28,22 +27,21 @@ from canopy_mcp.store import (
     DraftNotFound,
     ReadOnlyStore,
     InvalidDraftId,
-    open_stores,
 )
 from canopy_mcp.config import Settings, get_settings
+from canopy_mcp.manifest import Manifests, open_manifests, reset_manifests
 
-# One pair of stores per (drafts directory, library directory), so every tool
-# call shares the personal store's write lock.
-_stores: dict[tuple[Path, Path | None], tuple[DraftStore, DraftStore | None]] = {}
+
+def get_manifests(settings: Settings | None = None) -> Manifests:
+    """The process-wide stores and their manifest for ``settings``: the ones the HTTP routes serve from."""
+    return open_manifests(settings or get_settings())
 
 
 def _open(settings: Settings) -> tuple[DraftStore, DraftStore | None]:
-    library_dir = settings.library_dir
-    key = (Path(settings.drafts_dir).resolve(), Path(library_dir).resolve() if library_dir is not None else None)
-    pair = _stores.get(key)
-    if pair is None:
-        pair = _stores[key] = open_stores(settings.drafts_dir, library_dir)
-    return pair
+    # One pair of stores per (drafts directory, library directory), shared with the routes,
+    # so every tool call shares the personal store's write lock and its listing cache.
+    manifests = open_manifests(settings)
+    return manifests.store, manifests.library
 
 
 def get_store(settings: Settings | None = None) -> DraftStore:
@@ -58,7 +56,7 @@ def get_library_store(settings: Settings | None = None) -> DraftStore | None:
 
 def reset_stores() -> None:
     """Forget every cached store (tests switch directories)."""
-    _stores.clear()
+    reset_manifests()
 
 
 def screen_ref(category: str, local_id: str) -> str:

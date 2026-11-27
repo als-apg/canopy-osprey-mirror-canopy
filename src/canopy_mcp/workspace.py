@@ -586,6 +586,8 @@ def _clean_result(result: Mapping[str, Any]) -> dict[str, Any]:
 class Stream:
     """One window's event stream: ``hello``, ``batch`` and ``inactive`` events, in order.
 
+    Between them it carries whatever :meth:`Hub.broadcast` sends to every stream.
+
     The events route reads it with :meth:`next`; a test drains it with :meth:`drain`. A stream
     ends when it is replaced, when its window loses the slot, on goodbye or when the hub closes;
     the route reports the client going away with :meth:`Hub.disconnect`.
@@ -779,6 +781,20 @@ class Hub:
         stream._push("hello", {"epoch": self.epoch, "activeWindow": self._active, "seq": self._seq})
         self._deliver(now)
         return stream
+
+    @property
+    def has_streams(self) -> bool:
+        """Whether any window has an open stream, so somebody would hear a :meth:`broadcast`."""
+        return bool(self._streams)
+
+    def broadcast(self, event: str, data: dict[str, Any]) -> None:
+        """Queue ``event`` on every open stream: news of the server that is no part of the slot protocol.
+
+        It changes nothing in the hub. A window with no stream never hears it, so
+        such an event may only say "look again", never carry what must not be lost.
+        """
+        for stream in self._streams.values():
+            stream._push(event, dict(data))
 
     def disconnect(self, stream: Stream) -> None:
         """``stream`` ended (the client went away). Nothing happens unless it is its window's current one."""

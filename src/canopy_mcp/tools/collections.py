@@ -35,7 +35,7 @@ from canopy_mcp.server import mcp
 from canopy_mcp.static import configured_tools
 from canopy_mcp.member_key import InvalidMember, member_key
 from canopy_mcp.collections import CollectionStore, FacilityCollections, all_collections
-from canopy_mcp.tools._common import get_store, screen_ref, get_library_store
+from canopy_mcp.tools._common import screen_ref, get_manifests
 
 # What the viewer calls each tool; a tool member without a ``name`` is labelled by it.
 TOOL_LABELS = {"trace": "Trace", "correlation": "Correlation", "waveform": "Waveform"}
@@ -61,14 +61,14 @@ def open_readers(settings: Settings) -> tuple[FacilityCollections | None, Collec
     return pair
 
 
-def _screens(settings: Settings) -> dict[str, str]:
-    """``<category>/<id>`` -> title for every IR screen of the merged library+drafts manifest."""
-    stores = [get_store(settings), get_library_store(settings)]
+async def _screens(settings: Settings) -> dict[str, str]:
+    """``<category>/<id>`` -> title for every IR screen of the merged library+drafts manifest.
+
+    The listing is the one the routes serve from, taken off the event loop.
+    """
     screens: dict[str, str] = {}
-    for store in stores:
-        if store is None:
-            continue
-        for entry in store.manifest()["screens"]:
+    for entries in await get_manifests(settings).read_listings():
+        for entry in entries or ():
             if entry.get("kind") == "ir":
                 screens[f"{entry['category']}/{entry['id']}"] = entry["title"]
     return screens
@@ -137,7 +137,7 @@ async def list_collections() -> dict[str, Any]:
     """
     settings = get_settings()
     facility, personal = open_readers(settings)
-    screens = _screens(settings)
+    screens = await _screens(settings)
     tools = configured_tools(settings)
     collections = []
     for doc in all_collections(facility, personal):

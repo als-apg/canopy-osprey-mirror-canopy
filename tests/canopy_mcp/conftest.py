@@ -23,6 +23,9 @@ keeps its own.
 
 ``CANOPY_SPEC_DIR`` is removed for every test, so a developer's staged spec
 never decides a result; the spec-present tests stage their own (``synthetic_spec``).
+
+``manifest_looks_every_time`` turns off the age a served screen listing may have,
+so a file a test changes on disk shows on the next request.
 """
 
 import os
@@ -44,6 +47,7 @@ from canopy_mcp.server import (  # noqa: E402
     authoring_snapshot,
     set_workspace_tools,
 )
+from canopy_mcp.manifest import reset_manifests  # noqa: E402
 from canopy.contracts.health import HareHealthSummaryDTO  # noqa: E402
 
 LIVE_ENV = "CANOPY_LIVE"
@@ -128,6 +132,20 @@ def no_ambient_spec(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def manifest_looks_every_time(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Every listing looks at the disk (``CANOPY_MANIFEST_MAX_AGE_S=0``), and no store outlives its test.
+
+    The tests change files behind the server's back and ask at once; a served
+    listing may otherwise be up to its maximum age old. A test of that age sets
+    it itself. The process's stores are forgotten afterwards, which also ends
+    their background reading.
+    """
+    monkeypatch.setenv("CANOPY_MANIFEST_MAX_AGE_S", "0")
+    yield
+    reset_manifests()
 
 
 @pytest.fixture(autouse=True)

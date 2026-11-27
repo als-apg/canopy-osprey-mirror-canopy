@@ -19,12 +19,14 @@ import os
 import re
 import json
 import stat
+import time
 import errno
 import fcntl
 import asyncio
 import hashlib
 import logging
 import tempfile
+import threading
 from typing import Any, Literal
 from pathlib import Path
 from contextlib import contextmanager
@@ -81,8 +83,8 @@ AssetStatus = Literal["written", "reused", "replaced"]
 logger = logging.getLogger(__name__)
 
 # ``(path, exception type)`` pairs ``DraftStore.manifest`` has already warned about. The
-# viewer polls the manifest every second, so an unreadable draft warns once per process
-# (across every store instance), not once per poll.
+# manifest is listed again and again, so an unreadable draft warns once per process
+# (across every store instance), not once per listing.
 _MANIFEST_WARNED: set[tuple[Path, type[BaseException]]] = set()
 
 
@@ -228,6 +230,57 @@ def _digest(data: bytes) -> str:
 
 def _stat_key(st: os.stat_result) -> tuple[int, int, int]:
     return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+def _failure_key(st: os.stat_result) -> tuple[int, int, int, int, int]:
+    """The stat key a failed read is remembered under: it also moves when the file's mode or owner does."""
+    return (st.st_ino, st.st_mtime_ns, st.st_size, st.st_ctime_ns, st.st_mode)
+
+
+# The listing cache file (``DraftStore(cache_file=...)``): its format version, and how long
+# a screen that could not be read is left alone while its stat does not change.
+LISTING_CACHE_VERSION = 1
+FAILED_RETRY_S = 60.0
+_REV = re.compile(r"[0-9a-f]{64}")
+
+
+def listing_cache_path(cache_dir: Path | str, root: Path | str) -> Path:
+    """The listing cache file of the store at ``root`` under ``cache_dir``: one file per resolved root."""
+    name = hashlib.sha256(os.fsencode(Path(root).resolve())).hexdigest()[:16]
+    return Path(cache_dir) / f"manifest-{name}.json"
+
+
+def _load_listing_cache(path: Path) -> dict[str, tuple[int, int, int, int, str, str, str]]:
+    """``id -> (size, mtime_ns, ino, ctime_ns, rev, title, description)`` from a listing cache file.
+
+    ``{}`` when the file cannot be used.
+
+    A missing or unreadable file, another version and anything that is not the
+    format are all "no cache": the screens are then read as on a first start.
+    """
+    try:
+        doc = json.loads(path.read_bytes())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(doc, dict) or doc.get("version") != LISTING_CACHE_VERSION:
+        return {}
+    screens = doc.get("screens")
+    if not isinstance(screens, dict):
+        return {}
+    loaded = {}
+    for draft_id, row in screens.items():
+        if not (isinstance(row, list) and len(row) == 7):
+            continue
+        *numbers, rev, title, description = row
+        if (
+            all(type(number) is int for number in numbers)
+            and isinstance(rev, str)
+            and _REV.fullmatch(rev)
+            and isinstance(title, str)
+            and isinstance(description, str)
+        ):
+            loaded[draft_id] = (*numbers, rev, title, description)
+    return loaded
 
 
 def _read_keyed(path: Path) -> tuple[bytes, tuple[int, int, int] | None]:
@@ -380,6 +433,7 @@ class DraftStore:
         read_only: bool = False,
         category: str = DRAFTS,
         reserved: Iterable[str] = (),
+        cache_file: Path | str | None = None,
     ):
         self.root = Path(root)
         self.screens = self.root / "screens"
@@ -397,6 +451,29 @@ class DraftStore:
         # the last ``manifest()`` listed, under the stat-key rule of ``_revs``. It holds no
         # document, and a screen that is no longer listed leaves it.
         self._listed: dict[str, tuple[tuple[int, int, int], str, str, str]] = {}
+        # One listing at a time, from whichever thread asks; everything below is read and
+        # written under it.
+        self._listing_lock = threading.Lock()
+        # The last listing as ``(id, rev, title, description)`` rows in id order, the manifest
+        # entries built from them (by ``descriptions``), and a count that moves when the rows do.
+        self._rows: tuple[tuple[str, str | None, str, str], ...] = ()
+        self._entries: dict[bool, tuple[dict[str, Any], ...]] = {}
+        self._generation = 0
+        # ``time.monotonic()`` at the start of the last listing, or ``None`` when a write
+        # through this store (counted in ``_writes``) has made it out of date.
+        self._listed_at: float | None = None
+        self._writes = 0
+        # id -> (failure key, when): screens the last listing could not read.
+        self._failed: dict[str, tuple[tuple[int, int, int, int, int], float]] = {}
+        # Where the listing is kept between runs (``None``: nowhere), what was loaded from
+        # there (``None`` until the first listing, empty after it) and the ids whose listed
+        # rev still comes from that file rather than from the screen's own bytes.
+        self._cache_file = Path(cache_file) if cache_file is not None else None
+        self._cache_refused = False
+        self._loaded: dict[str, tuple[int, int, int, int, str, str, str]] | None = None
+        self._unverified: set[str] = set()
+        # id -> st_ctime_ns of each listed screen, kept only for the cache file.
+        self._ctimes: dict[str, int] = {}
 
     # --- ids and paths ------------------------------------------------------
 
@@ -504,7 +581,18 @@ class DraftStore:
     def _write_file(self, path: Path, data: bytes) -> str:
         rev = _digest(data)
         self._revs[path] = (write_atomic(path, data), rev)
+        self._touched()
         return rev
+
+    def _touched(self) -> None:
+        """A write went through this store: the next listing looks at the disk whatever its ``max_age``."""
+        self._writes += 1
+        self._listed_at = None
+
+    @property
+    def writes(self) -> int:
+        """How many writes went through this store; a listing begun at another count may miss the latest."""
+        return self._writes
 
     async def write(self, draft_id: str, doc: dict[str, Any], expect_rev: str | None) -> str:
         """Replace the draft if it is at ``expect_rev`` (``None``: it must not exist). Returns the new rev."""
@@ -615,6 +703,7 @@ class DraftStore:
                     raise RevConflict([draft_id])
                 remove_file(path)
                 self._revs.pop(path, None)
+                self._touched()
                 # Drop directories the draft leaves empty, never the screens root itself.
                 parent = path.parent
                 while parent != self.screens and parent.is_relative_to(self.screens):
@@ -628,8 +717,8 @@ class DraftStore:
 
     # --- listing ------------------------------------------------------------
 
-    def manifest(self, *, descriptions: bool = False) -> dict[str, list[dict[str, Any]]]:
-        """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape, current on each call.
+    def manifest(self, *, descriptions: bool = False, max_age: float = 0.0) -> dict[str, list[dict[str, Any]]]:
+        """``{"screens": [...]}`` in the viewer's ``ManifestScreen`` shape.
 
         Entries carry the store's ``category``. ``path`` is what the viewer fetches under
         ``/drafts/``: ``screens/<id>.screen.json`` for a personal store, and
@@ -640,31 +729,127 @@ class DraftStore:
         sentence of ``metadata.description``, at most ``DESCRIPTION_MAX`` characters,
         ``""`` when the screen has none. The viewer's manifest leaves it out.
 
-        Every call lists the tree and takes the stat of every screen. A screen is
+        The answer is current on each call unless ``max_age`` allows otherwise
+        (:meth:`listing`, which states what a listing costs). The call blocks on the
+        disk, so the event loop makes it in a worker thread. The entries are the
+        caller's own.
+        """
+        entries, _ = self.listing(descriptions=descriptions, max_age=max_age)
+        return {"screens": [dict(entry) for entry in entries]}
+
+    def listing(self, *, descriptions: bool = False, max_age: float = 0.0) -> tuple[tuple[dict[str, Any], ...], int]:
+        """The manifest entries and the generation they belong to; any thread may call it, one lists at a time.
+
+        The entries are shared between callers and must not be changed
+        (:meth:`manifest` hands out copies). The generation moves exactly when the
+        entries do, so two answers of one generation are the same listing.
+
+        A listing walks the tree and takes the stat of every screen. A screen is
         opened only when its stat key ``(st_ino, st_mtime_ns, st_size)`` is not the
         one its listed rev, title and description were read under: the rule the rev
-        cache follows, so a manifest of an unchanged store opens no screen. A screen
-        that could not be read is tried again on every call.
+        cache follows, so a listing of an unchanged store opens no screen. A screen
+        that could not be read is left alone for ``FAILED_RETRY_S`` seconds while
+        its stat (mode and change time included) stays as it was.
+
+        With ``max_age`` above zero, a listing taken less than that many seconds ago
+        is answered again without looking at the disk, unless a write went through
+        this store since. A change made on disk by anyone else then shows up to
+        ``max_age`` seconds late.
+
+        With a ``cache_file``, the first listing of a process takes each screen
+        whose size and modification time are the ones the file recorded from the
+        file instead of reading it, so a restart costs the walk and not the
+        reading. The inode is deliberately not part of that rule: a tree staged
+        again with the same bytes and times has new inodes. The price: a screen
+        whose bytes changed between two runs without its size or modification
+        time changing is listed with its old rev and title until
+        :meth:`verify_adopted` has read it. Only a screen whose inode and change
+        time are the recorded ones too is taken as read, since nothing rewrites a
+        file without moving one of them. The rev a screen is *served* under
+        (:meth:`rev`) is never taken from a file that was not read.
         """
+        with self._listing_lock:
+            fresh = self._listed_at is not None and max_age > 0 and time.monotonic() - self._listed_at < max_age
+            if not fresh:
+                self._list_tree()
+            entries = self._entries.get(descriptions)
+            if entries is None:
+                entries = self._entries[descriptions] = self._build_entries(descriptions)
+            return entries, self._generation
+
+    def _build_entries(self, descriptions: bool) -> tuple[dict[str, Any], ...]:
         # ``path_for(id)`` under the root, spelled without building a path per screen.
         prefix = ("" if self.category == DRAFTS else f"{self.category}/") + "screens/"
-        screens = []
+        entries = []
+        for draft_id, rev, title, description in self._rows:
+            entry = {
+                "id": draft_id,
+                "kind": "ir",
+                "category": self.category,
+                "title": title,
+                "path": f"{prefix}{draft_id}{SCREEN_SUFFIX}",
+                "rev": rev,
+            }
+            if descriptions:
+                entry["description"] = description
+            entries.append(entry)
+        return tuple(entries)
+
+    def _list_tree(self) -> None:
+        """Bring ``_rows`` and ``_listed`` up to the tree as it is now. Call it under ``_listing_lock``."""
+        started = time.monotonic()
+        writes = self._writes
+        first = self._loaded is None
+        if first:
+            self._loaded = _load_listing_cache(self._cache_file) if self._cache_file is not None else {}
+        loaded = self._loaded
+        rows: list[tuple[str, str | None, str, str]] = []
         listed: dict[str, tuple[tuple[int, int, int], str, str, str]] = {}
+        failed: dict[str, tuple[tuple[int, int, int, int, int], float]] = {}
+        unverified: set[str] = set()
+        ctimes: dict[str, int] = {}
+        dirty = False
         for draft_id, found, plain in sorted(self._walk()):
-            key = self._listing_key(draft_id, found, plain)
+            st = self._listing_stat(draft_id, found, plain)
+            key = None if st is None else _stat_key(st)
+            if st is not None:
+                ctimes[draft_id] = st.st_ctime_ns
             known = self._listed.get(draft_id)
             if key is not None and known is not None and known[0] == key:
                 # The cheap path: an unchanged stat answers without opening the file.
                 listed[draft_id] = known
                 _, rev, title, description = known
+                if draft_id in self._unverified:
+                    unverified.add(draft_id)
+            elif key is not None and (kept := loaded.get(draft_id)) is not None and kept[:2] == (key[2], key[1]):
+                # The file is the size and age the cache file recorded: its listing is taken from there.
+                rev, title, description = kept[4:]
+                listed[draft_id] = (key, rev, title, description)
+                if kept[2:4] == (key[0], st.st_ctime_ns):
+                    self._revs[self.path_for(draft_id)] = (key, rev)  # the very file that was read
+                else:
+                    unverified.add(draft_id)
+                    dirty = True
             else:
+                before = self._failed.get(draft_id)
+                if (
+                    before is not None
+                    and st is not None
+                    and before[0] == _failure_key(st)
+                    and started - before[1] < FAILED_RETRY_S
+                ):
+                    failed[draft_id] = before  # it could not be read as it is; it has not changed since
+                    continue
                 path = self.path_for(draft_id)
+                dirty = True
                 try:
                     doc, rev = self.read(draft_id)
                 except (DraftNotFound, FileNotFoundError):
                     continue  # no draft after all, or deleted between listing and reading
                 except OSError as exc:
                     _warn_manifest_once(path, exc, "left out of the manifest")
+                    if st is not None:
+                        failed[draft_id] = (_failure_key(st), started)
                     continue
                 except ValueError as exc:
                     _warn_manifest_once(path, exc, "listed with its id as the title")
@@ -681,22 +866,104 @@ class DraftStore:
                 remembered = self._revs.get(path)
                 if rev is not None and remembered is not None and remembered[1] == rev:
                     listed[draft_id] = (remembered[0], rev, title, description)
-            entry = {
-                "id": draft_id,
-                "kind": "ir",
-                "category": self.category,
-                "title": title,
-                "path": f"{prefix}{draft_id}{SCREEN_SUFFIX}",
-                "rev": rev,
-            }
-            if descriptions:
-                entry["description"] = description
-            screens.append(entry)
-        self._listed = listed
-        return {"screens": screens}
+            rows.append((draft_id, rev, title, description))
+        dirty = dirty or listed.keys() != (loaded.keys() if first else self._listed.keys())
+        self._listed, self._failed, self._unverified, self._ctimes = listed, failed, unverified, ctimes
+        self._loaded = {}
+        if tuple(rows) != self._rows:
+            self._rows = tuple(rows)
+            self._entries = {}
+            self._generation += 1
+        # A write that went through the store while the tree was walked may have been missed.
+        self._listed_at = started if writes == self._writes else None
+        if dirty:
+            self._save_listing_cache()
 
-    def _listing_key(self, draft_id: str, found: str, plain: bool) -> tuple[int, int, int] | None:
-        """The stat key of the file a walked entry resolves to, or ``None`` when it cannot be told.
+    def _save_listing_cache(self) -> None:
+        """Write what is listed to the cache file, atomically; one that cannot be written costs nothing but the next start."""
+        path = self._cache_file
+        if path is None:
+            return
+        # A screen that has not been read yet is recorded without inode and change time, so
+        # the next process does not take it as read either.
+        screens = {
+            draft_id: [key[2], key[1], *self._vouched(draft_id, key), rev, title, description]
+            for draft_id, (key, rev, title, description) in self._listed.items()
+        }
+        data = json.dumps({"version": LISTING_CACHE_VERSION, "screens": screens}, ensure_ascii=False).encode("utf-8")
+        tmp = None
+        try:
+            # Only the last directory is made: a store whose own root is absent is not created by listing it.
+            path.parent.mkdir(mode=DIR_MODE, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+                os.fchmod(fh.fileno(), FILE_MODE)
+            os.replace(tmp, path)
+        except OSError as exc:
+            if tmp is not None:
+                Path(tmp).unlink(missing_ok=True)
+            if not self._cache_refused:
+                self._cache_refused = True
+                logger.info("listing cache %s not written, the listing is kept in memory only: %s", path, exc)
+
+    def _vouched(self, draft_id: str, key: tuple[int, int, int]) -> tuple[int, int]:
+        if draft_id in self._unverified:
+            return (0, 0)
+        return (key[0], self._ctimes.get(draft_id, 0))
+
+    @property
+    def unverified(self) -> int:
+        """How many listed screens still have their rev from the cache file (:meth:`verify_adopted`)."""
+        return len(self._unverified)
+
+    def verify_adopted(self, stop: threading.Event | None = None) -> int:
+        """Read every screen whose listing came from the cache file; the number found to differ.
+
+        Each one's bytes are hashed. One that is not at the rev the cache file gave
+        is forgotten, so the next listing reads it and lists it as it is (and that
+        listing looks at the disk whatever its ``max_age``). One that is has its
+        rev remembered, so serving it later does not hash it again. Slow on a large
+        store (it reads everything once), so it runs in a thread of its own; ``stop``
+        ends it early.
+        """
+        differing = 0
+        pending: str | None = None
+        while stop is None or not stop.is_set():
+            with self._listing_lock:
+                # A screen leaves the unread ones only once it has been read.
+                self._unverified.discard(pending)
+                if not self._unverified:
+                    if pending is not None:
+                        self._save_listing_cache()
+                    break
+                draft_id = pending = next(iter(self._unverified))
+                known = self._listed.get(draft_id)
+            if known is None:
+                continue
+            path = self.path_for(draft_id)
+            target = self._contained(path)
+            try:
+                if target is None:
+                    raise FileNotFoundError(path)
+                data, key = _read_keyed(target)
+            except OSError:
+                data, key = b"", None
+            if key != known[0]:
+                continue  # gone, unreadable or changed since it was listed: the next listing sees that itself
+            rev = _digest(data)
+            if rev == known[1]:
+                self._remember(path, key, rev)
+                continue
+            with self._listing_lock:
+                if self._listed.get(draft_id) is known:
+                    del self._listed[draft_id]
+                    self._touched()
+                    differing += 1
+        return differing
+
+    def _listing_stat(self, draft_id: str, found: str, plain: bool) -> os.stat_result | None:
+        """The stat of the file a walked entry resolves to, or ``None`` when it cannot be told.
 
         A plain entry (``_walk``) is its own target, so one ``lstat`` of ``found``
         answers; one that has become something else since the listing, and every
@@ -706,9 +973,9 @@ class DraftStore:
             if plain:
                 st = os.lstat(found)
                 if stat.S_ISREG(st.st_mode):
-                    return _stat_key(st)
+                    return st
             target = self._contained(self.path_for(draft_id))
-            return None if target is None else _stat_key(target.stat())
+            return None if target is None else target.stat()
         except OSError:
             return None
 
@@ -789,16 +1056,26 @@ class DraftStore:
                         continue
 
 
-def open_stores(drafts_dir: Path | str, library_dir: Path | str | None) -> tuple[DraftStore, DraftStore | None]:
+def open_stores(
+    drafts_dir: Path | str, library_dir: Path | str | None, *, cache_dir: Path | str | None = None
+) -> tuple[DraftStore, DraftStore | None]:
     """The personal store over ``drafts_dir`` and the read-only library store over ``library_dir``.
 
     Without a library the personal store is exactly ``DraftStore(drafts_dir)`` and
     the second item is ``None``. With one, the personal store reserves the
     ``library`` first segment, so no personal id can shadow a library screen.
+
+    With a ``cache_dir`` each store keeps its listing between runs in a file of
+    its own there (:func:`listing_cache_path`); nothing is ever written into the
+    library's tree.
     """
+
+    def cache(root: Path | str) -> Path | None:
+        return None if cache_dir is None else listing_cache_path(cache_dir, root)
+
     if library_dir is None:
-        return DraftStore(drafts_dir), None
+        return DraftStore(drafts_dir, cache_file=cache(drafts_dir)), None
     return (
-        DraftStore(drafts_dir, reserved=(LIBRARY,)),
-        DraftStore(library_dir, read_only=True, category=LIBRARY),
+        DraftStore(drafts_dir, reserved=(LIBRARY,), cache_file=cache(drafts_dir)),
+        DraftStore(library_dir, read_only=True, category=LIBRARY, cache_file=cache(library_dir)),
     )

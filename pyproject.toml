@@ -179,6 +179,7 @@ source_modules = [
     "canopy_mcp.forward",
     "canopy_mcp.formulas",
     "canopy_mcp.http",
+    "canopy_mcp.manifest",
     "canopy_mcp.merge",
     "canopy_mcp.png",
     "canopy_mcp.refs",

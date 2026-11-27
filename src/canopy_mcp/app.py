@@ -59,7 +59,6 @@ from canopy_mcp.http import (
     configured_origins,
     code_detail_response,
 )
-from canopy_mcp.store import open_stores
 from canopy_mcp.access import (
     OPEN_ROUTE,
     WS_POLICY_VIOLATION,
@@ -73,6 +72,7 @@ from canopy_mcp.static import build_routes
 from canopy_mcp.browser import browser_hook
 from canopy_mcp.catalog import CatalogError, set_catalog, load_catalog
 from canopy_mcp.forward import build_forward_routes
+from canopy_mcp.manifest import open_manifests
 from canopy.core.color_scheme import get_color_scheme
 from canopy_mcp.shared_library import mount_library
 
@@ -199,7 +199,9 @@ def create_app(
     register_all()
     set_authoring(settings.authoring)
     set_workspace_tools(settings.workspace)
-    store, library = open_stores(settings.drafts_dir, settings.library_dir)
+    # The stores the tools use too: one listing cache and one write lock per directory.
+    manifests = open_manifests(settings)
+    store, library = manifests.store, manifests.library
     resolved_self_url = (self_url or settings.self_url or DEFAULT_SELF_URL).rstrip("/")
     host_guard = Middleware(HostGuard, configured=configured_origins(resolved_self_url, settings.public_url))
     mcp_app = mcp.http_app(path=MCP_PATH)
@@ -219,7 +221,7 @@ def create_app(
         routes=[
             *mcp_app.routes,
             *build_forward_routes(settings),
-            *build_routes(settings, store, library),
+            *build_routes(settings, store, library, manifests),
         ],
         # FastMCP's own middleware (its request context) must wrap its routes
         # here too, since only the routes were lifted. FastMCP's host/origin
@@ -233,6 +235,7 @@ def create_app(
     app.state.access_token = token
     app.state.store = store
     app.state.library = library
+    app.state.manifests = manifests
     app.state.self_url = resolved_self_url
     # The shared screen library: its routes, its stores on app.state and its lifespan hook.
     late_hooks.append(mount_library(app, settings))
