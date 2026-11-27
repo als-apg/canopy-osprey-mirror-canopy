@@ -267,6 +267,23 @@ Focusing a window claims the slot; only the slot holder reports. `seq` is the
 window's own state counter, and `base = {window, seq}` is the agent's
 optimistic-concurrency token.
 
+### Told, not asked
+
+The active window's event stream also says when something changed on the
+server, so a window that holds the stream need not ask at an interval. Its
+`hello` event names what the server offers in `capabilities`; a server
+without them sends no such key.
+
+| Capability | What it means |
+|---|---|
+| `manifest-events` | The stream carries the event `manifest` with `{"etag": ...}` when `/drafts/manifest.json` has changed. The value is that response's `ETag` header. A change on disk is found within two seconds while a stream is open. |
+| `collections-events` | The stream carries the event `collections` with `{}` after a collection was written or deleted, or the collections state was changed, through this server. A collection file changed on disk is not announced. |
+| `manifest-tree-view` | `/drafts/manifest.json?view=tree` answers the same screens in the same order as `{id, category, title}` only, with an ETag of its own. A library's `navigation` is in this view too. |
+
+Both events say "ask again" and carry nothing that may not be lost. A window
+without the stream (any window but the active one) hears nothing and keeps
+asking.
+
 ### Protocol version
 
 With the switch on, `config.json` advertises

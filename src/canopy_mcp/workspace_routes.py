@@ -17,7 +17,15 @@ Paths are relative to :data:`WORKSPACE_PATH`, the path ``config.json`` advertise
 - ``GET events?window=<id>``: the active window's event stream (server-sent events
   ``hello``, ``batch``, ``inactive`` and a ``: ping`` comment every
   :data:`PING_S` seconds); ``204`` for any other window, so its EventSource stops.
-  One stream per window: a new one ends the old.
+  One stream per window: a new one ends the old. ``hello`` also carries
+  ``capabilities``, the names of what this server does beyond protocol 1 (a
+  server that does none of it sends no such key). Two of them are further events
+  on this stream, which a client that does not know them ignores:
+  ``manifest-events`` is ``manifest`` ``{"etag": <the ETag of /drafts/manifest.json>}``
+  whenever that manifest has changed, and ``collections-events`` is
+  ``collections`` ``{}`` after a write to a collection or to the collections
+  state. Both say "ask again" and nothing more: a window that hears them need
+  not ask at an interval, and one without a stream hears nothing.
 - ``POST active/{windowId}/result`` ``{batch, seq, state, results, truncated?}``:
   the one result of a batch the window holds
   (:meth:`~canopy_mcp.workspace.Hub.post_result`), ``204``.
@@ -114,8 +122,12 @@ async def _json_object(request: Request) -> tuple[dict[str, Any], Response | Non
     return body, None
 
 
-async def _events(stream: Stream) -> AsyncIterator[dict[str, str]]:
-    """The stream's events as server-sent events; the window's stream is let go at the end."""
+async def _events(stream: Stream, capabilities: tuple[str, ...] = ()) -> AsyncIterator[dict[str, str]]:
+    """The stream's events as server-sent events; the window's stream is let go at the end.
+
+    ``hello`` gains ``capabilities`` when there are any: what the server offers is the
+    routes' to say, not the hub's.
+    """
     try:
         while True:
             try:
@@ -123,13 +135,19 @@ async def _events(stream: Stream) -> AsyncIterator[dict[str, str]]:
             except StreamEnded:
                 return
             if event is not None:
-                yield {"event": event["event"], "data": json.dumps(event["data"], separators=(",", ":"))}
+                data = event["data"]
+                if capabilities and event["event"] == "hello":
+                    data = {**data, "capabilities": list(capabilities)}
+                yield {"event": event["event"], "data": json.dumps(data, separators=(",", ":"))}
     finally:
         stream.hub.disconnect(stream)
 
 
-def build_workspace_routes() -> list[Route]:
-    """The workspace routes under ``/workspace``; mounted only with ``CANOPY_WORKSPACE`` on."""
+def build_workspace_routes(capabilities: tuple[str, ...] = ()) -> list[Route]:
+    """The workspace routes under ``/workspace``; mounted only with ``CANOPY_WORKSPACE`` on.
+
+    ``capabilities`` are the names the stream's ``hello`` advertises.
+    """
 
     async def claim(request: Request) -> Response:
         if (refused := _cross_site(request)) is not None:
@@ -186,7 +204,9 @@ def build_workspace_routes() -> list[Route]:
         stream = get_hub().connect(window) if window is not None else None
         if stream is None:
             return _no_content()
-        return EventSourceResponse(_events(stream), ping=PING_S, headers={"Cache-Control": WORKSPACE_CACHE_CONTROL})
+        return EventSourceResponse(
+            _events(stream, capabilities), ping=PING_S, headers={"Cache-Control": WORKSPACE_CACHE_CONTROL}
+        )
 
     async def result(request: Request) -> Response:
         if (refused := _cross_site(request)) is not None:
