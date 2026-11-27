@@ -23,7 +23,7 @@ import pytest
 from starlette.testclient import TestClient
 
 import canopy_mcp.store as store_module
-import canopy_mcp.static as static_module
+import canopy_mcp.manifest as manifest_module
 from canopy_mcp.app import create_app
 from canopy_mcp.store import (
     DRAFTS,
@@ -501,7 +501,7 @@ def served(tmp_path, tree, monkeypatch):
             encodings.append(len(value["screens"]))
         return real_dumps(value, *args, **kwargs)
 
-    monkeypatch.setattr(static_module.json, "dumps", dumps)
+    monkeypatch.setattr(manifest_module.json, "dumps", dumps)
     settings = Settings(drafts_dir=drafts, library_dir=tree, pv_mode="hare", api_key="k")
     with TestClient(create_app(settings, startup_hooks=[])) as client:
         yield client, drafts, tree, encodings

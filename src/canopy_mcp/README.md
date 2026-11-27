@@ -59,6 +59,8 @@ unset.
 | `CANOPY_PV_DETAILS_URL` | unset | The page about one PV, opened from a PV's right-click menu in the viewer: an http(s) or viewer-relative URL in which `{pv}` stands for the PV name. Handed to the viewer as `config.json`'s `pvDetails`; unset, the menu has no such entry. A URL without `{pv}` or with another scheme stops the server at startup. |
 | `CANOPY_AUTHORING` | `1` | `0` takes the authoring tools off the server. |
 | `CANOPY_PUSH_DIR` | unset | Where `request_push` writes its bundles, one directory per request. Unset means the tool answers `push_unavailable`. |
+| `CANOPY_CACHE_DIR` | `<CANOPY_DRAFTS_DIR>/.cache` | Where the server keeps its listing of the screens between runs, one small file per store, so a restart does not read every screen again. Nothing is written into the library. A directory that cannot be written costs only that: the listing is then kept in memory. |
+| `CANOPY_MANIFEST_MAX_AGE_S` | `1` | Seconds the listing of the screens is answered again without looking at the disk. A screen changed on disk by another process shows up to this much later; a write through this server shows at once. `0` looks at the disk on every request. |
 | `CANOPY_VIEWS_DIR` | `<CANOPY_DRAFTS_DIR>/views` | Where the saved views are stored. |
 | `CANOPY_COLLECTIONS_DIR` | `<CANOPY_DRAFTS_DIR>/collections` | Where the user's own collections and their selection state are stored. |
 | `CANOPY_FACILITY_COLLECTIONS_DIR` | unset | A read-only directory of facility collections shipped with the deployment. Unset means no facility collections. |

@@ -12,7 +12,6 @@ entry page gets a ``<base href>`` naming the prefix a reverse proxy forwards in
 
 import re
 import html
-import json
 import asyncio
 import hashlib
 import logging
@@ -26,7 +25,7 @@ from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse, PlainTextResponse
 from starlette.applications import Starlette
 
-from canopy_mcp.http import NO_CACHE, etag, not_modified
+from canopy_mcp.http import NO_CACHE, etag, not_modified, code_detail_response
 from canopy_mcp.store import (
     LIBRARY,
     SCREEN_SUFFIX,
@@ -35,8 +34,8 @@ from canopy_mcp.store import (
     contained_file,
 )
 from canopy_mcp.config import Settings
+from canopy_mcp.manifest import FULL, VIEWS, Manifests
 from canopy_mcp.validate import TOOL_IDS
-from canopy_mcp.navigation import NavigationFile
 from canopy.contracts.health import (
     DATA_DEGRADED,
     DATA_UNAVAILABLE,
@@ -331,13 +330,24 @@ def _screen_rev(store: DraftStore, target: Path) -> str | None:
         return None
 
 
-def build_routes(settings: Settings, store: DraftStore, library: DraftStore | None = None) -> list[Route]:
+def build_routes(
+    settings: Settings,
+    store: DraftStore,
+    library: DraftStore | None = None,
+    manifests: Manifests | None = None,
+) -> list[Route]:
     """The viewer, config, draft, Trace, channel-catalog and health routes for ``settings``, ``store`` and ``library``.
 
     Draft screens carry ``Cache-Control: no-cache`` and an ETag equal to their
-    rev: the viewer polls the manifest every second while a draft is open, and a
-    304 keeps that poll cheap. Hashed build assets are cached for a year.
+    rev, and the manifest one equal to the sha256 of its body: a viewer asks for
+    either again and again, and a 304 keeps that cheap. Hashed build assets are
+    cached for a year.
+
+    ``manifests`` is what the manifest is served from; left out, one is made over
+    ``store`` and ``library`` that looks at the disk on every request.
     """
+    if manifests is None:
+        manifests = Manifests(store, library)
     dist = settings.viewer_dist
     host_paths = settings.host_stylesheet_paths
 
@@ -389,33 +399,26 @@ def build_routes(settings: Settings, store: DraftStore, library: DraftStore | No
             headers={"Cache-Control": NO_CACHE, "Access-Control-Allow-Origin": "*"},
         )
 
-    # The library's own ordering of its screens, when its root holds a valid ``navigation.json``.
-    navigation = NavigationFile(library.root) if library is not None else None
-    # The last manifest served: (listing, its encoded body, the sha256 of the body).
-    served: list[tuple[dict[str, Any], bytes, str]] = []
-
     async def manifest(request: Request) -> Response:
         """The drafts, then the library's screens as ``{id, category: "library", path: "library/screens/..."}``.
 
-        A library whose root holds a valid ``navigation.json`` adds it as ``navigation``
-        (``canopy_mcp.navigation``); the key is absent otherwise.
+        ``?view=tree`` answers the same screens in the same order as
+        ``{id, category, title}`` only, under an ETag of its own; any other
+        ``view`` is ``400 invalid_view``. Without ``view`` the body is the full
+        manifest.
 
-        The listing is taken on every request. It is encoded and hashed again only
-        when it differs from the last one served, so the poll of an unchanged
-        store costs the listing and one comparison.
+        A library whose root holds a valid ``navigation.json`` adds it as ``navigation``
+        (``canopy_mcp.navigation``) in either view; the key is absent otherwise.
+
+        The listing is taken in a worker thread and shared by the requests that
+        arrive meanwhile (:class:`~canopy_mcp.manifest.Manifests`), so a slow one
+        holds up no other request. It is encoded and hashed again only when a
+        store's listing or the navigation has changed.
         """
-        listing = store.manifest()
-        if library is not None:
-            listing = {"screens": [*listing["screens"], *library.manifest()["screens"]]}
-            ordered = navigation.read()
-            if ordered is not None:
-                listing["navigation"] = ordered
-        if served and served[0][0] == listing:
-            _, body, rev = served[0]
-        else:
-            body = json.dumps(listing, ensure_ascii=False).encode("utf-8")
-            rev = hashlib.sha256(body).hexdigest()
-            served[:] = [(listing, body, rev)]
+        view = request.query_params.get("view", FULL)
+        if view not in VIEWS:
+            return code_detail_response(400, "invalid_view", f"view must be one of: {', '.join(VIEWS)}")
+        body, rev = await manifests.serve(view)
         return _revved(request, rev, lambda: Response(body, media_type="application/json"))
 
     async def draft_file(request: Request) -> Response:
